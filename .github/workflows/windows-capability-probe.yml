@@ -142,6 +142,20 @@ jobs:
         run: |
           .\probes\windows\13-ledger-check.ps1
 
+      # Gated, and gated before the upload runs, mirroring windows-e2e.yml's
+      # own redaction-gate step: this job writes fresh *-ci.json captures on
+      # every leg above, committed corpus or not, and uploading them as a
+      # workflow-run artifact from a PUBLIC repository with no redaction
+      # step in between was a second, ungated path around R21's committed-
+      # capture scope. The default (no -Path) scan derives its file set from
+      # tracked files (finding #8), which already covers every path this
+      # job's own upload step lists below.
+      - name: Redact and gate the measured captures
+        id: redaction-gate
+        if: ${{ !cancelled() }}
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-capture-redaction.ps1
+
       # Uploads on failure as well as success. A probe that fails its mandatory
       # measurement gate has already written the placeholder captures naming
       # what did not measure, and on a red run those are the entire evidence
@@ -149,8 +163,12 @@ jobs:
       # nothing else. !cancelled() rather than always(): the concurrency group
       # above supersedes runs routinely, always() keeps running through a
       # cancellation and is the documented cause of runs that will not cancel.
+      # Also requires the redaction gate above to have passed - not job
+      # success alone, which would either skip the gate on a red suite
+      # (losing the debugging payload) or upload regardless of the gate's
+      # own result.
       - name: Upload the measured captures
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.redaction-gate.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-capability-probe-captures

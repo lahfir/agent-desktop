@@ -23,6 +23,12 @@
 
 Set-StrictMode -Version 2.0
 
+<# Invoke-HeadedInteractionLegs lives in ../InteractionHeaded.ps1, not
+   alongside the other Invoke-*Leg(s) functions below - purely to keep this
+   file under the 400-line cap. It is not under scenarios/ itself: see that
+   file's own header for why. #>
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'InteractionHeaded.ps1')
+
 function Get-InteractionHeadlessLegTable {
     @(
         @{ Name = 'click'; TargetId = 'primary-button'; StatusId = 'click-status'; Property = 'value'; Prefix = 'clicked'; AnyChange = $true; Action = 'click'; Mechanism = 'semantic_api' }
@@ -330,71 +336,3 @@ function Invoke-SurfaceRefusalLeg {
     }
 }
 
-function Invoke-HeadedInteractionLegs {
-    param([Parameter(Mandatory = $true)][string]$App)
-    Enter-Stage -Lock DesktopLease -Body {
-        Enter-Stage -Lock ForegroundStage -Body {
-            <# Every physical (coordinate-based) action below scrolls its own
-               target into view first - measured live: the earlier resident-
-               id resolve loop leaves the AutoScroll viewport scrolled deep
-               into the scroll-row list, so a stale off-screen bounds reading
-               can never be clicked. scroll-to is a no-op when visible. #>
-            try {
-                $target = Require-Target -Target (Find-Target -App $App -NativeId 'double-target' -TimeoutSeconds 10) -Description 'double-target'
-                Invoke-Target -Target $target -Action 'scroll-to' -RequireOk -Description 'double-target (scroll into view)' | Out-Null
-                $status = Require-Target -Target (Find-Target -App $App -NativeId 'double-status' -TimeoutSeconds 10) -Description 'double-status'
-                Assert-Effect -Target $target -StatusTarget $status -Property 'value' -Expected 'double-clicked' -ExpectedIsPrefix -Action 'double-click' -Headed | Out-Null
-                Add-Pass -Leg 'headed-double-click'
-            } catch { Add-Fail -Leg 'headed-double-click' -Reason $_.Exception.Message }
-
-            try {
-                $target = Require-Target -Target (Find-Target -App $App -NativeId 'triple-target' -TimeoutSeconds 10) -Description 'triple-target'
-                Invoke-Target -Target $target -Action 'scroll-to' -RequireOk -Description 'triple-target (scroll into view)' | Out-Null
-                $status = Require-Target -Target (Find-Target -App $App -NativeId 'triple-status' -TimeoutSeconds 10) -Description 'triple-status'
-                Assert-Effect -Target $target -StatusTarget $status -Property 'value' -Expected 'triple-clicked' -ExpectedIsPrefix -Action 'triple-click' -Headed | Out-Null
-                Add-Pass -Leg 'headed-triple-click'
-            } catch { Add-Fail -Leg 'headed-triple-click' -Reason $_.Exception.Message }
-
-            try {
-                $target = Require-Target -Target (Find-Target -App $App -NativeId 'context-target' -TimeoutSeconds 10) -Description 'context-target'
-                Invoke-Target -Target $target -Action 'scroll-to' -RequireOk -Description 'context-target (scroll into view)' | Out-Null
-                Invoke-Target -Target $target -Action 'right-click' -Headed -RequireOk -Description 'context-target' | Out-Null
-                $choice = Require-Target -Target (Find-Target -App $App -NativeId 'context-choice' -TimeoutSeconds 10) -Description 'context-choice'
-                $status = Require-Target -Target (Find-Target -App $App -NativeId 'context-status' -TimeoutSeconds 10) -Description 'context-status'
-                Assert-Effect -Target $choice -StatusTarget $status -Property 'value' -Expected 'chosen' -ExpectedIsPrefix -AnyChange -Action 'click' | Out-Null
-                Add-Pass -Leg 'headed-right-click-then-choose'
-            } catch { Add-Fail -Leg 'headed-right-click-then-choose' -Reason $_.Exception.Message }
-
-            try {
-                $mover = Require-Target -Target (Find-Target -App $App -NativeId 'hover-target' -TimeoutSeconds 10) -Description 'hover-target'
-                Invoke-Target -Target $mover -Action 'scroll-to' -RequireOk -Description 'hover-target (scroll into view)' | Out-Null
-                Invoke-Target -Target $mover -Action 'mouse-move' -Headed -RequireOk -Description 'hover-target' | Out-Null
-                $status = Require-Target -Target (Find-Target -App $App -NativeId 'hover-status' -TimeoutSeconds 10) -Description 'hover-status'
-                Assert-Effect -Target $mover -StatusTarget $status -Property 'value' -Expected 'hovered' -ExpectedIsPrefix -Action 'hover' -Headed | Out-Null
-                Add-Pass -Leg 'headed-hover'
-            } catch { Add-Fail -Leg 'headed-hover' -Reason $_.Exception.Message }
-
-            try {
-                $source = Require-Target -Target (Find-Target -App $App -NativeId 'scroll-area' -TimeoutSeconds 10) -Description 'scroll-area'
-                Invoke-Target -Target $source -Action 'scroll-to' -RequireOk -Description 'scroll-area (scroll into view)' | Out-Null
-                $e = Invoke-AgentDesktop -Arguments @('--headed', 'drag', '--from', $source.RefId, '--snapshot', $source.SnapshotId, '--to-xy', '5,5')
-                Assert-Envelope -Envelope $e -Ok
-                Add-Pass -Leg 'headed-drag'
-            } catch { Add-Fail -Leg 'headed-drag' -Reason $_.Exception.Message }
-
-            try {
-                $input = Require-Target -Target (Find-Target -App $App -NativeId 'text-input' -TimeoutSeconds 10) -Description 'text-input'
-                Invoke-Target -Target $input -Action 'scroll-to' -RequireOk -Description 'text-input (scroll into view)' | Out-Null
-                $status = Require-Target -Target (Find-Target -App $App -NativeId 'text-status' -TimeoutSeconds 10) -Description 'text-status'
-                Assert-Effect -Target $input -StatusTarget $status -Property 'value' -Expected 'changed' -ExpectedIsPrefix -AnyChange -Action 'type' -ActionArgs @('typed') -Headed -ExpectedMechanism 'physical_synthetic' | Out-Null
-                Add-Pass -Leg 'headed-type'
-            } catch { Add-Fail -Leg 'headed-type' -Reason $_.Exception.Message }
-
-            try {
-                $e = Invoke-AgentDesktop -Arguments @('--headed', 'press', 'escape', '--app', $App)
-                Assert-Envelope -Envelope $e -Ok
-                Add-Pass -Leg 'headed-press-app'
-            } catch { Add-Fail -Leg 'headed-press-app' -Reason $_.Exception.Message }
-        }
-    }
-}

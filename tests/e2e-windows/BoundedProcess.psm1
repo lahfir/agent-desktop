@@ -27,6 +27,23 @@ $script:DefaultTimeoutSeconds = 20
 $script:DefaultMaxCaptureBytes = 2097152
 $script:LeaseHandleEnvName = 'AGENT_DESKTOP_INTERACTION_LEASE_HANDLE'
 
+function Get-InteractionLeaseHandleEnvironmentVariableName {
+    <#
+    .SYNOPSIS
+        The single canonical name of the environment variable a spawn path
+        uses to hand an inherited desktop-lease handle value to a child -
+        declared once here (the module every other harness spawn path in
+        this suite already imports) so DesktopLease.psm1 and
+        StagedProcess.psm1 read it from one place instead of each carrying
+        their own copy of the literal that could drift out of step.
+    .OUTPUTS
+        string
+    #>
+    [CmdletBinding()]
+    param()
+    return $script:LeaseHandleEnvName
+}
+
 function Invoke-BoundedProcess {
     <#
     .SYNOPSIS
@@ -135,7 +152,15 @@ function Invoke-BoundedProcess {
         try {
             Add-NativeProcessToJob -JobHandle $job -ProcessHandle $process.Handle
         } catch {
+            <#
+                The job object was the only thing bounding this child - with
+                assignment failed, a later timeout's Stop-NativeJobObject
+                would terminate a job with nothing in it, leaving the child
+                to run unbounded. Kill it immediately rather than relying on
+                a bound that was never established.
+            #>
             $terminationNote = "could not assign the child to its bounding job object: $($_.Exception.Message)"
+            try { $process.Kill() } catch { }
         }
         $process.BeginOutputReadLine()
         $process.BeginErrorReadLine()
@@ -252,6 +277,12 @@ function Start-BoundedProcess {
     try {
         Add-NativeProcessToJob -JobHandle $job -ProcessHandle $process.Handle
     } catch {
+        <#
+            The job object was the only bound on this child - closing it
+            without also killing the process leaves that child running
+            unbounded for the rest of the suite. Kill it before throwing.
+        #>
+        try { $process.Kill() } catch { }
         Close-NativeHandle -Handle $job
         throw "Start-BoundedProcess: could not assign the child to its bounding job object: $($_.Exception.Message)"
     }
@@ -323,4 +354,7 @@ function Get-CurrentProcessEnvironment {
     return $table
 }
 
-Export-ModuleMember -Function @('Invoke-BoundedProcess', 'Start-BoundedProcess', 'Stop-BoundedProcess')
+Export-ModuleMember -Function @(
+    'Invoke-BoundedProcess', 'Start-BoundedProcess', 'Stop-BoundedProcess',
+    'ConvertTo-Win32Arg', 'Get-InteractionLeaseHandleEnvironmentVariableName'
+)

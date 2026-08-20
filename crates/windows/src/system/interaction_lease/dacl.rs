@@ -23,8 +23,9 @@ const ACE_FIXED_LEN: usize = 8;
 
 /// Replaces the handle's DACL with exactly three allow-ACEs and protects it
 /// against inherited ACEs from the parent, on fresh creation only - an
-/// existing directory is validated, never rewritten (R16b: refuse, don't
-/// repair).
+/// existing directory is validated, never rewritten, since repairing a
+/// directory this process may not own is not a reliable operation on
+/// Windows and a loud refusal is the safer failure.
 pub(super) fn author_protected_three_principal_dacl(
     handle: &std::fs::File,
     system: &SidBuffer,

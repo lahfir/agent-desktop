@@ -1,104 +1,140 @@
 use super::super::{FIXTURE_COVERED_ROLES, FIXTURE_UNCOVERED_ROLES};
-use super::{ControlType, TreeProperty, flag, role_of};
+use super::{ControlType, PropertyOutcome, TreeProperty, flag, role_of};
 
-/// Every role [`super::super::control_type_role`] can produce, enumerated by
-/// driving each `ControlType` arm through the same [`role_of`] helper the
-/// vocabulary tests use, with every refinement-gate flag combination that
-/// changes the answer. This is the map's actual producible set, computed
-/// rather than declared, so [`fixture_covered_and_uncovered_roles_union_to_the_map_producible_set`]
-/// below is checking the pin against reality rather than against another
-/// hand-written list that could drift the same way.
-fn all_producible_roles() -> Vec<String> {
+/// One `role_of` input: a `ControlType` and the refinement-gate flags to
+/// drive through it. Declared as data rather than inlined into
+/// [`all_producible_roles`] directly, so [`producible_set_gate_flag_count`]
+/// can count the flags this table actually threads through
+/// [`super::super::imp::control_type_role`]'s refinement helpers without
+/// duplicating the list.
+fn producible_cases() -> Vec<(ControlType, Vec<(TreeProperty, PropertyOutcome)>)> {
     vec![
-        role_of(ControlType::Button, Vec::new()),
-        role_of(
+        (ControlType::Button, Vec::new()),
+        (
             ControlType::Button,
             vec![flag(TreeProperty::ToggleAvailable, true)],
         ),
-        role_of(
+        (
             ControlType::Button,
             vec![flag(TreeProperty::ExpandCollapseAvailable, true)],
         ),
-        role_of(ControlType::Calendar, Vec::new()),
-        role_of(ControlType::CheckBox, Vec::new()),
-        role_of(ControlType::ComboBox, Vec::new()),
-        role_of(ControlType::Edit, Vec::new()),
-        role_of(ControlType::Hyperlink, Vec::new()),
-        role_of(ControlType::Image, Vec::new()),
-        role_of(ControlType::ListItem, Vec::new()),
-        role_of(ControlType::List, Vec::new()),
-        role_of(
+        (ControlType::Calendar, Vec::new()),
+        (ControlType::CheckBox, Vec::new()),
+        (ControlType::ComboBox, Vec::new()),
+        (ControlType::Edit, Vec::new()),
+        (ControlType::Hyperlink, Vec::new()),
+        (ControlType::Image, Vec::new()),
+        (ControlType::ListItem, Vec::new()),
+        (ControlType::List, Vec::new()),
+        (
             ControlType::List,
             vec![flag(TreeProperty::SelectionAvailable, true)],
         ),
-        role_of(ControlType::Menu, Vec::new()),
-        role_of(ControlType::MenuBar, Vec::new()),
-        role_of(ControlType::MenuItem, Vec::new()),
-        role_of(ControlType::ProgressBar, Vec::new()),
-        role_of(ControlType::RadioButton, Vec::new()),
-        role_of(ControlType::ScrollBar, Vec::new()),
-        role_of(ControlType::Slider, Vec::new()),
-        role_of(ControlType::Spinner, Vec::new()),
-        role_of(ControlType::StatusBar, Vec::new()),
-        role_of(ControlType::Tab, Vec::new()),
-        role_of(ControlType::TabItem, Vec::new()),
-        role_of(ControlType::Text, Vec::new()),
-        role_of(ControlType::ToolBar, Vec::new()),
-        role_of(ControlType::ToolTip, Vec::new()),
-        role_of(ControlType::Tree, Vec::new()),
-        role_of(ControlType::TreeItem, Vec::new()),
-        role_of(ControlType::Custom, Vec::new()),
-        role_of(
+        (ControlType::Menu, Vec::new()),
+        (ControlType::MenuBar, Vec::new()),
+        (ControlType::MenuItem, Vec::new()),
+        (ControlType::ProgressBar, Vec::new()),
+        (ControlType::RadioButton, Vec::new()),
+        (ControlType::ScrollBar, Vec::new()),
+        (ControlType::Slider, Vec::new()),
+        (ControlType::Spinner, Vec::new()),
+        (ControlType::StatusBar, Vec::new()),
+        (ControlType::Tab, Vec::new()),
+        (ControlType::TabItem, Vec::new()),
+        (ControlType::Text, Vec::new()),
+        (ControlType::ToolBar, Vec::new()),
+        (ControlType::ToolTip, Vec::new()),
+        (ControlType::Tree, Vec::new()),
+        (ControlType::TreeItem, Vec::new()),
+        (ControlType::Custom, Vec::new()),
+        (
             ControlType::Custom,
             vec![flag(TreeProperty::GridItemAvailable, true)],
         ),
-        role_of(
+        (
             ControlType::Custom,
             vec![flag(TreeProperty::TableItemAvailable, true)],
         ),
-        role_of(ControlType::Group, Vec::new()),
-        role_of(ControlType::Thumb, Vec::new()),
-        role_of(ControlType::DataGrid, Vec::new()),
-        role_of(ControlType::DataItem, Vec::new()),
-        role_of(
+        (ControlType::Group, Vec::new()),
+        (ControlType::Thumb, Vec::new()),
+        (ControlType::DataGrid, Vec::new()),
+        (ControlType::DataItem, Vec::new()),
+        (
             ControlType::DataItem,
             vec![flag(TreeProperty::GridItemAvailable, true)],
         ),
-        role_of(
+        (
             ControlType::DataItem,
             vec![flag(TreeProperty::TableItemAvailable, true)],
         ),
-        role_of(ControlType::Document, Vec::new()),
-        role_of(
+        (ControlType::Document, Vec::new()),
+        (
             ControlType::Document,
             vec![
                 flag(TreeProperty::ValueAvailable, true),
                 flag(TreeProperty::ValueIsReadOnly, false),
             ],
         ),
-        role_of(ControlType::SplitButton, Vec::new()),
-        role_of(ControlType::Window, Vec::new()),
-        role_of(ControlType::Pane, Vec::new()),
-        role_of(
+        (ControlType::SplitButton, Vec::new()),
+        (ControlType::Window, Vec::new()),
+        (ControlType::Pane, Vec::new()),
+        (
             ControlType::Pane,
             vec![flag(TreeProperty::WindowAvailable, true)],
         ),
-        role_of(ControlType::Pane, vec![flag(TreeProperty::IsDialog, true)]),
-        role_of(ControlType::Header, Vec::new()),
-        role_of(ControlType::HeaderItem, Vec::new()),
-        role_of(ControlType::Table, Vec::new()),
-        role_of(ControlType::TitleBar, Vec::new()),
-        role_of(ControlType::Separator, Vec::new()),
-        role_of(ControlType::SemanticZoom, Vec::new()),
-        role_of(ControlType::AppBar, Vec::new()),
+        (ControlType::Pane, vec![flag(TreeProperty::IsDialog, true)]),
+        (ControlType::Header, Vec::new()),
+        (ControlType::HeaderItem, Vec::new()),
+        (ControlType::Table, Vec::new()),
+        (ControlType::TitleBar, Vec::new()),
+        (ControlType::Separator, Vec::new()),
+        (ControlType::SemanticZoom, Vec::new()),
+        (ControlType::AppBar, Vec::new()),
     ]
+}
+
+/// Every role [`super::super::control_type_role`] can produce, computed by
+/// driving each `ControlType` arm through the same [`role_of`] helper the
+/// vocabulary tests use, for every refinement-gate flag combination that
+/// changes the answer. This is the map's actual producible set as of the
+/// case table above, so
+/// [`fixture_covered_and_uncovered_roles_union_to_the_map_producible_set`]
+/// below checks the pin against that set.
+///
+/// That table is still hand-written, so it can drift the same way the
+/// pin it feeds is meant to guard against: a refinement branch added inside
+/// `roles.rs` that this table's cases never drive would silently keep the
+/// union test green. [`refinement_gate_flags_in_the_producible_set_match_the_gate_calls_roles_rs_makes`]
+/// closes that gap by pinning the case table's flag count against the
+/// number of gate calls `roles.rs`'s source actually makes, so a case
+/// missing from the table cannot pass unnoticed - see that test's doc
+/// comment for why a textual source count, rather than a second hand list,
+/// is the honest fallback here.
+fn all_producible_roles() -> Vec<String> {
+    producible_cases()
+        .into_iter()
+        .map(|(control_type, extra)| role_of(control_type, extra))
+        .collect()
+}
+
+/// The total number of refinement-gate flags [`producible_cases`] threads
+/// through [`role_of`] - one per `is_true`/`gated_flag` call the case is
+/// meant to exercise inside `roles.rs`.
+fn producible_set_gate_flag_count() -> usize {
+    producible_cases()
+        .iter()
+        .map(|(_, extra)| extra.len())
+        .sum()
 }
 
 /// The fixture-coverage decision: every role the map can produce must be
 /// classified as either required-of-the-fixture or explicitly out of scope,
 /// with nothing left uncategorized. A `ControlType` arm added later that
 /// yields a role in neither set fails this test rather than silently
-/// escaping both the fixture's assertions and this pin.
+/// escaping both the fixture's assertions and this pin - provided
+/// [`producible_cases`] was updated to drive the new arm; see
+/// [`refinement_gate_flags_in_the_producible_set_match_the_gate_calls_roles_rs_makes`]
+/// for what forces that update.
 #[test]
 fn fixture_covered_and_uncovered_roles_union_to_the_map_producible_set() {
     let mut produced = all_producible_roles();
@@ -116,6 +152,40 @@ fn fixture_covered_and_uncovered_roles_union_to_the_map_producible_set() {
     assert_eq!(
         declared, produced,
         "FIXTURE_COVERED_ROLES union FIXTURE_UNCOVERED_ROLES must equal exactly the roles control_type_role can produce"
+    );
+}
+
+/// [`producible_cases`] cannot be derived mechanically from `roles.rs`
+/// without parsing Rust source, so this is the honest fallback the fixture
+/// coverage plan calls for instead: a textual count of every
+/// `properties.is_true(TreeProperty::` and `properties.gated_flag(TreeProperty::`
+/// call in `roles.rs`'s own source, pinned against the number of flags
+/// [`producible_cases`] threads through [`role_of`] above.
+///
+/// A refinement branch added to any `*_role` helper in `roles.rs` adds a
+/// gate call to that source text, which this test reads fresh via
+/// `include_str!` on every run. That changes the left side of the
+/// `assert_eq!` immediately, so the union test above can no longer stay
+/// green while `producible_cases` silently omits the new arm - this test
+/// fails first and names the fix.
+#[test]
+fn refinement_gate_flags_in_the_producible_set_match_the_gate_calls_roles_rs_makes() {
+    let roles_rs_source = include_str!("roles.rs");
+    let gate_calls_in_source = roles_rs_source
+        .matches("properties.is_true(TreeProperty::")
+        .count()
+        + roles_rs_source
+            .matches("properties.gated_flag(TreeProperty::")
+            .count();
+
+    assert_eq!(
+        producible_set_gate_flag_count(),
+        gate_calls_in_source,
+        "roles.rs's *_role helpers now make a different number of is_true/gated_flag \
+         refinement-gate calls than producible_cases() accounts for - add the new gate's \
+         ControlType/flag combination to producible_cases() so the union test above \
+         actually exercises the role it can now produce, then update FIXTURE_COVERED_ROLES \
+         or FIXTURE_UNCOVERED_ROLES to match"
     );
 }
 

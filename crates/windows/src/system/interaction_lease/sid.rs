@@ -5,8 +5,12 @@
 //!
 //! Deliberately separate from `system/private_file/owner.rs`: that module
 //! compares only against `TokenOwner` for a narrower purpose (detecting a
-//! path pre-created by a foreign principal), while R16c requires accepting
-//! either `TokenOwner` or `TokenUser` for the lease directory specifically.
+//! path pre-created by a foreign principal), while the lease directory
+//! specifically must accept either `TokenOwner` or `TokenUser` - an elevated
+//! administrator's own token routinely carries a `TokenOwner` of
+//! `BUILTIN\Administrators` distinct from its `TokenUser`, and a directory
+//! this process creates is owned by whichever one Windows defaults new
+//! objects to.
 
 use std::io::ErrorKind;
 use std::sync::OnceLock;
@@ -101,12 +105,29 @@ unsafe fn pwstr_to_string(wide: windows_sys::core::PWSTR) -> String {
     String::from_utf16_lossy(slice)
 }
 
-pub(super) fn well_known_system_sid() -> std::io::Result<SidBuffer> {
-    SidBuffer::well_known(WinLocalSystemSid)
+/// Process-invariant like the token SIDs below, so it is cached the same
+/// way: every lease acquisition (`directory::ensure_private`'s
+/// `validate_dacl` read-back runs on every acquisition, not only on first
+/// creation) otherwise rebuilds this well-known SID from scratch on the hot
+/// path every action command takes.
+pub(super) fn well_known_system_sid() -> std::io::Result<&'static SidBuffer> {
+    static CACHE: OnceLock<Result<SidBuffer, String>> = OnceLock::new();
+    CACHE
+        .get_or_init(|| SidBuffer::well_known(WinLocalSystemSid).map_err(|error| error.to_string()))
+        .as_ref()
+        .map_err(|message| std::io::Error::new(ErrorKind::PermissionDenied, message.clone()))
 }
 
-pub(super) fn well_known_administrators_sid() -> std::io::Result<SidBuffer> {
-    SidBuffer::well_known(WinBuiltinAdministratorsSid)
+/// See [`well_known_system_sid`] - same process-invariant reasoning, same
+/// cache shape.
+pub(super) fn well_known_administrators_sid() -> std::io::Result<&'static SidBuffer> {
+    static CACHE: OnceLock<Result<SidBuffer, String>> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            SidBuffer::well_known(WinBuiltinAdministratorsSid).map_err(|error| error.to_string())
+        })
+        .as_ref()
+        .map_err(|message| std::io::Error::new(ErrorKind::PermissionDenied, message.clone()))
 }
 
 pub(super) fn process_token_owner_sid() -> std::io::Result<&'static SidBuffer> {

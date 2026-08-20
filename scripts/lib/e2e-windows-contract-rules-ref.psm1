@@ -96,48 +96,108 @@ function Test-Rule05EnvelopeFieldAccess {
     return $hits.ToArray()
 }
 
+function Get-E2ENativeEntryPoints {
+    <#
+    .SYNOPSIS
+        Every function name Export-ModuleMember actually lists in a
+        *Native*.psm1 module found anywhere under Root - the explicit half
+        of rule 9's entry-point check. The `-imatch 'Native'` FUNCTION-NAME
+        convention alone misses a real export whose own name does not
+        contain the word, e.g. NativeToken.psm1's New-RestrictedIntegrityToken
+        or NativeTypes.psm1's New-E2ESecurityAttributes - both desktop-
+        touching, neither visible to that predicate. This reads each
+        matching MODULE's own Export-ModuleMember call instead of guessing
+        from the called name, so a module gaining a new export is covered on
+        its next scan without hand-editing a list here. The residual this
+        still cannot see: a future desktop-touching module whose FILENAME
+        does not contain "Native" - Test-Rule09DesktopTouchingLock keeps the
+        function-name convention as a backstop for exactly that case.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$Root)
+    $names = New-Object System.Collections.Generic.List[string]
+    if (-not (Test-Path -LiteralPath $Root)) { return , @() }
+    $nativeModules = @(Get-ChildItem -LiteralPath $Root -File -Filter '*.psm1' -Recurse | Where-Object { $_.BaseName -imatch 'Native' })
+    foreach ($module in $nativeModules) {
+        $parsed = Get-E2EParsedFile -Path $module.FullName
+        foreach ($call in (Find-E2EAstNodes -Ast $parsed.Ast -Predicate { $args[0] -is [System.Management.Automation.Language.CommandAst] })) {
+            if (-not (Test-E2ECommandName -CommandAst $call -Names @('Export-ModuleMember'))) { continue }
+            <#
+                Skip CommandElements[0]: it is the "Export-ModuleMember"
+                command-name token itself, parsed as its own
+                StringConstantExpressionAst - walking the whole CommandAst
+                (rather than only its arguments) would add the literal text
+                "Export-ModuleMember" to the entry-point table, measured
+                while building this function.
+            #>
+            foreach ($element in ($call.CommandElements | Select-Object -Skip 1)) {
+                foreach ($literal in (Find-E2EAstNodes -Ast $element -Predicate { $args[0] -is [System.Management.Automation.Language.StringConstantExpressionAst] })) {
+                    $names.Add($literal.Value)
+                }
+            }
+        }
+    }
+    return , @($names | Sort-Object -Unique)
+}
+
 function Test-Rule09DesktopTouchingLock {
     <#
     .SYNOPSIS
         Rule 9: a call to Invoke-Target, Invoke-Guarded, Invoke-GuardedAgent,
-        Start-StagedIntegrityProcess, or any function whose name contains
-        "Native" (every export of Native.psm1/NativeTypes.psm1/
-        NativeDesktop.psm1, present and future, by naming convention) must
-        be lexically enclosed in an Enter-Stage script-block argument.
-        Applies to scenario-authored call sites only - the caller scopes
-        this to files under scenarios/**, never to the modules that
-        implement or wrap these primitives.
+        Start-StagedIntegrityProcess, any name NativeEntryPoints lists (the
+        real, current Export-ModuleMember contents of every *Native*.psm1
+        module - see Get-E2ENativeEntryPoints), any other function whose own
+        name contains "Native" (the naming-convention backstop for a module
+        this scan cannot see), or an Add-Type call carrying an inline
+        -TypeDefinition/-MemberDefinition P/Invoke definition, must be
+        lexically enclosed in an Enter-Stage script-block argument. Applies
+        to scenario-authored call sites only - the caller scopes this to
+        files under scenarios/**, never to the modules that implement or
+        wrap these primitives.
     #>
     [CmdletBinding()]
-    param($Parsed)
+    param($Parsed, [string[]]$NativeEntryPoints = @())
     $hits = New-Object System.Collections.Generic.List[object]
     $namedEntryPoints = @('Invoke-Target', 'Invoke-Guarded', 'Invoke-GuardedAgent', 'Start-StagedIntegrityProcess')
 
-    foreach ($node in (Find-E2EAstNodes -Ast $Parsed.Ast -Predicate { $args[0] -is [System.Management.Automation.Language.CommandAst] })) {
-        $name = $node.GetCommandName()
-        if (-not $name) { continue }
-        $isEntryPoint = ($namedEntryPoints -icontains $name) -or ($name -imatch 'Native')
-        if (-not $isEntryPoint) { continue }
-
-        $enclosed = $false
-        $cursor = $node.Parent
+    function Test-E2EEnclosedInEnterStage {
+        param($Node)
+        $cursor = $Node.Parent
         while ($cursor) {
             if ($cursor -is [System.Management.Automation.Language.ScriptBlockExpressionAst]) {
                 $owner = $cursor.Parent -as [System.Management.Automation.Language.CommandAst]
                 if ($owner -and (Test-E2ECommandName -CommandAst $owner -Names @('Enter-Stage'))) {
-                    $enclosed = $true
-                    break
+                    return $true
                 }
             }
             $cursor = $cursor.Parent
         }
-        if (-not $enclosed) {
-            $hits.Add((New-E2EViolation -RuleId 'rule09' -Pattern ('entry-point-' + $name) -Line $node.Extent.StartLineNumber -Message "$name is not lexically enclosed in an Enter-Stage block"))
+        return $false
+    }
+
+    foreach ($node in (Find-E2EAstNodes -Ast $Parsed.Ast -Predicate { $args[0] -is [System.Management.Automation.Language.CommandAst] })) {
+        $name = $node.GetCommandName()
+        if (-not $name) { continue }
+        $isEntryPoint = ($namedEntryPoints -icontains $name) -or ($name -imatch 'Native') -or ($NativeEntryPoints -icontains $name)
+        if ($isEntryPoint) {
+            if (-not (Test-E2EEnclosedInEnterStage -Node $node)) {
+                $hits.Add((New-E2EViolation -RuleId 'rule09' -Pattern ('entry-point-' + $name) -Line $node.Extent.StartLineNumber -Message "$name is not lexically enclosed in an Enter-Stage block"))
+            }
+            continue
+        }
+        if (Test-E2ECommandName -CommandAst $node -Names @('Add-Type')) {
+            $inlineDefinition = $node.CommandElements | Where-Object {
+                $param = $_ -as [System.Management.Automation.Language.CommandParameterAst]
+                $param -and ($param.ParameterName -ieq 'TypeDefinition' -or $param.ParameterName -ieq 'MemberDefinition')
+            }
+            if ($inlineDefinition -and -not (Test-E2EEnclosedInEnterStage -Node $node)) {
+                $hits.Add((New-E2EViolation -RuleId 'rule09' -Pattern 'add-type-inline-pinvoke' -Line $node.Extent.StartLineNumber -Message 'Add-Type with an inline P/Invoke definition is not lexically enclosed in an Enter-Stage block'))
+            }
         }
     }
     return $hits.ToArray()
 }
 
 Export-ModuleMember -Function @(
-    'Test-Rule04BareRef', 'Test-Rule05EnvelopeFieldAccess', 'Test-Rule09DesktopTouchingLock'
+    'Test-Rule04BareRef', 'Test-Rule05EnvelopeFieldAccess', 'Get-E2ENativeEntryPoints', 'Test-Rule09DesktopTouchingLock'
 )

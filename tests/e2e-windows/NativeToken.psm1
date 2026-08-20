@@ -30,14 +30,8 @@ Import-Module (Join-Path $PSScriptRoot 'NativeTypes.psm1') -Force -Global
 Import-Module (Join-Path $PSScriptRoot 'Native.psm1') -Force -Global
 
 $script:TokenIntegrityLevelClass = 25
-$script:TokenQuery = 0x0008
 $script:TokenAllAccess = 0xF01FF
 $script:DisableMaxPrivilege = 0x1
-$script:StartfUseStdHandles = 0x100
-$script:CreateNoWindow = 0x08000000
-$script:NormalPriorityClass = 0x00000020
-$script:CreateUnicodeEnvironment = 0x400
-$script:WaitTimeout = 0x102
 $script:IntegritySidByLevel = @{ Medium = 'S-1-16-8192'; Low = 'S-1-16-4096' }
 
 function Get-NativeTokenIntegritySid {

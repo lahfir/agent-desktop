@@ -186,3 +186,35 @@ fn success_path_reports_earned_contention_count() {
         std::fs::remove_dir_all(&root).unwrap();
     });
 }
+
+/// A lease that queued behind another holder's in-process
+/// [`agent_desktop_core::ProcessLeaseGuard`] reports that queueing too, not
+/// only file-level contention. `WindowsLeaseGuard` drops its `handle` field
+/// before its `_process` field, so the first lease's file handle is already
+/// closed by the time its process guard releases - the second acquire's own
+/// file open therefore sees zero file-level contention here, and every tick
+/// this test observes comes from the process guard alone. **Invert-verified**:
+/// dropping `acquire_impl`'s `saturating_add(process_contention)` back to
+/// `file_contention` alone makes this assertion fail (`contention_count()`
+/// reads back `0`); restoring it makes it pass again.
+#[test]
+fn success_path_includes_process_guard_contention() {
+    with_interaction_lease_test_lock(|| {
+        let root = scratch_root("process-guard-contention");
+        let first = acquire_at(&root, Deadline::after(2_000).unwrap()).unwrap();
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(80));
+            drop(first);
+        });
+
+        let lease = acquire_at(&root, Deadline::after(2_000).unwrap()).unwrap();
+        assert!(
+            lease.contention_count() >= 1,
+            "a lease that queued behind another holder's in-process guard must report that \
+             queueing, not just file-level contention"
+        );
+        releaser.join().unwrap();
+        drop(lease);
+        std::fs::remove_dir_all(&root).unwrap();
+    });
+}

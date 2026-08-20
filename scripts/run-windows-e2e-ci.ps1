@@ -23,6 +23,15 @@
     is made inheritable for exactly the one spawn (AGENT_DESKTOP_E2E_DESKTOP_LEASE_HANDLE),
     then the inheritable flag is cleared immediately after, mirroring
     DesktopLease.psm1's own Invoke-GuardedAgent discipline.
+
+    The U6 self-test tier (Invoke-U6SelfTests.ps1) runs between the fixture
+    build and the live suite, gating it: a failing case here fails this
+    script before a single live scenario runs. U6's own cases manage their
+    own Enter-DesktopLease/Exit-DesktopLease calls and, in one case, open
+    the canonical lock file directly as if they were the sole holder - so
+    this script's own lease is released for that window and re-acquired
+    immediately after, rather than handed off, keeping this process a
+    single lease owner at any one time.
 #>
 [CmdletBinding()]
 param()
@@ -49,6 +58,7 @@ $handoffEnvName = 'AGENT_DESKTOP_E2E_DESKTOP_LEASE_HANDLE'
 $runE2EPath = Join-Path $repoRoot 'tests\e2e-windows\Run-E2E.ps1'
 $releaseBinary = Join-Path $repoRoot 'target\release\agent-desktop.exe'
 $fixtureBuildScript = Join-Path $repoRoot 'tests\fixture-app-windows\build.ps1'
+$u6SelfTestScript = Join-Path $repoRoot 'tests\e2e-windows\selftest\Invoke-U6SelfTests.ps1'
 
 $exitCode = 1
 $leaseHeld = $false
@@ -68,6 +78,26 @@ try {
     $fixtureExitCode = $LASTEXITCODE
     $fixtureOutput | ForEach-Object { Write-Host $_ }
     if ($fixtureExitCode -ne 0) { throw "the E2E fixture build failed with exit code $fixtureExitCode" }
+
+    Write-Host 'run-windows-e2e-ci.ps1: releasing the desktop lease so the U6 self-test tier can manage its own lease lifecycle'
+    Exit-DesktopLease
+    $leaseHeld = $false
+
+    Write-Host 'run-windows-e2e-ci.ps1: running the U6 harness-core self-test tier before the live suite'
+    $u6Result = Invoke-BoundedProcess -FilePath 'powershell.exe' `
+        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $u6SelfTestScript, '-AgentDesktopBinary', $releaseBinary) `
+        -TimeoutSeconds 600 `
+        -MaxCaptureBytes 52428800
+    if ($u6Result.StdOut) { Write-Host $u6Result.StdOut }
+    if ($u6Result.StdErr) { Write-Host $u6Result.StdErr }
+    if ($u6Result.TerminationNote) { Write-Host ('run-windows-e2e-ci.ps1: ' + $u6Result.TerminationNote) }
+    if ($u6Result.TimedOut) { throw 'run-windows-e2e-ci.ps1: the U6 harness-core self-test tier timed out' }
+    if ($u6Result.ExitCode -ne 0) { throw "run-windows-e2e-ci.ps1: the U6 harness-core self-test tier failed with exit code $($u6Result.ExitCode)" }
+    Write-Host 'run-windows-e2e-ci.ps1: U6 harness-core self-test tier passed'
+
+    Write-Host 'run-windows-e2e-ci.ps1: re-acquiring the desktop lease before the live suite (R13b)'
+    $lease = Enter-DesktopLease
+    $leaseHeld = $true
 
     $leaseValue = Get-DesktopLeaseHandleValue
     if ($null -eq $leaseValue) { throw 'run-windows-e2e-ci.ps1: no desktop lease handle held after Enter-DesktopLease' }

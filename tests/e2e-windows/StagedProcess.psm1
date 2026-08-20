@@ -20,8 +20,9 @@ Import-Module (Join-Path $PSScriptRoot 'NativeTypes.psm1') -Force -Global
 Import-Module (Join-Path $PSScriptRoot 'Native.psm1') -Force -Global
 Import-Module (Join-Path $PSScriptRoot 'NativeToken.psm1') -Force -Global
 Import-Module (Join-Path $PSScriptRoot 'Harness.psm1') -Force -Global
+Import-Module (Join-Path $PSScriptRoot 'BoundedProcess.psm1') -Force -Global
 
-$script:LeaseHandleEnvName = 'AGENT_DESKTOP_INTERACTION_LEASE_HANDLE'
+$script:LeaseHandleEnvName = Get-InteractionLeaseHandleEnvironmentVariableName
 $script:HandleReportExePath = $null
 $script:TokenQuery = 0x0008
 $script:CreateNoWindow = 0x08000000
@@ -144,38 +145,10 @@ function New-StagedEnvironmentBlock {
     return [System.Runtime.InteropServices.Marshal]::StringToHGlobalUni($blockText)
 }
 
-function ConvertTo-Win32Arg {
-    <#
-    .SYNOPSIS
-        The standard Win32 command-line quoting algorithm, duplicated here
-        rather than imported: `BoundedProcess.psm1`'s own copy is
-        module-private (not on its `Export-ModuleMember` list), the same
-        reason `probes/windows/24-fixture-e2e/02-split-integrity-staging.ps1`
-        carries an independent copy rather than reaching across the
-        probes/tests boundary.
-    #>
-    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
-    if ($Value.Length -gt 0 -and $Value -notmatch '[\s"]') { return $Value }
-    $builder = New-Object System.Text.StringBuilder
-    [void]$builder.Append('"')
-    $backslashes = 0
-    foreach ($char in $Value.ToCharArray()) {
-        if ($char -eq '\') { $backslashes++; continue }
-        if ($char -eq '"') {
-            [void]$builder.Append('\', ($backslashes * 2 + 1))
-            [void]$builder.Append('"')
-            $backslashes = 0
-            continue
-        }
-        if ($backslashes -gt 0) { [void]$builder.Append('\', $backslashes); $backslashes = 0 }
-        [void]$builder.Append($char)
-    }
-    if ($backslashes -gt 0) { [void]$builder.Append('\', ($backslashes * 2)) }
-    [void]$builder.Append('"')
-    return $builder.ToString()
-}
-
 function ConvertTo-Win32CommandLine {
+    <# ConvertTo-Win32Arg is BoundedProcess.psm1's, imported rather than
+       duplicated here; the probes copy stays independent (probes/tests
+       boundary). #>
     param([string[]]$Tokens)
     if (-not $Tokens -or $Tokens.Count -eq 0) { return '' }
     return (($Tokens | ForEach-Object { ConvertTo-Win32Arg -Value $_ }) -join ' ')
@@ -205,10 +178,11 @@ function Start-StagedIntegrityProcess {
         High).
     .OUTPUTS
         PSCustomObject: ProcessId, ExitCode, StdOut, StdErr, TimedOut,
-        RestrictedTokenIntegritySid, LiveProcessIntegritySid,
-        LiveProcessIntegrityReadOk, IntegrityConfirmedNonHigh,
-        HarnessInheritableHandlesBeforeSpawn, ExpectedInheritableHandles,
-        BoundedExtraHandleCount.
+        StdOutTruncated, StdErrTruncated (true when a pipe's drain
+        deadline passed before end-of-stream), RestrictedTokenIntegritySid,
+        LiveProcessIntegritySid, LiveProcessIntegrityReadOk,
+        IntegrityConfirmedNonHigh, HarnessInheritableHandlesBeforeSpawn,
+        ExpectedInheritableHandles, BoundedExtraHandleCount.
     #>
     [CmdletBinding()]
     param(
@@ -238,32 +212,42 @@ function Start-StagedIntegrityProcess {
     $stdoutReader = New-Object System.IO.StreamReader($stdoutPipe)
     $stderrReader = New-Object System.IO.StreamReader($stderrPipe)
     $genericRead = [uint32]2147483648
-    $stdin = Open-NativeFile -Path 'NUL' -DesiredAccess $genericRead -ShareMode 7 -CreationDisposition 3 -Inheritable
-    if (-not $stdin.Success) {
-        throw "Start-StagedIntegrityProcess: could not open NUL for stdin: Win32 error $($stdin.Win32Error)"
-    }
-
-    $expected = New-Object System.Collections.Generic.List[long]
-    $expected.Add([long]$stdoutPipe.ClientSafePipeHandle.DangerousGetHandle())
-    $expected.Add([long]$stderrPipe.ClientSafePipeHandle.DangerousGetHandle())
-    $expected.Add([long]$stdin.Handle)
     $hasLease = ($PSBoundParameters.ContainsKey('InheritLeaseHandle') -and $null -ne $InheritLeaseHandle)
-    if ($hasLease) {
-        Set-NativeHandleInheritable -Handle ([IntPtr]$InheritLeaseHandle) -Enabled $true
-        $expected.Add([long]$InheritLeaseHandle)
-    }
 
-    $before = @(Get-NativeInheritableHandleValues)
-    $extra = @($before | Where-Object { -not ($expected -contains $_) })
-    foreach ($handle in $extra) {
-        try { Set-NativeHandleInheritable -Handle ([IntPtr]$handle) -Enabled $false } catch { }
-    }
-
-    $envPtr = New-StagedEnvironmentBlock -LeaseHandleValue $InheritLeaseHandle
+    $stdin = $null
+    $stdinClosed = $false
+    $expected = New-Object System.Collections.Generic.List[long]
+    $before = @()
+    $extra = @()
+    $envPtr = [IntPtr]::Zero
     $restrictedToken = [IntPtr]::Zero
     $processHandle = [IntPtr]::Zero
     $threadHandle = [IntPtr]::Zero
     try {
+        <# Stdin's open and the lease handle's HANDLE_FLAG_INHERIT set both
+           live inside this try, not before it: a throw in between used to
+           leave the flag set on the desktop lock for the rest of the run -
+           the finally below now covers both. #>
+        $stdin = Open-NativeFile -Path 'NUL' -DesiredAccess $genericRead -ShareMode 7 -CreationDisposition 3 -Inheritable
+        if (-not $stdin.Success) {
+            throw "Start-StagedIntegrityProcess: could not open NUL for stdin: Win32 error $($stdin.Win32Error)"
+        }
+
+        $expected.Add([long]$stdoutPipe.ClientSafePipeHandle.DangerousGetHandle())
+        $expected.Add([long]$stderrPipe.ClientSafePipeHandle.DangerousGetHandle())
+        $expected.Add([long]$stdin.Handle)
+        if ($hasLease) {
+            Set-NativeHandleInheritable -Handle ([IntPtr]$InheritLeaseHandle) -Enabled $true
+            $expected.Add([long]$InheritLeaseHandle)
+        }
+
+        $before = @(Get-NativeInheritableHandleValues)
+        $extra = @($before | Where-Object { -not ($expected -contains $_) })
+        foreach ($handle in $extra) {
+            try { Set-NativeHandleInheritable -Handle ([IntPtr]$handle) -Enabled $false } catch { }
+        }
+
+        $envPtr = New-StagedEnvironmentBlock -LeaseHandleValue $InheritLeaseHandle
         $restrictedToken = New-RestrictedIntegrityToken -IntegrityLevel $IntegrityLevel
         $restrictedTokenIntegritySid = Get-NativeTokenIntegritySid -TokenHandle $restrictedToken
 
@@ -301,6 +285,7 @@ function Start-StagedIntegrityProcess {
         $stdoutPipe.DisposeLocalCopyOfClientHandle()
         $stderrPipe.DisposeLocalCopyOfClientHandle()
         Close-NativeHandle -Handle $stdin.Handle
+        $stdinClosed = $true
 
         $stdoutTask = $stdoutReader.ReadToEndAsync()
         $stderrTask = $stderrReader.ReadToEndAsync()
@@ -311,7 +296,19 @@ function Start-StagedIntegrityProcess {
             [void][AgentDesktopE2E.Native]::TerminateProcess($processHandle, 1)
             [void][AgentDesktopE2E.Native]::WaitForSingleObject($processHandle, 5000)
         }
+
+        <#
+            WaitAll's return is never trusted as proof either task finished
+            - IsCompleted is read instead, and .Result only touched on a
+            completed task. A grandchild holding the pipe's write end means
+            EOF never arrives and .Result blocks forever; a task still
+            running past the deadline is reported truncated, never awaited.
+        #>
         [void][System.Threading.Tasks.Task]::WaitAll(@($stdoutTask, $stderrTask), 5000)
+        $stdoutDrained = $stdoutTask.IsCompleted
+        $stderrDrained = $stderrTask.IsCompleted
+        $stdoutText = if ($stdoutDrained) { $stdoutTask.Result } else { '' }
+        $stderrText = if ($stderrDrained) { $stderrTask.Result } else { '' }
 
         $exitCode = 0
         $exitOk = [AgentDesktopE2E.Native]::GetExitCodeProcess($processHandle, [ref]$exitCode)
@@ -327,7 +324,7 @@ function Start-StagedIntegrityProcess {
                used as-is; a scalar JSON result (an empty array or one bare
                number) is still normalized to an array with ,@(). #>
             try {
-                $parsed = ConvertFrom-AgentJson -Json $stdoutTask.Result
+                $parsed = ConvertFrom-AgentJson -Json $stdoutText
                 if ($null -eq $parsed) { $childReportedHandles = @() }
                 elseif ($parsed -is [array]) { $childReportedHandles = $parsed }
                 else { $childReportedHandles = , $parsed }
@@ -337,9 +334,11 @@ function Start-StagedIntegrityProcess {
         return [pscustomobject]@{
             ProcessId                            = $spawnedProcessId
             ExitCode                             = if ($exitOk) { [int]$exitCode } else { $null }
-            StdOut                                = $stdoutTask.Result
-            StdErr                                = $stderrTask.Result
+            StdOut                                = $stdoutText
+            StdErr                                = $stderrText
             TimedOut                              = [bool]$timedOut
+            StdOutTruncated                       = [bool](-not $stdoutDrained)
+            StdErrTruncated                       = [bool](-not $stderrDrained)
             RestrictedTokenIntegritySid           = $restrictedTokenIntegritySid
             LiveProcessIntegritySid               = $liveIntegritySid
             LiveProcessIntegrityReadOk            = [bool]$liveOk
@@ -359,7 +358,8 @@ function Start-StagedIntegrityProcess {
         if ($threadHandle -ne [IntPtr]::Zero) { Close-NativeHandle -Handle $threadHandle }
         if ($processHandle -ne [IntPtr]::Zero) { Close-NativeHandle -Handle $processHandle }
         if ($restrictedToken -ne [IntPtr]::Zero) { Close-NativeHandle -Handle $restrictedToken }
-        [System.Runtime.InteropServices.Marshal]::FreeHGlobal($envPtr)
+        if ($envPtr -ne [IntPtr]::Zero) { [System.Runtime.InteropServices.Marshal]::FreeHGlobal($envPtr) }
+        if ($stdin -and $stdin.Success -and -not $stdinClosed) { Close-NativeHandle -Handle $stdin.Handle }
         $stdoutReader.Dispose()
         $stderrReader.Dispose()
     }
@@ -388,7 +388,7 @@ function Invoke-StagedAgentDesktop {
     $result = Start-StagedIntegrityProcess -IntegrityLevel $IntegrityLevel -FilePath $FilePath `
         -ArgumentList $Arguments -InheritLeaseHandle $InheritLeaseHandle -TimeoutSeconds $TimeoutSeconds
     if ([string]::IsNullOrWhiteSpace($result.StdOut)) {
-        throw "Invoke-StagedAgentDesktop: staged '$($Arguments -join ' ')' at $IntegrityLevel produced no stdout (ExitCode=$($result.ExitCode), TimedOut=$($result.TimedOut)); stderr: $($result.StdErr.Trim())"
+        throw "Invoke-StagedAgentDesktop: staged '$($Arguments -join ' ')' at $IntegrityLevel produced no stdout (ExitCode=$($result.ExitCode), TimedOut=$($result.TimedOut), StdOutTruncated=$($result.StdOutTruncated)); stderr: $($result.StdErr.Trim())"
     }
     $envelope = ConvertFrom-AgentJson -Json $result.StdOut
     return [pscustomobject]@{ Envelope = $envelope; Staging = $result }

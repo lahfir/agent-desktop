@@ -25,16 +25,38 @@
          check-e2e-windows-contract.ps1's own generated-not-committed
          rule13 fixtures).
 
-    The real scan then walks every file under the capture roots named
-    below (skipping a root that does not exist yet - the dogfood captures
-    and report land in a later unit of this same PR) plus the dogfood
-    report body when present, and fails if either check fails on any file
-    or if zero files were scanned at all - a gate handed nothing to check
-    is not a check.
+    The real scan (default mode, no -Path) derives its file set from
+    tracked files rather than a hardcoded list of roots (finding #8):
+    `git ls-files --cached --others --exclude-standard`, filtered to any
+    path with a segment literally named "captures" or ending in
+    "-captures" - the same shape contract-gate rule 17 already uses to
+    prove a walk and a git listing agree, applied here to prove the scan
+    set is not two roots someone remembered to update. Before this fix the
+    gate scanned exactly two hardcoded roots; broadening it surfaced 21
+    pre-existing capture files elsewhere in the tree that had never been
+    scanned by anything and do carry unredacted content - named exactly,
+    by path, in $script:PreexistingUnredactedAllowlist below. That
+    allowlist is not an acceptance of those 21 files; it exists so this PR
+    can close the blind spot without also being the PR that silently
+    redacts 21 files nobody asked this group to touch. Every other capture
+    directory in the tree, including one added anywhere after this script
+    was written, is scanned and gated for real. The dogfood report body is
+    scanned separately, when present.
+
+    Coverage limitation (finding #9): every check here is a JSON-field-
+    shaped or machine-identity-shaped pattern match. A dogfood report's
+    prose can still name a real target (an application, a document, a
+    person) outside any of those shapes, and no rule below can see that -
+    a prose-aware rule built on the same regex approach would be exactly as
+    unfalsifiable as a "read carefully" comment, so this gate states the
+    gap instead of claiming coverage it does not have. Report authors
+    remain responsible for prose review; nothing here substitutes for it.
 
 .PARAMETER Path
     Override the default capture roots (used by windows-e2e.yml to point
-    at the live run's own capture directory instead).
+    at the live run's own capture directory instead). The allowlist below
+    applies only to the default (derived) scan; an explicit -Path is
+    scanned in full.
 #>
 [CmdletBinding()]
 param(
@@ -55,6 +77,67 @@ function Add-RedactionGateFailure {
     param([string]$Message)
     Write-Host "FAIL $Message"
     $script:failed = 1
+}
+
+<#
+    Exact tracked paths only - never a directory or a pattern, so nothing
+    new can hide behind an entry. Discovered by broadening the default scan
+    from two hardcoded roots to every tracked "captures"/"*-captures"
+    directory (finding #8); pending redaction by whichever group owns each
+    corpus. Not accepted, not this group's file set to fix, and not to be
+    added to for any newly-written capture - a fresh violation belongs in
+    the code that wrote it, not in this list.
+#>
+$script:PreexistingUnredactedAllowlist = @(
+    'docs/dogfood-reports/2026-08-03-001-captures/live-dogfood-run.json',
+    'docs/dogfood-reports/2026-08-06-001-captures/actionability-dogfood-run.json',
+    'docs/dogfood-reports/2026-08-07-001-captures/semantic-dogfood-run.json',
+    'docs/dogfood-reports/2026-08-15-001-captures/signals-wait-parity-dogfood-run.json',
+    'probes/windows/21-system-lifecycle/captures/lifecycle-manifest-ci.json',
+    'probes/windows/21-system-lifecycle/captures/lifecycle-manifest-devbox.json',
+    'probes/windows/22-capture-clipboard/captures/capture-manifest-devbox.json',
+    'probes/windows/22-capture-clipboard/captures/capture-manifest-devbox.json.normalized',
+    'probes/windows/captures/00-environment/environment.json',
+    'probes/windows/captures/01-tree-dump/explorer.json',
+    'probes/windows/captures/01-tree-dump/notepad.json',
+    'probes/windows/captures/01-tree-dump/obsidian.json',
+    'probes/windows/captures/01-tree-dump/settings.json',
+    'probes/windows/captures/01-tree-dump/summary.json',
+    'probes/windows/captures/05-interactions/focus.json',
+    'probes/windows/captures/08-uia3-com/census.json',
+    'probes/windows/captures/08-uia3-com/walker.json',
+    'probes/windows/captures/09-elevation-uipi/uipi.json',
+    'probes/windows/captures/10-session-dpi/session-dpi.json',
+    'probes/windows/captures/11-electron-activation/electron-activation.json',
+    'probes/windows/captures/12-private-file-io/ownership-under-elevation.json'
+)
+
+function Get-CaptureRedactionScanRelativePaths {
+    <#
+    .SYNOPSIS
+        Finding #8's derived scan set: every tracked-or-untracked-and-not-
+        ignored file under a path segment literally named "captures" or
+        ending in "-captures", repo-root-relative with forward slashes.
+        Mirrors check-e2e-windows-contract.ps1's rule 17 in method (git
+        ls-files as the ground truth, not a hand-maintained root list) - the
+        predicate excludes this gate's own fixtures under scripts/fixtures/
+        (they carry deliberately-unredacted MUST-CATCH content and are
+        proven separately above) and a filename like
+        "capture-clipboard-surface" or "Capture22.cs" (no path segment of
+        theirs is exactly "captures" or ends in "-captures").
+    #>
+    param([Parameter(Mandatory = $true)][string]$RepoRoot)
+    Push-Location $RepoRoot
+    try {
+        $raw = git ls-files --cached --others --exclude-standard 2>$null
+    } finally {
+        Pop-Location
+    }
+    $captureFiles = @($raw | Where-Object {
+            $segments = $_ -split '/'
+            @($segments | Where-Object { $_ -ieq 'captures' -or $_ -imatch '-captures$' }).Count -gt 0
+        })
+    return , @($captureFiles | Sort-Object)
 }
 
 # --- self-test 1: the committed CLI-envelope fixtures ---
@@ -108,19 +191,38 @@ try {
     Remove-Item -LiteralPath $identityScratch -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+<#
+    self-test 3 (finding #8): the tracked-file scan-set derivation actually
+    reaches a capture directory planted anywhere in the tree, not only the
+    two roots this gate used to hardcode. Planted under a real
+    "*-captures" directory name and removed again before the real scan runs
+    below - `git ls-files --others --exclude-standard` picks up an
+    untracked file the same way it would pick up a contributor's own
+    unstaged addition, so this is the same invert-verification a committed
+    MUST-CATCH fixture would give, generated instead of committed because
+    committing it would mean shipping a real USERNAME in the repository.
+#>
+$scanSetSelfTestDir = Join-Path $repoRoot 'probes\windows\zz-redaction-gate-selftest-captures'
+try {
+    New-Item -ItemType Directory -Path $scanSetSelfTestDir -Force | Out-Null
+    $plantedFile = Join-Path $scanSetSelfTestDir 'plant.json'
+    [IO.File]::WriteAllText($plantedFile, ('{"probe":"self-test","note":"logged in as ' + $env:USERNAME + '"}'), (New-Object System.Text.UTF8Encoding $false))
+    $derivedForSelfTest = Get-CaptureRedactionScanRelativePaths -RepoRoot $repoRoot
+    $plantedRel = 'probes/windows/zz-redaction-gate-selftest-captures/plant.json'
+    if ($derivedForSelfTest -notcontains $plantedRel) {
+        Add-RedactionGateFailure "self-test: the tracked-file scan-set derivation did not reach a freshly planted capture directory ($plantedRel) - finding #8 has regressed"
+    }
+} finally {
+    if (Test-Path -LiteralPath $scanSetSelfTestDir) { Remove-Item -LiteralPath $scanSetSelfTestDir -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 if ($failed -ne 0) {
     Write-Host 'The redaction gate failed its own self-test; refusing to scan real captures on an untrusted gate.'
     exit 1
 }
-Write-Host 'OK: capture-redaction gate self-test passed (CLI-envelope fixtures, machine-identity fixtures).'
+Write-Host 'OK: capture-redaction gate self-test passed (CLI-envelope fixtures, machine-identity fixtures, derived-scan-set reachability).'
 
 # --- the real scan ---
-$roots = if ($Path) { $Path } else {
-    @(
-        (Join-Path $repoRoot 'probes\windows\24-fixture-e2e\captures'),
-        (Join-Path $repoRoot 'docs\dogfood-reports\2026-08-16-001-captures')
-    )
-}
 $reportPath = Join-Path $repoRoot 'docs\dogfood-reports\2026-08-16-001-feat-windows-2-12-fixture-e2e-harness-dogfood.md'
 
 function Test-FileRedaction {
@@ -138,14 +240,46 @@ function Test-FileRedaction {
 }
 
 $scanned = 0
-foreach ($root in $roots) {
-    if (-not (Test-Path -LiteralPath $root)) {
-        Write-Host "SKIP: capture root does not exist yet: $root"
-        continue
+$allowlistedSkipped = 0
+if ($Path) {
+    foreach ($root in $Path) {
+        if (-not (Test-Path -LiteralPath $root)) {
+            Write-Host "SKIP: capture root does not exist yet: $root"
+            continue
+        }
+        foreach ($file in (Get-ChildItem -LiteralPath $root -File -Recurse)) {
+            $scanned++
+            [void](Test-FileRedaction -FullPath $file.FullName)
+        }
     }
-    foreach ($file in (Get-ChildItem -LiteralPath $root -File -Recurse)) {
+} else {
+    $captureRelPaths = Get-CaptureRedactionScanRelativePaths -RepoRoot $repoRoot
+    $allowlistSet = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($entry in $script:PreexistingUnredactedAllowlist) { [void]$allowlistSet.Add($entry) }
+    foreach ($rel in $captureRelPaths) {
+        $full = Join-Path $repoRoot ($rel -replace '/', '\')
+        if (-not (Test-Path -LiteralPath $full)) { continue }
+        if ($allowlistSet.Contains($rel)) {
+            $allowlistedSkipped++
+            continue
+        }
         $scanned++
-        [void](Test-FileRedaction -FullPath $file.FullName)
+        [void](Test-FileRedaction -FullPath $full)
+    }
+    <#
+        A stale allowlist entry - one that no longer names a tracked
+        capture file - is allowlist rot: it hides nothing today but invites
+        someone to add a fresh violation under a path that reads as
+        "already reviewed". Fail it the same way rule 17 fails a tracked
+        file a walk cannot reach.
+    #>
+    foreach ($stale in $script:PreexistingUnredactedAllowlist) {
+        if ($captureRelPaths -notcontains $stale) {
+            Add-RedactionGateFailure "allowlist entry no longer names a tracked capture file - remove it from `$script:PreexistingUnredactedAllowlist: $stale"
+        }
+    }
+    if ($allowlistedSkipped -gt 0) {
+        Write-Host "WARN: $allowlistedSkipped pre-existing capture file(s) skipped via the named allowlist in this script - not accepted, pending redaction by the owning corpus (finding #8)."
     }
 }
 if (Test-Path -LiteralPath $reportPath) {
@@ -173,5 +307,6 @@ if ($failed -ne 0) {
     Write-Host 'FAIL: the capture redaction gate found residue.'
     exit 1
 }
-Write-Host "OK: $scanned file(s) carry no unredacted machine-identity or CLI-envelope content."
+Write-Host "OK: $scanned file(s) carry no unredacted machine-identity or CLI-envelope content ($allowlistedSkipped pre-existing file(s) allowlisted, not scanned - see `$script:PreexistingUnredactedAllowlist)."
+Write-Host 'NOTE: this gate matches JSON-field and machine-identity shapes only - it does not read prose for an embedded real name (finding #9); report authors remain responsible for that review.'
 exit 0

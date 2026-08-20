@@ -109,17 +109,18 @@ fn enable_privilege(name: windows_sys::core::PCWSTR) {
 }
 
 /// A directory whose owner is exactly `TokenOwner` (constructed explicitly,
-/// not read off ambient directory-creation behavior): on this box, this
-/// process's `TokenOwner` and `TokenUser` are the *same* SID - the built-in
-/// `Administrador` (RID 500) account runs a single, unfiltered token whose
-/// default owner is itself, unlike a regular Administrators-group member's
-/// split UAC token, whose `TokenOwner` is the `BUILTIN\Administrators` group.
-/// A directory created with `std::fs::create_dir_all` under this token is
-/// therefore *already* owned by `TokenOwner` before this test does anything,
-/// which is why the owner is set explicitly here rather than trusted to
-/// ambient creation: the assertion must hold for whatever `TokenOwner`
-/// resolves to on the box the suite runs on, not for the two-distinct-SIDs
-/// shape this box's token happens not to produce.
+/// not read off ambient directory-creation behavior): measured on the boxes
+/// this suite runs against, this process's `TokenOwner` is the well-known
+/// `BUILTIN\Administrators` SID while its `TokenUser` is the distinct
+/// machine-local RID-500 account SID - the split-token shape an elevated
+/// Administrator process actually carries here, not a single unfiltered
+/// token whose owner defaults to itself. `std::fs::create_dir_all` under
+/// this token already yields a directory owned by `TokenOwner` (Windows
+/// takes a new object's default owner from the token's `Owner` field, not
+/// its `User` field) before this test does anything; the owner is still set
+/// explicitly here so the assertion pins the `TokenOwner` branch of
+/// `validate_owner` regardless of what ambient creation happens to produce
+/// on the box the suite runs on.
 #[test]
 fn a_directory_owned_by_token_owner_is_accepted() {
     let root = scratch_root("owner-token-owner");
@@ -138,13 +139,14 @@ fn a_directory_owned_by_token_owner_is_accepted() {
 }
 
 /// A directory owned by `TokenUser` is accepted independently of
-/// `TokenOwner`. On this box the two SIDs happen to coincide (see the
-/// sibling `TokenOwner` test's doc comment), so this test and that one
-/// cannot invert-verify *which specific branch* of the acceptance check
-/// fired against each other on this box; `a_directory_owned_by_an_unrelated_sid_is_refused`
-/// is what proves the check refuses a SID that is neither, and the check's
-/// own removal (invert-verified separately) proves it is evaluated at all
-/// rather than a no-op.
+/// `TokenOwner`. On the boxes this suite runs against the two SIDs are
+/// distinct (see the sibling `TokenOwner` test's doc comment), so this test
+/// and that one each pin their own named branch of `validate_owner` against
+/// each other rather than sharing one accidental pass;
+/// `a_directory_owned_by_an_unrelated_sid_is_refused` is what proves the
+/// check refuses a SID that is neither, and the check's own removal
+/// (invert-verified separately) proves it is evaluated at all rather than a
+/// no-op.
 #[test]
 fn a_directory_owned_by_token_user_is_accepted() {
     let root = scratch_root("owner-token-user");

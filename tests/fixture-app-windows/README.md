@@ -113,7 +113,9 @@ resolvability today. Every target that needs to resolve by native id and
 needed a `ControlType` no stock control produces is instead a real
 `Control` (a `Button`, `Label` or `Panel`) wearing a `WM_GETOBJECT`
 override provider (`UiaProviderHost` and its subclasses in
-`FixtureCards.cs`) - `menu-disclosure`, `menu-fire-item`, `outline-tree`,
+`FixtureProviderHost.cs`, `FixtureToggleHost.cs`,
+`FixtureExpandCollapseHost.cs` and `FixtureControlTypeOverrideHost.cs`) -
+`menu-disclosure`, `menu-fire-item`, `outline-tree`,
 `outline-parent`, `outline-child-a`, `outline-child-b`. `outline-tree` is
 therefore not a real `System.Windows.Forms.TreeView`: it is a `Panel`
 holding three `Label`s arranged with indentation, each independently

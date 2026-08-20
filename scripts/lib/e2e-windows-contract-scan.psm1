@@ -85,12 +85,16 @@ function Get-E2ERuleTable {
     <#
     .SYNOPSIS
         The thirteen structural rules, declared once. AllowlistKeys backs
-        rule 8's skip-token check; ScopeFilter decides which relative paths
-        a rule applies to, so scenario-only and selftest-excluded rules
-        state their scope in one place rather than in caller conditionals.
+        rule 8's skip-token check; Root, when given, is walked for every
+        *Native*.psm1 module's real Export-ModuleMember list and backs rule
+        9's explicit entry-point table (finding #29) - omitted, rule 9 falls
+        back to its function-name-convention backstop alone. ScopeFilter
+        decides which relative paths a rule applies to, so scenario-only and
+        selftest-excluded rules state their scope in one place rather than
+        in caller conditionals.
     #>
     [CmdletBinding()]
-    param([string[]]$AllowlistKeys = @())
+    param([string[]]$AllowlistKeys = @(), [string]$Root = '')
     <#
         A module-scoped variable, never a dynamically-built scriptblock: a
         literal `{...}` defined inside this function is bound to this
@@ -104,6 +108,7 @@ function Get-E2ERuleTable {
         a $script: variable has no such boundary to cross.
     #>
     $script:Rule08AllowlistKeys = $AllowlistKeys
+    $script:Rule09NativeEntryPoints = if ($Root) { Get-E2ENativeEntryPoints -Root $Root } else { @() }
     $notSelftest = { param($rel) $rel -notmatch '^selftest/' }
     return @(
         [pscustomobject]@{ Id = 'rule01'; Name = 'one process-terminating call, in Run-E2E.ps1'; ScopeFilter = $notSelftest; Test = { param($p) Test-Rule01ExitCalls -Parsed $p } }
@@ -122,7 +127,7 @@ function Get-E2ERuleTable {
         [pscustomobject]@{ Id = 'rule06'; Name = 'Write-Verdict reached from Run-E2E.ps1'; ScopeFilter = { param($rel) $rel -eq 'Run-E2E.ps1' }; Test = { param($p) Test-Rule06WriteVerdictReached -Parsed $p } }
         [pscustomobject]@{ Id = 'rule07'; Name = 'the five identity env vars are never touched'; ScopeFilter = { $true }; Test = { param($p) Test-Rule07EnvIdentity -Parsed $p } }
         [pscustomobject]@{ Id = 'rule08'; Name = 'scenario files declare legs and skip tokens'; ScopeFilter = { param($rel) $rel -match '^scenarios/' }; Test = { param($p) Test-Rule08ScenarioLegs -Parsed $p -AllowlistKeys $script:Rule08AllowlistKeys } }
-        [pscustomobject]@{ Id = 'rule09'; Name = 'desktop-touching legs declare a lock'; ScopeFilter = { param($rel) $rel -match '^scenarios/' }; Test = { param($p) Test-Rule09DesktopTouchingLock -Parsed $p } }
+        [pscustomobject]@{ Id = 'rule09'; Name = 'desktop-touching legs declare a lock'; ScopeFilter = { param($rel) $rel -match '^scenarios/' }; Test = { param($p) Test-Rule09DesktopTouchingLock -Parsed $p -NativeEntryPoints $script:Rule09NativeEntryPoints } }
         [pscustomobject]@{ Id = 'rule10'; Name = 'only Invoke-GuardedAgent invokes the staged binary'; ScopeFilter = { param($rel) ($rel -notmatch '^selftest/') -and ($rel -notin @('DesktopLease.psm1', 'BoundedProcess.psm1', 'Lib.psm1')) }; Test = { param($p) Test-Rule10StagedBinaryInvocation -Parsed $p } }
         [pscustomobject]@{ Id = 'rule11'; Name = 'no direct ConvertFrom-Json'; ScopeFilter = $notSelftest; Test = { param($p) Test-Rule11ConvertFromJson -Parsed $p } }
         <#

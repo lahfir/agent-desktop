@@ -18,6 +18,7 @@ Import-Module (Join-Path $PSScriptRoot 'DesktopLease.psm1') -Force -Global
 $script:OwnershipMarkerName = '.agent-desktop-e2e-root'
 $script:SuiteRoot = $null
 $script:SuiteOwnerPid = $null
+$script:AgentJsonSerializer = $null
 
 function Enter-IsolatedEnvironment {
     <#
@@ -207,6 +208,32 @@ function Test-FixtureProcessIdentity {
     return ($current.StartTime -eq $Identity.StartTime)
 }
 
+function Get-AgentJsonSerializer {
+    <#
+    .SYNOPSIS
+        Script-scoped lazy singleton backing ConvertFrom-AgentJson:
+        Add-Type and the JavaScriptSerializer construction happen once per
+        module instance, not once per JSON document. RecursionLimit and
+        MaxJsonLength are applied only while building that one instance -
+        every call site in this suite passes ConvertFrom-AgentJson's own
+        fixed defaults, so there is nothing that needs re-applying on a
+        later call.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][int]$RecursionLimit,
+        [Parameter(Mandatory = $true)][int]$MaxJsonLength
+    )
+    if ($null -eq $script:AgentJsonSerializer) {
+        Add-Type -AssemblyName System.Web.Extensions
+        $serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+        $serializer.RecursionLimit = $RecursionLimit
+        $serializer.MaxJsonLength = $MaxJsonLength
+        $script:AgentJsonSerializer = $serializer
+    }
+    return $script:AgentJsonSerializer
+}
+
 function ConvertFrom-AgentJson {
     <#
     .SYNOPSIS
@@ -229,10 +256,7 @@ function ConvertFrom-AgentJson {
         [int]$RecursionLimit = 4096,
         [int]$MaxJsonLength = 67108864
     )
-    Add-Type -AssemblyName System.Web.Extensions
-    $serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
-    $serializer.RecursionLimit = $RecursionLimit
-    $serializer.MaxJsonLength = $MaxJsonLength
+    $serializer = Get-AgentJsonSerializer -RecursionLimit $RecursionLimit -MaxJsonLength $MaxJsonLength
     return $serializer.DeserializeObject($Json)
 }
 

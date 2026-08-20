@@ -53,8 +53,19 @@ function Add-GateFailure {
 # --- Fixture self-test: MUST-CATCH / MUST-PASS over every rule. Always runs,
 #     never gated behind -SelfTest - a rule that cannot fail on its own
 #     fixtures must never reach the real tree. ---
-$fixtureFailures = Invoke-E2EFixtureSelfTest -FixturesRoot $fixturesDir
+$fixtureFailures = Invoke-E2EFixtureSelfTest -FixturesRoot $fixturesDir -E2ERoot $e2eWindowsDir
 foreach ($f in $fixtureFailures) { Add-GateFailure -RuleId 'selftest' -Message $f }
+
+# --- Rule 9's exhaustive entry-point self-test (finding #29): every name the
+#     real tree's Native*.psm1 modules export, generated rather than
+#     committed. ---
+$nativeEntryScratchRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('e2e-contract-native-entry-selftest-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+try {
+    $nativeEntryFailures = Invoke-E2ENativeEntryPointSelfTest -E2ERoot $e2eWindowsDir -ScratchDir $nativeEntryScratchRoot
+    foreach ($f in $nativeEntryFailures) { Add-GateFailure -RuleId 'rule09' -Message $f }
+} finally {
+    if (Test-Path -LiteralPath $nativeEntryScratchRoot) { Remove-Item -LiteralPath $nativeEntryScratchRoot -Recurse -Force -ErrorAction SilentlyContinue }
+}
 
 # --- File-set self-test: planted-file reachability, set-removal, identical-
 #     set MUST-PASS, empty-directory MUST-CATCH. ---
@@ -109,8 +120,18 @@ $allowlistKeys = @()
 if (Test-Path -LiteralPath $allowlistPath) {
     $allowlistKeys = @((Import-PowerShellDataFile -Path $allowlistPath).Keys)
 }
-$ruleTable = Get-E2ERuleTable -AllowlistKeys $allowlistKeys
+$ruleTable = Get-E2ERuleTable -AllowlistKeys $allowlistKeys -Root $e2eWindowsDir
 $scanResult = Invoke-E2EContractScan -Root $e2eWindowsDir -FileSet $walked -RuleTable $ruleTable
+
+# --- Finding #1: the aggregate check count is not enough - a rule whose
+#     ScopeFilter breaks and matches nothing would still leave the SUM
+#     nonzero as long as some other rule executed checks. Assert every rule
+#     individually executed at least one check against the real tree. ---
+foreach ($rule in $ruleTable) {
+    if ($scanResult.RuleChecksExecuted[$rule.Id] -lt 1) {
+        Add-GateFailure -RuleId $rule.Id -Message "$($rule.Id) executed zero checks against the real tree - its ScopeFilter matched no file (scope wiring may be broken)"
+    }
+}
 
 $rule01Hits = @($scanResult.Violations | Where-Object { $_.RuleId -eq 'rule01' })
 $otherHits = @($scanResult.Violations | Where-Object { $_.RuleId -ne 'rule01' })

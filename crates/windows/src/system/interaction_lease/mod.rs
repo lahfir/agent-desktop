@@ -103,10 +103,12 @@ fn lock_path_under(root: &Path) -> Result<PathBuf, AdapterError> {
 
 fn acquire_impl(root: &Path, deadline: Deadline) -> Result<InteractionLease, AdapterError> {
     let process_guard = ProcessLeaseGuard::acquire(deadline)?;
+    let process_contention = process_guard.contention_count();
     let path = lock_path_under(root)?;
     let directory = lock_directory(&path)?;
     directory::ensure_private(directory)?;
-    let (handle, contention) = acquire_file_handle(&path, deadline)?;
+    let (handle, file_contention) = acquire_file_handle(&path, deadline)?;
+    let contention = file_contention.saturating_add(process_contention);
     let guard = WindowsLeaseGuard {
         handle,
         _process: process_guard,

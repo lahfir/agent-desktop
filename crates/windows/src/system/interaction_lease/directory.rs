@@ -97,10 +97,9 @@ fn system_windows_directory() -> Result<PathBuf, AdapterError> {
 }
 
 /// Creates `directory` privately if absent, or validates it if present.
-/// Never repairs a directory that fails validation - R16b's stated reason is
-/// that a `chmod`-equivalent on a directory this process may not own is not
-/// reliably available, so a loud refusal in a world-writable root is the
-/// safer failure.
+/// Never repairs a directory that fails validation: a `chmod`-equivalent on
+/// a directory this process may not own is not reliably available on
+/// Windows, so a loud refusal in a world-writable root is the safer failure.
 pub(super) fn ensure_private(directory: &Path) -> Result<(), AdapterError> {
     let freshly_created = create_if_absent(directory)?;
     let handle = open_backup_semantics(directory)?;
@@ -108,7 +107,7 @@ pub(super) fn ensure_private(directory: &Path) -> Result<(), AdapterError> {
         let system = sid::well_known_system_sid().map_err(io_untrusted)?;
         let administrators = sid::well_known_administrators_sid().map_err(io_untrusted)?;
         let token_user = sid::process_token_user_sid().map_err(io_untrusted)?;
-        dacl::author_protected_three_principal_dacl(&handle, &system, &administrators, token_user)
+        dacl::author_protected_three_principal_dacl(&handle, system, administrators, token_user)
             .map_err(io_untrusted)?;
     }
     validate(&handle, directory)
@@ -265,7 +264,7 @@ fn validate_dacl(handle: &File) -> Result<(), AdapterError> {
         let system = sid::well_known_system_sid().map_err(io_untrusted)?;
         let administrators = sid::well_known_administrators_sid().map_err(io_untrusted)?;
         let token_user = sid::process_token_user_sid().map_err(io_untrusted)?;
-        let accepted = [&system, &administrators, token_user];
+        let accepted = [system, administrators, token_user];
         let ok = dacl::dacl_grants_only(dacl_ptr, &accepted).map_err(io_untrusted)?;
         if !ok {
             return Err(untrusted(

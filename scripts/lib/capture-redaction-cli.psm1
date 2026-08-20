@@ -96,15 +96,56 @@ function Test-CliRedactionValueReduced {
         for one field-name class extends to five without adding a JSON
         parser dependency this corpus does not otherwise need.
 
-        Deliberately over-catches rather than under-catches: the `path[]`
-        array body is matched non-greedily up to the first `]`, so a path
-        label containing a literal ']' character would split early and
-        could produce a spurious violation on an otherwise-reduced capture.
-        A gate that guards a public-repository leak must fail toward "flag
-        it" on an ambiguous case, never toward "let it through".
+        The `occluder{...}` body tolerates exactly one level of brace
+        nesting (a `bounds` sub-object), because the shipped envelope is
+        `{role, name, bounds}`, not the flat `{name, topmost}` shape a
+        purely brace-free pattern would require - a body regex that cannot
+        see past the first `{` inside `bounds` never matches the real
+        shape at all, so the occluder.name check would silently check
+        nothing on genuine captures.
+
+        The `path[]` array is walked JSON-aware (Find-CliJsonArrayEnd),
+        tracking quote state character by character, rather than matched
+        with a `.*?` up to the first `]`: a path label's own text can
+        legitimately contain a literal ']' (real window/document titles do),
+        and a text-only regex would end the array match inside that quoted
+        string, leaving every element after it - including a genuinely
+        unreduced one - outside the scanned body entirely.
     .OUTPUTS
         String[] - one message per violation found, empty when none.
     #>
+function Find-CliJsonArrayEnd {
+    <#
+    .SYNOPSIS
+        Given Text and the index of the character immediately after a
+        JSON array's opening `[`, returns the index of that array's true
+        matching `]`, respecting quoted-string content (so a literal ']'
+        inside an element's own text never ends the array early) and
+        escaped characters within those strings. Returns -1 if the array
+        never closes.
+    #>
+    param([Parameter(Mandatory = $true)][string]$Text, [Parameter(Mandatory = $true)][int]$StartIndex)
+    $depth = 1
+    $inString = $false
+    $i = $StartIndex
+    while ($i -lt $Text.Length) {
+        $ch = $Text[$i]
+        if ($inString) {
+            if ($ch -eq '\') { $i++ }
+            elseif ($ch -eq '"') { $inString = $false }
+        } else {
+            if ($ch -eq '"') { $inString = $true }
+            elseif ($ch -eq '[') { $depth++ }
+            elseif ($ch -eq ']') {
+                $depth--
+                if ($depth -eq 0) { return $i }
+            }
+        }
+        $i++
+    }
+    return -1
+}
+
 function Get-CaptureCliRedactionViolationsFromText {
     param(
         [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text,
@@ -121,7 +162,7 @@ function Get-CaptureCliRedactionViolationsFromText {
         }
     }
 
-    $occluderPattern = '"occluder"\s*:\s*\{(?<body>[^{}]*?)\}'
+    $occluderPattern = '"occluder"\s*:\s*\{(?<body>(?:[^{}]|\{[^{}]*\})*)\}'
     foreach ($m in [regex]::Matches($Text, $occluderPattern, $regexOptions)) {
         $nameMatch = [regex]::Match($m.Groups['body'].Value, '"name"\s*:\s*"(?<val>(?:\\.|[^"\\])*)"', $regexOptions)
         if ($nameMatch.Success) {
@@ -132,10 +173,14 @@ function Get-CaptureCliRedactionViolationsFromText {
         }
     }
 
-    $pathArrayPattern = '"path"\s*:\s*\[(?<body>.*?)\]'
-    foreach ($m in [regex]::Matches($Text, $pathArrayPattern, $regexOptions)) {
+    $pathArrayOpenPattern = '"path"\s*:\s*\['
+    foreach ($m in [regex]::Matches($Text, $pathArrayOpenPattern, $regexOptions)) {
+        $bodyStart = $m.Index + $m.Length
+        $endIndex = Find-CliJsonArrayEnd -Text $Text -StartIndex $bodyStart
+        if ($endIndex -lt 0) { continue }
+        $body = $Text.Substring($bodyStart, $endIndex - $bodyStart)
         $elementPattern = '"(?<val>(?:\\.|[^"\\])*)"'
-        foreach ($element in [regex]::Matches($m.Groups['body'].Value, $elementPattern, $regexOptions)) {
+        foreach ($element in [regex]::Matches($body, $elementPattern, $regexOptions)) {
             $raw = $element.Groups['val'].Value
             if (-not (Test-CliRedactionValueReduced -RawJsonString $raw -AllowRolePrefix)) {
                 [void]$violations.Add("$Source`: field 'path[]' holds an unreduced element ($($raw.Length) raw chars)")
@@ -197,6 +242,7 @@ function Test-CaptureCliRedaction {
 Export-ModuleMember -Function @(
     'ConvertFrom-CliJsonEscape',
     'Test-CliRedactionValueReduced',
+    'Find-CliJsonArrayEnd',
     'Get-CaptureCliRedactionViolationsFromText',
     'Get-CaptureCliRedactionViolations',
     'Test-CaptureCliRedaction'

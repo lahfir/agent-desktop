@@ -15,7 +15,6 @@ Import-Module (Join-Path $PSScriptRoot 'BoundedProcess.psm1') -Force -Global
 
 $script:LockFileName = 'interaction.lock'
 $script:DesktopLeaseHandoffEnvName = 'AGENT_DESKTOP_E2E_DESKTOP_LEASE_HANDLE'
-$script:LeaseHandleEnvName = 'AGENT_DESKTOP_INTERACTION_LEASE_HANDLE'
 $script:DesktopLeaseHandle = $null
 $script:DesktopLeaseAdopted = $null
 
@@ -291,6 +290,18 @@ function Invoke-GuardedDetached {
         returns immediately rather than waiting for exit, so a long-lived
         GUI process can outlive the spawn call. Stop-GuardedDetached is the
         matching teardown.
+
+        Enforces the one lease policy specific to a detached, long-lived,
+        desktop-touching child that Invoke-Guarded's own wait-and-capture
+        callers never had to worry about: this harness must hold the
+        desktop lease before it hands the interactive desktop to a
+        long-lived GUI process, or two runs could touch the same desktop
+        at once - the exact contention this module's lease scheme exists
+        to prevent. Start-BoundedProcess itself always strips the lease
+        env var unconditionally (there is no non-guarded variant of it to
+        distinguish this wrapper from), so that half of "guarded" needed
+        no restating here; the held-lease precondition is what this
+        wrapper actually adds.
     .OUTPUTS
         PSCustomObject: ProcessId, StartTime, JobHandle (Start-BoundedProcess's shape).
     #>
@@ -301,10 +312,20 @@ function Invoke-GuardedDetached {
         [System.Collections.IDictionary]$Environment,
         [string]$WorkingDirectory
     )
+    if ($null -eq $script:DesktopLeaseHandle) {
+        throw 'Invoke-GuardedDetached: no desktop lease is held by this process; acquire one with Enter-DesktopLease before launching a detached desktop-touching child'
+    }
     return Start-BoundedProcess -FilePath $FilePath -ArgumentList $ArgumentList -Environment $Environment -WorkingDirectory $WorkingDirectory
 }
 
 function Stop-GuardedDetached {
+    <#
+    .SYNOPSIS
+        Teardown for a handle Invoke-GuardedDetached returned. Carries no
+        lease precondition of its own to enforce - stopping an already-
+        started child is safe regardless of whether the lease is still
+        held, unlike starting one.
+    #>
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)]$Handle)
     Stop-BoundedProcess -Handle $Handle

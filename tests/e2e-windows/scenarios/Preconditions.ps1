@@ -90,11 +90,30 @@ function Invoke-PreconditionsScenario {
     }
 
     try {
-        Test-StagedIdsResolve -App $App
+        Test-StagedIdsResolve -App $App -Inventory $inventory
         Add-Pass -Leg 'staged-ids-resolve'
     } catch {
         Add-Fail -Leg 'staged-ids-resolve' -Reason $_.Exception.Message
         throw
+    }
+}
+
+function Assert-StagedIdSetEquality {
+    <# The ids this leg actually exercises, gathered as each one is proven
+       to resolve, checked against fixture-inventory.psd1's own Staged
+       array in both directions - the same shape as
+       Test-InventorySetEquality above, but scoped to the ids this function
+       hardcodes rather than the fixture's emitted manifest. Without this, a
+       Staged id added or removed from the .psd1 with no matching edit here
+       (or the reverse) would drift invisibly: every id this function does
+       check would still resolve, so nothing here would fail on its own. #>
+    param([Parameter(Mandatory = $true)][string[]]$Verified, [Parameter(Mandatory = $true)][string[]]$Declared)
+    $verifiedIds = [System.Collections.Generic.HashSet[string]]::new([string[]]$Verified)
+    $declaredIds = [System.Collections.Generic.HashSet[string]]::new([string[]]$Declared)
+    $onlyVerified = @($verifiedIds | Where-Object { -not $declaredIds.Contains($_) })
+    $onlyDeclared = @($declaredIds | Where-Object { -not $verifiedIds.Contains($_) })
+    if ($onlyVerified.Count -gt 0 -or $onlyDeclared.Count -gt 0) {
+        throw "Preconditions: staged ids exercised by Test-StagedIdsResolve and fixture-inventory.psd1's Staged array disagree - only exercised here: [$($onlyVerified -join ', ')]; only in declared Staged: [$($onlyDeclared -join ', ')]"
     }
 }
 
@@ -111,7 +130,8 @@ function Test-StagedIdsResolve {
        surface is open; fixture-overlay and the duplicate windows are
        window-level ids in their own right and are proven by Get-WindowId
        returning a real id, not by finding a child element inside them. #>
-    param([Parameter(Mandatory = $true)][string]$App)
+    param([Parameter(Mandatory = $true)][string]$App, [Parameter(Mandatory = $true)]$Inventory)
+    $verifiedIds = [System.Collections.Generic.List[string]]::new()
 
     <# context-choice's popup and tab-two's pane are staged for two
        different reasons: the popup opens only from a physical right-click
@@ -168,6 +188,7 @@ function Test-StagedIdsResolve {
                 throw "Preconditions: staged id 'context-choice' did not resolve while its surface (context-target right-click) was open, after 3 attempts"
             }
             Invoke-Target -Target $choice -Action 'click' -RequireOk -Description 'context-choice' | Out-Null
+            $verifiedIds.Add('context-choice')
         }
 
         $tabTwoHeader = Require-Target -Target (Find-Target -App $App -Role 'tab' -Name 'Two' -Exact -TimeoutSeconds 10) -Description 'tab:Two'
@@ -176,6 +197,7 @@ function Test-StagedIdsResolve {
         if (-not $paneHit -or $paneHit.Count -lt 1) {
             throw "Preconditions: staged id 'tab-two' did not resolve after selecting the Two tab"
         }
+        $verifiedIds.Add('tab-two')
         $tabOneHeader = Require-Target -Target (Find-Target -App $App -Role 'tab' -Name 'One' -Exact -TimeoutSeconds 10) -Description 'tab:One'
         Invoke-Target -Target $tabOneHeader -Action 'select' -ActionArgs @('One') -RequireOk -Description 'tab:One' | Out-Null
     }
@@ -188,12 +210,14 @@ function Test-StagedIdsResolve {
         Invoke-Target -Target $appearButton -Action 'click' -RequireOk -Description 'appear-later' | Out-Null
         $appearedHit = Find-TargetMatches -WindowId $mainWindowId -NativeId 'appeared-text' -TimeoutSeconds 10
         if (-not $appearedHit -or $appearedHit.Count -lt 1) { throw "Preconditions: staged id 'appeared-text' did not resolve while appear-later was armed" }
+        $verifiedIds.Add('appeared-text')
         $resetAppear = Require-Target -Target (Find-Target -WindowId $mainWindowId -NativeId 'reset-appeared-text' -TimeoutSeconds 10) -Description 'reset-appeared-text'
         Invoke-Target -Target $resetAppear -Action 'click' -RequireOk -Description 'reset-appeared-text' | Out-Null
 
         $openOccluder = Require-Target -Target (Find-Target -WindowId $mainWindowId -NativeId 'open-occluder' -TimeoutSeconds 10) -Description 'open-occluder'
         Invoke-Target -Target $openOccluder -Action 'click' -RequireOk -Description 'open-occluder' | Out-Null
         if (-not (Get-WindowId -Where { $_['title'] -eq 'fixture-overlay' } -TimeoutSeconds 10)) { throw "Preconditions: staged id 'fixture-overlay' did not resolve as its own top-level window" }
+        $verifiedIds.Add('fixture-overlay')
         $closeOccluder = Require-Target -Target (Find-Target -WindowId $mainWindowId -NativeId 'close-occluder' -TimeoutSeconds 10) -Description 'close-occluder'
         Invoke-Target -Target $closeOccluder -Action 'click' -RequireOk -Description 'close-occluder' | Out-Null
 
@@ -201,6 +225,8 @@ function Test-StagedIdsResolve {
         Invoke-Target -Target $openDuplicates -Action 'click' -RequireOk -Description 'open-duplicate-windows' | Out-Null
         $duplicateCount = Get-WindowId -Where { $_['title'] -eq 'Duplicate Window' } -TimeoutSeconds 10 -CountOnly
         if ($duplicateCount -lt 2) { throw "Preconditions: staged ids 'duplicate-window-a'/'duplicate-window-b' - expected 2 'Duplicate Window' top-level windows, saw $duplicateCount" }
+        $verifiedIds.Add('duplicate-window-a')
+        $verifiedIds.Add('duplicate-window-b')
         $closeDuplicates = Require-Target -Target (Find-Target -WindowId $mainWindowId -NativeId 'close-duplicate-windows' -TimeoutSeconds 10) -Description 'close-duplicate-windows'
         Invoke-Target -Target $closeDuplicates -Action 'click' -RequireOk -Description 'close-duplicate-windows' | Out-Null
 
@@ -211,8 +237,11 @@ function Test-StagedIdsResolve {
         foreach ($id in @('sheet-title', 'sheet-field', 'confirm-sheet', 'cancel-sheet')) {
             $hit = Find-TargetMatches -WindowId $sheetWindowId -NativeId $id -TimeoutSeconds 10
             if (-not $hit -or $hit.Count -lt 1) { throw "Preconditions: staged id '$id' did not resolve inside the Sheet window" }
+            $verifiedIds.Add($id)
         }
         $cancelSheet = Require-Target -Target (Find-Target -WindowId $sheetWindowId -NativeId 'cancel-sheet' -TimeoutSeconds 10) -Description 'cancel-sheet'
         Invoke-Target -Target $cancelSheet -Action 'click' -RequireOk -Description 'cancel-sheet' | Out-Null
     }
+
+    Assert-StagedIdSetEquality -Verified $verifiedIds.ToArray() -Declared $Inventory.Staged
 }

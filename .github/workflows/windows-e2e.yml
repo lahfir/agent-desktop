@@ -54,8 +54,33 @@ jobs:
         run: rustup show
 
       - name: Build and run the exclusive native suite
+        id: run-suite
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-windows-e2e-ci.ps1
+
+      # A failed suite with no captures to show for it is silent today:
+      # AGENT_DESKTOP_E2E_CAPTURE_DIR is set above but nothing currently
+      # writes into it (scripts/run-windows-e2e-ci.ps1 and every module
+      # under tests/e2e-windows/ would have to export captures there for
+      # this directory to ever hold anything), so the redaction-gate step
+      # below scans zero files and its -Path branch treats that as a
+      # legitimate empty run rather than a debugging payload that never
+      # showed up. On a failed suite specifically, that silence is the
+      # defect: "a red run's captures are the debugging payload, not a
+      # bonus" per the comment on the step below, and a suite that failed
+      # without producing any is worth failing loudly over, not passing
+      # through. Runs even after the suite step failed, the same way the
+      # redaction-gate step below already does.
+      - name: Fail loudly if a failed suite produced no captures
+        if: ${{ !cancelled() && steps.run-suite.outcome == 'failure' }}
+        shell: powershell
+        run: |
+          $dir = $env:AGENT_DESKTOP_E2E_CAPTURE_DIR
+          $hasCaptures = (Test-Path -LiteralPath $dir) -and (Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue)
+          if (-not $hasCaptures) {
+            Write-Host "FAIL: the suite failed and $dir has no captures - nothing wrote a debugging payload for this run."
+            exit 1
+          }
 
       # Gated, and gated before the upload runs: this step must run even
       # when the suite leg above failed - a red run's captures are the

@@ -98,13 +98,16 @@ mod imp {
     /// a closed list derived from this map rather than copied from macOS.
     /// Declared beside [`control_type_role`], alongside
     /// [`FIXTURE_UNCOVERED_ROLES`], so a `ControlType` arm added later that
-    /// yields a role in neither set fails `roles_tests.rs`'s union test
-    /// instead of silently going uncovered.
+    /// yields a role in neither set fails `roles_fixture_coverage_tests.rs`'s
+    /// union test instead of silently going uncovered. That union test's own
+    /// case table is pinned against a textual count of the `is_true`/
+    /// `gated_flag` refinement calls this file makes, so a new refinement
+    /// branch here cannot leave the case table stale without failing first.
     ///
-    /// `#[cfg(test)]`: the only consumer today is that union test, so a
-    /// non-test build carries no reference to it - marking it test-only
-    /// rather than `#[allow(dead_code)]` says why plainly instead of
-    /// silencing the lint.
+    /// `#[cfg(test)]`: the only consumers today are that union test and its
+    /// gate-count pin, so a non-test build carries no reference to it -
+    /// marking it test-only rather than `#[allow(dead_code)]` says why
+    /// plainly instead of silencing the lint.
     #[cfg(test)]
     pub(crate) const FIXTURE_COVERED_ROLES: &[&str] = &[
         "button",
