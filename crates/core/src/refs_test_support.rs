@@ -29,10 +29,10 @@ impl Drop for HomeGuard {
     }
 }
 
-struct TempDir(PathBuf);
+pub(crate) struct TempDir(PathBuf);
 
 impl TempDir {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -43,7 +43,7 @@ impl TempDir {
         Self(path)
     }
 
-    fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.0
     }
 }

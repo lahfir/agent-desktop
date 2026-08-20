@@ -147,8 +147,7 @@ impl Default for RefMap {
 }
 
 fn refmap_path() -> Result<PathBuf, AppError> {
-    let home = home_dir().ok_or_else(|| AppError::Internal("HOME directory not found".into()))?;
-    Ok(home.join(".agent-desktop").join("last_refmap.json"))
+    Ok(crate::state_root::resolve_configured_state_root()?.join("last_refmap.json"))
 }
 
 pub(crate) fn new_snapshot_id() -> String {
@@ -269,20 +268,16 @@ fn validate_home_dir(home: &Path) -> bool {
     if !meta.is_dir() {
         return false;
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        meta.uid() == unsafe { libc::getuid() }
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
+    crate::state_root::is_owned_by_current_user(&meta)
 }
 
 #[cfg(test)]
 pub(crate) fn set_home_override(home: Option<PathBuf>) -> Option<PathBuf> {
     HOME_OVERRIDE.with(|cell| std::mem::replace(&mut *cell.borrow_mut(), home))
+}
+
+pub(crate) fn home_override_active() -> bool {
+    HOME_OVERRIDE.with(|cell| cell.borrow().is_some())
 }
 
 #[cfg(test)]

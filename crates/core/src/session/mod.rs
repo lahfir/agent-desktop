@@ -7,10 +7,7 @@ pub use liveness::SessionLivenessLease;
 pub use manifest::{ArtifactsMode, SessionManifest, SessionTraceMode};
 
 use crate::{
-    AppError,
-    context::validate_session_id,
-    refs::{home_dir, write_private_file},
-    refs_store::RefStore,
+    AppError, context::validate_session_id, refs::write_private_file, refs_store::RefStore,
 };
 use serde_json;
 use std::io::ErrorKind;
@@ -40,8 +37,7 @@ impl Default for StartSessionOptions {
 }
 
 pub fn agent_desktop_dir() -> Result<PathBuf, AppError> {
-    let home = home_dir().ok_or_else(|| AppError::Internal("HOME directory not found".into()))?;
-    Ok(home.join(".agent-desktop"))
+    crate::state_root::resolve_configured_state_root()
 }
 
 pub fn session_dir(session_id: &str) -> Result<PathBuf, AppError> {

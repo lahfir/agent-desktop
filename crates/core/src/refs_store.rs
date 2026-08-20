@@ -1,7 +1,7 @@
 use crate::{
     AdapterError, AppError,
     context::validate_session_id,
-    refs::{RefMap, home_dir, new_snapshot_id, validate_snapshot_id, write_private_file},
+    refs::{RefMap, new_snapshot_id, validate_snapshot_id, write_private_file},
     refs_lock::RefStoreLock,
 };
 use std::io::ErrorKind;
@@ -29,20 +29,16 @@ impl RefStore {
     }
 
     pub fn for_session(session_id: Option<&str>) -> Result<Self, AppError> {
-        let home =
-            home_dir().ok_or_else(|| AppError::Internal("HOME directory not found".into()))?;
+        let state_root = crate::state_root::resolve_configured_state_root()?;
         if let Some(session_id) = session_id {
             validate_session_id(session_id)?;
             return Ok(Self {
-                base_dir: home
-                    .join(".agent-desktop")
-                    .join("sessions")
-                    .join(session_id),
+                base_dir: state_root.join("sessions").join(session_id),
                 allow_legacy_migration: false,
             });
         }
         Ok(Self {
-            base_dir: home.join(".agent-desktop"),
+            base_dir: state_root,
             allow_legacy_migration: true,
         })
     }
