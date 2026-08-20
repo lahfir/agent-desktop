@@ -268,15 +268,7 @@ fn validate_home_dir(home: &Path) -> bool {
     if !meta.is_dir() {
         return false;
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        meta.uid() == unsafe { libc::getuid() }
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
+    crate::state_root::is_owned_by_current_user(&meta)
 }
 
 #[cfg(test)]

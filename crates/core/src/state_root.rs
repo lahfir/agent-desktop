@@ -117,49 +117,21 @@ fn validate_env_root(
 }
 
 #[cfg(unix)]
-fn is_owned_by_current_user(meta: &std::fs::Metadata) -> bool {
+pub(crate) fn is_owned_by_current_user(meta: &std::fs::Metadata) -> bool {
     use std::os::unix::fs::MetadataExt;
     meta.uid() == unsafe { libc::getuid() }
 }
 
 #[cfg(not(unix))]
-fn is_owned_by_current_user(_meta: &std::fs::Metadata) -> bool {
+pub(crate) fn is_owned_by_current_user(_meta: &std::fs::Metadata) -> bool {
     true
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::refs_test_support::TempDir;
     use std::fs;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new() -> Self {
-            let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-            let nanos = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0);
-            let path = std::env::temp_dir().join(format!("agent-desktop-state-root-{nanos}-{n}"));
-            fs::create_dir_all(&path).expect("create tempdir");
-            Self(path)
-        }
-
-        fn path(&self) -> &Path {
-            &self.0
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
-    }
 
     fn always_owned(_meta: &std::fs::Metadata) -> bool {
         true
