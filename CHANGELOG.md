@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/lahfir/agent-desktop/compare/v0.8.1...v0.8.2) (2026-08-20)
+
+
+### Features
+
+* relocate the state root with AGENT_DESKTOP_HOME ([#135](https://github.com/lahfir/agent-desktop/issues/135)) ([a336b01](https://github.com/lahfir/agent-desktop/commit/a336b01e728893f379918b40157ab25f1c41fa80))
+
 ## [0.8.1](https://github.com/lahfir/agent-desktop/compare/v0.8.0...v0.8.1) (2026-08-14)
 
 

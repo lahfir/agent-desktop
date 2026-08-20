@@ -70,7 +70,7 @@ regexes = [
   '''S-1-5-21-<[^>]*>''',
   # Generic doc examples that teach path shape rather than expose one.
   '''(?i)/Users/(name|user|username|you|youruser|me|someone)''',
-  '''(?i)/home/(name|user|username|you|youruser|runner|me|someone)''',
+  '''(?i)/home/(name|user|username|you|youruser|runner|me|someone|example-user)''',
   '''(?i)[A-Za-z]:\\Users\\(name|user|username|you|youruser|runner)''',
   # CI runner home paths are not operator identity.
   '''/Users/runner''',

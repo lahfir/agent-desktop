@@ -45,6 +45,9 @@ pub fn execute_with_report_with_context(
     if let Some(artifacts) = artifacts {
         body["artifacts"] = json!(artifacts);
     }
+    if let Ok(state_root) = crate::state_root::resolve_configured_state_root() {
+        body["state_root"] = json!(state_root.to_string_lossy());
+    }
     Ok(body)
 }
 
