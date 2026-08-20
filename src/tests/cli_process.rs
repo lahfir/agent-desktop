@@ -103,6 +103,66 @@ fn valid_absolute_state_root_env_allows_version_and_creates_nothing() {
 }
 
 #[test]
+fn state_root_env_redirects_session_start_writes() {
+    let dir = std::env::temp_dir().join(format!(
+        "agent-desktop-cli-state-root-session-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&dir).expect("create state root");
+    let output = binary()
+        .args(["session", "start"])
+        .env("AGENT_DESKTOP_HOME", &dir)
+        .output()
+        .expect("binary starts");
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout is one JSON envelope");
+
+    assert!(output.status.success());
+    assert_eq!(envelope["ok"], true);
+    let session_id = envelope["data"]["session_id"]
+        .as_str()
+        .expect("session start returns a session id");
+    let manifest = dir.join("sessions").join(session_id).join("session.json");
+    assert!(
+        manifest.is_file(),
+        "session manifest must land under the AGENT_DESKTOP_HOME root"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn status_reports_state_root_env_value_verbatim() {
+    let dir = std::env::temp_dir().join(format!(
+        "agent-desktop-cli-state-root-status-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&dir).expect("create state root");
+    let output = binary()
+        .arg("status")
+        .env("AGENT_DESKTOP_HOME", &dir)
+        .output()
+        .expect("binary starts");
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout is one JSON envelope");
+
+    assert_eq!(envelope["ok"], true);
+    assert_eq!(
+        envelope["data"]["state_root"],
+        dir.to_string_lossy().as_ref(),
+        "status must report the env value verbatim"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn invalid_state_root_env_fails_batch_as_single_envelope() {
     let output = binary()
         .args(["batch", "[]"])

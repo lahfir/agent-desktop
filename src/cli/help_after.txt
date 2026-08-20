@@ -76,7 +76,7 @@ WAIT
   wait --event <kind>        Block on a baseline diff: window/app/focus/surface lifecycle
 
 SYSTEM
-  status                     Adapter health, platform, permission, session, and tracing state
+  status                     Adapter health, platform, permission, session, tracing, and state_root
   permissions                Check nested permission states: {state,...}
   version                    Show version, target architecture, and OS
   skills                     Bundled skill docs for AI agents (list, get, path)
@@ -85,6 +85,13 @@ SYSTEM
   session end                  Seal a manifest (ID from argument, --session, or environment)
   session list                 List session manifests
   session gc                   Remove ended or provably-stale sessions
+
+ENVIRONMENT
+  AGENT_DESKTOP_SESSION      Session ID fallback when --session is not passed
+  AGENT_DESKTOP_HOME         Relocates the state root; the value is the root itself
+                             (absolute path; default ~/.agent-desktop). Applies to every
+                             command; an invalid value fails with INVALID_ARGS before
+                             dispatch. `status` reports the resolved root as state_root.
 
 TRACE
   trace show                 Merge session trace segments into a bounded JSON timeline (--limit defaults to 500; 0 = all)
