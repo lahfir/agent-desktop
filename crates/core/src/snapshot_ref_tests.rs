@@ -54,6 +54,7 @@ struct StubAdapter {
     subtree_error: Option<AdapterError>,
     resolve_calls: AtomicU32,
     drops: Arc<AtomicU32>,
+    windows: Vec<crate::WindowInfo>,
 }
 
 impl StubAdapter {
@@ -63,6 +64,17 @@ impl StubAdapter {
             subtree_error: None,
             resolve_calls: AtomicU32::new(0),
             drops: Arc::new(AtomicU32::new(0)),
+            windows: vec![window_info("w-42", true)],
+        }
+    }
+
+    fn with_windows(subtree: AccessibilityNode, windows: Vec<crate::WindowInfo>) -> Self {
+        Self {
+            subtree,
+            subtree_error: None,
+            resolve_calls: AtomicU32::new(0),
+            drops: Arc::new(AtomicU32::new(0)),
+            windows,
         }
     }
 
@@ -72,7 +84,23 @@ impl StubAdapter {
             subtree_error: Some(error),
             resolve_calls: AtomicU32::new(0),
             drops: Arc::new(AtomicU32::new(0)),
+            windows: vec![window_info("w-42", true)],
         }
+    }
+}
+
+fn window_info(id: &str, focused: bool) -> crate::WindowInfo {
+    crate::WindowInfo {
+        id: id.into(),
+        title: "Test".into(),
+        app: "TestApp".into(),
+        pid: crate::ProcessId::new(42),
+        process_instance: Some("test-instance".into()),
+        bounds: None,
+        state: crate::WindowState {
+            is_focused: focused,
+            ..Default::default()
+        },
     }
 }
 
@@ -93,18 +121,7 @@ impl ObservationOps for StubAdapter {
         _filter: &crate::adapter::WindowFilter,
         _deadline: crate::Deadline,
     ) -> Result<Vec<crate::WindowInfo>, AdapterError> {
-        Ok(vec![crate::WindowInfo {
-            id: "w-42".into(),
-            title: "Test".into(),
-            app: "TestApp".into(),
-            pid: crate::ProcessId::new(42),
-            process_instance: Some("test-instance".into()),
-            bounds: None,
-            state: crate::WindowState {
-                is_focused: true,
-                ..Default::default()
-            },
-        }])
+        Ok(self.windows.clone())
     }
 
     fn resolve_element_strict(
@@ -334,6 +351,9 @@ fn test_run_from_ref_re_drill_replaces_drill_refs_only() {
         "first drill ref must be invalidated by remove_by_root_ref"
     );
 }
+
+#[path = "snapshot_ref_window_tests.rs"]
+mod window_tests;
 
 #[path = "snapshot_ref_merge_tests.rs"]
 mod merge_tests;
