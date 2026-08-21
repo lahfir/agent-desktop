@@ -9,7 +9,7 @@ description: >
   Use when an AI agent needs to observe, interact with, or automate desktop applications
   (click buttons, fill forms, navigate menus, read UI state, toggle checkboxes, scroll,
   drag, type text, take screenshots, manage windows, use clipboard, manage notifications).
-  Covers 58 command names (54 operational; four held-input names fail closed until
+  Covers 59 command names (55 operational; four held-input names fail closed until
   daemon ownership exists) across observation, interaction, keyboard/mouse, app
   lifecycle, notifications (macOS), clipboard, wait, session lifecycle, and a
   `skills` command that bundles docs straight from the binary.
@@ -134,7 +134,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 
 `TIMEOUT` errors carry a `details` object whose `kind` field selects the schema. `kind: "wait_timeout"` includes `predicate`, `timeout_ms`, and `last_observed` or `last_error`, plus `ref`/`title`/`text_chars` depending on the wait mode. `kind: "chain_deadline"` includes `value_before`, `value_at_timeout`, `target`, and `mutated` (increment waits) or `wanted_expanded`/`observed_expanded` (disclosure waits). `mutated: true` — or an unknown `observed_expanded` state — means re-read the element before retrying; `mutated: false` means the state did not change and retrying directly is safe.
 
-## Command Quick Reference (58 names, 54 operational)
+## Command Quick Reference (59 names, 55 operational)
 
 ### Observation
 ```
@@ -244,6 +244,8 @@ agent-desktop session start [--name LABEL] [--screenshots] [--no-trace]  # Creat
 agent-desktop session end [id]                                      # Seal manifest
 agent-desktop session list                                          # List session manifests
 agent-desktop session gc [--older-than SECS] [--ended]              # Reclaim ended/stale sessions
+agent-desktop --session <id> cursor-overlay enable [--label TEXT] [--max-words N]
+agent-desktop --session <id> cursor-overlay disable                 # Disable session overlay
 agent-desktop trace show [--limit N] [--event PREFIX]               # Merge trace segments (default tail 500; 0 = all)
 agent-desktop trace export [--out path.html] [--limit N]            # Self-contained HTML viewer (default tail 5000)
 agent-desktop status                            # Health, session_id, tracing, artifacts, permissions

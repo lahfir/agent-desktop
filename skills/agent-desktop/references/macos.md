@@ -243,6 +243,10 @@ After `right-click @ref`, inspect the open menu or the target effect. If macOS r
 
 ## macOS-Specific Behavior
 
+### Agent cursor overlay
+
+macOS renders an enabled session overlay in a bounded click-through AppKit child window. Its minimum-jerk glide eases through a visible swing, click feedback briefly switches the arrow to a hand pointer, and the bottom-right intent card is solid white with a 1.5px near-black border. It never activates, moves the OS pointer, or changes command delivery. The renderer follows the system Reduce Motion preference and fails soft if its child cannot start. Use `--headed` to use only the real cursor.
+
 ### App Identification
 
 Apps can be referenced by:

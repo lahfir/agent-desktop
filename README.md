@@ -174,6 +174,19 @@ agent-desktop session end "$AGENT_DESKTOP_SESSION"
 agent-desktop session gc
 ```
 
+### Agent cursor overlay (macOS)
+
+Enable the presentation-only cursor once for a session. Every eligible headless action in that session inherits the setting; action and batch entries do not take cursor-enable flags.
+
+```bash
+agent-desktop --session <session_id> cursor-overlay enable \
+  --label "Opening profile menu" --max-words 6
+agent-desktop --session <session_id> click @s8f3k2p9:e9
+agent-desktop --session <session_id> cursor-overlay disable
+```
+
+The overlay uses an eased, swinging glide, switches to a hand pointer for click feedback, and places its solid white intent card with a 1.5px near-black border at the cursor's bottom-right. It never moves or intercepts the OS pointer. `--headed` always suppresses it because headed actions use the real cursor. macOS renders the overlay natively; Windows and Linux currently inherit the platform adapter's presentation no-op and need only add their native renderer to support the same session contract.
+
 ## Driving Chromium apps (CDP)
 
 For a Chromium-based app (Slack, VS Code, Discord, Obsidian, Notion), `launch --cdp` opens a verified Chrome DevTools Protocol endpoint on the web contents. Any framework that speaks CDP can connect — Playwright, Puppeteer, `chrome-remote-interface`, agent-browser — with agent-browser preferred for its ref-based agent workflow and bundled `electron` skill. Native surfaces (menus, dialogs, windows, screenshots) stay on the accessibility path either way.
@@ -338,6 +351,8 @@ agent-desktop session start [--name LABEL] [--no-trace]  # create session; pass 
 agent-desktop session end [id]
 agent-desktop session list
 agent-desktop session gc [--older-than SECS] [--ended]
+agent-desktop --session <id> cursor-overlay enable [--label TEXT] [--max-words N]
+agent-desktop --session <id> cursor-overlay disable
 agent-desktop status                     # platform, permissions, session_id, tracing, latest snapshot
 agent-desktop permissions                # check accessibility/screen-recording/automation
 agent-desktop permissions --request      # request in the bounded isolated helper

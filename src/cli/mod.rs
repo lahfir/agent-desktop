@@ -12,6 +12,7 @@ use crate::cli_args::{
         ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
     },
     batch::BatchArgs,
+    cursor_overlay::CursorOverlayArgs,
     drag::DragCliArgs,
     mouse_wheel::MouseWheelArgs,
     notifications::{
@@ -150,6 +151,8 @@ pub(crate) enum Commands {
     Skills(SkillsArgs),
     #[command(about = "Manage trace-enabled agent sessions (start, end, list, gc)")]
     Session(SessionArgs),
+    #[command(about = "Configure the presentation-only cursor overlay for a session")]
+    CursorOverlay(CursorOverlayArgs),
     #[command(about = "Read merged session trace timelines")]
     Trace(TraceArgs),
 }
@@ -231,6 +234,7 @@ impl Commands {
             Self::Batch(_) => CommandMetadata::new("batch", false),
             Self::Skills(_) => CommandMetadata::new("skills", false),
             Self::Session(_) => CommandMetadata::new("session", false),
+            Self::CursorOverlay(_) => CommandMetadata::new("cursor-overlay", false),
             Self::Trace(_) => CommandMetadata::new("trace", false),
         }
     }
@@ -291,6 +295,7 @@ impl Commands {
             Self::Session(args) => {
                 !matches!(&args.action, crate::cli_args::session::SessionAction::List)
             }
+            Self::CursorOverlay(_) => true,
             Self::Trace(args) => {
                 matches!(&args.action, crate::cli_args::trace::TraceAction::Export(_))
             }

@@ -455,6 +455,15 @@ Each entry may include `"session": "id"` beside `command` and `args`. If omitted
 
 Sessions are on-disk containers under `<state root>/sessions/<id>/` with a `session.json` manifest, snapshot refmaps, and (when tracing is on) a `trace/` directory. The state root defaults to `~/.agent-desktop`; setting `AGENT_DESKTOP_HOME` relocates it — the env value is the root itself, applied to every subcommand. A relative or empty value fails with `INVALID_ARGS` before dispatch, and `status` reports the resolved root as `state_root`. Session selection is explicit; `session start` returns an ID but does not activate it for later processes.
 
+### cursor-overlay enable / disable
+
+```bash
+agent-desktop --session <id> cursor-overlay enable --label "Opening menu" --max-words 6
+agent-desktop --session <id> cursor-overlay disable
+```
+
+The setting is stored in the selected session manifest and inherited by all eligible headless commands, including batch entries scoped to that session. Action and batch-entry schemas do not accept cursor-enable flags. `--headed` suppresses the overlay because the real pointer is used. macOS renders the overlay natively; other platforms currently use the adapter's presentation no-op.
+
 ### session start
 ```bash
 agent-desktop session start

@@ -1,5 +1,6 @@
 mod app_window;
 mod clipboard;
+mod cursor_overlay;
 mod interaction;
 mod keyboard_mouse;
 mod notifications;
@@ -86,6 +87,7 @@ pub(crate) fn dispatch(
         Commands::Batch(args) => system::batch(args, adapter, permission_report, context),
         Commands::Skills(args) => system::skills(args),
         Commands::Session(args) => system::session(args, context),
+        Commands::CursorOverlay(args) => cursor_overlay::dispatch(args, context),
         Commands::Trace(args) => system::trace(args, context),
     };
     scope.complete(&result)?;

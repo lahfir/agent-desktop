@@ -23,6 +23,16 @@ fn parses_optional_batch_session_scope() {
 }
 
 #[test]
+fn rejects_per_item_cursor_configuration() {
+    let error = agent_desktop_core::commands::batch::parse_commands(
+        r#"[{"command":"status","agent_cursor":{"enabled":true},"args":{}}]"#,
+    )
+    .expect_err("cursor configuration belongs to the session command");
+
+    assert!(error.to_string().contains("agent_cursor"));
+}
+
+#[test]
 fn session_batch_rejects_unknown_field() {
     assert!(
         parse_command(item("session", serde_json::json!({ "action": "start" }))).is_ok(),
