@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 struct ModifierCaptureAdapter {
     captured: Mutex<Option<MouseEvent>>,
-    presented: Mutex<Option<crate::CursorOverlayInstruction>>,
+    presented: Mutex<Option<crate::CursorOverlayControl>>,
 }
 
 impl ModifierCaptureAdapter {
@@ -22,11 +22,11 @@ impl ActionOps for ModifierCaptureAdapter {}
 impl SystemOps for ModifierCaptureAdapter {
     crate::adapter::guarded_interaction_lease!();
 
-    fn present_cursor_overlay(
+    fn update_cursor_overlay(
         &self,
-        instruction: &crate::CursorOverlayInstruction,
+        control: &crate::CursorOverlayControl,
     ) -> Result<(), AdapterError> {
-        *self.presented.lock().unwrap() = Some(instruction.clone());
+        *self.presented.lock().unwrap() = Some(control.clone());
         Ok(())
     }
 }

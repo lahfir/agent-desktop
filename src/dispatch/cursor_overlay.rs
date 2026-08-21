@@ -1,4 +1,7 @@
-use agent_desktop_core::{AppError, commands::cursor_overlay, context::CommandContext};
+use agent_desktop_core::{
+    AppError, CursorOverlayControl, PlatformAdapter, commands::cursor_overlay,
+    context::CommandContext,
+};
 use serde_json::Value;
 
 use crate::cli_args::{
@@ -7,6 +10,7 @@ use crate::cli_args::{
 
 pub(crate) fn dispatch(
     args: CursorOverlayArgs,
+    adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     let session_id = context.session_id().ok_or_else(|| {
@@ -15,11 +19,22 @@ pub(crate) fn dispatch(
             "Run `session start`, then pass its id with --session or AGENT_DESKTOP_SESSION.",
         )
     })?;
-    let action = match args.action {
-        CursorOverlayAction::Enable(args) => {
-            cursor_overlay::CursorOverlayAction::Enable(args.to_core()?)
-        }
-        CursorOverlayAction::Disable => cursor_overlay::CursorOverlayAction::Disable,
+    let (action, control) = match args.action {
+        CursorOverlayAction::Enable(args) => (
+            cursor_overlay::CursorOverlayAction::Enable(args.to_core()?),
+            (!context.cursor_overlay().is_enabled())
+                .then(|| CursorOverlayControl::enable(session_id.to_owned())),
+        ),
+        CursorOverlayAction::Disable => (
+            cursor_overlay::CursorOverlayAction::Disable,
+            Some(CursorOverlayControl::disable(session_id.to_owned())),
+        ),
     };
-    cursor_overlay::execute(session_id, action)
+    let value = cursor_overlay::execute(session_id, action)?;
+    if let Some(control) = control
+        && let Err(error) = adapter.update_cursor_overlay(&control)
+    {
+        tracing::warn!(code = %error.code.as_str(), "cursor overlay lifecycle update was skipped");
+    }
+    Ok(value)
 }

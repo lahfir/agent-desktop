@@ -1,9 +1,15 @@
-use agent_desktop_core::{AppError, commands::session, context::CommandContext};
+use agent_desktop_core::{
+    AppError, CursorOverlayControl, PlatformAdapter, commands::session, context::CommandContext,
+};
 use serde_json::Value;
 
 use crate::cli_args::session::{SessionAction, SessionArgs};
 
-pub(crate) fn dispatch(args: SessionArgs, context: &CommandContext) -> Result<Value, AppError> {
+pub(crate) fn dispatch(
+    args: SessionArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
     match args.action {
         SessionAction::Start(s) => session::execute(session::SessionAction::Start {
             name: s.name,
@@ -12,7 +18,9 @@ pub(crate) fn dispatch(args: SessionArgs, context: &CommandContext) -> Result<Va
         }),
         SessionAction::End(e) => {
             let id = resolve_end_session_id(e.id, context.session_id())?;
-            session::execute(session::SessionAction::End { id })
+            let value = session::execute(session::SessionAction::End { id: id.clone() })?;
+            let _ = adapter.update_cursor_overlay(&CursorOverlayControl::disable(id));
+            Ok(value)
         }
         SessionAction::List => session::execute(session::SessionAction::List),
         SessionAction::Gc(g) => session::execute(session::SessionAction::Gc {

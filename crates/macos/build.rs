@@ -6,6 +6,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/system/appkit_bridge.m");
     println!("cargo:rerun-if-changed=src/system/screen_bridge.m");
     println!("cargo:rerun-if-changed=src/system/cursor_overlay_bridge.m");
+    println!("cargo:rerun-if-changed=src/system/cursor_overlay_display_bridge.m");
     println!("cargo:rerun-if-env-changed=TARGET");
     println!("cargo:rerun-if-env-changed=MACOSX_DEPLOYMENT_TARGET");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
@@ -23,7 +24,24 @@ fn main() {
     let appkit_object = out_dir.join("appkit_bridge.o");
     let screen_object = out_dir.join("screen_bridge.o");
     let cursor_overlay_object = out_dir.join("cursor_overlay_bridge.o");
+    let cursor_overlay_display_object = out_dir.join("cursor_overlay_display_bridge.o");
     let archive = out_dir.join("libagent_desktop_launch_bridge.a");
+    run(
+        Command::new("xcrun")
+            .args(["--sdk", "macosx", "clang"])
+            .args(["-fobjc-arc", "-target", &target])
+            .arg(format!("-mmacosx-version-min={deployment}"))
+            .args([
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-c",
+                "src/system/cursor_overlay_display_bridge.m",
+                "-o",
+            ])
+            .arg(&cursor_overlay_display_object),
+        "compile Objective-C cursor overlay display bridge",
+    );
     run(
         Command::new("xcrun")
             .args(["--sdk", "macosx", "clang"])
@@ -95,7 +113,8 @@ fn main() {
             .arg(&object)
             .arg(&appkit_object)
             .arg(&screen_object)
-            .arg(&cursor_overlay_object),
+            .arg(&cursor_overlay_object)
+            .arg(&cursor_overlay_display_object),
         "archive Objective-C launch bridge",
     );
     println!("cargo:rustc-link-search=native={}", out_dir.display());

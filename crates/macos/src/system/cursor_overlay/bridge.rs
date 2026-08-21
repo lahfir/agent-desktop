@@ -14,12 +14,31 @@ struct NativeRenderConfig {
 }
 
 unsafe extern "C" {
+    fn agent_desktop_cursor_overlay_initial_point(output: *mut f64) -> bool;
     fn agent_desktop_cursor_overlay_screen(x: f64, y: f64, output: *mut f64) -> bool;
     fn agent_desktop_cursor_overlay_run(
         points: *const f64,
         point_count: usize,
         config: *const NativeRenderConfig,
     ) -> bool;
+    fn agent_desktop_cursor_overlay_idle();
+    fn agent_desktop_cursor_overlay_hide();
+    fn agent_desktop_cursor_overlay_show();
+    fn agent_desktop_cursor_overlay_stop();
+}
+
+pub(super) fn initial_point() -> Result<Point, AdapterError> {
+    let mut output = [0.0; 2];
+    if !unsafe { agent_desktop_cursor_overlay_initial_point(output.as_mut_ptr()) } {
+        return Err(AdapterError::new(
+            ErrorCode::ActionFailed,
+            "macOS cursor overlay could not select an initial position",
+        ));
+    }
+    Ok(Point {
+        x: output[0],
+        y: output[1],
+    })
 }
 
 pub(super) fn screen_at(point: &Point) -> Result<(Rect, u32, bool), AdapterError> {
@@ -84,4 +103,20 @@ pub(super) fn run(
             "macOS cursor overlay renderer failed",
         ))
     }
+}
+
+pub(super) fn idle() {
+    unsafe { agent_desktop_cursor_overlay_idle() }
+}
+
+pub(super) fn stop() {
+    unsafe { agent_desktop_cursor_overlay_stop() }
+}
+
+pub(super) fn hide() {
+    unsafe { agent_desktop_cursor_overlay_hide() }
+}
+
+pub(super) fn show() {
+    unsafe { agent_desktop_cursor_overlay_show() }
 }

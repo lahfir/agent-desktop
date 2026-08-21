@@ -24,9 +24,10 @@ fn default_cursor_overlay_is_a_successful_no_op() {
     let instruction =
         crate::CursorOverlayInstruction::new(crate::Point { x: 20.0, y: 40.0 }, &config, true)
             .expect("valid instruction");
+    let control = crate::CursorOverlayControl::present("test-session".into(), instruction);
 
     DefaultOnly
-        .present_cursor_overlay(&instruction)
+        .update_cursor_overlay(&control)
         .expect("default presentation is fail-soft");
     assert!(DefaultOnly.run_cursor_overlay_child().is_none());
 }

@@ -462,7 +462,7 @@ agent-desktop --session <id> cursor-overlay enable --label "Opening menu" --max-
 agent-desktop --session <id> cursor-overlay disable
 ```
 
-The setting is stored in the selected session manifest and inherited by all eligible headless commands, including batch entries scoped to that session. Action and batch-entry schemas do not accept cursor-enable flags. `--headed` suppresses the overlay because the real pointer is used. macOS renders the overlay natively; other platforms currently use the adapter's presentation no-op.
+The setting is stored in the selected session manifest and inherited by all eligible headless commands, including batch entries scoped to that session. Enabling immediately presents the persistent cursor with “Hey, let's play with this computer!” The current description remains visible; when its value changes, the old card eases out and the new text eases in. Only `cursor-overlay disable` or session end removes the cursor and card. Action and batch-entry schemas do not accept cursor-enable flags. Headed actions temporarily hide the overlay while the real pointer is used. macOS renders the overlay natively; other platforms use the adapter's presentation no-op.
 
 ### session start
 ```bash

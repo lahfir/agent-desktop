@@ -185,7 +185,7 @@ agent-desktop --session <session_id> click @s8f3k2p9:e9
 agent-desktop --session <session_id> cursor-overlay disable
 ```
 
-The overlay uses an eased, swinging glide, switches to a hand pointer for click feedback, and places its solid white intent card with a 1.5px near-black border at the cursor's bottom-right. It never moves or intercepts the OS pointer. `--headed` always suppresses it because headed actions use the real cursor. macOS renders the overlay natively; Windows and Linux currently inherit the platform adapter's presentation no-op and need only add their native renderer to support the same session contract.
+Enabling immediately shows the persistent cursor with “Hey, let's play with this computer!” The current card remains visible until its description changes; the old card then eases out and the new text eases in. Actions reuse the cursor's last position for the same eased, swinging glide and briefly switch to a hand pointer for click feedback. The solid white card has a 1.5px near-black border and stays at the cursor's bottom-right. The overlay never moves or intercepts the OS pointer and remains until `cursor-overlay disable` or session end. Headed actions temporarily hide it while the real cursor is in use. macOS renders the overlay natively; Windows and Linux inherit the platform adapter's presentation no-op and need only add their native renderer to support the same session contract.
 
 ## Driving Chromium apps (CDP)
 

@@ -9,6 +9,9 @@ pub(crate) fn submit(
     if context.is_headed() || !context.cursor_overlay().is_enabled() {
         return;
     }
+    let Some(session_id) = context.session_id() else {
+        return;
+    };
     let instruction =
         match super::CursorOverlayInstruction::new(destination, context.cursor_overlay(), click) {
             Ok(instruction) => instruction,
@@ -17,7 +20,8 @@ pub(crate) fn submit(
                 return;
             }
         };
-    if let Err(error) = adapter.present_cursor_overlay(&instruction) {
+    let control = super::CursorOverlayControl::present(session_id.to_owned(), instruction);
+    if let Err(error) = adapter.update_cursor_overlay(&control) {
         tracing::warn!(code = %error.code.as_str(), "agent cursor presentation was skipped");
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    AdapterError, AdapterSession, AppInfo, CursorOverlayInstruction, Deadline,
+    AdapterError, AdapterSession, AppInfo, CursorOverlayControl, Deadline,
     DismissAllNotificationsRequest, DismissNotificationRequest, ImageBuffer, InteractionLease,
     InteractionPolicy, KeyCombo, NotificationActionRequest, NotificationFilter, NotificationInfo,
     PermissionReport, PermissionState, ProcessIdentity, SessionAffinity, SignalBaseline,
@@ -8,10 +8,7 @@ use crate::{
 };
 
 pub trait SystemOps: Send + Sync {
-    fn present_cursor_overlay(
-        &self,
-        _instruction: &CursorOverlayInstruction,
-    ) -> Result<(), AdapterError> {
+    fn update_cursor_overlay(&self, _control: &CursorOverlayControl) -> Result<(), AdapterError> {
         Ok(())
     }
 

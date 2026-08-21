@@ -319,7 +319,7 @@ Synthesizes a scroll-wheel event at absolute coordinates and requires `--headed`
 
 ### Agent cursor presentation
 
-When enabled once with `cursor-overlay` for the selected session, eligible headless ref actions may show a presentation-only cursor at their verified destination. Interaction commands do not accept per-command cursor flags. `--headed` and raw pointer commands always use the real OS cursor and never show the overlay.
+When enabled once with `cursor-overlay` for the selected session, the presentation-only cursor remains alive between eligible headless ref actions and moves from its previous destination. Interaction commands do not accept per-command cursor flags. Headed actions temporarily hide the overlay and use the real OS cursor; raw pointer commands keep their existing headed-only behavior.
 
 | Goal | Preferred | Alternative |
 |------|-----------|-------------|

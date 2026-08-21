@@ -11,6 +11,8 @@ execution: code
 
 # Native Agent Cursor Overlay
 
+> Persistent renderer lifecycle changes from live dogfood are authoritative in [the persistent presence addendum](2026-08-21-0003-feat-agent-cursor-overlay-plan-addendum.md).
+
 ## Goal Capsule
 
 - **Objective:** Let an agent optionally show a smooth, expressive cursor and short intent label at action destinations without moving, replacing, or intercepting the user's OS pointer.

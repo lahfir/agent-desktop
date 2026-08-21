@@ -146,6 +146,20 @@ impl CommandContext {
         self
     }
 
+    #[cfg(test)]
+    pub(crate) fn with_cursor_overlay_session(
+        mut self,
+        session_id: &str,
+        cursor_overlay: CursorOverlayConfig,
+    ) -> Self {
+        self.session = Some(SessionScope {
+            id: session_id.into(),
+            lease: None,
+        });
+        self.options.cursor_overlay = cursor_overlay;
+        self
+    }
+
     pub fn is_headed(&self) -> bool {
         self.options.interaction_policy.is_headed()
     }

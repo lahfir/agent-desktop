@@ -16,63 +16,11 @@ typedef struct {
 
 static const uint8_t ADClickCue = 1 << 1;
 static const uint8_t ADReduceMotion = 1 << 2;
-
-static NSRect ADTopLeftRect(NSRect frame) {
-    CGRect main = CGDisplayBounds(CGMainDisplayID());
-    return NSMakeRect(frame.origin.x,
-                      main.size.height - NSMaxY(frame),
-                      frame.size.width,
-                      frame.size.height);
-}
-
-static NSScreen *ADScreenAt(double x, double y) {
-    NSPoint point = NSMakePoint(x, y);
-    for (NSScreen *screen in NSScreen.screens) {
-        if (NSPointInRect(point, ADTopLeftRect(screen.frame))) {
-            return screen;
-        }
-    }
-    return nil;
-}
-
-bool agent_desktop_cursor_overlay_screen(double x,
-                                         double y,
-                                         double *output) {
-    if (output == NULL) {
-        return false;
-    }
-    @try {
-        @autoreleasepool {
-            NSScreen *screen = ADScreenAt(x, y);
-            if (screen == nil) {
-                return false;
-            }
-            NSRect frame = ADTopLeftRect(screen.visibleFrame);
-            output[0] = frame.origin.x;
-            output[1] = frame.origin.y;
-            output[2] = frame.size.width;
-            output[3] = frame.size.height;
-            double refreshRate = 60.0;
-            NSNumber *screenNumber = screen.deviceDescription[@"NSScreenNumber"];
-            if (screenNumber != nil) {
-                CGDisplayModeRef mode = CGDisplayCopyDisplayMode(screenNumber.unsignedIntValue);
-                if (mode != NULL) {
-                    double reportedRate = CGDisplayModeGetRefreshRate(mode);
-                    if (reportedRate > 0.0) {
-                        refreshRate = reportedRate;
-                    }
-                    CGDisplayModeRelease(mode);
-                }
-            }
-            output[4] = MAX(60.0, MIN(120.0, refreshRate));
-            output[5] = NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion ? 1.0 : 0.0;
-            return true;
-        }
-    } @catch (NSException *exception) {
-        (void)exception;
-        return false;
-    }
-}
+static __strong NSWindow *ADCursorWindow = nil;
+static __strong CAShapeLayer *ADArrowLayer = nil;
+static __strong CAShapeLayer *ADHandPointerLayer = nil;
+static __strong NSWindow *ADBubbleWindow = nil;
+static __strong NSTextField *ADBubbleText = nil;
 
 static NSWindow *ADWindow(NSRect frame) {
     NSWindow *window = [[NSWindow alloc]
@@ -173,8 +121,56 @@ static void ADPump(NSApplication *app) {
         runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.0005]];
 }
 
+void agent_desktop_cursor_overlay_idle(void) {
+    @autoreleasepool {
+        ADPump(NSApplication.sharedApplication);
+    }
+}
+
+void agent_desktop_cursor_overlay_stop(void) {
+    [ADCursorWindow orderOut:nil];
+    [ADBubbleWindow orderOut:nil];
+    ADCursorWindow = nil;
+    ADArrowLayer = nil;
+    ADHandPointerLayer = nil;
+    ADBubbleWindow = nil;
+    ADBubbleText = nil;
+}
+
+void agent_desktop_cursor_overlay_hide(void) {
+    [ADCursorWindow orderOut:nil];
+    [ADBubbleWindow orderOut:nil];
+}
+
+void agent_desktop_cursor_overlay_show(void) {
+    [ADCursorWindow orderFrontRegardless];
+    if (ADBubbleText.stringValue.length > 0) {
+        [ADBubbleWindow orderFrontRegardless];
+    }
+}
+
 static void ADMoveCursor(NSWindow *window, double x, double y, double mainHeight) {
     [window setFrameOrigin:NSMakePoint(x - 4.0, mainHeight - y - 35.0)];
+}
+
+static void ADSetBreathing(CALayer *layer, bool enabled) {
+    if (!enabled) {
+        [layer removeAnimationForKey:@"agent-breath"];
+        layer.transform = CATransform3DIdentity;
+        return;
+    }
+    if ([layer animationForKey:@"agent-breath"] != nil) {
+        return;
+    }
+    CABasicAnimation *breath = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
+    breath.fromValue = @0.99;
+    breath.toValue = @1.01;
+    breath.duration = 1.3;
+    breath.autoreverses = YES;
+    breath.repeatCount = HUGE_VALF;
+    breath.timingFunction =
+        [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [layer addAnimation:breath forKey:@"agent-breath"];
 }
 
 static void ADPointerTransition(NSApplication *app,
@@ -256,19 +252,19 @@ static void ADClick(NSApplication *app,
     ADPointerTransition(app, cursorLayer, handLayer, false, frameSeconds);
 }
 
-static void ADSettle(NSApplication *app,
-                     CALayer *cursorLayer,
-                     double frameSeconds) {
+static void ADFadeBubble(NSApplication *app,
+                         NSWindow *bubble,
+                         double frameSeconds) {
     double elapsed = 0.0;
-    while (elapsed < 0.48) {
-        double breath = 0.5 + 0.5 * sin(elapsed * M_PI * 2.0 / 0.72);
-        double scale = 0.99 + 0.01 * breath;
-        cursorLayer.transform = CATransform3DMakeScale(scale, scale, 1.0);
+    while (elapsed < 0.24) {
+        double t = MIN(1.0, elapsed / 0.24);
+        double eased = t * t * (3.0 - 2.0 * t);
+        bubble.alphaValue = 1.0 - eased;
         ADPump(app);
         [NSThread sleepForTimeInterval:frameSeconds];
         elapsed += frameSeconds;
     }
-    cursorLayer.transform = CATransform3DIdentity;
+    [bubble orderOut:nil];
 }
 
 bool agent_desktop_cursor_overlay_run(const double *points,
@@ -287,48 +283,81 @@ bool agent_desktop_cursor_overlay_run(const double *points,
             bool click = (config->flags & ADClickCue) != 0;
             bool reduceMotion = (config->flags & ADReduceMotion) != 0;
 
-            NSWindow *cursor = ADWindow(NSMakeRect(0.0, 0.0, 40.0, 42.0));
-            CAShapeLayer *cursorLayer = ADCursorLayer();
-            [cursor.contentView.layer addSublayer:cursorLayer];
-            CAShapeLayer *handLayer = ADHandLayer();
-            [cursor.contentView.layer addSublayer:handLayer];
+            if (ADCursorWindow == nil) {
+                ADCursorWindow = ADWindow(NSMakeRect(0.0, 0.0, 40.0, 42.0));
+                ADArrowLayer = ADCursorLayer();
+                [ADCursorWindow.contentView.layer addSublayer:ADArrowLayer];
+                ADHandPointerLayer = ADHandLayer();
+                [ADCursorWindow.contentView.layer addSublayer:ADHandPointerLayer];
+            }
+            NSWindow *cursor = ADCursorWindow;
+            CAShapeLayer *cursorLayer = ADArrowLayer;
+            CAShapeLayer *handLayer = ADHandPointerLayer;
+            ADSetBreathing(cursorLayer, !reduceMotion);
+            ADSetBreathing(handLayer, !reduceMotion);
             [cursor orderFrontRegardless];
 
-            NSWindow *bubble = nil;
-            NSTextField *text = nil;
             NSRect bubbleFrame = NSZeroRect;
             bool showsBubble = config->label != NULL && config->label[0] != '\0';
-            if (showsBubble) {
-                bubbleFrame = NSMakeRect(config->bubbleX,
-                                         mainHeight - config->bubbleY - 38.0,
-                                         232.0,
-                                         38.0);
-                bubble = ADWindow(bubbleFrame);
-                CALayer *surface = bubble.contentView.layer;
+            if (ADBubbleWindow == nil) {
+                ADBubbleWindow = ADWindow(NSMakeRect(0.0, 0.0, 232.0, 38.0));
+                CALayer *surface = ADBubbleWindow.contentView.layer;
                 surface.backgroundColor = NSColor.whiteColor.CGColor;
                 surface.cornerRadius = 10.0;
                 surface.borderWidth = 1.5;
                 surface.borderColor =
                     [NSColor colorWithSRGBRed:0.08 green:0.08 blue:0.09 alpha:1.0].CGColor;
-                text = [NSTextField labelWithString:[NSString stringWithUTF8String:config->label]];
-                text.frame = NSMakeRect(13.0, 7.0, 206.0, 23.0);
-                text.textColor = [NSColor colorWithSRGBRed:0.16 green:0.12 blue:0.06 alpha:1.0];
-                text.font = [NSFont systemFontOfSize:12.5];
-                [bubble.contentView addSubview:text];
+                ADBubbleText = [NSTextField labelWithString:@""];
+                ADBubbleText.frame = NSMakeRect(13.0, 7.0, 206.0, 23.0);
+                ADBubbleText.textColor =
+                    [NSColor colorWithSRGBRed:0.16 green:0.12 blue:0.06 alpha:1.0];
+                ADBubbleText.font = [NSFont systemFontOfSize:12.5];
+                [ADBubbleWindow.contentView addSubview:ADBubbleText];
+            }
+            NSString *nextLabel = showsBubble
+                ? [NSString stringWithUTF8String:config->label]
+                : @"";
+            bool changedLabel = ![ADBubbleText.stringValue isEqualToString:nextLabel];
+            if (changedLabel && ADBubbleWindow.isVisible) {
+                if (reduceMotion) {
+                    [ADBubbleWindow orderOut:nil];
+                } else {
+                    ADFadeBubble(app, ADBubbleWindow, config->frameSeconds);
+                }
+            }
+            ADBubbleText.stringValue = nextLabel;
+            if (showsBubble) {
+                bubbleFrame = NSMakeRect(config->bubbleX,
+                                         mainHeight - config->bubbleY - 38.0,
+                                         232.0,
+                                         38.0);
             }
 
             for (size_t index = 0; index < pointCount; index += 1) {
                 ADMoveCursor(cursor, points[index * 2], points[index * 2 + 1], mainHeight);
+                if (showsBubble && !changedLabel && ADBubbleWindow.isVisible) {
+                    NSRect movingFrame = bubbleFrame;
+                    movingFrame.origin.x += points[index * 2] - points[(pointCount - 1) * 2];
+                    movingFrame.origin.y -= points[index * 2 + 1] - points[(pointCount - 1) * 2 + 1];
+                    [ADBubbleWindow setFrame:movingFrame display:YES];
+                }
                 ADPump(app);
                 if (index + 1 < pointCount) {
                     [NSThread sleepForTimeInterval:config->frameSeconds];
                 }
             }
 
-            if (showsBubble && !reduceMotion) {
-                ADRevealBubble(app, bubble, text, bubbleFrame, config->frameSeconds);
+            if (showsBubble && changedLabel && !reduceMotion) {
+                ADRevealBubble(app,
+                               ADBubbleWindow,
+                               ADBubbleText,
+                               bubbleFrame,
+                               config->frameSeconds);
             } else if (showsBubble) {
-                [bubble orderFrontRegardless];
+                [ADBubbleWindow setFrame:bubbleFrame display:YES];
+                ADBubbleWindow.alphaValue = 1.0;
+                ADBubbleText.alphaValue = 1.0;
+                [ADBubbleWindow orderFrontRegardless];
             }
             if (click && !reduceMotion) {
                 NSWindow *ripple = ADWindow(NSMakeRect(0.0, 0.0, 72.0, 72.0));
@@ -354,14 +383,6 @@ bool agent_desktop_cursor_overlay_run(const double *points,
                 handLayer.hidden = YES;
                 cursorLayer.hidden = NO;
             }
-            if (!reduceMotion) {
-                ADSettle(app, cursorLayer, config->frameSeconds);
-            } else {
-                ADPump(app);
-                [NSThread sleepForTimeInterval:0.12];
-            }
-            [cursor orderOut:nil];
-            [bubble orderOut:nil];
             return true;
         }
     } @catch (NSException *exception) {

@@ -9,11 +9,11 @@ use agent_desktop_core::{
 use crate::adapter::MacOSAdapter;
 
 impl SystemOps for MacOSAdapter {
-    fn present_cursor_overlay(
+    fn update_cursor_overlay(
         &self,
-        instruction: &agent_desktop_core::CursorOverlayInstruction,
+        control: &agent_desktop_core::CursorOverlayControl,
     ) -> Result<(), AdapterError> {
-        crate::system::cursor_overlay::present(instruction)
+        crate::system::cursor_overlay::update(control)
     }
 
     fn run_cursor_overlay_child(&self) -> Option<Result<(), AdapterError>> {

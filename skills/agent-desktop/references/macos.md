@@ -245,7 +245,7 @@ After `right-click @ref`, inspect the open menu or the target effect. If macOS r
 
 ### Agent cursor overlay
 
-macOS renders an enabled session overlay in a bounded click-through AppKit child window. Its minimum-jerk glide eases through a visible swing, click feedback briefly switches the arrow to a hand pointer, and the bottom-right intent card is solid white with a 1.5px near-black border. It never activates, moves the OS pointer, or changes command delivery. The renderer follows the system Reduce Motion preference and fails soft if its child cannot start. Use `--headed` to use only the real cursor.
+macOS keeps one click-through AppKit child and cursor window alive for the enabled session. Enable shows “Hey, let's play with this computer!” and eases away only the card. Later actions start from the cursor's previous destination, use the same minimum-jerk swing, briefly switch the arrow to a hand for click feedback, and ease updated intent text in and out of the solid white, 1.5px near-black card. Only disable or session end removes the cursor; headed actions temporarily hide it while the real cursor is in use. The overlay never activates, moves the OS pointer, or changes command delivery, follows Reduce Motion, and fails soft if its child cannot start.
 
 ### App Identification
 

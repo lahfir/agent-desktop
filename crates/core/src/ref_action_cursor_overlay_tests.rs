@@ -2,11 +2,11 @@ use super::*;
 use crate::adapter::{
     ActionOps, InputOps, NativeHandle, ObservationOps, SnapshotSurface, SystemOps,
 };
-use crate::{Action, ActionResult, AdapterError, CursorOverlayInstruction, capability};
+use crate::{Action, ActionResult, AdapterError, CursorOverlayControl, capability};
 use std::sync::Mutex;
 
 struct CursorAdapter {
-    presented: Mutex<Vec<CursorOverlayInstruction>>,
+    presented: Mutex<Vec<CursorOverlayControl>>,
     fail_presentation: bool,
 }
 
@@ -48,14 +48,11 @@ impl SystemOps for CursorAdapter {
     crate::adapter::guarded_interaction_lease!();
     crate::adapter::exact_window_focus!();
 
-    fn present_cursor_overlay(
-        &self,
-        instruction: &CursorOverlayInstruction,
-    ) -> Result<(), AdapterError> {
+    fn update_cursor_overlay(&self, control: &CursorOverlayControl) -> Result<(), AdapterError> {
         if self.fail_presentation {
             return Err(AdapterError::internal("renderer unavailable"));
         }
-        self.presented.lock().unwrap().push(instruction.clone());
+        self.presented.lock().unwrap().push(control.clone());
         Ok(())
     }
 }
@@ -105,7 +102,7 @@ fn entry() -> RefEntry {
 fn enabled_context() -> CommandContext {
     let config =
         crate::CursorOverlayConfig::enabled(Some("Opening menu".into()), 6).expect("valid config");
-    CommandContext::default().with_cursor_overlay(config)
+    CommandContext::default().with_cursor_overlay_session("test-session", config)
 }
 
 #[test]
@@ -123,10 +120,10 @@ fn enabled_cursor_presents_verified_center_after_dispatch() {
     let presented = adapter.presented.lock().unwrap();
     assert_eq!(presented.len(), 1);
     assert_eq!(
-        presented[0].destination(),
+        presented[0].instruction().unwrap().destination(),
         &crate::Point { x: 11.0, y: 11.0 }
     );
-    assert!(presented[0].is_click());
+    assert!(presented[0].instruction().unwrap().is_click());
     assert_eq!(presented[0].label(), Some("Opening menu"));
 }
 

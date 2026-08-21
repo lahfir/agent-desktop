@@ -10,7 +10,9 @@ mod session;
 mod system;
 mod trace;
 
-use agent_desktop_core::{AppError, PermissionReport, PlatformAdapter, context::CommandContext};
+use agent_desktop_core::{
+    AppError, CursorOverlayControl, PermissionReport, PlatformAdapter, context::CommandContext,
+};
 use serde_json::Value;
 
 use crate::cli::Commands;
@@ -22,11 +24,20 @@ pub(crate) fn dispatch(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     tracing::debug!("dispatch: {}", cmd.name());
+    let overlay_session =
+        if cmd.is_mutating() && context.is_headed() && context.cursor_overlay().is_enabled() {
+            context.session_id().map(str::to_owned)
+        } else {
+            None
+        };
     let scope = if cmd.is_mutating() {
         context.mutating_command_scope(cmd.name())?
     } else {
         context.command_scope(cmd.name())?
     };
+    if let Some(session_id) = overlay_session.as_ref() {
+        let _ = adapter.update_cursor_overlay(&CursorOverlayControl::hide(session_id.clone()));
+    }
     let result = match cmd {
         Commands::Snapshot(args) => observation::snapshot(args, adapter, context),
         Commands::Find(args) => observation::find(args, adapter, context),
@@ -86,10 +97,13 @@ pub(crate) fn dispatch(
         Commands::Version => system::version(),
         Commands::Batch(args) => system::batch(args, adapter, permission_report, context),
         Commands::Skills(args) => system::skills(args),
-        Commands::Session(args) => system::session(args, context),
-        Commands::CursorOverlay(args) => cursor_overlay::dispatch(args, context),
+        Commands::Session(args) => system::session(args, adapter, context),
+        Commands::CursorOverlay(args) => cursor_overlay::dispatch(args, adapter, context),
         Commands::Trace(args) => system::trace(args, context),
     };
+    if let Some(session_id) = overlay_session {
+        let _ = adapter.update_cursor_overlay(&CursorOverlayControl::show(session_id));
+    }
     scope.complete(&result)?;
     result
 }
