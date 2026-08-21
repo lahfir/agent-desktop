@@ -182,7 +182,11 @@ function Invoke-ScrollToVisibilityLeg {
                below is a fresh find; a stale-ref error during the
                transition counts as "not yet settled", not a crash. #>
             $top = Require-Target -Target (Find-Target -App $App -NativeId 'scroll-row-1' -TimeoutSeconds 10) -Description 'scroll-row-1'
-            Invoke-Target -Target $top -Action 'scroll-to' -RequireOk -Description 'scroll-row-1' | Out-Null
+            $diagTopEnvelope = Invoke-Target -Target $top -Action 'scroll-to' -Description 'scroll-row-1 DIAG'
+            Write-Host "DIAG scroll-row-1-envelope: $($diagTopEnvelope | ConvertTo-Json -Depth 12 -Compress)"
+            if ($diagTopEnvelope['ok'] -ne $true) {
+                throw "Invoke-Target: setup action 'scroll-to' on scroll-row-1 failed: $($diagTopEnvelope['error']['code'])"
+            }
 
             $restoreDeadline = [System.Diagnostics.Stopwatch]::StartNew()
             $restoredBelowFold = $false

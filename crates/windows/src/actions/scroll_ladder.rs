@@ -52,7 +52,21 @@ pub(crate) struct VisibilitySample {
     pub(crate) viewport: Option<Rect>,
 }
 
-/// On-screen, positive area, viewport intersection (A18-2).
+/// On-screen, positive area, and - when a viewport rect resolves - intersecting
+/// it (A18-2).
+///
+/// A viewport that does not resolve means the container did not report one, not
+/// that the element is hidden. Treating the two alike fails every element whose
+/// container keeps its viewport to itself: the provider reports the element
+/// on-screen with real bounds, the intersection test cannot run, visibility is
+/// declared unverified forever, and because an already-visible element makes
+/// `ScrollIntoView` a legitimate no-op, the unchanged geometry is then read as
+/// a failed scroll. Reproduced against File Explorer's tree rows, which are
+/// plainly on screen and returned `ACTION_FAILED` for exactly this reason.
+///
+/// So the viewport is a strengthening check rather than a required one. Without
+/// it the provider's own `IsOffscreen` is the verdict, which is the same source
+/// the offscreen guard above already trusts.
 #[cfg(target_os = "windows")]
 pub(crate) fn visibility_verified(sample: &VisibilitySample) -> bool {
     use crate::tree::properties::rect_has_area;
@@ -65,7 +79,7 @@ pub(crate) fn visibility_verified(sample: &VisibilitySample) -> bool {
     }
     match sample.viewport {
         Some(viewport) => intersects(bounds, viewport),
-        None => false,
+        None => true,
     }
 }
 

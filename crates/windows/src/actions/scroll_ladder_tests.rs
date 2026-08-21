@@ -346,3 +346,33 @@ fn ladder_uses_large_amounts_distinct_from_the_scroll_commands_small_nudge() {
         assert_eq!((ladder_h, ladder_v), large);
     }
 }
+
+/// An element the provider reports on-screen, with real bounds, whose container
+/// publishes no viewport rect. Explorer's tree rows are exactly this shape.
+///
+/// Reading the absent viewport as "not visible" made `scroll-to` fail on every
+/// such element: visibility could never be confirmed, and an already-visible
+/// element makes `ScrollIntoView` a legitimate no-op, so the unchanged geometry
+/// was then reported as a failed scroll. Both of File Explorer's tree rows
+/// returned `ACTION_FAILED` this way before the fix and `delivered_verified`
+/// after it.
+#[test]
+fn an_unresolvable_viewport_does_not_make_an_on_screen_element_invisible() {
+    let on_screen_without_viewport = VisibilitySample {
+        bounds: Some(Rect {
+            x: 10.0,
+            y: 10.0,
+            width: 120.0,
+            height: 24.0,
+        }),
+        offscreen: Some(false),
+        viewport: None,
+    };
+
+    assert!(
+        visibility_verified(&on_screen_without_viewport),
+        "a container that publishes no viewport rect has declined to answer, not \
+         reported the element hidden - the provider's own on-screen flag and a \
+         positive-area rect are what remain, and both say visible"
+    );
+}
