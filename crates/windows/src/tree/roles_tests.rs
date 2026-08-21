@@ -169,6 +169,14 @@ fn every_interactive_role_is_either_produced_or_explicitly_unproduced() {
 #[path = "roles_aria_tests.rs"]
 mod aria;
 
+/// The fixture-coverage union pin needs an enumeration of every role
+/// [`super::control_type_role`] can produce, which is large enough alongside
+/// the vocabulary tests above to press the 400-line file cap, so it lives in
+/// its own file the same way [`aria`] does.
+#[cfg(target_os = "windows")]
+#[path = "roles_fixture_coverage_tests.rs"]
+mod fixture_coverage;
+
 #[cfg(target_os = "windows")]
 #[test]
 fn tab_and_tabitem_inversion_is_pinned() {
@@ -223,6 +231,37 @@ fn a_failed_read_only_read_resolves_document_not_textfield() {
         ),
         "textfield"
     );
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn custom_advertising_griditem_or_tableitem_becomes_cell() {
+    assert_eq!(
+        role_of(
+            ControlType::Custom,
+            vec![flag(TreeProperty::GridItemAvailable, true)]
+        ),
+        "cell"
+    );
+    assert_eq!(
+        role_of(
+            ControlType::Custom,
+            vec![flag(TreeProperty::TableItemAvailable, true)]
+        ),
+        "cell"
+    );
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn custom_advertising_neither_pattern_stays_unknown() {
+    assert_eq!(role_of(ControlType::Custom, Vec::new()), "unknown");
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn dataitem_advertising_neither_pattern_stays_row() {
+    assert_eq!(role_of(ControlType::DataItem, Vec::new()), "row");
 }
 
 #[test]

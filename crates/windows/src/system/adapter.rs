@@ -9,12 +9,38 @@ use agent_desktop_core::{
 use crate::adapter::WindowsAdapter;
 
 impl SystemOps for WindowsAdapter {
-    /// The interaction lease: enough to unblock renderer activation.
-    ///
-    /// Core's activation loop acquires a lease before activating, and the
-    /// trait default fails closed - so without this override the first settle
-    /// would die `PLATFORM_NOT_SUPPORTED`. Full cross-process lease semantics
-    /// are owned by the later input work on this crate.
+    /// The cross-process desktop-interaction lease: an exclusive,
+    /// token-derived lock file when `AGENT_DESKTOP_INTERACTION_LEASE_HANDLE`
+    /// is unset, or adoption of the inherited handle it names - re-verifying
+    /// both the handle's identity and its exclusivity before trusting it,
+    /// because a handle's share mode cannot be read back on Windows and
+    /// identity alone proves naming rather than exclusion - when it is set.
+    /// Mirrors `MacOSAdapter`'s two-branch override over
+    /// `acquire_unix_interaction_lease` / `adopt_inherited_unix_interaction_lease`.
+    #[cfg(target_os = "windows")]
+    fn acquire_interaction_lease(
+        &self,
+        deadline: Deadline,
+    ) -> Result<InteractionLease, AdapterError> {
+        match std::env::var(crate::system::interaction_lease::INTERACTION_LEASE_HANDLE_ENV) {
+            Ok(value) => {
+                let raw = value.parse::<isize>().map_err(|_| {
+                    AdapterError::new(
+                        agent_desktop_core::ErrorCode::InvalidArgs,
+                        "Inherited interaction lease handle must be a valid integer",
+                    )
+                })?;
+                crate::system::interaction_lease::adopt_inherited(raw, deadline)
+            }
+            Err(_) => crate::system::interaction_lease::acquire(deadline),
+        }
+    }
+
+    /// No cross-process lock exists off Windows in this crate; the
+    /// in-process guard core's activation loop needs is still supplied so a
+    /// non-Windows build of this crate (compiled by CI on every platform,
+    /// never shipped) does not fail closed on the first settle.
+    #[cfg(not(target_os = "windows"))]
     fn acquire_interaction_lease(
         &self,
         deadline: Deadline,
@@ -264,16 +290,19 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn the_activation_path_acquires_a_windows_lease_and_settles() {
-        let adapter = WindowsAdapter::new();
-        let lease = SystemOps::acquire_interaction_lease(&adapter, Deadline::after(5_000).unwrap())
-            .expect("the Windows lease override must not show up as not_supported");
+        crate::system::test_support::with_interaction_lease_test_lock(|| {
+            let adapter = WindowsAdapter::new();
+            let lease =
+                SystemOps::acquire_interaction_lease(&adapter, Deadline::after(5_000).unwrap())
+                    .expect("the Windows lease override must not show up as not_supported");
 
-        SystemOps::activate_renderer_accessibility(
-            &adapter,
-            ProcessIdentity::new(std::process::id(), "test"),
-            &lease,
-        )
-        .expect("activation is the settle, which succeeds");
+            SystemOps::activate_renderer_accessibility(
+                &adapter,
+                ProcessIdentity::new(std::process::id(), "test"),
+                &lease,
+            )
+            .expect("activation is the settle, which succeeds");
+        });
     }
 
     /// The sheet surface specifically, reached through the `SystemOps` trait

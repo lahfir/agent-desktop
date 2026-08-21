@@ -41,9 +41,16 @@ pub fn execute(
             let live = optional_live_read(adapter.get_live_value(&handle, deadline))?;
             ("value", json!(live.or(entry.identity.value)))
         }
-        GetProperty::Bounds => ("bounds", json!(entry.geometry.bounds)),
+        GetProperty::Bounds => {
+            let live = optional_live_read(adapter.get_element_bounds(&handle, deadline))?;
+            ("bounds", json!(live.or(entry.geometry.bounds)))
+        }
         GetProperty::States => ("states", json!(entry.capabilities.states)),
     };
 
     Ok(json!({ "property": prop_name, "ref": args.ref_id, "value": value }))
 }
+
+#[cfg(test)]
+#[path = "get_tests.rs"]
+mod tests;

@@ -1,0 +1,26 @@
+{
+    "probe":  "24-fixture-e2e/05-hwnd-wrap-churn",
+    "question":  "what is the HWND uniqueness-counter wrap rate under staged churn from one still-running process: total windows created, distinct HWND values seen, how many HWND VALUES were reused (full-value collision, the wrap hazard) versus how many creations only reused the low-16-bit index while the high-16-bit counter advanced (benign slot recycling), the creation count at first full-value reuse, the highest counter value observed for any index, and elapsed wall time",
+    "methodology":  "CreateWindowEx/DestroyWindow round-trips synthesized entirely in-process via P/Invoke against a scratch window class this probe registers and unregisters itself - no external process is spawned per window, the whole burst runs inside this one still-running PowerShell process; every window is created invisible (no WS_VISIBLE), WS_EX_NOACTIVATE|WS_EX_TOOLWINDOW, at an off-screen origin, and destroyed before the next is created; a full HWND value is the 32-bit handle CreateWindowEx returns; index = low 16 bits, generation counter = high 16 bits, per the documented USER-handle index+uniqueness-counter encoding; capped by BOTH an iteration count and a wall-clock budget, whichever is hit first",
+    "result":  {
+                   "measurable":  true,
+                   "branch":  "full_value_reuse_observed",
+                   "cap_hit":  "wall_clock_cap",
+                   "max_iterations_requested":  300000,
+                   "max_wall_clock_ms_requested":  90000,
+                   "total_windows_created":  91923,
+                   "creation_failures":  0,
+                   "elapsed_ms":  <duration>,
+                   "distinct_full_hwnd_values_seen":  65534,
+                   "full_value_reuse_events":  26389,
+                   "full_value_reuse_observed":  true,
+                   "first_full_value_reuse_at_creation_count":  65535,
+                   "distinct_hwnd_indices_seen":  1,
+                   "index_only_reuse_events":  65533,
+                   "index_only_reuse_observed":  true,
+                   "first_index_only_reuse_at_creation_count":  2,
+                   "max_generation_counter_observed_for_any_index":  65534,
+                   "generation_field_width_bits":  16,
+                   "foreground_stable":  true
+               }
+}

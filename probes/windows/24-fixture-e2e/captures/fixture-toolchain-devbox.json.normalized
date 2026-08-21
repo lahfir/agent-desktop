@@ -1,0 +1,312 @@
+{
+    "probe":  "24-fixture-e2e-01-fixture-toolchain",
+    "question":  "does the full WinForms fixture toolchain (csc.exe + .NET 4.8) work end to end: does it compile clean, does the window appear in a UIA walk, is AutomationId readable on Button/TextBox/CheckBox, what ControlType does each map to, and what C# language version does csc.exe accept",
+    "measurable":  true,
+    "branch":  "toolchain_exercised",
+    "csc_path":  "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe",
+    "mechanism_hypothesis":  "WinForms has no AutomationProperties.AutomationId setter; the hypothesis under test is that Control.Name is surfaced as AutomationId by the stock provider only once Switch.UseLegacyAccessibilityFeatures* is turned off via an .exe.config - the two arms below isolate exactly that variable, and readback_no_app_config vs readback_with_app_config below is the measurement, not this note",
+    "fixture_automation_ids":  {
+                                   "button":  "btnProbeButton",
+                                   "text_box":  "txtProbeInput",
+                                   "check_box":  "chkProbeOption"
+                               },
+    "langversion_acceptance":  {
+                                   "measurable":  true,
+                                   "branch":  "sweep_completed",
+                                   "compiler_file_version":  "4.8.3761.0 built by: NET48REL1",
+                                   "candidates_sampled":  [
+                                                              "ISO-1",
+                                                              "3",
+                                                              "5",
+                                                              "6",
+                                                              "7",
+                                                              "7.3",
+                                                              "8",
+                                                              "Default",
+                                                              "Latest"
+                                                          ],
+                                   "rows":  [
+                                                {
+                                                    "requested_langversion":  "ISO-1",
+                                                    "accepted":  true,
+                                                    "exit_code":  0,
+                                                    "error_codes":  [
+
+                                                                    ]
+                                                },
+                                                {
+                                                    "requested_langversion":  "3",
+                                                    "accepted":  true,
+                                                    "exit_code":  0,
+                                                    "error_codes":  [
+
+                                                                    ]
+                                                },
+                                                {
+                                                    "requested_langversion":  "5",
+                                                    "accepted":  true,
+                                                    "exit_code":  0,
+                                                    "error_codes":  [
+
+                                                                    ]
+                                                },
+                                                {
+                                                    "requested_langversion":  "6",
+                                                    "accepted":  false,
+                                                    "exit_code":  1,
+                                                    "error_codes":  [
+                                                                        "CS1617"
+                                                                    ]
+                                                },
+                                                {
+                                                    "requested_langversion":  "7",
+                                                    "accepted":  false,
+                                                    "exit_code":  1,
+                                                    "error_codes":  [
+                                                                        "CS1617"
+                                                                    ]
+                                                },
+                                                {
+                                                    "requested_langversion":  "7.3",
+                                                    "accepted":  false,
+                                                    "exit_code":  1,
+                                                    "error_codes":  [
+                                                                        "CS1617"
+                                                                    ]
+                                                },
+                                                {
+                                                    "requested_langversion":  "8",
+                                                    "accepted":  false,
+                                                    "exit_code":  1,
+                                                    "error_codes":  [
+                                                                        "CS1617"
+                                                                    ]
+                                                },
+                                                {
+                                                    "requested_langversion":  "Default",
+                                                    "accepted":  true,
+                                                    "exit_code":  0,
+                                                    "error_codes":  [
+
+                                                                    ]
+                                                },
+                                                {
+                                                    "requested_langversion":  "Latest",
+                                                    "accepted":  false,
+                                                    "exit_code":  1,
+                                                    "error_codes":  [
+                                                                        "CS1617"
+                                                                    ]
+                                                }
+                                            ]
+                               },
+    "compile_no_app_config":  {
+                                  "langversion_used":  "5",
+                                  "exit_code":  0,
+                                  "compiled_ok":  true,
+                                  "error_codes":  [
+
+                                                  ],
+                                  "warning_codes":  [
+
+                                                    ]
+                              },
+    "compile_with_app_config":  {
+                                    "compiled_ok":  true,
+                                    "branch":  "copied_from_no_config_binary_plus_exe_config"
+                                },
+    "readback_no_app_config":  {
+                                   "measurable":  true,
+                                   "branch":  "window_read_via_managed_uia",
+                                   "arm":  "no_app_config",
+                                   "app_config_applied":  false,
+                                   "root_found_by_handle":  true,
+                                   "root_control_type":  "Window",
+                                   "root_walk":  {
+                                                     "window_found_in_root_walk":  true,
+                                                     "root_children_for_pid":  1,
+                                                     "root_child_control_types":  [
+                                                                                      "Window"
+                                                                                  ]
+                                                 },
+                                   "controls":  {
+                                                    "button":  {
+                                                                   "automation_id":  "btnProbeButton",
+                                                                   "found":  true,
+                                                                   "control_type":  "Button",
+                                                                   "automation_id_readback":  "btnProbeButton",
+                                                                   "automation_id_matches":  true
+                                                               },
+                                                    "text_box":  {
+                                                                     "automation_id":  "txtProbeInput",
+                                                                     "found":  true,
+                                                                     "control_type":  "Edit",
+                                                                     "automation_id_readback":  "txtProbeInput",
+                                                                     "automation_id_matches":  true
+                                                                 },
+                                                    "check_box":  {
+                                                                      "automation_id":  "chkProbeOption",
+                                                                      "found":  true,
+                                                                      "control_type":  "CheckBox",
+                                                                      "automation_id_readback":  "chkProbeOption",
+                                                                      "automation_id_matches":  true
+                                                                  }
+                                                },
+                                   "all_three_controls_found":  true,
+                                   "all_three_automation_ids_match":  true,
+                                   "subtree_dump":  [
+                                                        {
+                                                            "depth":  0,
+                                                            "control_type":  "Window",
+                                                            "automation_id":  "frmProbe24Fixture"
+                                                        },
+                                                        {
+                                                            "depth":  1,
+                                                            "control_type":  "Button",
+                                                            "automation_id":  "btnProbeButton"
+                                                        },
+                                                        {
+                                                            "depth":  1,
+                                                            "control_type":  "Edit",
+                                                            "automation_id":  "txtProbeInput"
+                                                        },
+                                                        {
+                                                            "depth":  1,
+                                                            "control_type":  "CheckBox",
+                                                            "automation_id":  "chkProbeOption"
+                                                        },
+                                                        {
+                                                            "depth":  1,
+                                                            "control_type":  "TitleBar",
+                                                            "automation_id":  "TitleBar"
+                                                        },
+                                                        {
+                                                            "depth":  2,
+                                                            "control_type":  "MenuBar",
+                                                            "automation_id":  "frmProbe24Fixture"
+                                                        },
+                                                        {
+                                                            "depth":  3,
+                                                            "control_type":  "MenuItem",
+                                                            "automation_id":  "Item 1"
+                                                        },
+                                                        {
+                                                            "depth":  2,
+                                                            "control_type":  "Button",
+                                                            "automation_id":  "Minimize"
+                                                        },
+                                                        {
+                                                            "depth":  2,
+                                                            "control_type":  "Button",
+                                                            "automation_id":  "Maximize"
+                                                        },
+                                                        {
+                                                            "depth":  2,
+                                                            "control_type":  "Button",
+                                                            "automation_id":  "Close"
+                                                        }
+                                                    ],
+                                   "subtree_dump_note":  "bounded ControlView walk of the fixture window itself (probe-owned controls, so control_type/automation_id are verbatim); disambiguates found:false above between \"not in the tree\" and \"in the tree with an empty AutomationId\""
+                               },
+    "readback_with_app_config":  {
+                                     "measurable":  true,
+                                     "branch":  "window_read_via_managed_uia",
+                                     "arm":  "legacy_accessibility_switches_off",
+                                     "app_config_applied":  true,
+                                     "root_found_by_handle":  true,
+                                     "root_control_type":  "Window",
+                                     "root_walk":  {
+                                                       "window_found_in_root_walk":  true,
+                                                       "root_children_for_pid":  1,
+                                                       "root_child_control_types":  [
+                                                                                        "Window"
+                                                                                    ]
+                                                   },
+                                     "controls":  {
+                                                      "button":  {
+                                                                     "automation_id":  "btnProbeButton",
+                                                                     "found":  true,
+                                                                     "control_type":  "Button",
+                                                                     "automation_id_readback":  "btnProbeButton",
+                                                                     "automation_id_matches":  true
+                                                                 },
+                                                      "text_box":  {
+                                                                       "automation_id":  "txtProbeInput",
+                                                                       "found":  true,
+                                                                       "control_type":  "Edit",
+                                                                       "automation_id_readback":  "txtProbeInput",
+                                                                       "automation_id_matches":  true
+                                                                   },
+                                                      "check_box":  {
+                                                                        "automation_id":  "chkProbeOption",
+                                                                        "found":  true,
+                                                                        "control_type":  "CheckBox",
+                                                                        "automation_id_readback":  "chkProbeOption",
+                                                                        "automation_id_matches":  true
+                                                                    }
+                                                  },
+                                     "all_three_controls_found":  true,
+                                     "all_three_automation_ids_match":  true,
+                                     "subtree_dump":  [
+                                                          {
+                                                              "depth":  0,
+                                                              "control_type":  "Window",
+                                                              "automation_id":  "frmProbe24Fixture"
+                                                          },
+                                                          {
+                                                              "depth":  1,
+                                                              "control_type":  "Button",
+                                                              "automation_id":  "btnProbeButton"
+                                                          },
+                                                          {
+                                                              "depth":  1,
+                                                              "control_type":  "Edit",
+                                                              "automation_id":  "txtProbeInput"
+                                                          },
+                                                          {
+                                                              "depth":  1,
+                                                              "control_type":  "CheckBox",
+                                                              "automation_id":  "chkProbeOption"
+                                                          },
+                                                          {
+                                                              "depth":  1,
+                                                              "control_type":  "TitleBar",
+                                                              "automation_id":  "TitleBar"
+                                                          },
+                                                          {
+                                                              "depth":  2,
+                                                              "control_type":  "MenuBar",
+                                                              "automation_id":  "frmProbe24Fixture"
+                                                          },
+                                                          {
+                                                              "depth":  3,
+                                                              "control_type":  "MenuItem",
+                                                              "automation_id":  "Item 1"
+                                                          },
+                                                          {
+                                                              "depth":  2,
+                                                              "control_type":  "Button",
+                                                              "automation_id":  "Minimize"
+                                                          },
+                                                          {
+                                                              "depth":  2,
+                                                              "control_type":  "Button",
+                                                              "automation_id":  "Maximize"
+                                                          },
+                                                          {
+                                                              "depth":  2,
+                                                              "control_type":  "Button",
+                                                              "automation_id":  "Close"
+                                                          }
+                                                      ],
+                                     "subtree_dump_note":  "bounded ControlView walk of the fixture window itself (probe-owned controls, so control_type/automation_id are verbatim); disambiguates found:false above between \"not in the tree\" and \"in the tree with an empty AutomationId\""
+                                 },
+    "summary":  {
+                    "csc_compiled_clean":  true,
+                    "automationid_readable_without_app_config":  true,
+                    "automationid_readable_with_app_config":  true,
+                    "app_config_required_for_automationid":  false,
+                    "highest_accepted_sampled_langversion":  "5",
+                    "latest_alias_accepted":  false
+                }
+}

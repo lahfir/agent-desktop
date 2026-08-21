@@ -34,6 +34,18 @@ impl ActionabilityReport {
             .and_then(|check| check.terminal_code.clone())
     }
 
+    /// Whether `stable` is the sole reason this report is not actionable.
+    ///
+    /// `stable_preflight`'s retry-by-sampling loop in `ref_action.rs` is
+    /// worth entering only when nothing else is wrong: a disabled element,
+    /// a policy refusal, or a genuinely hidden target will not resolve by
+    /// waiting, but bounds not yet matching a stale snapshot hash might.
+    pub(crate) fn only_blocking_check_is_stability(&self) -> bool {
+        let mut blocking = self.checks.iter().filter(|check| is_blocking(check));
+        matches!(blocking.next(), Some(check) if check.check == "stable")
+            && blocking.next().is_none()
+    }
+
     pub(crate) fn failure_reasons(&self) -> String {
         self.checks
             .iter()

@@ -45,6 +45,8 @@ const CONTROL_TOP: i32 = 8;
 const CONTROL_WIDTH: i32 = 200;
 const CONTROL_HEIGHT: i32 = 24;
 const CONTROL_GAP: i32 = 40;
+const PAIR_WINDOW_WIDTH: i32 = 420;
+const PAIR_WINDOW_HEIGHT: i32 = 220;
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const WALKABLE_TIMEOUT: Duration = Duration::from_secs(20);
 const WALKABLE_POLL: Duration = Duration::from_millis(100);
@@ -119,16 +121,18 @@ impl Drop for DuplicatePairWindow {
 fn host_duplicate_pair(ready: Sender<(isize, u32)>, geometry: PairGeometry) {
     let class = wide("#32770");
     let title = wide(TITLE_MARKER);
+    let stage = crate::tree::offscreen_origin::stage(None, PAIR_WINDOW_WIDTH, PAIR_WINDOW_HEIGHT);
+    let (left, top) = stage.origin();
     let window = unsafe {
         CreateWindowExW(
             0,
             class.as_ptr(),
             title.as_ptr(),
             WS_OVERLAPPEDWINDOW,
-            2_100,
-            2_100,
-            420,
-            220,
+            left,
+            top,
+            PAIR_WINDOW_WIDTH,
+            PAIR_WINDOW_HEIGHT,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             GetModuleHandleW(std::ptr::null()),

@@ -80,6 +80,40 @@ pub(super) fn check_with_stability(
     hit_test: Option<(&NativeHandle, &dyn PlatformAdapter)>,
     deadline: crate::Deadline,
 ) -> Result<ActionabilityReport, AdapterError> {
+    let report = build_report(stability, evidence, request, hit_test, deadline)?;
+    finish(evidence, report)
+}
+
+/// Like [`check_with_stability`], but a report whose only unmet requirement
+/// is `stable` is returned as `Ok` instead of converted to a terminal `Err`.
+///
+/// `stable_preflight` (`ref_action.rs`) samples live bounds to let a target
+/// settle before deciding stability is truly unreachable; it can only make
+/// that call by seeing the report, and `finish` below has already discarded
+/// it into an error by the time a normal caller sees anything. Every other
+/// gap - disabled, hidden, policy-denied, unsupported - still converts here,
+/// unchanged, because no amount of sampling resolves those.
+pub(super) fn check_with_stability_or_gap(
+    stability: StabilityExpectation,
+    evidence: &ActionabilityEvidence,
+    request: &ActionRequest,
+    hit_test: Option<(&NativeHandle, &dyn PlatformAdapter)>,
+    deadline: crate::Deadline,
+) -> Result<ActionabilityReport, AdapterError> {
+    let report = build_report(stability, evidence, request, hit_test, deadline)?;
+    if !report.actionable && report.only_blocking_check_is_stability() {
+        return Ok(report);
+    }
+    finish(evidence, report)
+}
+
+fn build_report(
+    stability: StabilityExpectation,
+    evidence: &ActionabilityEvidence,
+    request: &ActionRequest,
+    hit_test: Option<(&NativeHandle, &dyn PlatformAdapter)>,
+    deadline: crate::Deadline,
+) -> Result<ActionabilityReport, AdapterError> {
     let requirements = ActionabilityRequirements::for_action(&request.action);
     let pointer_delivery =
         requirements.pointer_delivery(&request.action, &evidence.available_actions, request.policy);
@@ -103,10 +137,11 @@ pub(super) fn check_with_stability(
         .iter()
         .any(|check| !matches!(check.status, super::status::ActionabilityStatus::Pass))
     {
-        return finish(
-            evidence,
-            ActionabilityReport::from_checks(checks, verified_point, pointer_delivery),
-        );
+        return Ok(ActionabilityReport::from_checks(
+            checks,
+            verified_point,
+            pointer_delivery,
+        ));
     }
     if matches!(pointer_delivery, super::PointerDelivery::Physical) {
         match hit_test {
@@ -122,10 +157,11 @@ pub(super) fn check_with_stability(
             )),
         }
     }
-    finish(
-        evidence,
-        ActionabilityReport::from_checks(checks, verified_point, pointer_delivery),
-    )
+    Ok(ActionabilityReport::from_checks(
+        checks,
+        verified_point,
+        pointer_delivery,
+    ))
 }
 
 fn finish(

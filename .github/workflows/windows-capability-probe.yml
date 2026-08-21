@@ -19,6 +19,7 @@ on:
       - 'probes/windows/21-system-lifecycle/**'
       - 'probes/windows/22-capture-clipboard/**'
       - 'probes/windows/23-signals-menus/**'
+      - 'probes/windows/24-fixture-e2e/**'
       - 'probes/windows/FINDINGS.md'
       - 'probes/windows/13-ledger-check.ps1'
       - 'probes/windows/13-ledger-content.ps1'
@@ -96,6 +97,29 @@ jobs:
         run: |
           .\probes\windows\23-signals-menus\probe.ps1 -Label ci
 
+      # Area 24 (the fixture E2E harness, sub-phase 2.12): only the probes
+      # that need nothing beyond the in-box csc.exe and this runner's own
+      # desktop run here. 02 (split-integrity staging), 03 and 08 (a
+      # Chromium/Electron target) and 07 (split-integrity effects) need
+      # staged low-privilege tokens or an installed Electron application
+      # this hosted image does not carry - they are dev-box/self-hosted
+      # only, and the paths filter above deliberately does not imply
+      # coverage this job does not execute for them.
+      - name: Run the fixture-toolchain probe
+        shell: powershell
+        run: |
+          .\probes\windows\24-fixture-e2e\01-fixture-toolchain.ps1 -Label ci
+
+      - name: Run the cell-role stock-DataGridView probe
+        shell: powershell
+        run: |
+          .\probes\windows\24-fixture-e2e\09-cell-role-stock-dgv.ps1 -Label ci
+
+      - name: Run the hosted modern-capture probe
+        shell: powershell
+        run: |
+          .\probes\windows\24-fixture-e2e\10-hosted-modern-capture.ps1 -Label ci
+
       # Runs after the area probes so the ledger it audits reflects every
       # capture this job just wrote. Registered here rather than the main CI
       # lane (ci.yml) per KTD12: the gate reads the probe corpus and diffs
@@ -118,6 +142,20 @@ jobs:
         run: |
           .\probes\windows\13-ledger-check.ps1
 
+      # Gated, and gated before the upload runs, mirroring windows-e2e.yml's
+      # own redaction-gate step: this job writes fresh *-ci.json captures on
+      # every leg above, committed corpus or not, and uploading them as a
+      # workflow-run artifact from a PUBLIC repository with no redaction
+      # step in between was a second, ungated path around R21's committed-
+      # capture scope. The default (no -Path) scan derives its file set from
+      # tracked files (finding #8), which already covers every path this
+      # job's own upload step lists below.
+      - name: Redact and gate the measured captures
+        id: redaction-gate
+        if: ${{ !cancelled() }}
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-capture-redaction.ps1
+
       # Uploads on failure as well as success. A probe that fails its mandatory
       # measurement gate has already written the placeholder captures naming
       # what did not measure, and on a red run those are the entire evidence
@@ -125,8 +163,12 @@ jobs:
       # nothing else. !cancelled() rather than always(): the concurrency group
       # above supersedes runs routinely, always() keeps running through a
       # cancellation and is the documented cause of runs that will not cancel.
+      # Also requires the redaction gate above to have passed - not job
+      # success alone, which would either skip the gate on a red suite
+      # (losing the debugging payload) or upload regardless of the gate's
+      # own result.
       - name: Upload the measured captures
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.redaction-gate.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-capability-probe-captures
@@ -141,6 +183,7 @@ jobs:
             probes/windows/21-system-lifecycle/captures/*-ci.json
             probes/windows/22-capture-clipboard/captures/*-ci.json
             probes/windows/23-signals-menus/captures/*-ci.json
+            probes/windows/24-fixture-e2e/captures/*-ci.json
             probes/windows/captures/13-ledger-check/*.json
           # warn, not error. A probe that fails before writing anything leaves
           # nothing to match, and erroring would stack a second "No files were

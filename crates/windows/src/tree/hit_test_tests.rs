@@ -10,7 +10,6 @@ use super::imp::{
 use crate::system::hresult::{E_ACCESSDENIED, E_FAIL, UIA_E_NOTSUPPORTED, UIA_E_TIMEOUT};
 use crate::tree::automation::{ERR_INVALID_ARG, ERR_TIMEOUT, UiaFailure, root_from_hwnd};
 use crate::tree::fixture::{LocalFixture, ensure_test_apartment};
-use crate::tree::fixture_window;
 use crate::tree::walker::NodeKey;
 use crate::tree::walker_fake::deadline;
 use agent_desktop_core::{Deadline, ErrorCode, Point, Rect, hit_test::HitTestResult};
@@ -287,6 +286,7 @@ fn permission_pre_read_escapes_as_err() {
 fn dead_token_preamble_escapes_as_stale_reader_err() {
     ensure_test_apartment();
     let fixture = LocalFixture::create().expect("off-screen fixture starts");
+    let (left, top) = fixture.origin();
     let root = root_from_hwnd(fixture.handle(), deadline()).expect("fixture root");
     let handle = root
         .with_verified_process(std::process::id(), "dead-token-for-hit-test".into())
@@ -294,8 +294,8 @@ fn dead_token_preamble_escapes_as_stale_reader_err() {
     let error = hit_test_impl(
         &handle,
         Point {
-            x: f64::from(fixture_window::OFFSCREEN_LEFT + 20),
-            y: f64::from(fixture_window::OFFSCREEN_TOP + 20),
+            x: f64::from(left + 20),
+            y: f64::from(top + 20),
         },
         deadline(),
     )

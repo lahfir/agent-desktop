@@ -32,6 +32,23 @@ use std::sync::Mutex;
 
 pub(crate) static FIXTURE_APP_NAME_LOCK: Mutex<()> = Mutex::new(());
 
+/// Serializes every test that reaches the real, machine-global interaction
+/// lease - `ProcessLeaseGuard`'s `AtomicBool` is process-wide, so two lease
+/// tests in different OS threads of the same `cargo test` binary contend on
+/// it even when each targets its own scratch lock-file root. Held for the
+/// entire body of any such test, never just around one call.
+pub(crate) static INTERACTION_LEASE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// Runs `body` under [`INTERACTION_LEASE_TEST_LOCK`], recovering from a
+/// poisoned mutex rather than propagating it - one earlier test's panic must
+/// not fail every later lease test the same run happens to reach.
+pub(crate) fn with_interaction_lease_test_lock<R>(body: impl FnOnce() -> R) -> R {
+    let _guard = INTERACTION_LEASE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    body()
+}
+
 pub(crate) fn with_flag<R>(
     flag: &'static std::thread::LocalKey<Cell<bool>>,
     value: bool,
@@ -110,4 +127,77 @@ pub(crate) fn stage_foreground(handle: isize) -> bool {
         }
     }
     crate::system::window_ops::is_foreground_window(hwnd)
+}
+
+/// Waits until the desktop's foreground stops moving, reporting whether it
+/// settled inside the budget. Raw `GetForegroundWindow` rather than any product
+/// read, so a test can establish *nothing is changing* without asking the code
+/// under test whether anything changed.
+///
+/// A freshly spawned window is not steady. Windows hands a newly created
+/// top-level window the foreground a short and variable time after creation, so
+/// a capture taken as soon as the spawn call returns and a capture taken a
+/// settle interval later straddle a genuine focus change. A test whose premise
+/// is "nothing happened between these two captures" has to establish that
+/// premise by observation; inferring it from the spawn having returned is an
+/// assumption that holds on an idle machine and fails on a loaded one, which
+/// makes the resulting failure look like a defect in the diff rather than in
+/// the test's setup.
+#[cfg(target_os = "windows")]
+pub(crate) fn wait_for_foreground_to_settle() -> bool {
+    use std::time::{Duration, Instant};
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+
+    const REQUIRED_STABLE_READS: u32 = 5;
+    const POLL: Duration = Duration::from_millis(50);
+    const BUDGET: Duration = Duration::from_secs(15);
+
+    let deadline = Instant::now() + BUDGET;
+    let mut last = unsafe { GetForegroundWindow() };
+    let mut stable = 0_u32;
+    while Instant::now() < deadline {
+        std::thread::sleep(POLL);
+        let current = unsafe { GetForegroundWindow() };
+        if current == last {
+            stable += 1;
+            if stable >= REQUIRED_STABLE_READS {
+                return true;
+            }
+        } else {
+            stable = 0;
+            last = current;
+        }
+    }
+    false
+}
+
+/// Waits for a live source to reach an expected value, reporting whether it did
+/// inside the budget, reporting whether it did inside the budget.
+///
+/// `wait_for_menu_state` observes the fixture's own flag, set around its
+/// `TrackPopupMenu` call. The classic menu-mode bits and the UIA tool-window
+/// promotion are the OS's separate views of that same transition and reach
+/// their new value a short, variable time afterwards. Sleeping a fixed span
+/// between the two is a guess at that lag: it holds on an idle machine and
+/// fails under parallel load, where the failure reads as the detector being
+/// wrong rather than as the assertion having asked too early. Waiting on the
+/// value itself removes the guess without weakening what is asserted - a source
+/// that never reaches the expected state still exhausts the budget and fails.
+pub(crate) fn settles_to(
+    budget: std::time::Duration,
+    expected: bool,
+    mut read: impl FnMut() -> bool,
+) -> bool {
+    const POLL: std::time::Duration = std::time::Duration::from_millis(25);
+
+    let deadline = std::time::Instant::now() + budget;
+    loop {
+        if read() == expected {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(POLL);
+    }
 }

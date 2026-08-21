@@ -2,13 +2,15 @@ use agent_desktop_core::{
     AdapterError, Deadline, DeliverySemantics, ErrorCode, ProcessId, WindowFilter, WindowInfo,
     launch_options::LaunchOptions, launch_result::LaunchResult,
 };
+#[cfg(test)]
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Duration;
 
 use super::app_ops::{ProcessRow, process_snapshot};
 use super::launch_path::{
-    image_file_name, resolve_executable, validate_app_identifier, validate_launch_options,
+    child_environment_block, image_file_name, resolve_executable, validate_app_identifier,
+    validate_launch_options,
 };
 use super::permissions::ensure_budget;
 use super::process_identity;
@@ -180,11 +182,11 @@ fn create_process(
         Some(cwd) => Some(to_wide(cwd).map_err(before_launch)?),
         None => None,
     };
-    let env_block = if options.env.is_empty() {
-        None
-    } else {
-        Some(environment_block(&options.env).map_err(before_launch)?)
-    };
+    let env_block = child_environment_block(
+        &options.env,
+        crate::system::interaction_lease::INTERACTION_LEASE_HANDLE_ENV,
+    )
+    .map_err(before_launch)?;
     let startup = STARTUPINFOW {
         cb: std::mem::size_of::<STARTUPINFOW>() as u32,
         ..Default::default()
@@ -288,34 +290,15 @@ fn quote_arg(value: &str) -> String {
     out
 }
 
-/// Windows environment variable names are case-insensitive: a caller
-/// overriding `Path` while the parent process carries `PATH` must replace
-/// that entry outright, or the child inherits both and resolves whichever
-/// one happens to sort first. Keys are folded to ASCII uppercase only to
-/// detect that collision; the spelling that lands in the block is always
-/// the caller's own for an override, or the inherited spelling otherwise.
+/// Pass-through kept here, under this module's own name, purely so this
+/// module's own tests (`launch_tests.rs`) can call it unqualified through
+/// their `use super::*;`; the merge itself lives in `launch_path` beside
+/// every other input-shape rule a launch enforces, and `create_process`
+/// reaches it through `child_environment_block` rather than this name. Only
+/// that test caller remains, so this exists for `#[cfg(test)]` builds alone.
+#[cfg(test)]
 fn environment_block(overrides: &BTreeMap<String, String>) -> Result<Vec<u16>, AdapterError> {
-    let mut merged: BTreeMap<String, (String, String)> = std::env::vars()
-        .map(|(key, value)| (key.to_ascii_uppercase(), (key, value)))
-        .collect();
-    for (key, value) in overrides {
-        merged.insert(key.to_ascii_uppercase(), (key.clone(), value.clone()));
-    }
-    let mut block = Vec::new();
-    for (key, value) in merged.into_values() {
-        if key.contains('=') || key.contains('\0') || value.contains('\0') {
-            return Err(AdapterError::new(
-                ErrorCode::InvalidArgs,
-                "Launch environment entries must not contain NUL or '=' in the key",
-            ));
-        }
-        for unit in format!("{key}={value}").encode_utf16() {
-            block.push(unit);
-        }
-        block.push(0);
-    }
-    block.push(0);
-    Ok(block)
+    super::launch_path::environment_block(overrides)
 }
 
 #[cfg(target_os = "windows")]
@@ -393,3 +376,7 @@ fn should_poll_after_first_observation(timeout_ms: u64) -> bool {
 #[cfg(test)]
 #[path = "launch_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "launch_lease_isolation_tests.rs"]
+mod launch_lease_isolation_tests;
