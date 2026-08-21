@@ -17,6 +17,33 @@ use crate::tree::element::UIAElement;
 pub(crate) const MAX_ANCESTOR_SCROLLS: usize = 10;
 pub(crate) const LADDER_SCROLL_LABEL: &str = SCROLL_LABEL;
 
+/// Bring-into-view step size for the ladder, deliberately larger than the
+/// direct `scroll` command's `SmallIncrement`/`SmallDecrement` nudge
+/// (`crate::actions::scroll::scroll_amounts`). Measured live against the
+/// Windows fixture's own AutoScroll form: a `SmallDecrement` rung moved the
+/// target 5px, so the 10-rung budget covered 50px total against a target
+/// that a single native-focus jump had displaced 1361px — an ancestor with
+/// real distance to cover exhausted every rung and still reported
+/// `ACTION_FAILED` on a target that was never occluded, only never reached.
+/// `LargeIncrement`/`LargeDecrement` map to a page-sized native scroll step,
+/// so the same 10-rung budget covers a page's multiple.
+#[cfg(target_os = "windows")]
+pub(crate) fn ladder_scroll_amounts(
+    direction: &Direction,
+) -> (
+    uiautomation::types::ScrollAmount,
+    uiautomation::types::ScrollAmount,
+) {
+    use uiautomation::types::ScrollAmount;
+
+    match direction {
+        Direction::Down => (ScrollAmount::NoAmount, ScrollAmount::LargeIncrement),
+        Direction::Up => (ScrollAmount::NoAmount, ScrollAmount::LargeDecrement),
+        Direction::Right => (ScrollAmount::LargeIncrement, ScrollAmount::NoAmount),
+        Direction::Left => (ScrollAmount::LargeDecrement, ScrollAmount::NoAmount),
+    }
+}
+
 #[cfg(target_os = "windows")]
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct VisibilitySample {
@@ -131,10 +158,10 @@ fn budget_disposition(scrolled: bool, error: AdapterError) -> AdapterError {
 mod imp {
     use super::{
         AdapterError, Deadline, DeliveryOutcome, DeliverySemantics, Direction, LADDER_SCROLL_LABEL,
-        UIAElement, VisibilitySample, ladder_judged_for, visibility_verified,
+        UIAElement, VisibilitySample, ladder_judged_for, ladder_scroll_amounts,
+        visibility_verified,
     };
     use crate::actions::mutation::{classify_success, classify_write};
-    use crate::actions::scroll::scroll_amounts;
     use crate::system::permissions::ensure_budget;
     use crate::tree::automation::automation_client;
     use crate::tree::live_read::corroborate_verified_process;
@@ -244,7 +271,7 @@ mod imp {
                 ));
             }
         };
-        let (horizontal, vertical) = scroll_amounts(direction);
+        let (horizontal, vertical) = ladder_scroll_amounts(direction);
         match pattern.scroll(horizontal, vertical) {
             Ok(()) => {
                 classify_success()?;

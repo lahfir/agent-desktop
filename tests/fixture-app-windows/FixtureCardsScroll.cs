@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Windows.Automation;
 using System.Windows.Forms;
 
 namespace AgentDeskFixtureApp
@@ -23,12 +24,25 @@ namespace AgentDeskFixtureApp
             int rowCount = 60;
             for (int i = 0; i < rowCount; i++)
             {
+                string rowId = "scroll-row-" + (i + 1).ToString();
                 Label row = new Label();
-                FixtureIdentity.Assign(row, "scroll-row-" + (i + 1).ToString());
+                FixtureIdentity.Assign(row, rowId);
                 row.Text = "Row " + (i + 1).ToString();
                 row.Location = new Point(4, i * rowHeight);
                 row.Size = new Size(360, rowHeight - 2);
                 scrollArea.Controls.Add(row);
+
+                // A bare Label carries no pattern beyond SetFocus (measured
+                // live: find --native-id resolves it, but it never earns a
+                // ref - is_ref_able requires an interactive role or an
+                // action beyond SetFocus, per crates/core/src/ref_alloc.rs -
+                // so scroll-to, which is ref-only, has no way to target a
+                // below-fold row at all. The same ControlTypeOverrideHost
+                // used for menu-fire-item below wires a no-op Invoke here,
+                // purely to earn the ref; ControlType stays Text so the
+                // role this fixture already reports (statictext) is
+                // unchanged.
+                new ControlTypeOverrideHost(rowId, ControlType.Text.Id, delegate { }).Hook(row);
             }
 
             // Forces the AutoScroll panel's real scrollbar styles to be

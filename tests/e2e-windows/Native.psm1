@@ -196,9 +196,9 @@ function New-NativeJobObject {
     $jobObjectExtendedLimitInformation = 9
     $ok = [AgentDesktopE2E.Native]::SetInformationJobObject($job, $jobObjectExtendedLimitInformation, [ref]$limits, [uint32]$size)
     if (-not $ok) {
-        $error = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        $win32Error = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
         [void][AgentDesktopE2E.Native]::CloseHandle($job)
-        throw "SetInformationJobObject failed: Win32 error $error"
+        throw "SetInformationJobObject failed: Win32 error $win32Error"
     }
     return $job
 }

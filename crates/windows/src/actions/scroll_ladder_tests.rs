@@ -1,13 +1,15 @@
 use super::{
     MAX_ANCESTOR_SCROLLS, apply_ladder_seam, direction_after_visibility_miss,
-    direction_for_visibility, ladder_judged_for,
+    direction_for_visibility, ladder_judged_for, ladder_scroll_amounts,
 };
 use crate::actions::chain::DeliveryOutcome;
+use crate::actions::scroll::scroll_amounts;
 use crate::actions::scroll_into_view::{VisibilitySample, visibility_verified};
 use agent_desktop_core::{
     AdapterError, Deadline, DeliveryDisposition, DeliverySemantics, Direction, ErrorCode, Rect,
 };
 use std::cell::Cell;
+use uiautomation::types::ScrollAmount;
 
 fn rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
     Rect {
@@ -311,4 +313,36 @@ fn contained_but_not_visible_does_not_invent_down() {
         error.disposition.delivery(),
         DeliveryDisposition::NotDelivered
     );
+}
+
+/// Measured live (see `ladder_scroll_amounts` doc comment): a `SmallDecrement`
+/// rung moved a real ancestor's viewport 5px, so `MAX_ANCESTOR_SCROLLS` rungs
+/// of the direct `scroll` command's small-nudge amount never covers a target
+/// displaced hundreds of pixels by a native focus jump. The ladder must use
+/// its own page-sized amount, distinct from `scroll::scroll_amounts` — this
+/// guards against the two call sites being collapsed back onto one shared
+/// small-step function.
+#[test]
+fn ladder_uses_large_amounts_distinct_from_the_scroll_commands_small_nudge() {
+    for direction in [
+        Direction::Up,
+        Direction::Down,
+        Direction::Left,
+        Direction::Right,
+    ] {
+        let (ladder_h, ladder_v) = ladder_scroll_amounts(&direction);
+        let (small_h, small_v) = scroll_amounts(&direction);
+        assert_ne!(
+            (ladder_h, ladder_v),
+            (small_h, small_v),
+            "ladder amount must not match the direct scroll command's small nudge for {direction:?}"
+        );
+        let large = match direction {
+            Direction::Down => (ScrollAmount::NoAmount, ScrollAmount::LargeIncrement),
+            Direction::Up => (ScrollAmount::NoAmount, ScrollAmount::LargeDecrement),
+            Direction::Right => (ScrollAmount::LargeIncrement, ScrollAmount::NoAmount),
+            Direction::Left => (ScrollAmount::LargeDecrement, ScrollAmount::NoAmount),
+        };
+        assert_eq!((ladder_h, ladder_v), large);
+    }
 }

@@ -110,10 +110,10 @@ function Find-TargetMatches {
     do {
         $envelope = Invoke-AgentDesktop -Arguments $findArgs
         if ($envelope['ok'] -eq $true) {
-            $matches = $envelope['data']['matches']
+            $matchList = $envelope['data']['matches']
             $snapshotId = $envelope['data']['snapshot_id']
-            if ($matches -and $snapshotId) {
-                $targets = @($matches | ForEach-Object { [pscustomobject]@{ RefId = $_['ref_id']; SnapshotId = $snapshotId } })
+            if ($matchList -and $snapshotId) {
+                $targets = @($matchList | ForEach-Object { [pscustomobject]@{ RefId = $_['ref_id']; SnapshotId = $snapshotId } })
                 return [pscustomobject]@{ Targets = $targets; Count = [int]$envelope['data']['total_matches']; SnapshotId = $snapshotId }
             }
         }

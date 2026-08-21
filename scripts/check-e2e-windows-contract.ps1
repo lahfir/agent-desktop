@@ -3,11 +3,11 @@
 .SYNOPSIS
     The Windows analog of test_harness_contract.py: reads
     tests/e2e-windows's own program text and fails when the harness violates
-    its own structural discipline (thirteen rules), over a file set proven
+    its own structural discipline (fourteen rules), over a file set proven
     to be the whole tree - never a glob that quietly excludes scenarios/.
 
 .DESCRIPTION
-    Two halves, per U8 item 18: the SCAN (always runs) applies the thirteen
+    Two halves, per U8 item 18: the SCAN (always runs) applies the fourteen
     rules to the real harness tree; -SelfTest additionally imports Lib.psm1
     (via Invoke-U7SelfTests.ps1) and proves the assertion/verdict/skip-ledger/
     lock-ordering primitives are live against the canned-envelope stub, with

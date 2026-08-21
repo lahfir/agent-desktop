@@ -17,11 +17,10 @@ namespace AgentDeskFixtureApp
             primary.Click += delegate { FixtureStatus.SetValue("click-status", "clicked"); };
             NewStatus(card, "click-status", 140, CardLayout.RowY(0), 200);
 
-            Button doubleTarget = NewButton(card, "double-target", "Double", 16, CardLayout.RowY(1), 110);
-            doubleTarget.DoubleClick += delegate { FixtureStatus.SetValue("double-status", "double-clicked"); };
+            BuildCountedClickTarget(card, "double-target", "Double", CardLayout.RowY(1), "double-status", "double-clicked", 2);
             NewStatus(card, "double-status", 140, CardLayout.RowY(1), 200);
 
-            BuildTripleTarget(card, CardLayout.RowY(2));
+            BuildCountedClickTarget(card, "triple-target", "Triple", CardLayout.RowY(2), "triple-status", "triple-clicked", 3);
             NewStatus(card, "triple-status", 140, CardLayout.RowY(2), 200);
 
             Button contextTarget = NewButton(card, "context-target", "Context", 16, CardLayout.RowY(3), 110);
@@ -36,20 +35,27 @@ namespace AgentDeskFixtureApp
         }
 
         /// <summary>
-        /// A physical triple-click delivers three separate WM_LBUTTONDOWN/UP
-        /// pairs (Windows only special-cases the second click as
-        /// WM_LBUTTONDBLCLK; there is no native "triple" message), so this
-        /// counts <see cref="Control.Click"/> events instead and resets the
-        /// counter once the system double-click interval has elapsed since
-        /// the first click in the run - a click arriving after that window
-        /// starts a fresh count of one rather than accumulating forever.
+        /// A physical N-click delivers N separate WM_LBUTTONDOWN/UP pairs
+        /// (Windows only special-cases the second click as
+        /// WM_LBUTTONDBLCLK; there is no native "triple" message, and a
+        /// stock <see cref="Button"/> does not raise <see
+        /// cref="Control.DoubleClick"/> at all - measured live, probe A20-4
+        /// found a Button sink stuck at its pre-click value across every
+        /// inter-click timing it tried and had to switch its own working
+        /// target to a ListBox; see probes/windows/FINDINGS.md). Counting
+        /// <see cref="Control.Click"/> events instead works for any control
+        /// that raises Click, a Button included, and resets the counter once
+        /// the system double-click interval has elapsed since the run's
+        /// first click - a click arriving after that window starts a fresh
+        /// count of one rather than accumulating forever.
         /// </summary>
-        private static void BuildTripleTarget(GroupBox card, int y)
+        private static void BuildCountedClickTarget(
+            GroupBox card, string id, string label, int y, string statusId, string statusValue, int targetCount)
         {
-            Button tripleTarget = NewButton(card, "triple-target", "Triple", 16, y, 110);
+            Button target = NewButton(card, id, label, 16, y, 110);
             int clickCount = 0;
             DateTime windowStart = DateTime.MinValue;
-            tripleTarget.Click += delegate
+            target.Click += delegate
             {
                 DateTime now = DateTime.UtcNow;
                 double windowMs = SystemInformation.DoubleClickTime * 2;
@@ -62,9 +68,9 @@ namespace AgentDeskFixtureApp
                 {
                     clickCount = clickCount + 1;
                 }
-                if (clickCount >= 3)
+                if (clickCount >= targetCount)
                 {
-                    FixtureStatus.SetValue("triple-status", "triple-clicked");
+                    FixtureStatus.SetValue(statusId, statusValue);
                     clickCount = 0;
                 }
             };
@@ -87,11 +93,29 @@ namespace AgentDeskFixtureApp
             card.Controls.Add(twinB);
 
             Button moveTwins = NewButton(card, "move-twins", "Move twins", 210, y, 110);
+            // Translating Location alone does not defeat a stored ref for
+            // either twin: agent-desktop's Windows resolver re-identifies a
+            // ref by its stored child-index tree path before it ever reaches
+            // the bounds-hash tie-break (can_use_path_fast_path,
+            // crates/windows/src/tree/resolve_search.rs), and a bare location
+            // change leaves both twins at their original Controls indices -
+            // the path lands on the exact original element, which is a
+            // correct re-identification, not an ambiguity. Removing and
+            // re-adding both twins shifts every later sibling's index
+            // (moveTwins included), so the stored path for the stale twin now
+            // lands on a control whose identity does not match and the
+            // resolver falls through to the broad search. Only then do two
+            // evidence-identical candidates reach the bounds-hash tier, and
+            // only then does moving both defeat that tie-break too.
             moveTwins.Click += delegate
             {
                 int dx = 14;
+                card.Controls.Remove(twinA);
+                card.Controls.Remove(twinB);
                 twinA.Location = new Point(twinA.Location.X + dx, twinA.Location.Y);
                 twinB.Location = new Point(twinB.Location.X + dx, twinB.Location.Y);
+                card.Controls.Add(twinA);
+                card.Controls.Add(twinB);
             };
         }
 

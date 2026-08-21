@@ -97,13 +97,21 @@ function Invoke-ObservationScenario {
             Add-Fail -Leg 'skeleton-depth-clamp' -Reason "skeleton depth=$depth (want <=3), children_count annotation present=$hasChildrenCount"
         }
 
-        $outlineTree = Find-TreeNodeById -Node $snap.Root -Id 'outline-tree'
-        if (-not $outlineTree -or -not $outlineTree['ref_id']) {
-            Add-Fail -Leg 'root-drilldown-scoped-refs' -Reason 'outline-tree did not resolve as a drill-down root'
+        <# outline-tree itself is a bare Panel wearing only a ControlType
+           override (crates/fixture-app-windows/FixtureCardsCollections.cs):
+           it advertises no action beyond SetFocus, so is_ref_able
+           (crates/core/src/ref_alloc.rs) never gives it a ref, by design -
+           outline-parent is the outline's own actionable evidence, not its
+           container. scroll-area is the tree's genuinely ref-able
+           container (advertises Scroll), so it is the drill-down root this
+           leg exercises instead. #>
+        $scrollArea = Find-TreeNodeById -Node $snap.Root -Id 'scroll-area'
+        if (-not $scrollArea -or -not $scrollArea['ref_id']) {
+            Add-Fail -Leg 'root-drilldown-scoped-refs' -Reason 'scroll-area did not resolve as a drill-down root'
         } else {
-            $drill = Invoke-Snapshot -App $App -Root $outlineTree['ref_id'] -Snapshot $snap.SnapshotId
-            $drillHasOutline = Find-TreeNodeById -Node $drill.Root -Id 'outline-parent'
-            if ($drill.SnapshotId -eq $snap.SnapshotId -and $drillHasOutline) {
+            $drill = Invoke-Snapshot -App $App -Root $scrollArea['ref_id'] -Snapshot $snap.SnapshotId
+            $drillHasRow = Find-TreeNodeById -Node $drill.Root -Id 'scroll-row-1'
+            if ($drill.SnapshotId -eq $snap.SnapshotId -and $drillHasRow) {
                 Add-Pass -Leg 'root-drilldown-scoped-refs'
             } else {
                 Add-Fail -Leg 'root-drilldown-scoped-refs' -Reason 'a --root drill-down did not stay in the same snapshot namespace or lost its own subtree'

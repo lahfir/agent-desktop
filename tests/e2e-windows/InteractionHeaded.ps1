@@ -26,13 +26,28 @@ function Invoke-HeadedInteractionLegs {
                id resolve loop leaves the AutoScroll viewport scrolled deep
                into the scroll-row list, so a stale off-screen bounds reading
                can never be clicked. scroll-to is a no-op when visible. #>
+            $diagProc = Get-Process -Name 'AgentDeskFixture' -ErrorAction SilentlyContinue | Select-Object -First 1
+            Write-Host "DIAG headed-legs-entry: fixtureHwnd=$($diagProc.MainWindowHandle) foregroundHwnd=$(Get-NativeForegroundWindowHandle)"
             try {
                 $target = Require-Target -Target (Find-Target -App $App -NativeId 'double-target' -TimeoutSeconds 10) -Description 'double-target'
                 Invoke-Target -Target $target -Action 'scroll-to' -RequireOk -Description 'double-target (scroll into view)' | Out-Null
                 $status = Require-Target -Target (Find-Target -App $App -NativeId 'double-status' -TimeoutSeconds 10) -Description 'double-status'
-                Assert-Effect -Target $target -StatusTarget $status -Property 'value' -Expected 'double-clicked' -ExpectedIsPrefix -Action 'double-click' -Headed | Out-Null
-                Add-Pass -Leg 'headed-double-click'
-            } catch { Add-Fail -Leg 'headed-double-click' -Reason $_.Exception.Message }
+                $diagEnvelope = Invoke-Target -Target $target -Action 'double-click' -Headed
+                Write-Host "DIAG double-click-envelope: $($diagEnvelope | ConvertTo-Json -Depth 12 -Compress)"
+                if ($diagEnvelope['error'] -and $diagEnvelope['error']['details']) {
+                    Write-Host "DIAG double-click-details: $($diagEnvelope['error']['details'] | ConvertTo-Json -Depth 12 -Compress)"
+                }
+                Start-Sleep -Milliseconds 500
+                Write-Host "DIAG double-click-status-after-sleep: $(Get-Target -Target $status -Property 'value')"
+                if ($diagEnvelope['ok'] -eq $true -and (Get-Target -Target $status -Property 'value') -like 'double-clicked*') {
+                    Add-Pass -Leg 'headed-double-click'
+                } else {
+                    throw "DIAG single-attempt did not reach double-clicked (ok=$($diagEnvelope['ok']))"
+                }
+            } catch {
+                Write-Host "DIAG double-click-fail: foregroundHwnd=$(Get-NativeForegroundWindowHandle) fixtureHwnd=$($diagProc.MainWindowHandle)"
+                Add-Fail -Leg 'headed-double-click' -Reason $_.Exception.Message
+            }
 
             try {
                 $target = Require-Target -Target (Find-Target -App $App -NativeId 'triple-target' -TimeoutSeconds 10) -Description 'triple-target'
@@ -44,18 +59,38 @@ function Invoke-HeadedInteractionLegs {
 
             try {
                 $target = Require-Target -Target (Find-Target -App $App -NativeId 'context-target' -TimeoutSeconds 10) -Description 'context-target'
+                <# context-status must resolve before the right-click, not
+                   after: context-choice's popup (FixtureCardsClicks.cs) is a
+                   real second top-level Form sharing this process's
+                   app_name - measured live, once it is open, `find --app`
+                   window resolution lands on the focused popup, not the
+                   main window, so a main-window-only id polls to
+                   PRECONDITION_FAILED for the popup's whole lifetime.
+                   Preconditions.ps1's own right-click leg avoids this by
+                   resolving through -WindowId instead of -App; this leg
+                   avoids it by resolving context-status while only the main
+                   window exists, the same ordering every other leg in this
+                   file already uses (status found before its action fires). #>
+                $status = Require-Target -Target (Find-Target -App $App -NativeId 'context-status' -TimeoutSeconds 10) -Description 'context-status'
                 Invoke-Target -Target $target -Action 'scroll-to' -RequireOk -Description 'context-target (scroll into view)' | Out-Null
                 Invoke-Target -Target $target -Action 'right-click' -Headed -RequireOk -Description 'context-target' | Out-Null
                 $choice = Require-Target -Target (Find-Target -App $App -NativeId 'context-choice' -TimeoutSeconds 10) -Description 'context-choice'
-                $status = Require-Target -Target (Find-Target -App $App -NativeId 'context-status' -TimeoutSeconds 10) -Description 'context-status'
                 Assert-Effect -Target $choice -StatusTarget $status -Property 'value' -Expected 'chosen' -ExpectedIsPrefix -AnyChange -Action 'click' | Out-Null
                 Add-Pass -Leg 'headed-right-click-then-choose'
             } catch { Add-Fail -Leg 'headed-right-click-then-choose' -Reason $_.Exception.Message }
 
             try {
+                <# 'mouse-move' takes --xy (absolute screen coordinates), never
+                   a ref positional argument (agent-desktop.exe mouse-move
+                   --help) - a ref-shaped call here fails INVALID_ARGS before
+                   ever reaching the fixture. `hover` is the ref-resolving
+                   action for "move the cursor onto this element", and
+                   Assert-Effect's own -Action 'hover' below already performs
+                   and verifies it; this leg only needs to scroll the target
+                   into view first, the same as every other physical leg in
+                   this file. #>
                 $mover = Require-Target -Target (Find-Target -App $App -NativeId 'hover-target' -TimeoutSeconds 10) -Description 'hover-target'
                 Invoke-Target -Target $mover -Action 'scroll-to' -RequireOk -Description 'hover-target (scroll into view)' | Out-Null
-                Invoke-Target -Target $mover -Action 'mouse-move' -Headed -RequireOk -Description 'hover-target' | Out-Null
                 $status = Require-Target -Target (Find-Target -App $App -NativeId 'hover-status' -TimeoutSeconds 10) -Description 'hover-status'
                 Assert-Effect -Target $mover -StatusTarget $status -Property 'value' -Expected 'hovered' -ExpectedIsPrefix -Action 'hover' -Headed | Out-Null
                 Add-Pass -Leg 'headed-hover'
@@ -87,10 +122,22 @@ function Invoke-HeadedInteractionLegs {
             } catch { Add-Fail -Leg 'headed-drag' -Reason $_.Exception.Message }
 
             try {
-                $input = Require-Target -Target (Find-Target -App $App -NativeId 'text-input' -TimeoutSeconds 10) -Description 'text-input'
-                Invoke-Target -Target $input -Action 'scroll-to' -RequireOk -Description 'text-input (scroll into view)' | Out-Null
+                <# Physical `type` is a pure keyboard-focus check
+                   (ensure_keyboard_delivery_ready in
+                   crates/windows/src/actions/physical_target.rs), never a
+                   focus-establishing action itself - unlike physical click,
+                   which focuses its target as an OS side effect of the
+                   click. Measured live: 'type' on an unfocused text-input
+                   returns ACTION_FAILED "lost focus before physical input
+                   delivery" every time; an explicit 'focus' first (the same
+                   action Invoke-FocusOracleLeg already uses) is what
+                   establishes the precondition this leg's physical delivery
+                   depends on. #>
+                $textInput = Require-Target -Target (Find-Target -App $App -NativeId 'text-input' -TimeoutSeconds 10) -Description 'text-input'
+                Invoke-Target -Target $textInput -Action 'scroll-to' -RequireOk -Description 'text-input (scroll into view)' | Out-Null
+                Invoke-Target -Target $textInput -Action 'focus' -Headed -RequireOk -Description 'text-input (establish keyboard focus)' | Out-Null
                 $status = Require-Target -Target (Find-Target -App $App -NativeId 'text-status' -TimeoutSeconds 10) -Description 'text-status'
-                Assert-Effect -Target $input -StatusTarget $status -Property 'value' -Expected 'changed' -ExpectedIsPrefix -AnyChange -Action 'type' -ActionArgs @('typed') -Headed -ExpectedMechanism 'physical_synthetic' | Out-Null
+                Assert-Effect -Target $textInput -StatusTarget $status -Property 'value' -Expected 'changed' -ExpectedIsPrefix -AnyChange -Action 'type' -ActionArgs @('typed') -Headed -ExpectedMechanism 'physical_synthetic' | Out-Null
                 Add-Pass -Leg 'headed-type'
             } catch { Add-Fail -Leg 'headed-type' -Reason $_.Exception.Message }
 

@@ -21,6 +21,7 @@ Import-Module (Join-Path $PSScriptRoot 'Native.psm1') -Force -Global
 Import-Module (Join-Path $PSScriptRoot 'NativeToken.psm1') -Force -Global
 Import-Module (Join-Path $PSScriptRoot 'Harness.psm1') -Force -Global
 Import-Module (Join-Path $PSScriptRoot 'BoundedProcess.psm1') -Force -Global
+Import-Module (Join-Path $PSScriptRoot 'StagedProcessHandleStability.psm1') -Force -Global
 
 $script:LeaseHandleEnvName = Get-InteractionLeaseHandleEnvironmentVariableName
 $script:HandleReportExePath = $null
@@ -241,11 +242,12 @@ function Start-StagedIntegrityProcess {
             $expected.Add([long]$InheritLeaseHandle)
         }
 
-        $before = @(Get-NativeInheritableHandleValues)
-        $extra = @($before | Where-Object { -not ($expected -contains $_) })
-        foreach ($handle in $extra) {
-            try { Set-NativeHandleInheritable -Handle ([IntPtr]$handle) -Enabled $false } catch { }
-        }
+        <# Get-StableNonInheritableHandleSet (StagedProcessHandleStability.psm1)
+           both captures and disables in one call - see that module for why
+           a single snapshot-then-disable pass is not enough. #>
+        $stabilized = Get-StableNonInheritableHandleSet -Expected $expected
+        $before = $stabilized.Before
+        $extra = $stabilized.Disabled
 
         $envPtr = New-StagedEnvironmentBlock -LeaseHandleValue $InheritLeaseHandle
         $restrictedToken = New-RestrictedIntegrityToken -IntegrityLevel $IntegrityLevel

@@ -202,12 +202,12 @@ function Invoke-SplitIntegrityWriteLeg {
        not evidence) - and a control proving that same High-side oracle
        actually moves when the identical write is issued from High. #>
     param([Parameter(Mandatory = $true)][string]$App, [Parameter(Mandatory = $true)][long]$LeaseHandle)
-    $input = Require-Target -Target (Find-Target -App $App -NativeId 'text-input' -TimeoutSeconds 10) -Description 'text-input'
+    $textInput = Require-Target -Target (Find-Target -App $App -NativeId 'text-input' -TimeoutSeconds 10) -Description 'text-input'
     $status = Require-Target -Target (Find-Target -App $App -NativeId 'text-status' -TimeoutSeconds 10) -Description 'text-status'
     $baseline = Get-Target -Target $status -Property 'value'
 
     $medium = Invoke-StagedAgentDesktop -IntegrityLevel Medium -FilePath (Get-SplitIntegrityStagedBinary) -InheritLeaseHandle $LeaseHandle `
-        -Arguments @('set-value', $input.RefId, '--snapshot', $input.SnapshotId, 'medium-write-attempt') -TimeoutSeconds 20
+        -Arguments @('set-value', $textInput.RefId, '--snapshot', $textInput.SnapshotId, 'medium-write-attempt') -TimeoutSeconds 20
     Assert-StagingConfirmedMedium -Staging $medium.Staging
     Assert-MediumActionFailsClosed -Envelope $medium.Envelope -LegLabel 'Invoke-SplitIntegrityWriteLeg'
 
@@ -222,7 +222,7 @@ function Invoke-SplitIntegrityWriteLeg {
        Enter-Stage -Lock ForegroundStage since only DesktopLease is held
        here - the next stage in order, for this one Invoke-Target site. #>
     Enter-Stage -Lock ForegroundStage -Body {
-        Invoke-Target -Target $input -Action 'set-value' -ActionArgs @('high-write-control') -RequireOk -Description 'text-input (control)' | Out-Null
+        Invoke-Target -Target $textInput -Action 'set-value' -ActionArgs @('high-write-control') -RequireOk -Description 'text-input (control)' | Out-Null
     }
     $afterControlWrite = Get-Target -Target $status -Property 'value'
     if ($afterControlWrite -eq $baseline) {

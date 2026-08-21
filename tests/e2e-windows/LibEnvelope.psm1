@@ -100,11 +100,11 @@ function Invoke-AgentDesktopBatch {
                 $data = $_['data']
                 if ($data -and $data.ContainsKey('found')) { $found = [bool]$data['found'] }
                 if ($data -and $data['event']) {
-                    $event = $data['event']
-                    $eventKind = $event['kind']
-                    $eventApp = $event['app']
-                    $eventSurface = $event['surface']
-                    $eventWindowId = $event['window_id']
+                    $eventData = $data['event']
+                    $eventKind = $eventData['kind']
+                    $eventApp = $eventData['app']
+                    $eventSurface = $eventData['surface']
+                    $eventWindowId = $eventData['window_id']
                 }
             } else {
                 $errorCode = $_['error']['code']

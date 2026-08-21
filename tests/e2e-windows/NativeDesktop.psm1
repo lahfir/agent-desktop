@@ -68,9 +68,9 @@ function Get-NativeTopLevelWindows {
     $results = New-Object System.Collections.Generic.List[object]
     $callback = {
         param([IntPtr]$hWnd, [IntPtr]$lParam)
-        $pid = 0
-        [void][AgentDesktopE2E.Native]::GetWindowThreadProcessId($hWnd, [ref]$pid)
-        $results.Add([pscustomobject]@{ Handle = $hWnd; ProcessId = $pid })
+        $windowProcessId = 0
+        [void][AgentDesktopE2E.Native]::GetWindowThreadProcessId($hWnd, [ref]$windowProcessId)
+        $results.Add([pscustomobject]@{ Handle = $hWnd; ProcessId = $windowProcessId })
         return $true
     }
     $delegate = $callback -as [AgentDesktopE2E.EnumWindowsProc]

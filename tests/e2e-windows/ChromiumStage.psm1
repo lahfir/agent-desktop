@@ -13,8 +13,11 @@
 
     Nothing here touches a command envelope field (`.ok`/`.error`/
     `.disposition`/`.data`) or invokes the staged `agent-desktop.exe` -
-    every action is a raw file write, `Start-Process`/`Get-Process` read, or
-    real keystroke synthesis (`SendKeys`, which injects through
+    every action is a raw file write, `Start-Process`/`Get-Process` read,
+    raw-Win32 foreground staging (`NativeDesktop.psm1`'s
+    `Set-NativeForegroundWindow`/`Wait-NativeForegroundToSettle`, the same
+    AttachThreadInput dance `crate::system::test_support::stage_foreground`
+    uses), or real keystroke synthesis (`SendKeys`, which injects through
     `keybd_event`, never a posted message), matching R14's "the system
     under test is never its own oracle" for exactly the actions that decide
     whether content is staged: launching the target, picking its vault, and
@@ -22,6 +25,9 @@
 #>
 
 Set-StrictMode -Version 2.0
+
+Import-Module (Join-Path $PSScriptRoot 'NativeDesktop.psm1') -Force -Global
+Import-Module (Join-Path $PSScriptRoot 'ChromiumNative.psm1') -Force -Global
 
 $script:ObsidianJsonPath = Join-Path $env:APPDATA 'obsidian\obsidian.json'
 $script:ObsidianJsonBackupPath = $null
@@ -95,7 +101,14 @@ function Set-ChromiumSoleVaultRegistry {
     }
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false
     $vaultKey = [guid]::NewGuid().ToString('N').Substring(0, 16)
-    $vaultEscaped = $VaultPath -replace '\\', '\\\\'
+    <# JSON escaping of a single literal backslash needs a two-character
+       replacement ('\\' as a JSON string escape) - a four-character
+       replacement over-escapes, decoding back to a doubled backslash
+       between every path segment. Windows/Electron path resolution
+       tolerates the doubled separator (measured live: the vault still
+       opened), but the registry file this writes is not the JSON its own
+       comment claims it to be, so it is corrected here regardless. #>
+    $vaultEscaped = $VaultPath -replace '\\', '\\'
     $registry = '{"vaults":{"' + $vaultKey + '":{"path":"' + $vaultEscaped + '","ts":' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + ',"open":true}}}'
     [IO.File]::WriteAllText($script:ObsidianJsonPath, $registry, $utf8NoBom)
 }
@@ -148,17 +161,45 @@ function Start-ChromiumObsidianOnVault {
 }
 
 function Open-ChromiumNoteByQuickSwitch {
-    <# Ctrl+O, type the note stem, Enter - through `SendKeys`/`AppActivate`,
-       which inject via `keybd_event`: real synthesized input the OS
-       delivers through normal input processing, never a message posted
-       directly into a window's queue. Verified by title change, never
-       assumed. #>
+    <# Ctrl+O, type the note stem, Enter - through `SendKeys`, which injects
+       via `keybd_event`: real synthesized input the OS delivers through
+       normal input processing, never a message posted directly into a
+       window's queue. Verified by title change, never assumed.
+
+       Foreground is staged with `Set-NativeForegroundWindow`
+       (AttachThreadInput + `AllowSetForegroundWindow`), never bare
+       `AppActivate`: `AppActivate` is a bare `SetForegroundWindow`, and by
+       the time this scenario runs the harness process has been alive
+       through every earlier scenario - including Acceptance.ps1's own
+       focus-steal legs - with no real user input of its own, which is
+       exactly the "long-lived harness process loses the recent-input
+       standing SetForegroundWindow requires" failure
+       `Set-NativeForegroundWindow`'s own doc-comment measured live. A
+       silently-declined `AppActivate` sends Ctrl+O/the note stem/Enter to
+       whatever window Windows left in the foreground instead, so the
+       quick-switch keystrokes land nowhere near Obsidian and the note never
+       becomes the active tab.
+
+       A leading `Invoke-ChromiumNativeEscape` guards a second, distinct
+       failure of the same shape: measured live on this box, a stray shell
+       popup (Explorer's own taskbar jump list, `ShellExperienceHost`) can
+       be left holding the desktop foreground - by anything, including a
+       stray right-click from an earlier automated run, not this suite's
+       own doing - and `AttachThreadInput`/`AllowSetForegroundWindow` do
+       not out-rank it; `Set-NativeForegroundWindow` returns false against
+       it every time. A real Escape keystroke is exactly what dismisses
+       that class of popup and costs nothing when there was nothing to
+       dismiss, so it runs unconditionally rather than only after a first
+       failed attempt is observed. #>
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][int]$ProcessId, [Parameter(Mandatory = $true)][string]$NoteStem, [int]$TimeoutSeconds = 10)
     Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName Microsoft.VisualBasic
-    [void][Microsoft.VisualBasic.Interaction]::AppActivate($ProcessId)
-    Start-Sleep -Milliseconds 500
+    $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $proc -or $proc.MainWindowHandle -eq [IntPtr]::Zero) { return $false }
+    Invoke-ChromiumNativeEscape
+    [void](Set-NativeForegroundWindow -WindowHandle $proc.MainWindowHandle)
+    [void](Wait-NativeForegroundToSettle -RequiredStableReads 3 -BudgetSeconds 5)
+    if ((Get-NativeForegroundWindowHandle) -ne $proc.MainWindowHandle) { return $false }
     [System.Windows.Forms.SendKeys]::SendWait('^o')
     Start-Sleep -Milliseconds 800
     [System.Windows.Forms.SendKeys]::SendWait($NoteStem)

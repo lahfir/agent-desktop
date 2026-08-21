@@ -84,7 +84,7 @@ function Test-E2EFileSetEquality {
 function Get-E2ERuleTable {
     <#
     .SYNOPSIS
-        The thirteen structural rules, declared once. AllowlistKeys backs
+        The fourteen structural rules, declared once. AllowlistKeys backs
         rule 8's skip-token check; Root, when given, is walked for every
         *Native*.psm1 module's real Export-ModuleMember list and backs rule
         9's explicit entry-point table (finding #29) - omitted, rule 9 falls
@@ -140,6 +140,7 @@ function Get-E2ERuleTable {
             actually guards against.
         #>
         [pscustomobject]@{ Id = 'rule12'; Name = 'status reads use --property value; stub is selftest-only'; ScopeFilter = { $true }; Test = { param($p) $rel = $p.RelativePath; Test-Rule12PropertyAndStub -Parsed $p -CheckStubReachability:($rel -match '^scenarios/') } }
+        [pscustomobject]@{ Id = 'rule14'; Name = 'no assignment to a PowerShell automatic variable'; ScopeFilter = { $true }; Test = { param($p) Test-Rule14AutomaticVariableAssignment -Parsed $p } }
     )
 }
 

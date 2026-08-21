@@ -81,6 +81,7 @@ pub mod process_state;
 mod recovery_hint;
 mod rect;
 pub mod ref_action;
+mod ref_action_actionability;
 mod ref_action_context;
 mod ref_action_poll;
 mod ref_action_poll_state;

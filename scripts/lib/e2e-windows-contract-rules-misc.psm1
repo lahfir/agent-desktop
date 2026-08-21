@@ -1,13 +1,14 @@
 #Requires -Version 5.1
 
 <#
-    e2e-windows-contract-rules-misc.psm1 - contract-gate rules 6, 7, 8, 11
-    and 12: Write-Verdict reachability, environment-identity protection,
-    scenario leg/skip declarations, the ConvertFrom-Json ban, and the
-    --property text|name / stub-reachability pair. Rule 13 (the 400-line
-    cap) needs no AST and is a file-length check the orchestrator applies
-    directly. Split from the other rule groups purely to keep every gate
-    module under the 400-line cap.
+    e2e-windows-contract-rules-misc.psm1 - contract-gate rules 6, 7, 8, 11,
+    12 and 14: Write-Verdict reachability, environment-identity protection,
+    scenario leg/skip declarations, the ConvertFrom-Json ban, the
+    --property text|name / stub-reachability pair, and the automatic-
+    variable-assignment ban. Rule 13 (the 400-line cap) needs no AST and is
+    a file-length check the orchestrator applies directly. Split from the
+    other rule groups purely to keep every gate module under the 400-line
+    cap.
 #>
 
 Set-StrictMode -Version 2.0
@@ -157,7 +158,93 @@ function Test-Rule12PropertyAndStub {
     return $hits.ToArray()
 }
 
+function Test-Rule14AutomaticVariableAssignment {
+    <#
+    .SYNOPSIS
+        Rule 14: no assignment statement writes to a name PowerShell
+        reserves as an automatic variable, taken from the published
+        about_Automatic_Variables reference (PowerShell 7.6 docs; its list
+        is a strict superset of 5.1's, so a 7.6-only name banned here costs
+        nothing on this suite's pinned 5.1) rather than guessed. This is the
+        class SplitIntegrity.ps1's own bug belonged to: it assigned its
+        target to `$input`, PowerShell's own pipeline enumerator - the
+        assignment read back correctly at first, but any later construct
+        that re-binds pipeline input resets `$input`, so a subsequent
+        `$input.RefId` read the enumerator instead of the target and the
+        property did not exist. Renamed there; this rule makes the whole
+        class unrepresentable rather than re-testing that one call site.
+        Every name below was found genuinely assigned bare (not
+        scope/drive-qualified - `$script:foo` and `$env:foo` name different
+        variables entirely, already rule 7's concern for the five identity
+        vars) somewhere in this tree before this rule shipped:
+        InteractionHeaded.ps1 ($input), Lib.psm1 ($matches), Native.psm1
+        ($error), NativeDesktop.psm1 ($pid, inside an EnumWindows callback
+        scriptblock) and LibEnvelope.psm1 ($event) - all renamed in the
+        same PR that added this rule.
+
+        $null is deliberately excluded. `$null = expr` is PowerShell's own
+        idiomatic output-discard pattern - this harness already relies on
+        it (selftest/U6SelfTestCasesLease.ps1) - and it cannot exhibit this
+        bug class at all: unlike every other automatic variable, $null has
+        no state a later read can be silently corrupted from, because
+        assigning to it is a no-op and it always reads back as $null. That
+        is "genuinely assignable in ordinary correct code" in a way none of
+        the 46 banned names below are, so it is the one automatic variable
+        left out rather than forcing every discard in this tree into a
+        throwaway-variable contortion.
+    #>
+    [CmdletBinding()]
+    param($Parsed)
+    $hits = New-Object System.Collections.Generic.List[object]
+    $bannedNames = @(
+        'args', 'consolefilename', 'enabledexperimentalfeatures', 'error', 'event',
+        'eventargs', 'eventsubscriber', 'executioncontext', 'false', 'foreach', 'home',
+        'host', 'input', 'iscoreclr', 'islinux', 'ismacos', 'iswindows', 'lastexitcode',
+        'matches', 'myinvocation', 'nestedpromptlevel', 'pid', 'profile',
+        'psboundparameters', 'pscmdlet', 'pscommandpath', 'psculture', 'psdebugcontext',
+        'psedition', 'pshome', 'psitem', 'psscriptroot', 'pssenderinfo', 'psuiculture',
+        'psversiontable', 'pwd', 'sender', 'shellid', 'stacktrace', 'switch', 'this',
+        'true', '_', '$', '?', '^'
+    )
+
+    function Get-Rule14AssignedVariables {
+        <#
+        .SYNOPSIS
+            Every VariableExpressionAst a single assignment statement's Left
+            side actually names, direct (`$x = ...`, `${x} = ...`) or tuple
+            (`$a, $b = ...`) - never a member/index write (`$x.Foo = ...`,
+            `$x['k'] = ...`), which names a property or a dictionary key,
+            not the variable $x itself, and must not be flagged.
+        #>
+        param($Left)
+        $found = New-Object System.Collections.Generic.List[object]
+        $direct = $Left -as [System.Management.Automation.Language.VariableExpressionAst]
+        if ($direct) {
+            $found.Add($direct)
+            return $found.ToArray()
+        }
+        $tuple = $Left -as [System.Management.Automation.Language.ArrayLiteralAst]
+        if ($tuple) {
+            foreach ($element in $tuple.Elements) {
+                $elementVar = $element -as [System.Management.Automation.Language.VariableExpressionAst]
+                if ($elementVar) { $found.Add($elementVar) }
+            }
+        }
+        return $found.ToArray()
+    }
+
+    foreach ($node in (Find-E2EAstNodes -Ast $Parsed.Ast -Predicate { $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] })) {
+        foreach ($target in (Get-Rule14AssignedVariables -Left $node.Left)) {
+            $varName = $target.VariablePath.UserPath
+            if ($bannedNames -icontains $varName) {
+                $hits.Add((New-E2EViolation -RuleId 'rule14' -Pattern ('automatic-var-' + $varName.ToLowerInvariant()) -Line $node.Extent.StartLineNumber -Message "assigns to `$$varName, a PowerShell automatic variable"))
+            }
+        }
+    }
+    return $hits.ToArray()
+}
+
 Export-ModuleMember -Function @(
     'Test-Rule06WriteVerdictReached', 'Test-Rule07EnvIdentity', 'Test-Rule08ScenarioLegs',
-    'Test-Rule11ConvertFromJson', 'Test-Rule12PropertyAndStub'
+    'Test-Rule11ConvertFromJson', 'Test-Rule12PropertyAndStub', 'Test-Rule14AutomaticVariableAssignment'
 )

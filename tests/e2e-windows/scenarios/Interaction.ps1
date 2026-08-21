@@ -38,7 +38,15 @@ function Get-InteractionHeadlessLegTable {
            preceding set-value leg already left it non-empty - relying on
            table order rather than pre-populating a second field. #>
         @{ Name = 'clear'; TargetId = 'text-input'; Property = 'value'; AnyChange = $true; Action = 'clear' }
-        @{ Name = 'toggle'; TargetId = 'switch-button'; IsProperty = 'checked'; ExpectedState = $true; Action = 'toggle' }
+        <# Refresh: switch-button's own Name is its toggle's visible evidence
+           (fixture wires Text to "Switch: on"/"Switch: off" on flip, the
+           same pattern outline-parent/menu-disclosure use below) - a stale
+           ref re-identifies by name and fails strict re-identification
+           after the flip, measured live as a TIMEOUT on `is --property
+           checked` against the pre-toggle ref rather than a clean
+           STALE_REF. Re-resolving fresh every poll (as the expand/collapse
+           legs already do) reads the live element instead. #>
+        @{ Name = 'toggle'; TargetId = 'switch-button'; IsProperty = 'checked'; ExpectedState = $true; Action = 'toggle'; Refresh = $true }
         @{ Name = 'check'; TargetId = 'toggle-box'; IsProperty = 'checked'; ExpectedState = $true; Action = 'check' }
         @{ Name = 'uncheck'; TargetId = 'toggle-box'; IsProperty = 'checked'; ExpectedState = $false; Action = 'uncheck' }
         @{ Name = 'expand-outline'; TargetId = 'outline-parent'; IsProperty = 'expanded'; ExpectedState = $true; Action = 'expand'; Refresh = $true }
