@@ -45,6 +45,7 @@ fn manifest_round_trips_with_optional_fields() {
         ended_at: None,
         trace: SessionTraceMode::On,
         artifacts: ArtifactsMode::Events,
+        cursor_overlay: crate::CursorOverlayConfig::default(),
     };
     write_manifest(&manifest).unwrap();
     let loaded = read_manifest("run-1").unwrap().expect("manifest");

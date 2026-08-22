@@ -331,13 +331,16 @@ fn checked_falls_back_to_snapshot_state_when_live_state_is_missing() {
 fn basic_state_properties_use_live_state() {
     let _guard = HomeGuard::new();
     let snapshot_id = save_entry(entry(vec![], None, vec![]));
-    let adapter =
-        LiveStateAdapter::with_live(visible_bounds(), vec!["focused".into(), "expanded".into()]);
+    let adapter = LiveStateAdapter::with_live(
+        visible_bounds(),
+        vec!["focused".into(), "expanded".into(), "selected".into()],
+    );
 
     for (property, expected) in [
         (IsProperty::Enabled, true),
         (IsProperty::Focused, true),
         (IsProperty::Expanded, true),
+        (IsProperty::Selected, true),
     ] {
         let result = execute(
             IsArgs {

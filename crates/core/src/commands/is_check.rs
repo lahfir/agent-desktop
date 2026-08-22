@@ -5,7 +5,7 @@ use crate::{
     context::CommandContext,
     element_state::ElementState,
     refs::RefEntry,
-    state::{self, CHECKED, DISABLED, EXPANDED, FOCUSED, VisibilityEvidence},
+    state::{self, CHECKED, DISABLED, EXPANDED, FOCUSED, SELECTED, VisibilityEvidence},
 };
 use serde_json::{Value, json};
 
@@ -21,6 +21,7 @@ pub enum IsProperty {
     Checked,
     Focused,
     Expanded,
+    Selected,
 }
 
 pub fn execute(
@@ -37,6 +38,7 @@ pub fn execute(
         IsProperty::Checked => "checked",
         IsProperty::Focused => "focused",
         IsProperty::Expanded => "expanded",
+        IsProperty::Selected => "selected",
     };
 
     let deadline = crate::Deadline::standard()?;
@@ -77,6 +79,7 @@ pub fn execute(
                 ),
             state::has_state(&state.states, EXPANDED),
         ),
+        IsProperty::Selected => (true, state::has_state(&state.states, SELECTED)),
     };
 
     Ok(

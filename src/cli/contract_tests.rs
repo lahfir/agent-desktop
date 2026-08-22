@@ -1,4 +1,4 @@
-use crate::cli::Cli;
+use crate::cli::{Cli, Commands};
 use clap::{CommandFactory, Parser, error::ErrorKind};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -35,6 +35,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
 ];
 
 const COMMAND_SPECIFIC_TESTS: &[&str] = &[
+    "cursor-overlay",
     "find",
     "focus-window",
     "is",
@@ -79,6 +80,62 @@ fn standard_version_flag_reports_the_package_version() {
         error.to_string().trim(),
         format!("agent-desktop {}", env!("CARGO_PKG_VERSION"))
     );
+}
+
+#[test]
+fn cursor_overlay_enable_is_session_scoped_and_bounded() {
+    let cli = Cli::try_parse_from([
+        "agent-desktop",
+        "--session",
+        "run-1",
+        "cursor-overlay",
+        "enable",
+        "--label",
+        "Opening the profile menu for this account now",
+        "--max-words",
+        "5",
+    ])
+    .expect("valid cursor overlay command");
+    let Commands::CursorOverlay(args) = cli.command.expect("command") else {
+        panic!("expected cursor overlay command");
+    };
+    let crate::cli_args::cursor_overlay_action::CursorOverlayAction::Enable(args) = args.action
+    else {
+        panic!("expected enable action");
+    };
+    let config = args.to_core().expect("valid cursor config");
+
+    assert_eq!(cli.session.as_deref(), Some("run-1"));
+    assert!(config.is_enabled());
+    assert_eq!(config.label(), Some("Opening the profile menu for…"));
+}
+
+#[test]
+fn cursor_overlay_disable_is_a_dedicated_command() {
+    let cli = Cli::try_parse_from([
+        "agent-desktop",
+        "--session",
+        "run-1",
+        "cursor-overlay",
+        "disable",
+    ])
+    .expect("valid disable command");
+
+    let Commands::CursorOverlay(args) = cli.command.expect("command") else {
+        panic!("expected cursor overlay command");
+    };
+    assert!(matches!(
+        args.action,
+        crate::cli_args::cursor_overlay_action::CursorOverlayAction::Disable
+    ));
+}
+
+#[test]
+fn action_commands_reject_the_removed_cursor_flag() {
+    let error = Cli::try_parse_from(["agent-desktop", "--agent-cursor", "on", "click", "@e1"])
+        .expect_err("cursor configuration is not an action flag");
+
+    assert_eq!(error.kind(), ErrorKind::UnknownArgument);
 }
 
 #[test]
@@ -170,12 +227,12 @@ fn macos_capability_count_includes_restored_notifications() {
     let commands = cli_command_names();
     assert_eq!(
         commands.len(),
-        58,
+        59,
         "the published CLI command count changed"
     );
     assert_eq!(
         commands.len(),
-        58,
+        59,
         "macOS operational command count changed; update capability documentation"
     );
 }

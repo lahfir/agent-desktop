@@ -108,6 +108,10 @@ The side-effect contract attached to an action request, controlling whether the 
 
 Core owns those preconditions through `HeadedRequirement`: `FocusedWindow` for keyboard or focus-sensitive work, and `FocusedWindowAndCursor` for pointer delivery. For ref actions, core focuses the exact source window before dispatch and resolves a verified target point for pointer work; the platform adapter owns the OS-specific focus primitive and delivery mechanism. Raw coordinate input has no ref identity, so it never infers or focuses a window. On macOS, headed `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; double/triple-click, hover, and drag are physical-only; expand/collapse and the remaining semantic actions stay semantic after the core focus precondition.
 
+### Agent Cursor Overlay
+
+An optional presentation-only cursor driven by verified action destinations. Its configuration is enabled or disabled once in a session manifest with `cursor-overlay`; action and batch commands inherit it without cursor flags. Headed mode suppresses the overlay because the real pointer already represents the action. It never moves or replaces the OS pointer and never changes Interaction Policy, action delivery, or response semantics. Shared configuration and motion stay platform-neutral; macOS supplies the native renderer while other platforms inherit the adapter's default no-op.
+
 ### Headless Ref Action
 A ref-based action that uses semantic accessibility operations without implicit focus stealing, cursor movement, synthetic keyboard input, or pasteboard use. This is the default mode.
 

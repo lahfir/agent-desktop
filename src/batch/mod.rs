@@ -95,6 +95,10 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "version" => no_args(command, item.args).map(|()| Commands::Version),
         "skills" => parse_skills(item.args).map(Commands::Skills),
         "session" => parse_session(item.args).map(Commands::Session),
+        "cursor-overlay" => Err(AppError::invalid_input_with_suggestion(
+            "Cursor overlay configuration cannot run inside a batch",
+            "Enable or disable it once for the selected session before running the batch.",
+        )),
         "trace" => parse_trace(item.args).map(Commands::Trace),
         "batch" => Err(AppError::invalid_input_with_suggestion(
             "Batch commands cannot be nested",

@@ -43,10 +43,15 @@ fn rejects_unknown_get_property() {
 
 #[test]
 fn rejects_unknown_is_property() {
-    match parse_is_property("selected") {
+    match parse_is_property("placeholder") {
         Ok(_) => panic!("expected invalid is property"),
         Err(err) => assert_eq!(err.code(), "INVALID_ARGS"),
     }
+}
+
+#[test]
+fn parses_selected_is_property() {
+    assert!(parse_is_property("selected").is_ok());
 }
 
 #[test]

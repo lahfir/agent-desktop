@@ -20,6 +20,7 @@ mod clipboard_format;
 pub mod commands;
 mod containment_predicate;
 pub mod context;
+pub mod cursor_overlay;
 mod deadline;
 mod delivery_disposition;
 mod delivery_semantics;
@@ -169,6 +170,10 @@ pub use clipboard_content::ClipboardContent;
 pub use clipboard_format::ClipboardFormat;
 pub use containment_predicate::ContainmentPredicate;
 pub use context::{CommandContext, WaitSelector};
+pub use cursor_overlay::{
+    CURSOR_OVERLAY_GREETING, CursorMotion, CursorOverlayConfig, CursorOverlayControl,
+    CursorOverlayInstruction, MAX_CURSOR_LABEL_WORDS, place_label,
+};
 pub use deadline::{DEFAULT_OPERATION_TIMEOUT_MS, Deadline};
 pub use delivery_disposition::DeliveryDisposition;
 pub use delivery_semantics::DeliverySemantics;

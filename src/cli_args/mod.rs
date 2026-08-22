@@ -3,8 +3,12 @@ use serde::Deserialize;
 
 pub(crate) mod actions;
 pub(crate) mod batch;
+pub(crate) mod cursor_overlay;
+pub(crate) mod cursor_overlay_action;
+pub(crate) mod cursor_overlay_enable;
 pub(crate) mod drag;
 pub(crate) mod drag_target;
+pub(crate) mod interaction;
 pub(crate) mod mouse_wheel;
 pub(crate) mod notifications;
 pub(crate) mod session;
@@ -261,7 +265,7 @@ pub(crate) struct IsArgs {
     #[arg(
         long,
         default_value = "visible",
-        help = "State: visible, enabled, checked, focused, expanded"
+        help = "State: visible, enabled, checked, focused, expanded, selected"
     )]
     #[serde(default = "default_is_property")]
     pub property: String,

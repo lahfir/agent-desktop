@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::CursorOverlayConfig;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionManifest {
     pub id: String,
@@ -12,6 +14,8 @@ pub struct SessionManifest {
     pub trace: SessionTraceMode,
     #[serde(default)]
     pub artifacts: ArtifactsMode,
+    #[serde(default, skip_serializing_if = "CursorOverlayConfig::is_disabled")]
+    pub cursor_overlay: CursorOverlayConfig,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

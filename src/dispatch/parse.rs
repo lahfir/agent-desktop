@@ -26,8 +26,9 @@ pub(crate) fn parse_is_property(s: &str) -> Result<is_check::IsProperty, AppErro
         "checked" => Ok(is_check::IsProperty::Checked),
         "focused" => Ok(is_check::IsProperty::Focused),
         "expanded" => Ok(is_check::IsProperty::Expanded),
+        "selected" => Ok(is_check::IsProperty::Selected),
         _ => Err(AppError::invalid_input(
-            "Unknown property. Valid: visible, enabled, checked, focused, expanded",
+            "Unknown property. Valid: visible, enabled, checked, focused, expanded, selected",
         )),
     }
 }

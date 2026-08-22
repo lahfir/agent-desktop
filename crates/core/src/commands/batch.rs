@@ -3,6 +3,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BatchCommand {
     pub command: String,
     pub session: Option<String>,

@@ -25,7 +25,10 @@ impl ObservationOps for DuplicateAdapter {
             ));
         };
         ObservedTree::from_roots(
-            vec![button(Vec::new()), button(vec!["disabled".into()])],
+            vec![
+                button(vec!["selected".into()]),
+                button(vec!["disabled".into()]),
+            ],
             ObservationSource::Window {
                 window: window.clone(),
                 surface: agent_desktop_core::SnapshotSurface::Window,
@@ -129,4 +132,23 @@ fn last_and_nth_selection_are_applied_at_the_c_boundary() {
         assert!(out);
     }
     unsafe { crate::adapter::ad_adapter_destroy(adapter) };
+}
+
+#[test]
+fn first_selection_reports_selected_at_the_c_boundary() {
+    let adapter = crate::adapter::register_adapter(AdAdapter {
+        inner: Box::new(DuplicateAdapter),
+        session_id: None,
+        _session_lease: None,
+    })
+    .unwrap();
+    let mut query = query();
+    query.control.selection.kind = AdFindSelectionKind::First as i32;
+    let mut out = false;
+
+    let result = unsafe { ad_is_exact(adapter, &window(), &query, c"selected".as_ptr(), &mut out) };
+
+    unsafe { crate::adapter::ad_adapter_destroy(adapter) };
+    assert_eq!(result, AdResult::Ok);
+    assert!(out);
 }
