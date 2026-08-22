@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::Parser;
 
 use super::{Commands, post_action_wait::PostActionWaitArgs};
+use crate::cli_args::interaction::InteractionArgs;
 
 const BEFORE_HELP: &str = include_str!("help_before.txt");
 const AFTER_HELP: &str = include_str!("help_after.txt");
@@ -42,12 +43,8 @@ pub(crate) struct Cli {
         help = "Fail on trace setup/pre-action write errors"
     )]
     pub trace_strict: bool,
-    #[arg(
-        long,
-        global = true,
-        help = "Prefer physical delivery for natural input commands and permit focus/cursor side effects. Default is strict headless semantic delivery."
-    )]
-    pub headed: bool,
+    #[command(flatten)]
+    pub interaction: InteractionArgs,
     #[command(flatten)]
     pub post_action_wait: PostActionWaitArgs,
     #[command(subcommand)]

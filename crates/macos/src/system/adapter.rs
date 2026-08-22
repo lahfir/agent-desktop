@@ -9,6 +9,17 @@ use agent_desktop_core::{
 use crate::adapter::MacOSAdapter;
 
 impl SystemOps for MacOSAdapter {
+    fn update_cursor_overlay(
+        &self,
+        control: &agent_desktop_core::CursorOverlayControl,
+    ) -> Result<(), AdapterError> {
+        crate::system::cursor_overlay::update(control)
+    }
+
+    fn run_cursor_overlay_child(&self) -> Option<Result<(), AdapterError>> {
+        crate::system::cursor_overlay::entry_from_env()
+    }
+
     fn acquire_interaction_lease(
         &self,
         deadline: Deadline,

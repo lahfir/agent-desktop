@@ -251,7 +251,7 @@ fn sort_apps(apps: &mut [AppInfo]) {
 fn matching_pids(apps: &[AppInfo], app_name: &str) -> Vec<ProcessId> {
     let mut pids = apps
         .iter()
-        .filter(|app| app.name.eq_ignore_ascii_case(app_name))
+        .filter(|app| agent_desktop_core::app_name_matches(&app.name, app_name))
         .map(|app| app.pid)
         .collect::<Vec<_>>();
     pids.sort_unstable();

@@ -10,6 +10,7 @@ enum SupportedProperty {
     Focused,
     Disabled,
     Enabled,
+    Selected,
 }
 
 impl SupportedProperty {
@@ -18,6 +19,7 @@ impl SupportedProperty {
             "focused" => Some(Self::Focused),
             "disabled" => Some(Self::Disabled),
             "enabled" => Some(Self::Enabled),
+            "selected" => Some(Self::Selected),
             _ => None,
         }
     }
@@ -32,6 +34,7 @@ impl SupportedProperty {
             Self::Focused => contains("focused"),
             Self::Disabled => contains("disabled"),
             Self::Enabled => !contains("disabled"),
+            Self::Selected => contains("selected"),
         }
     }
 }
@@ -123,7 +126,7 @@ unsafe fn is_in_window(
         None => {
             let error = agent_desktop_core::AdapterError::new(
                 agent_desktop_core::ErrorCode::InvalidArgs,
-                "unknown property — expected one of: focused, disabled, enabled",
+                "unknown property — expected one of: focused, disabled, enabled, selected",
             );
             set_last_error(&error);
             return AdResult::ErrInvalidArgs;
@@ -189,7 +192,9 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_properties() {
-        assert!(SupportedProperty::parse("selected").is_none());
+    fn selected_property_evaluates_normalized_state() {
+        let property = SupportedProperty::parse("selected").expect("selected must be supported");
+        assert!(property.evaluate(&[String::from("SeLeCtEd")]));
+        assert!(!property.evaluate(&[]));
     }
 }

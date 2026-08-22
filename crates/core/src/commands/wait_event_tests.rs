@@ -344,6 +344,18 @@ fn failed_inventory_poll_never_reports_app_termination() {
     assert_eq!(details["baseline_counts"]["apps"], 1);
 }
 
+#[test]
+fn seeded_process_resolves_bundle_identifier() {
+    let baseline = baseline_with_apps(vec![app("TextEdit", "test-instance")]);
+
+    let process = process_from_baseline(&baseline, "com.example.editor")
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(process.pid, crate::ProcessId::new(42));
+    assert_eq!(process.instance, "test-instance");
+}
+
 #[path = "wait_event_deadline_tests.rs"]
 mod deadline_tests;
 

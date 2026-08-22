@@ -97,13 +97,13 @@ mod imp {
     pub(crate) fn attribute_mask(requirements: EvidenceRequirements) -> u32 {
         use crate::tree::node_attribute_status::{
             AX_DOM_IDENTIFIER, AX_IDENTIFIER, BUSY, DESCRIPTION, DISCLOSING, ENABLED, EXPANDED,
-            FOCUSED, HIDDEN, HORIZONTAL_SCROLLBAR, MODAL, PLACEHOLDER, POSITION, REQUIRED, ROLE,
-            SELECTED, SIZE, SUBROLE, TITLE, TITLE_ELEMENT, VALUE, VERTICAL_SCROLLBAR,
+            FOCUSED, HIDDEN, HORIZONTAL_SCROLLBAR, LABEL, MODAL, PLACEHOLDER, POSITION, REQUIRED,
+            ROLE, SELECTED, SIZE, SUBROLE, TITLE, TITLE_ELEMENT, VALUE, VERTICAL_SCROLLBAR,
             attribute_bit,
         };
         let mut mask = attribute_bit(ROLE) | attribute_bit(SUBROLE);
         if requirements.name || requirements.description {
-            for index in [TITLE, DESCRIPTION, VALUE, PLACEHOLDER, TITLE_ELEMENT] {
+            for index in [TITLE, DESCRIPTION, VALUE, LABEL, PLACEHOLDER, TITLE_ELEMENT] {
                 mask |= attribute_bit(index);
             }
         }
@@ -191,7 +191,7 @@ mod tests {
         assert_eq!(attribute_mask(requirements).count_ones(), 2);
         assert_eq!(
             attribute_mask(EvidenceRequirements::snapshot()).count_ones(),
-            NODE_ATTRIBUTE_COUNT as u32 - 1
+            NODE_ATTRIBUTE_COUNT as u32
         );
     }
 
@@ -204,7 +204,7 @@ mod tests {
         };
         let requested = requested_indices(attribute_mask(requirements)).collect::<Vec<_>>();
 
-        assert_eq!(requested, [0, 1, 2, 3, 16, 17, 22]);
+        assert_eq!(requested, [0, 1, 2, 3, 15, 16, 17, 22]);
     }
 
     #[test]

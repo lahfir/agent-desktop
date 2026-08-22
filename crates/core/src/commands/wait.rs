@@ -199,9 +199,6 @@ fn wait_for_text(
     let mut last_error = None;
 
     loop {
-        if deadline.is_expired() {
-            return wait_timeout::text(&text, timeout_ms, expected_count, last_error);
-        }
         match snapshot::build(adapter, &opts, app.as_deref(), None, deadline) {
             Ok(mut result) => {
                 let matches = wait_text_match::find(&result.tree, &normalized_text, expected_count);
@@ -246,12 +243,11 @@ fn wait_for_text(
             Err(err) => return Err(err),
         }
 
-        let remaining = deadline.remaining();
-        if remaining.is_zero() {
+        if deadline.is_expired() {
             return wait_timeout::text(&text, timeout_ms, expected_count, last_error);
         }
 
-        std::thread::sleep(remaining.min(interval));
+        std::thread::sleep(deadline.remaining().min(interval));
         interval = (interval * 2).min(Duration::from_millis(1000));
     }
 }

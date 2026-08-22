@@ -44,16 +44,14 @@ impl WindowRecord {
 
 #[derive(Clone, Copy)]
 pub(crate) enum WindowRecordScope<'a> {
-    App(&'a str),
     Pid(i32),
     Pids(&'a rustc_hash::FxHashSet<i32>),
     Window(i64),
 }
 
 impl WindowRecordScope<'_> {
-    fn matches(self, app_name: &str, pid: i32, window_number: i64) -> bool {
+    fn matches(self, pid: i32, window_number: i64) -> bool {
         match self {
-            Self::App(expected) => app_name.eq_ignore_ascii_case(expected),
             Self::Pid(expected) => pid == expected,
             Self::Pids(expected) => expected.contains(&pid),
             Self::Window(expected) => window_number == expected,
@@ -141,7 +139,7 @@ pub(super) fn records_from_dictionaries(
             continue;
         }
         let window_number = required_int_field(&dictionary, "kCGWindowNumber")?;
-        if !scope.matches(&app_name, pid, window_number) {
+        if !scope.matches(pid, window_number) {
             continue;
         }
         let bounds = rect_field(&dictionary, "kCGWindowBounds")

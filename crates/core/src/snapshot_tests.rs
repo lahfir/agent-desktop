@@ -346,3 +346,6 @@ fn test_skeleton_fixture_matches_golden() {
         "interactive textfield should be @e4"
     );
 }
+
+#[path = "skeleton_anchor_tests.rs"]
+mod skeleton_anchor_tests;

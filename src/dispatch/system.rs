@@ -90,8 +90,12 @@ pub(super) fn skills(args: SkillsArgs) -> Result<Value, AppError> {
     }
 }
 
-pub(super) fn session(args: SessionArgs, context: &CommandContext) -> Result<Value, AppError> {
-    session_dispatch::dispatch(args, context)
+pub(super) fn session(
+    args: SessionArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    session_dispatch::dispatch(args, adapter, context)
 }
 
 pub(super) fn trace(args: TraceArgs, context: &CommandContext) -> Result<Value, AppError> {

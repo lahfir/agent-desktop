@@ -5,6 +5,7 @@ pub(crate) mod appkit_bridge;
 pub(crate) mod cg_window;
 pub(crate) mod cg_window_exact;
 pub(crate) mod cocoa_runtime;
+pub(crate) mod cursor_overlay;
 pub(crate) mod display;
 pub(crate) mod display_work_area;
 pub(crate) mod focus;

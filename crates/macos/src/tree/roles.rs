@@ -108,9 +108,19 @@ pub(crate) fn ax_role_and_subrole_to_str(ax_role: &str, ax_subrole: Option<&str>
 
 pub(crate) use agent_desktop_core::roles::is_toggleable_role;
 
+pub(crate) fn accessible_name_from_subrole(subrole: Option<&str>) -> Option<&'static str> {
+    match subrole {
+        Some("AXCloseButton") => Some("Close"),
+        Some("AXMinimizeButton") => Some("Minimize"),
+        Some("AXZoomButton") => Some("Zoom"),
+        Some("AXFullScreenButton") => Some("Full Screen"),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ax_role_and_subrole_to_str, ax_role_to_str};
+    use super::{accessible_name_from_subrole, ax_role_and_subrole_to_str, ax_role_to_str};
 
     #[test]
     fn interactive_ax_roles_map_to_exact_normalized_roles() {
@@ -124,6 +134,23 @@ mod tests {
         assert_eq!(ax_role_to_str("AXComboBox"), "combobox");
         assert_eq!(ax_role_to_str("AXColorWell"), "colorwell");
         assert_eq!(ax_role_to_str("AXDockItem"), "dockitem");
+    }
+
+    #[test]
+    fn native_window_control_subroles_have_accessible_names() {
+        assert_eq!(
+            accessible_name_from_subrole(Some("AXCloseButton")),
+            Some("Close")
+        );
+        assert_eq!(
+            accessible_name_from_subrole(Some("AXMinimizeButton")),
+            Some("Minimize")
+        );
+        assert_eq!(
+            accessible_name_from_subrole(Some("AXZoomButton")),
+            Some("Zoom")
+        );
+        assert_eq!(accessible_name_from_subrole(Some("AXButton")), None);
     }
 
     #[test]

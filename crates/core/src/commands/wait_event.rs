@@ -142,7 +142,7 @@ fn process_from_baseline(
     let mut matches = baseline
         .apps
         .iter()
-        .filter(|candidate| candidate.name.eq_ignore_ascii_case(app));
+        .filter(|candidate| candidate.matches_identifier(app));
     let Some(first) = matches.next() else {
         return Ok(None);
     };

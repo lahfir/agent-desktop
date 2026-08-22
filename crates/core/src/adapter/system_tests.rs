@@ -19,6 +19,20 @@ fn default_surfaces_fail_closed() {
 }
 
 #[test]
+fn default_cursor_overlay_is_a_successful_no_op() {
+    let config = crate::CursorOverlayConfig::enabled(None, 6).expect("valid config");
+    let instruction =
+        crate::CursorOverlayInstruction::new(crate::Point { x: 20.0, y: 40.0 }, &config, true)
+            .expect("valid instruction");
+    let control = crate::CursorOverlayControl::present("test-session".into(), instruction);
+
+    DefaultOnly
+        .update_cursor_overlay(&control)
+        .expect("default presentation is fail-soft");
+    assert!(DefaultOnly.run_cursor_overlay_child().is_none());
+}
+
+#[test]
 fn default_permission_report_is_unknown_not_denied() {
     let report = DefaultOnly
         .permission_report(crate::Deadline::standard().unwrap())

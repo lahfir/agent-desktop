@@ -171,3 +171,29 @@ fn focus_confirmation_resets_after_transient_wrong_window() {
     assert_eq!(value.id, "w1");
     assert_eq!(*adapter.focused_window_calls.lock().unwrap(), 4);
 }
+
+#[test]
+fn app_filter_results_are_not_discarded_by_display_name() {
+    let mut target = window("w1", false);
+    target.app = "WhatsApp".into();
+    let mut focused = target.clone();
+    focused.state.is_focused = true;
+    let adapter = FocusAdapter {
+        windows: vec![target],
+        focused_windows: Mutex::new(vec![focused]),
+        focused_window_calls: Mutex::new(0),
+        focused_window_supported: true,
+    };
+
+    let value = execute(
+        FocusWindowArgs {
+            window_id: None,
+            app: Some("net.whatsapp.WhatsApp".into()),
+            title: None,
+        },
+        &adapter,
+    )
+    .unwrap();
+
+    assert_eq!(value["focused"]["id"], "w1");
+}
