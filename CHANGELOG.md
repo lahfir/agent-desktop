@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.3](https://github.com/lahfir/agent-desktop/compare/v0.8.2...v0.8.3) (2026-08-22)
+
+
+### Features
+
+* harden native automation and add cursor overlay ([#137](https://github.com/lahfir/agent-desktop/issues/137)) ([25a0087](https://github.com/lahfir/agent-desktop/commit/25a00877726d324c0ee64d84c8d989a5808a66d6))
+
 ## [0.8.2](https://github.com/lahfir/agent-desktop/compare/v0.8.1...v0.8.2) (2026-08-20)
 
 
