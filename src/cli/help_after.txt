@@ -3,7 +3,7 @@ OBSERVATION
   screenshot                 PNG screenshot of an application window
   find                       Search elements by role, name, value, or text (--limit defaults to 50)
   get <ref> --property <p>   Read element property: text, value, title, bounds, role, states
-  is <ref> --property <p>    Check state: visible, enabled, checked, focused, expanded
+  is <ref> --property <p>    Check state: visible, enabled, checked, focused, expanded, selected
   list-surfaces              Available surfaces for an app
 
 INTERACTION
@@ -85,6 +85,8 @@ SYSTEM
   session end                  Seal a manifest (ID from argument, --session, or environment)
   session list                 List session manifests
   session gc                   Remove ended or provably-stale sessions
+  cursor-overlay enable       Enable/configure the visual cursor for the selected session
+  cursor-overlay disable      Disable the visual cursor for the selected session
 
 ENVIRONMENT
   AGENT_DESKTOP_SESSION      Session ID fallback when --session is not passed
@@ -142,6 +144,7 @@ EXAMPLES
   agent-desktop snapshot --app Finder -w "button:OK"
   agent-desktop click @s8f3k2p9:e5 -w ":Saved!"
   agent-desktop session start --name run-a       # note data.session_id
+  agent-desktop --session <session_id> cursor-overlay enable --label "Opening menu"
   agent-desktop --session <session_id> click @s8f3k2p9:e5
   agent-desktop batch '[{"command":"click","args":{"ref_id":"@e1","snapshot":"<snapshot_id>"}}]'
   agent-desktop --session run-b batch '[{"command":"status","session":"run-b","args":{}}]'

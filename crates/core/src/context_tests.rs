@@ -10,6 +10,25 @@ fn accepts_filesystem_safe_session_ids() {
 }
 
 #[test]
+fn session_cursor_config_is_loaded_by_commands_and_batch_entries() {
+    let _guard = crate::refs_test_support::HomeGuard::new();
+    let manifest = start_session(StartSessionOptions::default()).expect("session starts");
+    let enabled =
+        crate::CursorOverlayConfig::enabled(Some("Opening menu".into()), 6).expect("valid config");
+    crate::session::set_cursor_overlay(&manifest.id, enabled).expect("setting persists");
+
+    let context =
+        CommandContext::new(Some(manifest.id.clone()), None, false).expect("context loads session");
+    let batch_context = context
+        .for_batch_item(None)
+        .expect("batch inherits session");
+
+    assert!(context.cursor_overlay().is_enabled());
+    assert_eq!(context.cursor_overlay().label(), Some("Opening menu"));
+    assert_eq!(batch_context.cursor_overlay(), context.cursor_overlay());
+}
+
+#[test]
 fn rejects_path_like_session_ids() {
     assert!(validate_session_id("../agent").is_err());
     assert!(validate_session_id("agent/a").is_err());

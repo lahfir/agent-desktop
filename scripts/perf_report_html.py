@@ -132,8 +132,7 @@ def load(path):
 
 
 def fmt_ms(value):
-    return f"{value:.1f} ms"
-
+    return f"{value:.1f} ms" if value is not None else "-"
 
 def ok_pct(value):
     return f"{value * 100:.0f}%"
@@ -148,7 +147,7 @@ def build_ab_rows(payload):
     rows = []
     for name, sides in payload.get("cases", {}).items():
         head, base = sides.get("HEAD"), sides.get("BASE")
-        if not head or not base:
+        if not head or not base or min(head.get("ok_rate", 1.0), base.get("ok_rate", 1.0)) < 1.0:
             continue
         delta_text, delta_cls = chart.fmt_delta(head["p50_ms"], base["p50_ms"])
         rows.append({
@@ -225,11 +224,11 @@ def build_tiles(fixture, synthetic):
     tiles = []
     if fixture:
         click = fixture.get("cases", {}).get("click", {})
-        if click.get("HEAD") and click.get("BASE"):
+        if click.get("HEAD", {}).get("ok_rate") == click.get("BASE", {}).get("ok_rate") == 1.0:
             h, b = click["HEAD"]["p50_ms"], click["BASE"]["p50_ms"]
             tiles.append(tile("Click p50 (fixture)", fmt_ms(h), h, b))
         d30 = fixture.get("cases", {}).get("snapshot d30", {})
-        if d30.get("HEAD") and d30.get("BASE"):
+        if d30.get("HEAD", {}).get("ok_rate") == d30.get("BASE", {}).get("ok_rate") == 1.0:
             h, b = d30["HEAD"]["p50_ms"], d30["BASE"]["p50_ms"]
             tiles.append(tile("Snapshot d30 p50 (fixture)", fmt_ms(h), h, b))
     scenarios = (synthetic or {}).get("scenarios") or []
@@ -272,11 +271,12 @@ def case_rows(payload, require_base):
         head, base = sides.get("HEAD"), sides.get("BASE")
         if not head or (require_base and not base):
             continue
-        delta_text = chart.fmt_delta(head["p50_ms"], base["p50_ms"])[0] if base else None
+        comparable = base and min(head.get("ok_rate", 1.0), base.get("ok_rate", 1.0)) == 1.0
+        delta_text = chart.fmt_delta(head["p50_ms"], base["p50_ms"])[0] if comparable else None
         ok = (f'{ok_pct(base.get("ok_rate", 1.0))}/{ok_pct(head.get("ok_rate", 1.0))}' if base
               else f'-/{ok_pct(head.get("ok_rate", 1.0))}')
         rows.append([name, fmt_ms(base["p50_ms"]) if base else "-", fmt_ms(base["p95_ms"]) if base else "-",
-                     fmt_ms(head["p50_ms"]), fmt_ms(head["p95_ms"]), delta_text or "n/a", ok])
+                     fmt_ms(head["p50_ms"]), fmt_ms(head["p95_ms"]), delta_text or "not comparable", ok])
     return rows
 
 

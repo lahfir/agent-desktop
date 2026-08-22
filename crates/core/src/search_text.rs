@@ -2,6 +2,9 @@ pub(crate) fn normalize(value: &str) -> String {
     let mut normalized = String::with_capacity(value.len());
     let mut pending_space = false;
     for character in value.chars() {
+        if is_bidirectional_control(character) {
+            continue;
+        }
         if character.is_whitespace() {
             pending_space = !normalized.is_empty();
             continue;
@@ -13,6 +16,13 @@ pub(crate) fn normalize(value: &str) -> String {
         normalized.extend(character.to_lowercase());
     }
     normalized
+}
+
+pub(crate) fn is_bidirectional_control(character: char) -> bool {
+    matches!(
+        character,
+        '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+    )
 }
 
 pub(crate) fn contains(haystack: &str, normalized_needle: &str) -> bool {

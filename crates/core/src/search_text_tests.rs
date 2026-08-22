@@ -31,6 +31,12 @@ fn contains_handles_non_ascii_text() {
 }
 
 #[test]
+fn matching_ignores_bidirectional_formatting_controls() {
+    assert_eq!(normalize("\u{200e}WhatsApp"), normalize("WhatsApp"));
+    assert_eq!(normalize("\u{2067}Search\u{2069}"), normalize("Search"));
+}
+
+#[test]
 fn contains_empty_needle_is_true_not_panic() {
     assert!(contains("anything", ""));
     assert!(contains("", ""));

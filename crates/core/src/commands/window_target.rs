@@ -54,7 +54,6 @@ fn resolve_window(
             )?
             .into_iter()
             .filter(|window| window.id == window_id)
-            .filter(|window| app.is_none_or(|app| window.app.eq_ignore_ascii_case(app)))
             .collect();
         return window_lookup::select_window(
             candidates,

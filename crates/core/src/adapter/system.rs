@@ -1,13 +1,21 @@
 use crate::{
-    AdapterError, AdapterSession, AppInfo, Deadline, DismissAllNotificationsRequest,
-    DismissNotificationRequest, ImageBuffer, InteractionLease, InteractionPolicy, KeyCombo,
-    NotificationActionRequest, NotificationFilter, NotificationInfo, PermissionReport,
-    PermissionState, ProcessIdentity, SessionAffinity, SignalBaseline, SignalFilter, WindowInfo,
-    WindowOp, action_result::ActionResult, display_info::DisplayInfo,
+    AdapterError, AdapterSession, AppInfo, CursorOverlayControl, Deadline,
+    DismissAllNotificationsRequest, DismissNotificationRequest, ImageBuffer, InteractionLease,
+    InteractionPolicy, KeyCombo, NotificationActionRequest, NotificationFilter, NotificationInfo,
+    PermissionReport, PermissionState, ProcessIdentity, SessionAffinity, SignalBaseline,
+    SignalFilter, WindowInfo, WindowOp, action_result::ActionResult, display_info::DisplayInfo,
     screenshot_target::ScreenshotTarget,
 };
 
 pub trait SystemOps: Send + Sync {
+    fn update_cursor_overlay(&self, _control: &CursorOverlayControl) -> Result<(), AdapterError> {
+        Ok(())
+    }
+
+    fn run_cursor_overlay_child(&self) -> Option<Result<(), AdapterError>> {
+        None
+    }
+
     fn acquire_interaction_lease(
         &self,
         _deadline: Deadline,

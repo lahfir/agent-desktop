@@ -72,7 +72,7 @@ fn filter_apps(filter: &SignalFilter, all: Vec<AppInfo>) -> Vec<AppInfo> {
     if let Some(name) = &filter.app {
         return all
             .into_iter()
-            .filter(|app| app.name.eq_ignore_ascii_case(name))
+            .filter(|app| app.matches_identifier(name))
             .collect();
     }
     if let Some(process) = &filter.process {

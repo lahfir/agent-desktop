@@ -7,7 +7,8 @@ pub use liveness::SessionLivenessLease;
 pub use manifest::{ArtifactsMode, SessionManifest, SessionTraceMode};
 
 use crate::{
-    AppError, context::validate_session_id, refs::write_private_file, refs_store::RefStore,
+    AppError, CursorOverlayConfig, context::validate_session_id, refs::write_private_file,
+    refs_store::RefStore,
 };
 use serde_json;
 use std::io::ErrorKind;
@@ -100,6 +101,46 @@ pub fn write_manifest(manifest: &SessionManifest) -> Result<(), AppError> {
     write_private_file(&manifest_path(&manifest.id)?, json.as_bytes())
 }
 
+pub fn set_cursor_overlay(
+    session_id: &str,
+    cursor_overlay: CursorOverlayConfig,
+) -> Result<SessionManifest, AppError> {
+    let mut manifest = read_manifest(session_id)?.ok_or_else(|| {
+        AppError::invalid_input_with_suggestion(
+            format!("Session '{session_id}' has no manifest"),
+            "Run `session start`, then pass its id with --session.",
+        )
+    })?;
+    if manifest.ended_at.is_some() {
+        return Err(AppError::invalid_input_with_suggestion(
+            format!("Session '{session_id}' has ended"),
+            "Start a new session before changing cursor overlay settings.",
+        ));
+    }
+    manifest.cursor_overlay = cursor_overlay.validated()?;
+    write_manifest(&manifest)?;
+    Ok(manifest)
+}
+
+pub fn cursor_overlay_for_session(
+    session_id: Option<&str>,
+) -> Result<CursorOverlayConfig, AppError> {
+    let Some(session_id) = session_id else {
+        return Ok(CursorOverlayConfig::default());
+    };
+    let config = read_manifest(session_id)?
+        .filter(|manifest| manifest.ended_at.is_none())
+        .map(|manifest| manifest.cursor_overlay)
+        .unwrap_or_default();
+    match config.validated() {
+        Ok(config) => Ok(config),
+        Err(error) => {
+            tracing::warn!(code = %error.code.as_str(), "ignoring invalid session cursor overlay configuration");
+            Ok(CursorOverlayConfig::default())
+        }
+    }
+}
+
 pub fn trace_enabled_for_session(session_id: &str) -> Result<bool, AppError> {
     Ok(read_manifest(session_id)?.is_some_and(|manifest| manifest.trace_enabled()))
 }
@@ -183,6 +224,7 @@ pub fn start_session(options: StartSessionOptions) -> Result<SessionManifest, Ap
         ended_at: None,
         trace: options.trace,
         artifacts: options.artifacts,
+        cursor_overlay: CursorOverlayConfig::default(),
     };
     write_manifest(&manifest)?;
     Ok(manifest)

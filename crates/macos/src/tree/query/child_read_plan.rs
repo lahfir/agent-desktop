@@ -60,4 +60,22 @@ mod tests {
 
         assert_eq!(plan.max_elements(false), 5);
     }
+
+    #[test]
+    fn actionable_group_cannot_load_past_the_boundary() {
+        let plan = ChildReadPlan::boundary_aware(4_096, 0, 3, 3);
+        let transparent = super::super::node_evidence::is_transparent_wrapper(
+            Some("AXGroup"),
+            None,
+            &agent_desktop_core::NameEvidence::default(),
+            None,
+            &agent_desktop_core::IdentifierEvidence::absent(),
+            &agent_desktop_core::LocatorField::Known(vec![
+                agent_desktop_core::capability::CLICK.into(),
+            ]),
+        );
+
+        assert!(!transparent);
+        assert_eq!(plan.max_elements(transparent), 0);
+    }
 }

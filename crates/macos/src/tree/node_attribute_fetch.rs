@@ -12,7 +12,7 @@ mod imp {
             node_attribute_names::copy_node_attribute_values,
             node_attribute_read::NodeAttributeRead,
             node_attribute_status::{
-                AX_DOM_IDENTIFIER, AX_IDENTIFIER, NodeAttributeStatus, ROLE, SUBROLE, VALUE,
+                AX_DOM_IDENTIFIER, AX_IDENTIFIER, LABEL, NodeAttributeStatus, ROLE, SUBROLE, VALUE,
             },
             node_attrs::{parse_bool_attr, parse_enabled},
             node_control_states::NodeControlStates,
@@ -217,7 +217,10 @@ mod imp {
         NodeAttributeRead {
             attrs: NodeAttrs {
                 name_evidence: agent_desktop_core::NameEvidence {
-                    explicit_label: None,
+                    explicit_label: get(LABEL).or_else(|| {
+                        crate::tree::roles::accessible_name_from_subrole(subrole.as_deref())
+                            .map(str::to_owned)
+                    }),
                     labelled_by_text,
                     native_title: get(1),
                     static_value: (role.as_deref() == Some("AXStaticText"))

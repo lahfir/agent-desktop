@@ -5,12 +5,14 @@ use std::sync::Mutex;
 
 struct ModifierCaptureAdapter {
     captured: Mutex<Option<MouseEvent>>,
+    presented: Mutex<Option<crate::CursorOverlayControl>>,
 }
 
 impl ModifierCaptureAdapter {
     fn new() -> Self {
         Self {
             captured: Mutex::new(None),
+            presented: Mutex::new(None),
         }
     }
 }
@@ -19,6 +21,14 @@ impl ObservationOps for ModifierCaptureAdapter {}
 impl ActionOps for ModifierCaptureAdapter {}
 impl SystemOps for ModifierCaptureAdapter {
     crate::adapter::guarded_interaction_lease!();
+
+    fn update_cursor_overlay(
+        &self,
+        control: &crate::CursorOverlayControl,
+    ) -> Result<(), AdapterError> {
+        *self.presented.lock().unwrap() = Some(control.clone());
+        Ok(())
+    }
 }
 
 impl InputOps for ModifierCaptureAdapter {
@@ -79,6 +89,29 @@ fn no_modifiers_requested_dispatches_empty_modifiers() {
 
     let captured = adapter.captured.lock().unwrap();
     assert!(captured.as_ref().unwrap().modifiers.is_empty());
+}
+
+#[test]
+fn headed_mouse_click_suppresses_cursor_overlay() {
+    let adapter = ModifierCaptureAdapter::new();
+    let config = crate::CursorOverlayConfig::enabled(None, 6).expect("valid config");
+
+    execute(
+        MouseClickArgs {
+            x: 10.0,
+            y: 20.0,
+            button: MouseButton::Left,
+            count: 1,
+            modifiers: Vec::new(),
+        },
+        &adapter,
+        &CommandContext::default()
+            .with_headed(true)
+            .with_cursor_overlay(config),
+    )
+    .expect("mouse click succeeds");
+
+    assert!(adapter.presented.lock().unwrap().is_none());
 }
 
 #[test]

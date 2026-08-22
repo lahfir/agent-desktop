@@ -1,15 +1,20 @@
 use crate::{
-    AdapterError, AppError, SignalBaseline, action::Action, action_request::ActionRequest,
-    interaction_policy::InteractionPolicy, session, trace::TraceConfig,
+    AdapterError, AppError, CursorOverlayConfig, SignalBaseline, action::Action,
+    action_request::ActionRequest, interaction_policy::InteractionPolicy, session,
+    trace::TraceConfig,
 };
 use serde_json::{Value, json};
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::time::Instant;
 
+mod options;
 mod session_scope;
+mod wait_selector;
 
+use options::CommandOptions;
 use session_scope::SessionScope;
+pub use wait_selector::WaitSelector;
 
 #[derive(Debug, Clone, Default)]
 pub struct CommandContext {
@@ -17,16 +22,7 @@ pub struct CommandContext {
     inherited_deadline: Option<crate::Deadline>,
     trace: TraceConfig,
     artifacts_full: bool,
-    interaction_policy: InteractionPolicy,
-    wait_selector: Option<WaitSelector>,
-    event_baseline: Option<Result<SignalBaseline, AdapterError>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct WaitSelector {
-    pub query_raw: String,
-    pub gone: bool,
-    pub timeout_ms: u64,
+    options: CommandOptions,
 }
 
 /// Emits `command.start` on construction and `command.end` on `complete`.
@@ -95,19 +91,22 @@ impl CommandContext {
         let (segment_dir, artifacts_full) =
             session_trace_state(session_id.as_deref(), trace_path.is_some())?;
         let session = acquire_session_scope(session_id, None)?;
+        let cursor_overlay =
+            session::cursor_overlay_for_session(session.as_ref().map(|scope| scope.id.as_str()))?;
         Ok(Self {
             session,
             inherited_deadline: None,
             trace: TraceConfig::build(trace_path, segment_dir, trace_strict)?,
             artifacts_full,
-            interaction_policy: InteractionPolicy::headless(),
-            wait_selector: None,
-            event_baseline: None,
+            options: CommandOptions {
+                cursor_overlay,
+                ..CommandOptions::default()
+            },
         })
     }
 
     pub fn with_headed(mut self, headed: bool) -> Self {
-        self.interaction_policy = if headed {
+        self.options.interaction_policy = if headed {
             InteractionPolicy::headed()
         } else {
             InteractionPolicy::headless()
@@ -116,25 +115,53 @@ impl CommandContext {
     }
 
     pub fn with_interaction_policy(mut self, policy: InteractionPolicy) -> Self {
-        self.interaction_policy = policy;
+        self.options.interaction_policy = policy;
         self
     }
 
     pub fn with_wait_selector(mut self, wait_selector: Option<WaitSelector>) -> Self {
-        self.wait_selector = wait_selector;
+        self.options.wait_selector = wait_selector;
         self
     }
 
     pub fn wait_selector(&self) -> Option<&WaitSelector> {
-        self.wait_selector.as_ref()
+        self.options.wait_selector.as_ref()
     }
 
     pub fn with_event_baseline(
         mut self,
         baseline: Option<Result<SignalBaseline, AdapterError>>,
     ) -> Self {
-        self.event_baseline = baseline;
+        self.options.event_baseline = baseline;
         self
+    }
+
+    pub fn cursor_overlay(&self) -> &CursorOverlayConfig {
+        &self.options.cursor_overlay
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_cursor_overlay(mut self, cursor_overlay: CursorOverlayConfig) -> Self {
+        self.options.cursor_overlay = cursor_overlay;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_cursor_overlay_session(
+        mut self,
+        session_id: &str,
+        cursor_overlay: CursorOverlayConfig,
+    ) -> Self {
+        self.session = Some(SessionScope {
+            id: session_id.into(),
+            lease: None,
+        });
+        self.options.cursor_overlay = cursor_overlay;
+        self
+    }
+
+    pub fn is_headed(&self) -> bool {
+        self.options.interaction_policy.is_headed()
     }
 
     pub fn with_inherited_deadline(mut self, deadline: crate::Deadline) -> Self {
@@ -143,7 +170,7 @@ impl CommandContext {
     }
 
     pub fn event_baseline(&self) -> Option<&Result<SignalBaseline, AdapterError>> {
-        self.event_baseline.as_ref()
+        self.options.event_baseline.as_ref()
     }
 
     pub fn command_scope(&self, command: &'static str) -> Result<CommandScope<'_>, AppError> {
@@ -200,7 +227,7 @@ impl CommandContext {
     }
 
     fn policy_with_base(&self, base: InteractionPolicy) -> InteractionPolicy {
-        base.join(self.interaction_policy)
+        base.join(self.options.interaction_policy)
     }
 
     pub fn for_batch_item(&self, session_id: Option<String>) -> Result<Self, AppError> {
@@ -225,14 +252,17 @@ impl CommandContext {
         } else {
             acquire_session_scope(session_id, self.inherited_deadline)?
         };
+        let cursor_overlay = if reuses_parent_session {
+            self.options.cursor_overlay.clone()
+        } else {
+            session::cursor_overlay_for_session(session.as_ref().map(|scope| scope.id.as_str()))?
+        };
         Ok(Self {
             session,
             inherited_deadline: self.inherited_deadline,
             trace,
             artifacts_full,
-            interaction_policy: self.interaction_policy,
-            wait_selector: None,
-            event_baseline: None,
+            options: self.options.for_batch(cursor_overlay),
         })
     }
 
