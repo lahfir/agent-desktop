@@ -23,7 +23,9 @@ fn list_apps_with_filter(
     command.args(["-axo", "pid=,comm="]);
     let output = crate::system::process::run_with_deadline(&mut command, "ps", deadline)?;
     let mut apps = apps_from_output(output)?;
-    apps.retain(|app| name.is_none_or(|name| app.name.eq_ignore_ascii_case(name)));
+    apps.retain(|app| {
+        name.is_none_or(|name| agent_desktop_core::app_name_matches(&app.name, name))
+    });
     enrich_process_instances(apps, crate::system::process_identity::token_for_pid)
 }
 

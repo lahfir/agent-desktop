@@ -11,8 +11,7 @@
 #   scripts/perf-baseline-compare.sh [--base <ref>] [--apps "Slack,Google Chrome"]
 #                                    [--rounds N] [--out <dir>] [--skip-fixture]
 #
-# Real-app probes never dispatch actions. Apps this script launches itself are
-# closed again afterwards; apps that were already running are left untouched.
+# Real-app probes never dispatch actions or alter application lifecycle.
 set -euo pipefail
 
 base_ref=""
@@ -47,19 +46,41 @@ head_bin="$repo/target/release/agent-desktop"
 echo "== building base release binary (${base_sha}) in a temporary worktree"
 wt="$out/base-worktree"
 git worktree add --detach "$wt" "$base_ref" >/dev/null
-trap 'git worktree remove --force "$wt" >/dev/null 2>&1 || true; git worktree prune >/dev/null 2>&1 || true' EXIT
+fixture_pid=""
+cleanup_fixture() {
+    [ -n "$fixture_pid" ] || return 0
+    kill "$fixture_pid" >/dev/null 2>&1 || true
+    for _ in {1..20}; do
+        if ! kill -0 "$fixture_pid" >/dev/null 2>&1; then
+            wait "$fixture_pid" 2>/dev/null || true
+            fixture_pid=""
+            return
+        fi
+        sleep 0.1
+    done
+    kill -KILL "$fixture_pid" >/dev/null 2>&1 || true
+    wait "$fixture_pid" 2>/dev/null || true
+    fixture_pid=""
+}
+cleanup() {
+    cleanup_fixture
+    git worktree remove --force "$wt" >/dev/null 2>&1 || true
+    git worktree prune >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
 (cd "$wt" && cargo build --release -p agent-desktop >/dev/null)
 base_bin="$wt/target/release/agent-desktop"
 
 if [ "$skip_fixture" -ne 1 ]; then
     echo "== fixture A/B (${rounds} rounds; actions run against the fixture only)"
     bash tests/fixture-app/build.sh "$out/fixture" >/dev/null
-    open "$out/fixture/AgentDeskFixture.app"
+    "$out/fixture/AgentDeskFixture.app/Contents/MacOS/AgentDeskFixture" >/dev/null 2>&1 &
+    fixture_pid=$!
     sleep 3
     python3 scripts/perf_ab_probe.py --mode fixture --app AgentDeskFixture \
         --head-bin "$head_bin" --base-bin "$base_bin" --rounds "$rounds" \
         --json-out "$out/fixture-ab.json" >/dev/null
-    pkill -f AgentDeskFixture.app || true
+    cleanup_fixture
 fi
 
 echo "== synthetic locator benchmark (HEAD)"
@@ -71,20 +92,14 @@ if [ -n "$apps" ]; then
     for app in "${app_list[@]}"; do
         app="$(echo "$app" | sed 's/^ *//;s/ *$//')"
         slug="$(echo "$app" | tr ' ' '-' | tr '[:upper:]' '[:lower:]')"
-        was_running=1
-        pgrep -f "/${app}.app/" >/dev/null 2>&1 || was_running=0
-        if [ "$was_running" -eq 0 ]; then
-            echo "== launching ${app} for read-only observation"
-            open -a "$app" || { echo "   skip: cannot open ${app}"; continue; }
-            sleep 12
+        if ! inventory=$("$head_bin" list-windows --app "$app" 2>&1); then
+            echo "   skip: cannot verify running app ${app}: ${inventory}"
+            continue
         fi
         echo "== read-only probe: ${app} (${rounds} rounds, snapshots + find only)"
         python3 scripts/perf_ab_probe.py --mode app --app "$app" \
             --head-bin "$head_bin" --base-bin "$base_bin" --rounds "$rounds" \
             --json-out "$out/app-${slug}.json" >/dev/null || echo "   probe failed for ${app}"
-        if [ "$was_running" -eq 0 ]; then
-            "$head_bin" close-app --app "$app" >/dev/null 2>&1 || true
-        fi
     done
 fi
 

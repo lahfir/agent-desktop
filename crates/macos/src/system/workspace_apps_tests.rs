@@ -47,6 +47,33 @@ fn owner_snapshot_includes_regular_and_accessory_but_excludes_prohibited() {
 }
 
 #[test]
+fn owner_snapshot_matches_visible_app_name_and_bundle_id() {
+    let bytes = br#"{
+        "applications":[
+            {"name":"\u200eWhatsApp","pid":10,"bundle_id":"net.whatsapp.WhatsApp","launch_time":100.25,"activation_policy":"regular"}
+        ],
+        "frontmost_pid":10,
+        "frontmost_launch_time":100.25
+    }"#;
+    let snapshot = window_owner_snapshot_from_json(bytes, deadline()).unwrap();
+
+    assert_eq!(
+        snapshot
+            .matching_pids("WhatsApp")
+            .into_iter()
+            .collect::<Vec<_>>(),
+        [10]
+    );
+    assert_eq!(
+        snapshot
+            .matching_pids("net.whatsapp.WhatsApp")
+            .into_iter()
+            .collect::<Vec<_>>(),
+        [10]
+    );
+}
+
+#[test]
 fn non_launchservices_accessory_keeps_optional_launch_identity() {
     let bytes = br#"{
         "applications":[

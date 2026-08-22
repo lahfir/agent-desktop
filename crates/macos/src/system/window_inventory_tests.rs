@@ -3,6 +3,33 @@ use crate::system::cg_window::WindowRecord;
 use agent_desktop_core::Rect;
 use rustc_hash::FxHashMap;
 
+#[derive(Clone)]
+struct ScopedOwners(FxHashMap<i32, f64>);
+
+impl crate::system::window_inventory_global::OwnerSnapshotView for ScopedOwners {
+    fn eligible_pids(&self) -> rustc_hash::FxHashSet<i32> {
+        self.0.keys().copied().collect()
+    }
+
+    fn generation(
+        &self,
+        pid: i32,
+    ) -> Option<crate::system::window_inventory_global::OwnerGeneration> {
+        self.0
+            .get(&pid)
+            .copied()
+            .map(crate::system::window_inventory_global::OwnerGeneration::LaunchTime)
+    }
+
+    fn frontmost_pid(&self) -> Option<i32> {
+        None
+    }
+
+    fn same_generation(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
 fn ax_state(focused: FocusedWindowIdentity) -> crate::system::window_ax_state::WindowAxState {
     crate::system::window_ax_state::WindowAxState {
         focused,
@@ -34,6 +61,7 @@ fn apps_from_window_records_keeps_same_name_with_distinct_pids() {
 #[test]
 fn matches_app_filter_accepts_exact_case_insensitive_name() {
     assert!(matches_app_filter("Docker Desktop", "docker desktop"));
+    assert!(matches_app_filter("\u{200e}WhatsApp", "WhatsApp"));
     assert!(!matches_app_filter("Finder", "docker"));
 }
 
@@ -99,6 +127,41 @@ fn windows_from_records_preserve_capture_bounds() {
 }
 
 #[test]
+fn visible_windows_survive_ax_inventory_failure() {
+    let visible = record("Preview", 10, "Document", 7);
+    let mut panel = record("Preview", 10, "Panel", 8);
+    panel.visible = false;
+
+    let mut windows = windows_from_records_with_focus(
+        vec![visible, panel],
+        false,
+        |_| Err(AdapterError::timeout("AX unavailable")),
+        |_, _| Ok(true),
+    )
+    .unwrap();
+    narrow_to_real_windows(&mut windows);
+
+    assert_eq!(windows.len(), 1);
+    assert_eq!(windows[0].id, "w-7");
+}
+
+#[test]
+fn offscreen_only_inventory_requires_ax_classification() {
+    let mut offscreen = record("Preview", 10, "Document", 7);
+    offscreen.visible = false;
+
+    let error = windows_from_records_with_focus(
+        vec![offscreen],
+        false,
+        |_| Err(AdapterError::timeout("AX unavailable")),
+        |_, _| Ok(true),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, agent_desktop_core::ErrorCode::Timeout);
+}
+
+#[test]
 fn windows_from_records_never_publish_zero_window_ids() {
     let windows = windows_from_records_with_focus(
         vec![record("Preview", 10, "Unverified", 0)],
@@ -158,6 +221,75 @@ fn deadline_window_inventory_rejects_expiry_before_native_reads() {
     assert_eq!(error.code.as_str(), "TIMEOUT");
 }
 
+#[test]
+fn explicit_app_filter_distinguishes_not_running_from_no_windows() {
+    let empty = rustc_hash::FxHashSet::default();
+    let error = require_running_app(&empty, "WhatsApp").unwrap_err();
+    assert_eq!(error.code, agent_desktop_core::ErrorCode::AppNotFound);
+
+    let running = rustc_hash::FxHashSet::from_iter([42]);
+    assert!(require_running_app(&running, "WhatsApp").is_ok());
+}
+
+#[test]
+fn scoped_validation_ignores_unrelated_owner_churn() {
+    let before = ScopedOwners(FxHashMap::from_iter([(10, 100.0), (20, 200.0)]));
+    let after = ScopedOwners(FxHashMap::from_iter([(10, 100.0), (30, 300.0)]));
+    let selected = rustc_hash::FxHashSet::from_iter([10]);
+
+    crate::system::window_inventory_global::validate_scoped_snapshot_pair(
+        &before,
+        &after,
+        &selected,
+        &selected,
+        &[],
+    )
+    .unwrap();
+}
+
+#[test]
+fn scoped_validation_rejects_selected_owner_replacement() {
+    let before = ScopedOwners(FxHashMap::from_iter([(10, 100.0)]));
+    let after = ScopedOwners(FxHashMap::from_iter([(10, 101.0)]));
+    let selected = rustc_hash::FxHashSet::from_iter([10]);
+
+    let error = crate::system::window_inventory_global::validate_scoped_snapshot_pair(
+        &before,
+        &after,
+        &selected,
+        &selected,
+        &[],
+    )
+    .unwrap_err();
+
+    assert_eq!(
+        error.details.unwrap()["phase"],
+        "selected_appkit_snapshot_changed"
+    );
+}
+
+#[test]
+fn scoped_validation_rejects_selected_pid_membership_change() {
+    let before = ScopedOwners(FxHashMap::from_iter([(10, 100.0)]));
+    let after = ScopedOwners(FxHashMap::from_iter([(11, 101.0)]));
+    let before_pids = rustc_hash::FxHashSet::from_iter([10]);
+    let after_pids = rustc_hash::FxHashSet::from_iter([11]);
+
+    let error = crate::system::window_inventory_global::validate_scoped_snapshot_pair(
+        &before,
+        &after,
+        &before_pids,
+        &after_pids,
+        &[],
+    )
+    .unwrap_err();
+
+    assert_eq!(
+        error.details.unwrap()["phase"],
+        "selected_appkit_snapshot_changed"
+    );
+}
+
 fn record(app_name: &str, pid: i32, title: &str, window_number: i64) -> WindowRecord {
     WindowRecord {
         app_name: app_name.to_string(),
@@ -192,10 +324,10 @@ fn window_with_state(id: &str, visible: Option<bool>, minimized: Option<bool>) -
 }
 
 #[test]
-fn narrowing_drops_bookkeeping_panels_but_keeps_a_minimized_window() {
+fn narrowing_drops_unconfirmed_panels_but_keeps_ax_windows() {
     let mut windows = vec![
-        window_with_state("panel", Some(false), Some(false)),
-        window_with_state("never-drawn", Some(false), None),
+        window_with_state("ax-offscreen", Some(false), Some(false)),
+        window_with_state("cg-only-panel", Some(false), None),
         window_with_state("minimized", Some(false), Some(true)),
         window_with_state("onscreen", Some(true), Some(false)),
     ];
@@ -203,12 +335,12 @@ fn narrowing_drops_bookkeeping_panels_but_keeps_a_minimized_window() {
     narrow_to_real_windows(&mut windows);
 
     let kept = windows.iter().map(|w| w.id.as_str()).collect::<Vec<_>>();
-    assert_eq!(kept, vec!["minimized", "onscreen"]);
+    assert_eq!(kept, vec!["ax-offscreen", "minimized", "onscreen"]);
 }
 
 #[test]
 fn narrowing_leaves_nothing_when_an_application_has_only_panels() {
-    let mut windows = vec![window_with_state("panel", Some(false), Some(false))];
+    let mut windows = vec![window_with_state("panel", Some(false), None)];
 
     narrow_to_real_windows(&mut windows);
 

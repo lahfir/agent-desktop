@@ -72,8 +72,9 @@ fn persistent_window_churn_times_out_with_exact_attempt_metrics() {
 
 #[test]
 fn scoped_capture_never_probes_an_unrelated_inaccessible_owner() {
+    let eligible = rustc_hash::FxHashSet::from_iter([10]);
     let mut records = vec![record("Target", 10, 7, true), record("Other", 418, 8, true)];
-    retain_scope(&mut records, WindowRecordScope::App("Target"));
+    retain_scope(&mut records, WindowRecordScope::Pids(&eligible));
     let mut probed = Vec::new();
 
     capture_process_instances_with(
@@ -108,11 +109,12 @@ fn scoped_capture_propagates_the_selected_owners_denial() {
 }
 
 #[test]
-fn app_scope_keeps_all_matching_processes_and_ignores_unrelated_churn() {
+fn pid_set_scope_keeps_all_matching_processes_and_ignores_unrelated_churn() {
+    let eligible = rustc_hash::FxHashSet::from_iter([10, 11]);
     let mut first = vec![record("Target", 10, 7, true), record("Other", 20, 8, false)];
     let mut second = vec![record("Target", 10, 7, true), record("Other", 20, 8, true)];
-    retain_scope(&mut first, WindowRecordScope::App("Target"));
-    retain_scope(&mut second, WindowRecordScope::App("Target"));
+    retain_scope(&mut first, WindowRecordScope::Pids(&eligible));
+    retain_scope(&mut second, WindowRecordScope::Pids(&eligible));
     first.push(record("Target", 11, 9, true));
     second.push(record("Target", 11, 9, true));
 
@@ -171,10 +173,11 @@ fn pid_set_scope_excludes_ineligible_owners_before_identity_reads() {
 
 #[test]
 fn target_churn_remains_visible_after_scoping() {
+    let eligible = rustc_hash::FxHashSet::from_iter([10]);
     let mut first = vec![record("Target", 10, 7, false)];
     let mut second = vec![record("Target", 10, 7, true)];
-    retain_scope(&mut first, WindowRecordScope::App("Target"));
-    retain_scope(&mut second, WindowRecordScope::App("Target"));
+    retain_scope(&mut first, WindowRecordScope::Pids(&eligible));
+    retain_scope(&mut second, WindowRecordScope::Pids(&eligible));
 
     assert_ne!(inventory_signature(&first), inventory_signature(&second));
 }
@@ -203,7 +206,7 @@ fn records_fixture(visible: bool) -> Vec<WindowRecord> {
 }
 
 fn retain_scope(records: &mut Vec<WindowRecord>, scope: WindowRecordScope<'_>) {
-    records.retain(|record| scope.matches(&record.app_name, record.pid, record.window_number));
+    records.retain(|record| scope.matches(record.pid, record.window_number));
 }
 
 fn record(app_name: &str, pid: i32, window_number: i64, visible: bool) -> WindowRecord {

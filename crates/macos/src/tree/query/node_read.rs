@@ -5,8 +5,8 @@ use serde_json::json;
 
 use crate::tree::query::evidence_fields::{description_field, name_field};
 use crate::tree::query::node_evidence::{
-    identifiers as identifier_evidence, is_transparent_wrapper, is_wrapper_candidate, option_field,
-    required_complete, unknown as unknown_evidence, update_identifier_stats,
+    identifiers as identifier_evidence, is_transparent_wrapper, option_field, required_complete,
+    unknown as unknown_evidence, update_identifier_stats,
 };
 use crate::tree::query::node_read_context::NodeReadContext;
 use crate::tree::{AXElement, query::child_read::ChildRead};
@@ -59,7 +59,58 @@ pub(crate) fn read_node(
         });
     }
     let attrs = read.attrs;
-    let wrapper_candidate = is_wrapper_candidate(attrs.role.as_deref(), attrs.subrole.as_deref());
+    let role = attrs
+        .role
+        .as_deref()
+        .map(|role| crate::tree::roles::ax_role_and_subrole_to_str(role, attrs.subrole.as_deref()))
+        .unwrap_or("unknown")
+        .to_string();
+    let secure = attrs.role.as_deref() == Some("AXSecureTextField")
+        || attrs.subrole.as_deref() == Some("AXSecureTextField");
+    let value = (!secure).then(|| attrs.value.clone()).flatten();
+    let actions = if let Some(actions) =
+        read_native_actions_if(requirements.ref_evidence.actions, || {
+            crate::tree::action_list::read_platform_available_actions(
+                element,
+                &role,
+                attrs.has_scrollbars,
+                deadline,
+                usage,
+            )
+        }) {
+        stats.reads.counts.action_reads += 1;
+        stats.reads.health.cannot_complete += u64::from(actions.cannot_complete);
+        stats.reads.health.deadline_exhausted += u64::from(actions.deadline_exhausted);
+        stats.semantic_reads.settable_reads += actions.settable_reads;
+        if actions.api_disabled {
+            return Err(permission_error("actions"));
+        }
+        if actions.invalid_element {
+            return Ok(NodeRead {
+                attrs: crate::tree::NodeAttrs::default(),
+                evidence: unknown_evidence(),
+                web_wrapper: false,
+                invalid_element: true,
+                child_read: ChildRead::empty(false),
+                evidence_complete: false,
+            });
+        }
+        if actions.complete && !actions.deadline_exhausted && !read.status.scrollbars_unknown() {
+            LocatorField::Known(actions.actions)
+        } else {
+            LocatorField::Unknown
+        }
+    } else {
+        LocatorField::Unknown
+    };
+    let wrapper_candidate = is_transparent_wrapper(
+        attrs.role.as_deref(),
+        attrs.subrole.as_deref(),
+        &attrs.name_evidence,
+        value.as_deref(),
+        &identifiers,
+        &actions,
+    );
     let child_read = crate::tree::query::child_read::read_children(
         element,
         attrs.role.as_deref(),
@@ -85,16 +136,6 @@ pub(crate) fn read_node(
             evidence_complete: false,
         });
     }
-
-    let role = attrs
-        .role
-        .as_deref()
-        .map(|role| crate::tree::roles::ax_role_and_subrole_to_str(role, attrs.subrole.as_deref()))
-        .unwrap_or("unknown")
-        .to_string();
-    let secure = attrs.role.as_deref() == Some("AXSecureTextField")
-        || attrs.subrole.as_deref() == Some("AXSecureTextField");
-    let value = (!secure).then(|| attrs.value.clone()).flatten();
     let (name_evidence, child_label_complete) = if requirements.name || requirements.description {
         crate::tree::child_labels::complete_name_evidence_with_deadline(
             &attrs,
@@ -138,41 +179,6 @@ pub(crate) fn read_node(
     let states = requirements.states.then(|| {
         crate::tree::state_reader::states_from_element(element, &attrs, &role, &state_context)
     });
-    let actions = if let Some(actions) =
-        read_native_actions_if(requirements.ref_evidence.actions, || {
-            crate::tree::action_list::read_platform_available_actions(
-                element,
-                &role,
-                attrs.has_scrollbars,
-                deadline,
-                usage,
-            )
-        }) {
-        stats.reads.counts.action_reads += 1;
-        stats.reads.health.cannot_complete += u64::from(actions.cannot_complete);
-        stats.reads.health.deadline_exhausted += u64::from(actions.deadline_exhausted);
-        stats.semantic_reads.settable_reads += actions.settable_reads;
-        if actions.api_disabled {
-            return Err(permission_error("actions"));
-        }
-        if actions.invalid_element {
-            return Ok(NodeRead {
-                attrs: crate::tree::NodeAttrs::default(),
-                evidence: unknown_evidence(),
-                web_wrapper: false,
-                invalid_element: true,
-                child_read: ChildRead::empty(false),
-                evidence_complete: false,
-            });
-        }
-        if actions.complete && !actions.deadline_exhausted && !read.status.scrollbars_unknown() {
-            LocatorField::Known(actions.actions)
-        } else {
-            LocatorField::Unknown
-        }
-    } else {
-        LocatorField::Unknown
-    };
     let web_wrapper = is_transparent_wrapper(
         attrs.role.as_deref(),
         attrs.subrole.as_deref(),

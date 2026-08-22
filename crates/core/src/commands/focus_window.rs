@@ -17,28 +17,29 @@ pub fn execute(args: FocusWindowArgs, adapter: &dyn PlatformAdapter) -> Result<V
     };
     let windows = adapter.list_windows(&filter, deadline)?;
 
-    let window = if let Some(id) = &args.window_id {
-        windows.into_iter().find(|w| &w.id == id)
+    let candidates = if let Some(id) = &args.window_id {
+        windows
+            .into_iter()
+            .filter(|window| &window.id == id)
+            .collect()
     } else if let Some(title) = &args.title {
         windows
             .into_iter()
-            .find(|w| w.title.contains(title.as_str()))
-    } else if let Some(app) = &args.app {
+            .filter(|window| window.title.contains(title.as_str()))
+            .collect()
+    } else if args.app.is_some() {
         windows
-            .into_iter()
-            .find(|w| w.app.eq_ignore_ascii_case(app))
     } else {
         return Err(AppError::invalid_input(
             "Provide --window-id, --app, or --title to identify the window",
         ));
     };
-
-    let window = window.ok_or_else(|| {
-        AppError::Adapter(
-            crate::AdapterError::new(crate::ErrorCode::WindowNotFound, "No matching window found")
-                .with_suggestion("Run 'list-windows' to see available windows and their IDs."),
-        )
-    })?;
+    let window = crate::window_lookup::select_window(
+        candidates,
+        crate::AdapterError::new(crate::ErrorCode::WindowNotFound, "No matching window found")
+            .with_suggestion("Run 'list-windows' to see available windows and their IDs."),
+        "More than one window matches the focus target",
+    )?;
 
     let window_id = window.id.clone();
     let lease = adapter.acquire_interaction_lease(deadline)?;

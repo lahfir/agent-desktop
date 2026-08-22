@@ -149,7 +149,7 @@ pub(crate) fn revalidate_app_for_mutation(
         .into_iter()
         .filter(|candidate| {
             candidate.process_instance.as_deref() == Some(expected_identity.instance.as_str())
-                && candidate.name.eq_ignore_ascii_case(&expected.name)
+                && crate::app_name_matches(&candidate.name, &expected.name)
                 && expected.bundle_id.as_deref().is_none_or(|expected_bundle| {
                     candidate
                         .bundle_id
