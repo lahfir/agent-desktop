@@ -94,8 +94,9 @@ fn probe_completes_against_a_server_that_never_closes_the_connection() {
 }
 
 #[test]
-fn probe_returns_the_unavailable_error_quickly_when_nothing_is_listening() {
-    let port = pick_free_port().unwrap();
+fn probe_leaves_responder_flag_unset_when_no_bytes_arrive() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
     let started = std::time::Instant::now();
 
     let error = probe(port, Deadline::after(300).unwrap()).unwrap_err();

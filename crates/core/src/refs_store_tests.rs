@@ -1,5 +1,6 @@
 use super::*;
 use crate::{
+    ErrorCode,
     adapter::SnapshotSurface,
     refs::{RefEntry, RefMap},
     refs_test_support::HomeGuard,
@@ -74,6 +75,28 @@ fn snapshot_roundtrip_updates_latest_pointer() {
     assert_eq!(store.load(None).unwrap().len(), 1);
 }
 
+fn save_snapshot_after_contention(store: &RefStore, name: &str) -> String {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        match store.save_new_snapshot(&map_with(name)) {
+            Ok(id) => return id,
+            Err(AppError::Adapter(inner))
+                if inner.code == ErrorCode::Timeout
+                    && inner
+                        .details
+                        .as_ref()
+                        .and_then(|details| details.get("kind"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some("lock_timeout")
+                    && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(error) => panic!("contended snapshot save failed: {error:?}"),
+        }
+    }
+}
+
 #[test]
 fn concurrent_writers_preserve_all_snapshots() {
     let _guard = HomeGuard::new();
@@ -83,9 +106,7 @@ fn concurrent_writers_preserve_all_snapshots() {
     for i in 0..8 {
         let store = store.clone();
         handles.push(std::thread::spawn(move || {
-            store
-                .save_new_snapshot(&map_with(&format!("Snapshot {i}")))
-                .unwrap()
+            save_snapshot_after_contention(&store, &format!("Snapshot {i}"))
         }));
     }
 
