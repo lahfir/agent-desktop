@@ -265,7 +265,7 @@ pub(crate) struct IsArgs {
     #[arg(
         long,
         default_value = "visible",
-        help = "State: visible, enabled, checked, focused, expanded"
+        help = "State: visible, enabled, checked, focused, expanded, selected"
     )]
     #[serde(default = "default_is_property")]
     pub property: String,

@@ -3,7 +3,7 @@ OBSERVATION
   screenshot                 PNG screenshot of an application window
   find                       Search elements by role, name, value, or text (--limit defaults to 50)
   get <ref> --property <p>   Read element property: text, value, title, bounds, role, states
-  is <ref> --property <p>    Check state: visible, enabled, checked, focused, expanded
+  is <ref> --property <p>    Check state: visible, enabled, checked, focused, expanded, selected
   list-surfaces              Available surfaces for an app
 
 INTERACTION

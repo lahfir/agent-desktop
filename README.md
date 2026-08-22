@@ -118,7 +118,7 @@ For dense apps (Slack, VS Code, Notion), use **progressive skeleton traversal** 
 agent-desktop snapshot --skeleton --app Slack -i --compact
 # Keep snapshot_id, for example s8f3k2p9
 
-# 2. Drill into a region of interest (named containers get refs as drill targets)
+# 2. Drill into a region of interest (each truncated branch exposes a safe drill ref)
 agent-desktop snapshot --root @e3 --snapshot s8f3k2p9 -i --compact
 
 # 3. Act on an element found in the drill-down

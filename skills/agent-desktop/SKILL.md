@@ -50,13 +50,13 @@ Detailed documentation is split into focused reference files. Read them as neede
 
 ## The Observe-Act Loop (Progressive Skeleton Traversal)
 
-Use **progressive skeleton traversal** as the default approach. It reduces token consumption 78-96% for dense apps by exploring the UI in two phases: a shallow skeleton overview, then targeted drill-downs into regions of interest.
+When you know the target's role or exact name, use `find --role ... --name ... --exact` directly. Otherwise, use **progressive skeleton traversal** for dense or unfamiliar apps: a shallow overview followed by targeted drill-downs.
 
 ```
 1. SKELETON → agent-desktop snapshot --skeleton --app "App" -i --compact
    Parse the overview. Identify the region containing your target.
    Regions show children_count (e.g., "Sidebar" with children_count: 42).
-   Named containers at truncation boundary have refs for drill-down.
+   The nearest safely resolvable container has a ref for drill-down.
    Keep the returned snapshot_id.
 
 2. DRILL    → agent-desktop snapshot --root @e3 --snapshot <snapshot_id> -i --compact
@@ -86,7 +86,7 @@ Use **progressive skeleton traversal** as the default approach. It reduces token
 - Refs are assigned depth-first and emitted with their snapshot, for example `@s8f3k2p9:e1`, `@s8f3k2p9:e2`, `@s8f3k2p9:e3`. Legacy bare refs require an explicit `--snapshot`.
 - An element gets a ref when it is addressable for an action: an interactive role (button, textfield, checkbox, link, menuitem, tab, slider, combobox, treeitem, cell, radiobutton, switch, ...) **or** any element advertising an action — so `scrollarea` (Scroll) and `disclosure` (Expand/Collapse) are ref-able and `scroll`/`expand`/`collapse` can target them
 - A `SetFocus`-only affordance does not earn a ref on its own
-- In skeleton mode, named/described containers at truncation boundary also get refs (drill-down targets with empty `available_actions`)
+- In skeleton mode, each truncated branch exposes the deepest safely resolvable drill target using stable text, native ID, or bounds evidence; the nearest resolvable ancestor is used when the boundary itself is anonymous
 - Static text and non-actionable groups/containers remain in tree for context but have no ref
 - Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
 - Snapshot output uses qualified refs that embed `snapshot_id` and need no separate `--snapshot`; a session-owned ref still requires the same `--session` or `AGENT_DESKTOP_SESSION` scope because lookup never crosses namespaces
@@ -259,14 +259,14 @@ agent-desktop skills get desktop --full         # Load this skill + all referenc
 
 ## Key Principles for Agents
 
-1. **Skeleton first, drill second.** Start with `--skeleton -i --compact` for dense apps. Drill into regions with `--root @ref`. Full snapshot only for simple apps. For a Chromium app you are launching fresh, prefer `launch --cdp` + a CDP client for the web contents instead (principle 15).
+1. **Find known targets; skeleton unknown structure.** If role or exact name is known, use targeted `find` first. Use `--skeleton -i --compact` when the region is unknown, then drill with `--root @ref`. For fresh Chromium launches, prefer `launch --cdp` plus a CDP client.
 2. **Use `-i --compact` flags.** Filters to interactive elements and collapses empty wrappers, minimizing tokens.
 3. **Refs are snapshot-scoped.** Keep `snapshot_id` for deterministic multi-step use; re-drill the affected region after any UI-changing action. Scoped invalidation keeps other refs intact.
 4. **Prefer refs over coordinates.** `click @s8f3k2p9:e5` > `agent-desktop --headed mouse-click --xy 500,300`.
 5. **Use `wait` for async UI.** After launch/dialog triggers, wait for expected state.
 6. **Check permissions first.** Run `permissions` on first use; screenshots also need Screen Recording.
 7. **Handle errors.** Branch on `error.code` only — `error.message` and `error.suggestion` text is informational and may change between versions.
-8. **Use `find` for targeted searches, and scope it.** Faster than any snapshot when you know role/name. Narrow it with `--root @ref` for one region or `--surface menubar` for a menu — an unscoped find on a dense tree returns hundreds of refs and can exhaust its budget.
+8. **Scope targeted searches.** Pair known names with role and `--exact`; use `--limit 2` before a mutation when uniqueness is not guaranteed. Narrow with `--root @ref` for one region or `--surface menubar` for a menu.
 9. **Use surfaces for overlays.** `snapshot --surface menu` for menus, `--surface sheet` for dialogs. Never `--skeleton` for surfaces — they're already focused. Reach one item inside an overlay with `find --surface`, not a full surface snapshot.
 10. **Read `data.surfaces` after acting.** An action that opens a sheet, menu, or alert reports it there. Target that overlay next instead of searching windows for what changed.
 11. **Batch for performance.** Multiple commands in one invocation.

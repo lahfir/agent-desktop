@@ -39,7 +39,9 @@ pub(crate) enum Commands {
     Screenshot(ScreenshotArgs),
     #[command(about = "Read an element property (text, value, title, bounds, role, states)")]
     Get(GetArgs),
-    #[command(about = "Check element state (visible, enabled, checked, focused, expanded)")]
+    #[command(
+        about = "Check element state (visible, enabled, checked, focused, expanded, selected)"
+    )]
     Is(IsArgs),
     #[command(about = "Click element via accessibility press action")]
     Click(RefArgs),
