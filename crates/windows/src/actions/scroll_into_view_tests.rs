@@ -62,6 +62,14 @@ fn area_requires_finite_positive_dimensions() {
     assert!(!rect_has_area(&rect(f64::NAN, 0.0, 10.0, 10.0)));
 }
 
+/// A18-2 measured that a provider rect extends outside the viewport, so an
+/// unclipped rect must not read as fully visible - that is the intersection
+/// requirement below, and it still refuses an element the published viewport
+/// excludes. It measured nothing about a container that publishes no viewport
+/// at all, and reading that absence as "hidden" is what failed every on-screen
+/// row in File Explorer's tree with ACTION_FAILED: visibility could never be
+/// confirmed, and an already-visible element makes ScrollIntoView a legitimate
+/// no-op, so the unchanged geometry was then reported as a failed scroll.
 #[test]
 fn verified_requires_on_screen_area_and_viewport_intersection() {
     let bounds = rect(10.0, 10.0, 20.0, 20.0);
@@ -77,7 +85,7 @@ fn verified_requires_on_screen_area_and_viewport_intersection() {
         offscreen: Some(false),
         viewport: Some(viewport),
     }));
-    assert!(!visibility_verified(&VisibilitySample {
+    assert!(visibility_verified(&VisibilitySample {
         bounds: Some(bounds),
         offscreen: Some(false),
         viewport: None,

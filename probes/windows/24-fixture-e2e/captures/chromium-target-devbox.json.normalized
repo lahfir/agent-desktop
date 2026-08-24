@@ -1,0 +1,93 @@
+{
+    "probe":  "24-fixture-e2e-03-chromium-target",
+    "question":  "is there a Chromium/Electron target on this box, and if so does it answer 2.12\u0027s two inherited questions: (a) A17-8 successor - with the window restored-but-not-activated does a UIA walk reach real content versus only a shell while minimized, measured as node count and max depth in both states; (b) A23-3 successor - can an app menu (keyboard) or context menu (right-click on a content area) be staged on it",
+    "measurable":  true,
+    "branch":  "chromium_family_target_found",
+    "targets_found":  [
+                          {
+                              "family":  "Electron:Obsidian",
+                              "product_version":  "1.12.7.0",
+                              "electron_signature":  true,
+                              "source":  "known_electron_app",
+                              "is_browser_like":  false
+                          }
+                      ],
+    "target_selected":  {
+                            "family":  "Electron:Obsidian",
+                            "kind":  "generic_electron_app_default_content"
+                        },
+    "measurement":  {
+                        "measurable":  true,
+                        "branch":  "target_launched_and_measured",
+                        "owner_pid_is_launcher_pid":  true,
+                        "own_processes_spawned":  4,
+                        "window_state_effect":  {
+                                                    "measurable":  true,
+                                                    "branch":  "both_states_measured",
+                                                    "cites":  "A17-8",
+                                                    "content_staged":  false,
+                                                    "settle_ms_before_first_walk":  8000,
+                                                    "foreground_after_restore_not_activate":  true,
+                                                    "minimized":  {
+                                                                      "measurable":  true,
+                                                                      "branch":  "walk_completed",
+                                                                      "view":  "ControlView",
+                                                                      "node_count":  9,
+                                                                      "max_depth":  7,
+                                                                      "truncated":  false,
+                                                                      "state":  "minimized"
+                                                                  },
+                                                    "restored_not_activated":  {
+                                                                                   "measurable":  true,
+                                                                                   "branch":  "walk_completed",
+                                                                                   "view":  "ControlView",
+                                                                                   "node_count":  30,
+                                                                                   "max_depth":  10,
+                                                                                   "truncated":  false,
+                                                                                   "state":  "restored_not_activated"
+                                                                               },
+                                                    "node_count_delta":  21,
+                                                    "restored_reaches_deep_content":  false
+                                                },
+                        "menu_staging":  {
+                                             "measurable":  true,
+                                             "branch":  "no_menu_surface_staged_by_either_method",
+                                             "cites":  "A23-3",
+                                             "activation":  {
+                                                                "activate_once_reported":  true,
+                                                                "foreground_confirmed":  true
+                                                            },
+                                             "idle_before_any_attempt":  {
+                                                                             "classic_any_thread_menu_mode":  false,
+                                                                             "class_32768_popup_present":  false,
+                                                                             "class_32768_passes_filter":  false,
+                                                                             "uia_menu_family_present":  false,
+                                                                             "any_source_fired":  false
+                                                                         },
+                                             "attempts":  [
+                                                              {
+                                                                  "method":  "app_menu_alt_tap",
+                                                                  "branch":  "app_menu_via_alt_tap_no_signal",
+                                                                  "result":  {
+                                                                                 "classic_any_thread_menu_mode":  false,
+                                                                                 "class_32768_popup_present":  false,
+                                                                                 "class_32768_passes_filter":  false,
+                                                                                 "uia_menu_family_present":  false,
+                                                                                 "any_source_fired":  false
+                                                                             }
+                                                              },
+                                                              {
+                                                                  "method":  "context_menu_right_click_content_area",
+                                                                  "branch":  "context_menu_via_right_click_content_area_no_signal",
+                                                                  "result":  {
+                                                                                 "classic_any_thread_menu_mode":  false,
+                                                                                 "class_32768_popup_present":  false,
+                                                                                 "class_32768_passes_filter":  false,
+                                                                                 "uia_menu_family_present":  false,
+                                                                                 "any_source_fired":  false
+                                                                             }
+                                                              }
+                                                          ]
+                                         }
+                    }
+}

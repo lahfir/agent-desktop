@@ -274,14 +274,16 @@ fn delayed_owner_thread(
     }
     let name = fixture_window::wide(class_name);
     let title = fixture_window::wide("agent-desktop delayed clipboard owner");
+    let stage = fixture_window::offscreen_stage();
+    let (left, top) = stage.origin();
     let window = unsafe {
         CreateWindowExW(
             0,
             name.as_ptr(),
             title.as_ptr(),
             WS_OVERLAPPEDWINDOW,
-            fixture_window::OFFSCREEN_LEFT,
-            fixture_window::OFFSCREEN_TOP,
+            left,
+            top,
             160,
             120,
             std::ptr::null_mut(),

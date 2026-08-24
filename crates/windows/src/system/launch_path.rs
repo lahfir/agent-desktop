@@ -1,4 +1,5 @@
 use agent_desktop_core::{AdapterError, ErrorCode, launch_options::LaunchOptions};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 const MAX_ARGUMENT_COUNT: usize = 256;
@@ -78,6 +79,79 @@ pub(super) fn image_file_name(id: &str) -> &str {
     id.rsplit(['\\', '/']).next().unwrap_or(id)
 }
 
+/// Windows environment variable names are case-insensitive: a caller
+/// overriding `Path` while the parent process carries `PATH` must replace
+/// that entry outright, or the child inherits both and resolves whichever
+/// one happens to sort first. Keys are folded to ASCII uppercase only to
+/// detect that collision; the spelling that lands in the block is always
+/// the caller's own for an override, or the inherited spelling otherwise.
+pub(super) fn environment_block(
+    overrides: &BTreeMap<String, String>,
+) -> Result<Vec<u16>, AdapterError> {
+    let mut merged: BTreeMap<String, (String, String)> = std::env::vars()
+        .map(|(key, value)| (key.to_ascii_uppercase(), (key, value)))
+        .collect();
+    for (key, value) in overrides {
+        merged.insert(key.to_ascii_uppercase(), (key.clone(), value.clone()));
+    }
+    let mut block = Vec::new();
+    for (key, value) in merged.into_values() {
+        if key.contains('=') || key.contains('\0') || value.contains('\0') {
+            return Err(AdapterError::new(
+                ErrorCode::InvalidArgs,
+                "Launch environment entries must not contain NUL or '=' in the key",
+            ));
+        }
+        for unit in format!("{key}={value}").encode_utf16() {
+            block.push(unit);
+        }
+        block.push(0);
+    }
+    block.push(0);
+    Ok(block)
+}
+
+/// The block a launch actually hands to `CreateProcessW`: `None` only when
+/// nothing needs to change from this process's own environment - no caller
+/// override, and this process itself carries no entry for `strip_key` to
+/// remove. Any other case builds an explicit block with `strip_key` scrubbed
+/// unconditionally, so a value this process only holds because it was
+/// handed down to it (an adopted lease handle, say) never reaches a process
+/// this launch starts, whether or not the caller supplied overrides of its
+/// own.
+pub(super) fn child_environment_block(
+    overrides: &BTreeMap<String, String>,
+    strip_key: &str,
+) -> Result<Option<Vec<u16>>, AdapterError> {
+    if overrides.is_empty() && std::env::var_os(strip_key).is_none() {
+        return Ok(None);
+    }
+    let block = environment_block(overrides)?;
+    Ok(Some(strip_env_entry(block, strip_key)))
+}
+
+/// Removes any entry named `key` from an already-encoded `CreateProcessW`
+/// environment block, comparing the name case-insensitively the way Windows
+/// resolves environment variable names. Round-trips through `String` rather
+/// than walking the UTF-16 units directly: every entry in a block this
+/// module built started as a valid Rust `String` with no interior NUL
+/// (`environment_block` rejects that), so the decode is exact, not lossy in
+/// practice.
+fn strip_env_entry(block: Vec<u16>, key: &str) -> Vec<u16> {
+    let text = String::from_utf16_lossy(&block);
+    let folded_prefix = format!("{}=", key.to_ascii_uppercase());
+    let mut out = Vec::with_capacity(block.len());
+    for entry in text.split('\0') {
+        if entry.is_empty() || entry.to_ascii_uppercase().starts_with(&folded_prefix) {
+            continue;
+        }
+        out.extend(entry.encode_utf16());
+        out.push(0);
+    }
+    out.push(0);
+    out
+}
+
 fn system_directories() -> Result<(PathBuf, PathBuf), AdapterError> {
     let root = std::env::var_os("SystemRoot")
         .or_else(|| std::env::var_os("WINDIR"))
@@ -144,5 +218,53 @@ mod tests {
             let error = validate_app_identifier(identifier).expect_err("unsafe identifier");
             assert_eq!(error.code, ErrorCode::InvalidArgs);
         }
+    }
+
+    /// Pins the fast path a launch with no overrides takes when this process
+    /// itself carries nothing that needs stripping: reverting
+    /// `child_environment_block`'s guard back to `overrides.is_empty()` alone
+    /// (dropping the `var_os` check) would still pass this one, since it
+    /// asserts the `None` side; the sibling test below is what that
+    /// regression actually breaks.
+    #[test]
+    fn child_environment_block_is_none_when_nothing_needs_changing() {
+        let key = format!(
+            "AGENT_DESKTOP_LAUNCH_PATH_TEST_ABSENT_{}",
+            std::process::id()
+        );
+        unsafe { std::env::remove_var(&key) };
+        let overrides = BTreeMap::new();
+        let block = child_environment_block(&overrides, &key).expect("decision");
+        assert!(
+            block.is_none(),
+            "no override and no inherited entry to strip must skip building an explicit block"
+        );
+    }
+
+    /// **Invert-verified**: reverting `child_environment_block`'s guard to
+    /// `overrides.is_empty()` alone makes this fail - an inherited
+    /// `strip_key` entry with empty overrides then takes the `None` branch
+    /// and the stale value reaches `CreateProcessW` verbatim through the
+    /// null environment pointer.
+    #[test]
+    fn child_environment_block_strips_an_inherited_strip_key_even_with_empty_overrides() {
+        let key = format!(
+            "AGENT_DESKTOP_LAUNCH_PATH_TEST_STRIP_{}",
+            std::process::id()
+        );
+        unsafe { std::env::set_var(&key, "stale-handle-value") };
+        let overrides = BTreeMap::new();
+        let block = child_environment_block(&overrides, &key)
+            .expect("decision")
+            .expect("an inherited strip_key entry forces an explicit block");
+        unsafe { std::env::remove_var(&key) };
+        let text = String::from_utf16_lossy(&block);
+        let folded_prefix = format!("{}=", key.to_ascii_uppercase());
+        assert!(
+            !text
+                .split('\0')
+                .any(|entry| entry.to_ascii_uppercase().starts_with(&folded_prefix)),
+            "the strip_key entry must not survive into the built block: {text:?}"
+        );
     }
 }

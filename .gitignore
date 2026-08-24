@@ -5,6 +5,9 @@
 # E2E fixture build artifact (compiled by tests/fixture-app/build.sh on demand)
 /tests/fixture-app/build/
 
+# Windows E2E fixture build artifact (compiled by tests/fixture-app-windows/build.ps1 on demand)
+/tests/fixture-app-windows/build/
+
 # Cargo
 !Cargo.lock
 
@@ -90,6 +93,8 @@ docs/*
 !docs/dogfood-reports/**
 !docs/brainstorms/
 !docs/brainstorms/**
+!docs/runbooks/
+!docs/runbooks/**
 
 # macOS resource forks — never commit
 ._*

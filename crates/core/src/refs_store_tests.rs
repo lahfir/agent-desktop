@@ -1,5 +1,6 @@
 use super::*;
 use crate::{
+    ErrorCode,
     adapter::SnapshotSurface,
     refs::{RefEntry, RefMap},
     refs_test_support::HomeGuard,
@@ -74,6 +75,35 @@ fn snapshot_roundtrip_updates_latest_pointer() {
     assert_eq!(store.load(None).unwrap().len(), 1);
 }
 
+/// Saves under contention, retrying while the store's write lock reports
+/// `TIMEOUT`.
+///
+/// The lock's budget is a product decision - a caller waiting on a busy store
+/// is told to try again rather than blocked indefinitely - and `TIMEOUT`
+/// carries `retry: safe` precisely so a caller can. Eight writers racing one
+/// lock on a loaded machine will legitimately exhaust that budget, so a test
+/// that requires every writer to win on its first attempt is asserting
+/// something the contract never promised, and fails as load rises rather than
+/// when anything is wrong. Retrying here tests what the name claims: that
+/// concurrent writers each end up with their snapshot preserved.
+fn save_contending(store: &RefStore, name: &str) -> String {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    loop {
+        match store.save_new_snapshot(&map_with(name)) {
+            Ok(id) => return id,
+            Err(error) => {
+                let retryable =
+                    matches!(&error, AppError::Adapter(inner) if inner.code == ErrorCode::Timeout);
+                assert!(
+                    retryable && std::time::Instant::now() < deadline,
+                    "a contended save must fail only with a retryable TIMEOUT, and must                      eventually win the lock: {error:?}"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        }
+    }
+}
+
 #[test]
 fn concurrent_writers_preserve_all_snapshots() {
     let _guard = HomeGuard::new();
@@ -83,9 +113,7 @@ fn concurrent_writers_preserve_all_snapshots() {
     for i in 0..8 {
         let store = store.clone();
         handles.push(std::thread::spawn(move || {
-            store
-                .save_new_snapshot(&map_with(&format!("Snapshot {i}")))
-                .unwrap()
+            save_contending(&store, &format!("Snapshot {i}"))
         }));
     }
 
