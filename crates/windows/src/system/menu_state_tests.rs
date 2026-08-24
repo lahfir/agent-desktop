@@ -39,6 +39,7 @@
 #![cfg(target_os = "windows")]
 
 use super::*;
+use crate::system::test_support::settles_to;
 
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -47,7 +48,6 @@ use crate::system::test_support::FIXTURE_APP_NAME_LOCK;
 use crate::tree::fixture::{StalledFixture, bootstrap};
 use crate::tree::fixture_menu::MenuFixture;
 
-const SETTLE: Duration = Duration::from_millis(250);
 const STATE_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn deadline() -> Deadline {
@@ -158,24 +158,23 @@ fn classic_source_detects_the_fixtures_context_menu_open_and_closed() {
     let fixture = MenuFixture::spawn().expect("the menu fixture starts");
     let pid = ProcessId::from(fixture.process_id());
 
+    let classic = || classic_menu_mode_active(pid, deadline()).expect("classic probe reads it");
     assert!(
-        !classic_menu_mode_active(pid, deadline()).expect("classic probe reads the fixture"),
+        !classic(),
         "the fixture must not be in menu mode before any command is sent"
     );
 
     fixture.open_context_menu();
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
-    std::thread::sleep(SETTLE);
     assert!(
-        classic_menu_mode_active(pid, deadline()).expect("classic probe reads the fixture"),
+        settles_to(STATE_TIMEOUT, true, classic),
         "A23-1: classic menu-mode flags must report open while the fixture's context menu is up"
     );
 
     fixture.dismiss_context_menu();
     assert!(fixture.wait_for_menu_state(false, STATE_TIMEOUT));
-    std::thread::sleep(SETTLE);
     assert!(
-        !classic_menu_mode_active(pid, deadline()).expect("classic probe reads the fixture"),
+        settles_to(STATE_TIMEOUT, false, classic),
         "classic menu-mode flags must report closed once the fixture's menu is dismissed"
     );
 }
@@ -194,21 +193,20 @@ fn uia_source_detects_the_fixtures_context_menu_open_and_closed() {
         !uia_menu_reachable(pid, deadline()).expect("uia probe reads the fixture"),
         "no root-level tool window with a reachable menu family exists before any command is sent"
     );
+    let reachable = || uia_menu_reachable(pid, deadline()).expect("uia probe reads the fixture");
 
     fixture.open_context_menu();
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
-    std::thread::sleep(SETTLE);
     assert!(
-        uia_menu_reachable(pid, deadline()).expect("uia probe reads the fixture"),
+        settles_to(STATE_TIMEOUT, true, reachable),
         "A23-11: an open Win32 context menu promotes a root-level tool window with a reachable \
          menu family"
     );
 
     fixture.dismiss_context_menu();
     assert!(fixture.wait_for_menu_state(false, STATE_TIMEOUT));
-    std::thread::sleep(SETTLE);
     assert!(
-        !uia_menu_reachable(pid, deadline()).expect("uia probe reads the fixture"),
+        settles_to(STATE_TIMEOUT, false, reachable),
         "the promoted tool window must be gone once the fixture's menu is dismissed"
     );
 }
@@ -227,13 +225,19 @@ fn menu_is_open_reports_the_fixtures_transition_in_both_directions() {
 
     fixture.open_context_menu();
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
-    std::thread::sleep(SETTLE);
-    assert!(menu_is_open(pid, deadline()).expect("predicate reads the fixture"));
+    assert!(settles_to(STATE_TIMEOUT, true, || menu_is_open(
+        pid,
+        deadline()
+    )
+    .expect("predicate reads the fixture")));
 
     fixture.dismiss_context_menu();
     assert!(fixture.wait_for_menu_state(false, STATE_TIMEOUT));
-    std::thread::sleep(SETTLE);
-    assert!(!menu_is_open(pid, deadline()).expect("predicate reads the fixture"));
+    assert!(settles_to(STATE_TIMEOUT, false, || menu_is_open(
+        pid,
+        deadline()
+    )
+    .expect("predicate reads the fixture")));
 }
 
 /// The isolation property: another process's open menu must never leak into
@@ -266,10 +270,12 @@ fn menu_is_open_is_isolated_to_the_queried_process() {
     }
     fixture.open_context_menu();
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
-    std::thread::sleep(SETTLE);
-
     assert!(
-        menu_is_open(fixture_pid, deadline()).expect("predicate reads the fixture"),
+        settles_to(STATE_TIMEOUT, true, || menu_is_open(
+            fixture_pid,
+            deadline()
+        )
+        .expect("predicate reads the fixture")),
         "the fixture's own pid must report its menu open"
     );
     assert!(

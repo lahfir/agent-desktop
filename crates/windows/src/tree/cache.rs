@@ -32,15 +32,18 @@ impl CachePolicy {
     }
 }
 
-/// Chooses the policy from a root-level `ProviderDescription` read.
+/// Chooses the policy from a root-level `ProviderDescription` read and the
+/// target element's own process id.
 ///
 /// A description that cannot be read leaves the policy at `Batch`: a wrong
 /// `Skip` costs a cross-process round trip per property on exactly the trees
 /// where batching pays, while a wrong `Batch` costs request setup on a tree
 /// whose reads were already local.
-pub fn policy_for(provider_description: &PropertyOutcome) -> CachePolicy {
+pub fn policy_for(provider_description: &PropertyOutcome, target_pid: u32) -> CachePolicy {
     match provider_description.text() {
-        LocatorField::Known(description) if served_only_by_client_side_providers(&description) => {
+        LocatorField::Known(description)
+            if served_only_by_client_side_providers(&description, target_pid) =>
+        {
             CachePolicy::Skip
         }
         _ => CachePolicy::Batch,
@@ -48,12 +51,23 @@ pub fn policy_for(provider_description: &PropertyOutcome) -> CachePolicy {
 }
 
 /// Reports whether every module named in a provider description is the
-/// client-side proxy library.
+/// client-side proxy library, and no provider layer is delegated into the
+/// target's own process.
 ///
-/// This is the mechanism rather than a number, so it travels: a description
-/// that names the target's own module, or any module other than the proxy
-/// library, describes a provider on the far side of a process boundary.
-fn served_only_by_client_side_providers(description: &str) -> bool {
+/// The module-name check alone is not sufficient: a WinForms/MSAA-bridged
+/// control commonly reports a provider description whose every named module
+/// is `uiautomationcore.dll` (`Main:Nested [pid:<target>,... MSAA Proxy
+/// (unmanaged:UIAutomationCore.dll)]`) with that "Main" layer's `pid:`
+/// naming the *target application's own process* - the standard library
+/// name is loaded and running there, not in this client, so every read
+/// still marshals across the same process boundary a foreign module name
+/// would signal. `A24-17` measured a 176-node WinForms broad-search walk at
+/// ~840ms live against ~310ms forced-batched on exactly this shape, which is
+/// why the target's own pid is now checked, not just the module names.
+fn served_only_by_client_side_providers(description: &str, target_pid: u32) -> bool {
+    if names_the_process(description, target_pid) {
+        return false;
+    }
     let lowered = description.to_ascii_lowercase();
     let mut named_a_module = false;
     for token in lowered.split(|character: char| {
@@ -71,6 +85,23 @@ fn served_only_by_client_side_providers(description: &str) -> bool {
         }
     }
     named_a_module
+}
+
+/// Whether a `pid:<n>` marker anywhere in the description names `target_pid`
+/// exactly - not merely as a numeric prefix (`pid:6252` must not match a
+/// description naming `pid:62520`).
+fn names_the_process(description: &str, target_pid: u32) -> bool {
+    let lowered = description.to_ascii_lowercase();
+    let mut rest = lowered.as_str();
+    while let Some(index) = rest.find("pid:") {
+        let after = &rest[index + "pid:".len()..];
+        let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
+        if digits.parse::<u32>() == Ok(target_pid) {
+            return true;
+        }
+        rest = after;
+    }
+    false
 }
 
 #[cfg(target_os = "windows")]
@@ -122,14 +153,25 @@ mod imp {
         Ok(request)
     }
 
-    /// Reads the root's `ProviderDescription` and picks the policy.
+    /// Reads the root's `ProviderDescription` and its own process id, and
+    /// picks the policy.
     ///
     /// The description itself never leaves this function. It names modules,
     /// process ids and provider ids, and `ref_action.rs` clones adapter error
     /// text into session trace segments, so it must not reach an error or a
-    /// log line.
+    /// log line. A root whose own process id cannot be read falls back to
+    /// `Batch` for the same reason an unreadable description does: nothing
+    /// here can rule out a provider delegated into that process, so guessing
+    /// `Skip` risks the exact per-property RPC cost this policy exists to
+    /// avoid.
     pub fn policy_for_root(root: &UIAElement) -> CachePolicy {
-        policy_for(&read_one(root, TreeProperty::ProviderDescription))
+        match root.0.get_process_id() {
+            Ok(target_pid) => policy_for(
+                &read_one(root, TreeProperty::ProviderDescription),
+                target_pid,
+            ),
+            Err(_) => CachePolicy::Batch,
+        }
     }
 }
 

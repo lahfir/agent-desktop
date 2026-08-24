@@ -270,12 +270,9 @@ pub(crate) fn run_as_pattern_host() {
         std::thread::sleep(HOST_WATCHDOG_LIFETIME);
         std::process::exit(0);
     });
-    gdi::host_pattern_window(
-        &fixture_window::unique_class_name(),
-        sender,
-        fixture_window::OFFSCREEN_LEFT,
-        fixture_window::OFFSCREEN_TOP,
-    );
+    let stage = crate::tree::offscreen_origin::stage(None, PATTERN_WIDTH, PATTERN_HEIGHT);
+    let (left, top) = stage.origin();
+    gdi::host_pattern_window(&fixture_window::unique_class_name(), sender, left, top);
 }
 
 pub(crate) fn window_still_exists(handle: isize) -> bool {

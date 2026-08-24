@@ -116,19 +116,174 @@ impl SystemOps for DoubleCheckAdapter {
     }
 }
 
+/// Exactly one post-lease live read: this mock's bounds/hash never change,
+/// so the permissive stability check that read establishes already passes -
+/// `stable_preflight`'s settle-and-resample loop (`ref_action.rs`) exists
+/// for a report whose only gap is `stable`, and short-circuits immediately
+/// once the first live read already confirms it, rather than resampling a
+/// target that was never unstable.
 #[test]
 fn stability_revalidates_once_under_lease_before_dispatch() {
     let adapter = adapter(2, 5_000, None);
     let result = run(&adapter, ActionRequest::headed(Action::DoubleClick), 5_000);
 
     assert_eq!(result.action, "click");
-    assert_eq!(adapter.live_calls.load(Ordering::SeqCst), 4);
+    assert_eq!(adapter.live_calls.load(Ordering::SeqCst), 3);
     let metrics = &result.details.as_ref().unwrap()["auto_wait"];
     assert_eq!(metrics["read_only_resolve_attempts"], 2);
     assert_eq!(metrics["read_only_preflight_attempts"], 2);
     assert_eq!(metrics["lease_contention_count"], 3);
     assert!(metrics["lease_hold_ms"].as_u64().is_some());
     assert!(!adapter.lease_held.load(Ordering::SeqCst));
+}
+
+fn entry_with_mismatched_bounds_hash() -> RefEntry {
+    let mut stale = entry();
+    stale.geometry.bounds_hash = crate::Rect {
+        x: 400.0,
+        y: 400.0,
+        width: 10.0,
+        height: 10.0,
+    }
+    .bounds_hash();
+    stale
+}
+
+/// A live element whose bounds and identity are otherwise fine, but whose
+/// ref carries a `bounds_hash` from a different position - the exact shape
+/// a caller's own preceding `scroll-to` on the same ref leaves behind
+/// (measured live: -171 -> 181 on the Windows fixture, `A24-18`).
+///
+/// Before this fix, `stable_preflight`'s permissive check propagated this
+/// mismatch as a terminal `ACTION_FAILED` via the `?` in `ref_action.rs`
+/// before the settle-and-resample loop beneath it could ever run - proven
+/// by reverting the discriminator and watching this test fail closed.
+#[test]
+fn a_stability_only_mismatch_settles_and_proceeds_to_dispatch() {
+    let adapter = adapter(2, 5_000, None);
+    let result = run_with_entry(
+        &adapter,
+        ActionRequest::headed(Action::DoubleClick),
+        5_000,
+        &entry_with_mismatched_bounds_hash(),
+    );
+
+    assert_eq!(result.action, "click");
+}
+
+struct DisabledAfterLeaseAdapter {
+    calls: AtomicU32,
+    prelease_calls: u32,
+    bounds_calls: AtomicU32,
+}
+
+impl ObservationOps for DisabledAfterLeaseAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    fn get_live_element(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::adapter::LiveElement, AdapterError> {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+        Ok(crate::adapter::LiveElement {
+            identity: crate::adapter::live_identity("Run"),
+            state: crate::element_state::ElementState {
+                role: "button".into(),
+                states: vec![],
+                value: None,
+                enabled: Some(call <= self.prelease_calls),
+                hidden: Some(false),
+                offscreen: Some(false),
+            },
+            states_complete: true,
+            bounds: Some(bounds()),
+            available_actions: vec![capability::CLICK.into()],
+        })
+    }
+
+    fn get_element_bounds(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<crate::Rect>, AdapterError> {
+        self.bounds_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(Some(bounds()))
+    }
+}
+
+impl ActionOps for DisabledAfterLeaseAdapter {}
+impl InputOps for DisabledAfterLeaseAdapter {}
+impl SystemOps for DisabledAfterLeaseAdapter {
+    crate::adapter::exact_window_focus!();
+
+    fn acquire_interaction_lease(
+        &self,
+        deadline: crate::Deadline,
+    ) -> Result<crate::InteractionLease, AdapterError> {
+        Ok(crate::InteractionLease::guarded_with_contention(
+            deadline,
+            DoubleCheckLeaseGuard(Arc::new(AtomicBool::new(false))),
+            0,
+        ))
+    }
+}
+
+/// A stale bounds hash alongside a genuinely disabled element must not
+/// enter the settle-and-resample loop: no amount of waiting enables a
+/// disabled control, so the fix's discriminator - "stable" is the *only*
+/// unmet requirement - must see "enabled" also fail and propagate
+/// immediately, the same as before this fix existed. The element is
+/// enabled for the pre-lease polling reads and only goes disabled once
+/// `stable_preflight` reads it under lease, so this pins the post-lease
+/// discriminator specifically rather than the separate pre-lease poll.
+#[test]
+fn a_disabled_element_fails_closed_without_sampling_even_with_a_stale_hash() {
+    let adapter = DisabledAfterLeaseAdapter {
+        calls: AtomicU32::new(0),
+        prelease_calls: 2,
+        bounds_calls: AtomicU32::new(0),
+    };
+    let error = execute_with_auto_wait(
+        RefActionWaitCtx {
+            adapter: &adapter,
+            entry: &entry_with_mismatched_bounds_hash(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
+        ActionRequest::headed(Action::DoubleClick).with_timeout_ms(Some(5_000)),
+        crate::ref_action::dispatch_resolved,
+    )
+    .err()
+    .unwrap();
+
+    assert_eq!(error.code, ErrorCode::ActionFailed);
+    assert_eq!(adapter.bounds_calls.load(Ordering::SeqCst), 0);
+}
+
+fn run_with_entry(
+    adapter: &DoubleCheckAdapter,
+    request: ActionRequest,
+    timeout_ms: u64,
+    entry: &RefEntry,
+) -> crate::action_result::ActionResult {
+    execute_with_auto_wait(
+        RefActionWaitCtx {
+            adapter,
+            entry,
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
+        request.with_timeout_ms(Some(timeout_ms)),
+        crate::ref_action::dispatch_resolved,
+    )
+    .unwrap()
 }
 
 #[test]

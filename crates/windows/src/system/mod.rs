@@ -19,6 +19,8 @@ pub(crate) mod dpi;
 #[cfg(target_os = "windows")]
 pub(crate) mod gdi_surface;
 pub(crate) mod hresult;
+#[cfg(target_os = "windows")]
+pub(crate) mod interaction_lease;
 pub(crate) mod key_dispatch;
 pub(crate) mod launch;
 mod launch_path;

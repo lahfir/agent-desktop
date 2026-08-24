@@ -1,0 +1,25 @@
+{
+ "methodology": "min-of-seven, warm-up discarded (A15-13, applied in A18-7)",
+ "commands": {
+  "snapshot --app notepad.exe -i": {
+   "min_ms": 142.8,
+   "median_ms": 155.4,
+   "max_ms": 184.7
+  },
+  "snapshot --app explorer.exe -i": {
+   "min_ms": 62.9,
+   "median_ms": 65.4,
+   "max_ms": 82.2
+  },
+  "list-apps": {
+   "min_ms": 22.1,
+   "median_ms": 22.8,
+   "max_ms": 24.0
+  },
+  "list-windows": {
+   "min_ms": 59.6,
+   "median_ms": 65.3,
+   "max_ms": 76.4
+  }
+ }
+}

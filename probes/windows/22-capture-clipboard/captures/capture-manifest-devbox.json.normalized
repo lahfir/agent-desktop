@@ -32,12 +32,12 @@
                                                {
                                                    "win32":  5,
                                                    "hresult":  "0x80070005",
-                                                   "name":  "ERROR_ACCESS_DENIED"
+                                                   "symbol":  "ERROR_ACCESS_DENIED"
                                                },
                                                {
                                                    "win32":  740,
                                                    "hresult":  "0x800702E4",
-                                                   "name":  "ERROR_ELEVATION_REQUIRED"
+                                                   "symbol":  "ERROR_ELEVATION_REQUIRED"
                                                }
                                            ],
                                "parallel_table_rejected":  true

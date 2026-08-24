@@ -16,7 +16,12 @@ const LIVE_WPF_VARIABLE: &str = "AGENT_DESKTOP_LIVE_WPF";
 /// How long the host has to appear in the tree. Generous because it covers
 /// PowerShell start-up plus WPF assembly loading on a cold runner, and the
 /// poll below returns the moment the button is there.
-const WPF_STAGE_BUDGET: Duration = Duration::from_secs(20);
+/// Bounds a genuinely stuck stage rather than timing the runner. Starting a
+/// WPF host is process creation plus JIT plus a UIA tree becoming readable,
+/// and a loaded hosted runner takes far longer at each step than a developer
+/// box; a budget tight enough to be exceeded by ordinary load reports a
+/// staging failure that never happened.
+const WPF_STAGE_BUDGET: Duration = Duration::from_secs(90);
 
 const WPF_STAGE_POLL: Duration = Duration::from_millis(250);
 
@@ -74,10 +79,12 @@ fn live_wpf_zero_bounds_is_visible_false_when_stageable() {
         return;
     }
     let _stage = fixture_window::on_screen_stage();
-    let Some((mut child, handle)) = stage_wpf_zero_button() else {
-        panic!(
-            "{LIVE_WPF_VARIABLE} is set, so this lane owns staging ScratchWpf, but its btnZeroSize did not reach the tree within {WPF_STAGE_BUDGET:?}"
-        );
+    let (mut child, handle) = match stage_wpf_zero_button() {
+        Ok(staged) => staged,
+        Err(failure) => panic!(
+            "{LIVE_WPF_VARIABLE} is set, so this lane owns staging ScratchWpf: {}",
+            failure.describe()
+        ),
     };
     let live = WindowsAdapter::new()
         .get_live_element(&handle, deadline())
@@ -133,19 +140,44 @@ fn control_handle(button: *mut std::ffi::c_void) -> Result<NativeHandle, Adapter
     Ok(UIAElement::from(element).into_native_handle())
 }
 
-fn stage_wpf_zero_button() -> Option<(std::process::Child, NativeHandle)> {
+/// Why a stage failed, kept distinct because the three causes call for three
+/// different actions: a missing script is a checkout problem, a refused spawn is
+/// an environment problem, and a button that never appears is the one that
+/// might be a real defect. Collapsing them into `None` made every failure report
+/// the last of the three whichever had actually happened.
+enum WpfStageFailure {
+    ScriptMissing,
+    SpawnRefused,
+    ButtonNeverAppeared,
+}
+
+impl WpfStageFailure {
+    fn describe(&self) -> String {
+        match self {
+            Self::ScriptMissing => String::from(
+                "probes/windows/scratch/ScratchWpf.ps1 is not present in this checkout",
+            ),
+            Self::SpawnRefused => String::from("the WPF host process could not be started at all"),
+            Self::ButtonNeverAppeared => format!(
+                "the host started but its btnZeroSize never reached the tree within {WPF_STAGE_BUDGET:?}"
+            ),
+        }
+    }
+}
+
+fn stage_wpf_zero_button() -> Result<(std::process::Child, NativeHandle), WpfStageFailure> {
     let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../probes/windows/scratch/ScratchWpf.ps1");
     if !script.is_file() {
-        return None;
+        return Err(WpfStageFailure::ScriptMissing);
     }
-    let mut child = spawn_wpf_host(&script)?;
+    let mut child = spawn_wpf_host(&script).ok_or(WpfStageFailure::SpawnRefused)?;
     match await_zero_button(child.id()) {
-        Some(handle) => Some((child, handle)),
+        Some(handle) => Ok((child, handle)),
         None => {
             let _ = child.kill();
             let _ = child.wait();
-            None
+            Err(WpfStageFailure::ButtonNeverAppeared)
         }
     }
 }
@@ -257,10 +289,12 @@ fn live_wpf_control_resolves_a_host_window_despite_a_zero_leaf_handle() {
         return;
     }
     let _stage = fixture_window::on_screen_stage();
-    let Some((mut child, handle)) = stage_wpf_zero_button() else {
-        panic!(
-            "{LIVE_WPF_VARIABLE} is set, so this lane owns staging ScratchWpf, but its btnZeroSize did not reach the tree within {WPF_STAGE_BUDGET:?}"
-        );
+    let (mut child, handle) = match stage_wpf_zero_button() {
+        Ok(staged) => staged,
+        Err(failure) => panic!(
+            "{LIVE_WPF_VARIABLE} is set, so this lane owns staging ScratchWpf: {}",
+            failure.describe()
+        ),
     };
 
     let element = crate::tree::element::uia_element(&handle).expect("wpf element");

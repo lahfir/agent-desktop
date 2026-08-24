@@ -103,13 +103,15 @@ fn host_modal_windows() {
         return;
     }
     let name = fixture_window::wide(&class_name);
+    let stage = fixture_window::offscreen_stage();
+    let (left, top) = stage.origin();
     let owner = create_window(
         (0, WS_OVERLAPPEDWINDOW),
         &name,
         "agent-desktop modal fixture owner",
         (
-            fixture_window::OFFSCREEN_LEFT,
-            fixture_window::OFFSCREEN_TOP,
+            left,
+            top,
             fixture_window::WINDOW_WIDTH,
             fixture_window::WINDOW_HEIGHT,
         ),
@@ -122,12 +124,7 @@ fn host_modal_windows() {
         (WS_EX_DLGMODALFRAME, WS_POPUP | WS_CAPTION | WS_SYSMENU),
         &name,
         "agent-desktop modal fixture modal",
-        (
-            fixture_window::OFFSCREEN_LEFT + 40,
-            fixture_window::OFFSCREEN_TOP + 40,
-            240,
-            120,
-        ),
+        (left + 40, top + 40, 240, 120),
         owner,
     );
     if modal.is_null() {

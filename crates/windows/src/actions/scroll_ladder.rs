@@ -17,6 +17,33 @@ use crate::tree::element::UIAElement;
 pub(crate) const MAX_ANCESTOR_SCROLLS: usize = 10;
 pub(crate) const LADDER_SCROLL_LABEL: &str = SCROLL_LABEL;
 
+/// Bring-into-view step size for the ladder, deliberately larger than the
+/// direct `scroll` command's `SmallIncrement`/`SmallDecrement` nudge
+/// (`crate::actions::scroll::scroll_amounts`). Measured live against the
+/// Windows fixture's own AutoScroll form: a `SmallDecrement` rung moved the
+/// target 5px, so the 10-rung budget covered 50px total against a target
+/// that a single native-focus jump had displaced 1361px — an ancestor with
+/// real distance to cover exhausted every rung and still reported
+/// `ACTION_FAILED` on a target that was never occluded, only never reached.
+/// `LargeIncrement`/`LargeDecrement` map to a page-sized native scroll step,
+/// so the same 10-rung budget covers a page's multiple.
+#[cfg(target_os = "windows")]
+pub(crate) fn ladder_scroll_amounts(
+    direction: &Direction,
+) -> (
+    uiautomation::types::ScrollAmount,
+    uiautomation::types::ScrollAmount,
+) {
+    use uiautomation::types::ScrollAmount;
+
+    match direction {
+        Direction::Down => (ScrollAmount::NoAmount, ScrollAmount::LargeIncrement),
+        Direction::Up => (ScrollAmount::NoAmount, ScrollAmount::LargeDecrement),
+        Direction::Right => (ScrollAmount::LargeIncrement, ScrollAmount::NoAmount),
+        Direction::Left => (ScrollAmount::LargeDecrement, ScrollAmount::NoAmount),
+    }
+}
+
 #[cfg(target_os = "windows")]
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct VisibilitySample {
@@ -25,7 +52,21 @@ pub(crate) struct VisibilitySample {
     pub(crate) viewport: Option<Rect>,
 }
 
-/// On-screen, positive area, viewport intersection (A18-2).
+/// On-screen, positive area, and - when a viewport rect resolves - intersecting
+/// it (A18-2).
+///
+/// A viewport that does not resolve means the container did not report one, not
+/// that the element is hidden. Treating the two alike fails every element whose
+/// container keeps its viewport to itself: the provider reports the element
+/// on-screen with real bounds, the intersection test cannot run, visibility is
+/// declared unverified forever, and because an already-visible element makes
+/// `ScrollIntoView` a legitimate no-op, the unchanged geometry is then read as
+/// a failed scroll. Reproduced against File Explorer's tree rows, which are
+/// plainly on screen and returned `ACTION_FAILED` for exactly this reason.
+///
+/// So the viewport is a strengthening check rather than a required one. Without
+/// it the provider's own `IsOffscreen` is the verdict, which is the same source
+/// the offscreen guard above already trusts.
 #[cfg(target_os = "windows")]
 pub(crate) fn visibility_verified(sample: &VisibilitySample) -> bool {
     use crate::tree::properties::rect_has_area;
@@ -38,7 +79,7 @@ pub(crate) fn visibility_verified(sample: &VisibilitySample) -> bool {
     }
     match sample.viewport {
         Some(viewport) => intersects(bounds, viewport),
-        None => false,
+        None => true,
     }
 }
 
@@ -131,10 +172,10 @@ fn budget_disposition(scrolled: bool, error: AdapterError) -> AdapterError {
 mod imp {
     use super::{
         AdapterError, Deadline, DeliveryOutcome, DeliverySemantics, Direction, LADDER_SCROLL_LABEL,
-        UIAElement, VisibilitySample, ladder_judged_for, visibility_verified,
+        UIAElement, VisibilitySample, ladder_judged_for, ladder_scroll_amounts,
+        visibility_verified,
     };
     use crate::actions::mutation::{classify_success, classify_write};
-    use crate::actions::scroll::scroll_amounts;
     use crate::system::permissions::ensure_budget;
     use crate::tree::automation::automation_client;
     use crate::tree::live_read::corroborate_verified_process;
@@ -244,7 +285,7 @@ mod imp {
                 ));
             }
         };
-        let (horizontal, vertical) = scroll_amounts(direction);
+        let (horizontal, vertical) = ladder_scroll_amounts(direction);
         match pattern.scroll(horizontal, vertical) {
             Ok(()) => {
                 classify_success()?;

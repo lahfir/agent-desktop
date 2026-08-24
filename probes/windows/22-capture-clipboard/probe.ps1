@@ -347,8 +347,8 @@ try {
             path = 'win32_last_error -> hresult_from_win32 -> hresult_record'
             source = 'crates/windows/src/system/process_state.rs'
             samples = @(
-                [ordered]@{ win32 = 5; hresult = '0x80070005'; name = 'ERROR_ACCESS_DENIED' }
-                [ordered]@{ win32 = 740; hresult = '0x800702E4'; name = 'ERROR_ELEVATION_REQUIRED' }
+                [ordered]@{ win32 = 5; hresult = '0x80070005'; symbol = 'ERROR_ACCESS_DENIED' }
+                [ordered]@{ win32 = 740; hresult = '0x800702E4'; symbol = 'ERROR_ELEVATION_REQUIRED' }
             )
             parallel_table_rejected = $true
         }

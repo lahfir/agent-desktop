@@ -106,6 +106,7 @@ fn wait_menu_finds_the_fixtures_context_menu_opened_mid_wait_through_the_command
     let _app_name_scope = FIXTURE_APP_NAME_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _stage = crate::tree::fixture_window::on_screen_stage();
     let fixture = MenuFixture::spawn().expect("the menu fixture starts");
     let receiver = spawn_menu_wait(SurfaceWait::Menu, own_image_name());
 
@@ -130,6 +131,7 @@ fn wait_menu_closed_finds_the_already_open_menu_dismissed_mid_wait_through_the_c
     let _app_name_scope = FIXTURE_APP_NAME_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _stage = crate::tree::fixture_window::on_screen_stage();
     let fixture = MenuFixture::spawn().expect("the menu fixture starts");
     fixture.open_context_menu();
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));

@@ -74,7 +74,7 @@ mod imp {
             ControlType::ToolTip => Role::Tooltip,
             ControlType::Tree => Role::Outline,
             ControlType::TreeItem => Role::TreeItem,
-            ControlType::Custom => Role::Unknown,
+            ControlType::Custom => custom_role(properties),
             ControlType::Group => Role::Group,
             ControlType::Thumb => Role::Handle,
             ControlType::DataGrid => Role::Grid,
@@ -92,6 +92,75 @@ mod imp {
             ControlType::AppBar => Role::Toolbar,
         }
     }
+
+    /// Roles the fixture is required to expose in one snapshot so every
+    /// ref-able action this map produces has a regression-testable target -
+    /// a closed list derived from this map rather than copied from macOS.
+    /// Declared beside [`control_type_role`], alongside
+    /// [`FIXTURE_UNCOVERED_ROLES`], so a `ControlType` arm added later that
+    /// yields a role in neither set fails `roles_fixture_coverage_tests.rs`'s
+    /// union test instead of silently going uncovered. That union test's own
+    /// case table is pinned against a textual count of the `is_true`/
+    /// `gated_flag` refinement calls this file makes, so a new refinement
+    /// branch here cannot leave the case table stale without failing first.
+    ///
+    /// `#[cfg(test)]`: the only consumers today are that union test and its
+    /// gate-count pin, so a non-test build carries no reference to it -
+    /// marking it test-only rather than `#[allow(dead_code)]` says why
+    /// plainly instead of silencing the lint.
+    #[cfg(test)]
+    pub(crate) const FIXTURE_COVERED_ROLES: &[&str] = &[
+        "button",
+        "cell",
+        "checkbox",
+        "combobox",
+        "incrementor",
+        "link",
+        "listbox",
+        "menubutton",
+        "menuitem",
+        "outline",
+        "radiobutton",
+        "row",
+        "slider",
+        "switch",
+        "tab",
+        "tablist",
+        "textfield",
+        "treeitem",
+    ];
+
+    /// Roles this map can produce that the fixture is not required to
+    /// cover - either they carry no action this harness exercises, or the
+    /// stock WinForms provider emits them unavoidably beside the fixture
+    /// author's own controls (`group`, `statictext`, `image`, `menu`,
+    /// `column`). `disclosure` and `scrollarea` are absent from both this
+    /// list and [`FIXTURE_COVERED_ROLES`] for a different reason: no arm in
+    /// this map ever produces either of them, so asserting either would
+    /// assert a role this platform cannot produce.
+    #[cfg(test)]
+    pub(crate) const FIXTURE_UNCOVERED_ROLES: &[&str] = &[
+        "column",
+        "dialog",
+        "document",
+        "grid",
+        "group",
+        "handle",
+        "image",
+        "list",
+        "menu",
+        "option",
+        "progressbar",
+        "scrollbar",
+        "separator",
+        "statictext",
+        "status",
+        "table",
+        "toolbar",
+        "tooltip",
+        "unknown",
+        "window",
+    ];
 
     /// `Button`, refined by the two patterns a plain push button never
     /// advertises. Checked in this order because a provider could in theory
@@ -128,6 +197,23 @@ mod imp {
             Role::Cell
         } else {
             Role::Row
+        }
+    }
+
+    /// `Custom`, refined by `GridItem`/`TableItem` availability the same way
+    /// [`data_item_role`] refines `DataItem`: WPF's `DataGrid` reports its
+    /// cells as `ControlType.Custom` carrying those two patterns rather than
+    /// `DataItem` (A16-10), so a `Custom` element addressable by row and
+    /// column is the same `cell` shape under a different `ControlType`. A
+    /// `Custom` element with neither pattern carries no signal this map acts
+    /// on and stays [`Role::Unknown`].
+    fn custom_role(properties: &ElementProperties) -> Role {
+        if properties.is_true(TreeProperty::GridItemAvailable)
+            || properties.is_true(TreeProperty::TableItemAvailable)
+        {
+            Role::Cell
+        } else {
+            Role::Unknown
         }
     }
 
@@ -176,6 +262,9 @@ mod imp {
 }
 
 use imp::control_type_role;
+
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) use imp::{FIXTURE_COVERED_ROLES, FIXTURE_UNCOVERED_ROLES};
 
 #[cfg(test)]
 #[path = "roles_tests.rs"]

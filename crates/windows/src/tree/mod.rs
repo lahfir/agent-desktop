@@ -48,3 +48,5 @@ pub(crate) mod fixture_overlay;
 pub(crate) mod fixture_pattern;
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod fixture_window;
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) mod offscreen_origin;
