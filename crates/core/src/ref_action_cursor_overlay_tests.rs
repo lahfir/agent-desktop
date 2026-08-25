@@ -106,7 +106,7 @@ fn enabled_context() -> CommandContext {
 }
 
 #[test]
-fn enabled_cursor_presents_verified_center_after_dispatch() {
+fn enabled_cursor_moves_before_dispatch_then_clicks_after_it() {
     let adapter = CursorAdapter::new(false);
 
     execute_entry_with_context(
@@ -118,12 +118,23 @@ fn enabled_cursor_presents_verified_center_after_dispatch() {
     .expect("click succeeds");
 
     let presented = adapter.presented.lock().unwrap();
-    assert_eq!(presented.len(), 1);
-    assert_eq!(
-        presented[0].instruction().unwrap().destination(),
-        &crate::Point { x: 11.0, y: 11.0 }
+    let center = crate::Point { x: 11.0, y: 11.0 };
+    assert_eq!(presented.len(), 2);
+    let travel = presented[0].instruction().expect("travel instruction");
+    let click = presented[1].instruction().expect("click instruction");
+
+    assert_eq!(travel.destination(), &center);
+    assert!(
+        !travel.is_click(),
+        "the cursor sets off before the action runs"
     );
-    assert!(presented[0].instruction().unwrap().is_click());
+    assert!(travel.target().is_none());
+    assert_eq!(click.destination(), &center);
+    assert!(
+        click.is_click(),
+        "the click effect lands after dispatch confirms"
+    );
+    assert_eq!(click.target().map(|rect| rect.width), Some(20.0));
     assert_eq!(presented[0].label(), Some("Opening menu"));
 }
 

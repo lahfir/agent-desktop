@@ -270,7 +270,17 @@ mod tests {
         );
 
         assert_eq!(frames.last().map(|pose| &pose.point), Some(&destination));
-        assert!(frames.len() >= 51);
+        let biggest_step = frames
+            .windows(2)
+            .map(|pair| {
+                (pair[1].point.x - pair[0].point.x).hypot(pair[1].point.y - pair[0].point.y)
+            })
+            .fold(0.0_f64, f64::max);
+        assert!(frames.len() >= 20, "the path is sampled per frame");
+        assert!(
+            biggest_step < 40.0,
+            "no visible jump between frames: {biggest_step}"
+        );
     }
 
     #[test]
@@ -289,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn a_click_instruction_adds_impact_frames_at_the_destination() {
+    fn a_click_instruction_adds_ripple_frames_at_the_destination() {
         let destination = Point { x: 900.0, y: 500.0 };
         let moved = motion_frames(
             &state(None),
@@ -305,7 +315,7 @@ mod tests {
         );
 
         assert!(clicked.len() > moved.len());
-        assert!(clicked.iter().any(|pose| pose.scale < 0.9));
+        assert!(clicked.iter().any(|pose| pose.ripple > 0.0));
         assert_eq!(clicked.last().map(|pose| &pose.point), Some(&destination));
     }
 }

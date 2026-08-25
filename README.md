@@ -180,12 +180,17 @@ Enable the presentation-only cursor once for a session. Every eligible headless 
 
 ```bash
 agent-desktop --session <session_id> cursor-overlay enable \
-  --label "Opening profile menu" --max-words 6
+  --label "Opening profile menu" --max-words 6 \
+  --fill "#FFFFFF" --rim "#111318" --accent "#4299FF" --size 1.0
 agent-desktop --session <session_id> click @s8f3k2p9:e9
 agent-desktop --session <session_id> cursor-overlay disable
 ```
 
-Enabling immediately shows the persistent cursor with “Hey, let's play with this computer!” The current card remains visible until its description changes; the old card then eases out and the new text eases in. Actions reuse the cursor's last position for the same eased, swinging glide and briefly switch to a hand pointer for click feedback. The solid white card has a 1.5px near-black border and stays at the cursor's bottom-right. The overlay never moves or intercepts the OS pointer and remains until `cursor-overlay disable` or session end. Headed actions temporarily hide it while the real cursor is in use. macOS renders the overlay natively; Windows and Linux inherit the platform adapter's presentation no-op and need only add their native renderer to support the same session contract.
+Appearance is session-global. Set it once at `enable`; every later command in that session uses it. `--fill` is the cursor body, `--rim` its outline, `--accent` the ripple and element outline, and `--size` a multiplier from 0.5 to 4.0. `--no-ripple` and `--no-highlight` switch off either click effect. Defaults are a white body with a near-black outline and a blue accent.
+
+Enable shows the cursor with “Hey, let's play with this computer!” The card stays until its text changes; the old card then eases out and the new text eases in. Each action moves the cursor from its last position along a human path — fast start, small overshoot, a short correction, a bowed line, and light tremor. The cursor sets off before the action dispatches, so what you see keeps pace with what the agent does. The cursor never rotates or changes size. On a click it stays on target while a ripple plays and a rounded accent border outlines the clicked element for about 2.4 seconds.
+
+After 6 seconds with no command the overlay fades out by itself and the next command brings it back. `cursor-overlay disable` removes it at once and stops the renderer; you do not have to end the session. Headed actions hide it while the real pointer is in use. The overlay never moves or intercepts the OS pointer. macOS renders it natively; Windows and Linux inherit the platform adapter's presentation no-op and need only add their native renderer to support the same session contract.
 
 ## Driving Chromium apps (CDP)
 
@@ -351,7 +356,7 @@ agent-desktop session start [--name LABEL] [--no-trace]  # create session; pass 
 agent-desktop session end [id]
 agent-desktop session list
 agent-desktop session gc [--older-than SECS] [--ended]
-agent-desktop --session <id> cursor-overlay enable [--label TEXT] [--max-words N]
+agent-desktop --session <id> cursor-overlay enable [--label TEXT] [--max-words N] [--fill HEX] [--rim HEX] [--accent HEX] [--size N] [--no-ripple] [--no-highlight]
 agent-desktop --session <id> cursor-overlay disable
 agent-desktop status                     # platform, permissions, session_id, tracing, latest snapshot
 agent-desktop permissions                # check accessibility/screen-recording/automation

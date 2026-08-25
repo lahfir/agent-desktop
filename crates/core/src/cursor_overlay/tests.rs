@@ -41,9 +41,12 @@ fn motion_duration_follows_fitts_law_and_stays_bounded() {
     let medium = CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 600.0, y: 0.0 });
     let long = CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 4_000.0, y: 0.0 });
 
-    assert_eq!(short.duration_ms(), 260);
-    assert!((600..760).contains(&medium.duration_ms()));
-    assert_eq!(long.duration_ms(), 950);
+    let still = CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 0.0, y: 0.0 });
+
+    assert_eq!(still.duration_ms(), 0);
+    assert_eq!(short.duration_ms(), 180);
+    assert!((400..600).contains(&medium.duration_ms()));
+    assert_eq!(long.duration_ms(), 620);
 }
 
 #[test]
@@ -111,47 +114,51 @@ fn control_protocol_carries_the_session_lifecycle() {
 }
 
 #[test]
-fn travel_stays_flat_so_only_the_click_is_a_flourish() {
+fn travel_never_ripples_before_the_cursor_lands() {
     let motion =
         CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 600.0, y: 0.0 }).with_impact(true);
 
     let cruise = motion.pose(motion.duration_ms() / 2);
+    let landed = motion.pose(motion.duration_ms());
 
-    assert_eq!(cruise.scale, 1.0);
     assert_eq!(cruise.ripple, 0.0);
+    assert_eq!(landed, CursorPose::still(Point { x: 600.0, y: 0.0 }));
 }
 
 #[test]
-fn the_click_loops_playfully_then_presses_and_ripples() {
+fn the_click_ripples_at_the_destination_without_moving_the_cursor() {
     let motion =
         CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 600.0, y: 0.0 }).with_impact(true);
-    let flourish = motion.total_ms() - motion.duration_ms();
+    let ripple_ms = motion.total_ms() - motion.duration_ms();
 
-    let wandering = motion.pose(motion.duration_ms() + flourish * 22 / 100);
-    let pressed = motion.pose(motion.duration_ms() + flourish * 58 / 100);
-    let settled = motion.pose(motion.total_ms());
+    let early = motion.pose(motion.duration_ms() + ripple_ms / 4);
+    let late = motion.pose(motion.total_ms());
 
-    let drift = (wandering.point.x - 600.0).hypot(wandering.point.y);
-    assert!(drift > 4.0, "the cursor loops around the target: {drift}");
-    assert!(wandering.scale > 1.0, "it grows while it loops");
-    assert!(
-        pressed.scale < 0.85,
-        "it presses into the element: {}",
-        pressed.scale
-    );
-    assert!(motion.pose(motion.total_ms() - 40).ripple > 0.0);
-    assert!((settled.scale - 1.0).abs() < 1e-9);
-    assert_eq!(settled.point, Point { x: 600.0, y: 0.0 });
+    assert!(early.ripple > 0.0 && early.ripple < 1.0);
+    assert_eq!(late.ripple, 1.0);
+    assert_eq!(early.point, Point { x: 600.0, y: 0.0 });
+    assert_eq!(late.point, Point { x: 600.0, y: 0.0 });
 }
 
 #[test]
-fn a_move_without_a_click_never_flourishes() {
+fn a_move_without_a_click_never_ripples() {
     let motion = CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 600.0, y: 0.0 });
 
-    let settled = motion.pose(motion.total_ms());
+    assert_eq!(motion.total_ms(), motion.duration_ms());
+    assert_eq!(
+        motion.pose(motion.total_ms()),
+        CursorPose::still(Point { x: 600.0, y: 0.0 })
+    );
+}
+
+#[test]
+fn a_disabled_ripple_keeps_the_click_silent() {
+    let motion = CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 600.0, y: 0.0 })
+        .with_impact(true)
+        .with_ripple(false);
 
     assert_eq!(motion.total_ms(), motion.duration_ms());
-    assert_eq!(settled, CursorPose::still(Point { x: 600.0, y: 0.0 }));
+    assert_eq!(motion.pose(motion.total_ms()).ripple, 0.0);
 }
 
 #[test]

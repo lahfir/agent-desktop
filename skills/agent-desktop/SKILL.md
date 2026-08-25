@@ -244,8 +244,8 @@ agent-desktop session start [--name LABEL] [--screenshots] [--no-trace]  # Creat
 agent-desktop session end [id]                                      # Seal manifest
 agent-desktop session list                                          # List session manifests
 agent-desktop session gc [--older-than SECS] [--ended]              # Reclaim ended/stale sessions
-agent-desktop --session <id> cursor-overlay enable [--label TEXT] [--max-words N]
-agent-desktop --session <id> cursor-overlay disable                 # Remove the persistent session overlay
+agent-desktop --session <id> cursor-overlay enable [--label TEXT] [--max-words N] [--fill HEX] [--rim HEX] [--accent HEX] [--size N] [--no-ripple] [--no-highlight]
+agent-desktop --session <id> cursor-overlay disable                 # Remove the session overlay and stop its renderer
 agent-desktop trace show [--limit N] [--event PREFIX]               # Merge trace segments (default tail 500; 0 = all)
 agent-desktop trace export [--out path.html] [--limit N]            # Self-contained HTML viewer (default tail 5000)
 agent-desktop status                            # Health, session_id, tracing, artifacts, permissions

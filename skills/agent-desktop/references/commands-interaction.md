@@ -319,7 +319,7 @@ Synthesizes a scroll-wheel event at absolute coordinates and requires `--headed`
 
 ### Agent cursor presentation
 
-When enabled once with `cursor-overlay` for the selected session, the presentation-only cursor remains alive between eligible headless ref actions and moves from its previous destination. Interaction commands do not accept per-command cursor flags. Headed actions temporarily hide the overlay and use the real OS cursor; raw pointer commands keep their existing headed-only behavior.
+When enabled once with `cursor-overlay` for the selected session, the presentation-only cursor remains alive between eligible headless ref actions and moves from its previous destination along a human path. The move is sent before the action dispatches, so the travel overlaps the real action instead of trailing it. The cursor never rotates or resizes. A click plays a ripple at the destination and outlines the clicked element in the accent colour for about 2.4 seconds; `--no-ripple` and `--no-highlight` switch either off for the whole session. Interaction commands do not accept per-command cursor flags. The overlay fades out after 6 idle seconds and returns on the next command. Headed actions temporarily hide the overlay and use the real OS cursor; raw pointer commands keep their existing headed-only behavior.
 
 | Goal | Preferred | Alternative |
 |------|-----------|-------------|

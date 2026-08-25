@@ -7,7 +7,6 @@
 typedef struct {
     double x;
     double y;
-    double scale;
     double ripple;
 } AgentDesktopCursorFrame;
 
@@ -68,6 +67,7 @@ static void ADTintPointer(void) {
     rim.strokeColor = ADColor(style->rim, 1.0);
     dart.fillColor = ADColor(style->fill, 1.0);
     dart.strokeColor = ADColor(style->fill, 1.0);
+    ADPointer.transform = CATransform3DMakeScale(style->size, style->size, 1.0);
 }
 
 static CALayer *ADPointerLayer(void) {
@@ -83,10 +83,8 @@ static CALayer *ADPointerLayer(void) {
     return pointer;
 }
 
-static void ADApplyFrame(const AgentDesktopCursorFrame *frame, double mainHeight) {
+static void ADMoveCursor(const AgentDesktopCursorFrame *frame, double mainHeight) {
     [ADCursorWindow setFrameOrigin:NSMakePoint(frame->x - ADTipX, mainHeight - frame->y - ADTipY)];
-    double scale = frame->scale * ADStyle()->size;
-    ADPointer.transform = CATransform3DMakeScale(scale, scale, 1.0);
 }
 
 static NSWindow *ADBubble(void) {
@@ -201,7 +199,7 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
             bool highlighted = (config->flags & ADHighlightCue) == 0 || reduceMotion;
 
             for (size_t index = 0; index < frameCount; index += 1) {
-                ADApplyFrame(&frames[index], mainHeight);
+                ADMoveCursor(&frames[index], mainHeight);
                 if (followsBubble) {
                     [ADBubbleWindow setFrameOrigin:NSMakePoint(
                         bubbleFrame.origin.x + frames[index].x - last->x,

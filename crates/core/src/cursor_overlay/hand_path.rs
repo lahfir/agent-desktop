@@ -34,7 +34,10 @@ impl HandPath {
 
     pub(super) fn duration_ms(&self) -> u64 {
         let distance = distance_between(&self.start, &self.destination);
-        (100.0 + 150.0 * (distance / 40.0 + 1.0).log2()).clamp(260.0, 950.0) as u64
+        if distance < 1.5 {
+            return 0;
+        }
+        (60.0 + 120.0 * (distance / 40.0 + 1.0).log2()).clamp(180.0, 620.0) as u64
     }
 
     pub(super) fn at(&self, t: f64) -> Point {

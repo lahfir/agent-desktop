@@ -18,7 +18,6 @@ struct NativeCursorStyle {
 struct NativeCursorFrame {
     x: f64,
     y: f64,
-    scale: f64,
     ripple: f64,
 }
 
@@ -94,7 +93,6 @@ pub(super) fn run(
         .map(|pose| NativeCursorFrame {
             x: pose.point.x,
             y: pose.point.y,
-            scale: pose.scale,
             ripple: pose.ripple,
         })
         .collect::<Vec<_>>();

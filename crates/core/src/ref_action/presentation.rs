@@ -1,6 +1,17 @@
 use super::ActionabilityPreflight;
 use crate::{Action, CommandContext, DeliveryDisposition, DeliverySemantics, PlatformAdapter};
 
+pub(super) fn before_dispatch(
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+    preflight: &ActionabilityPreflight,
+) {
+    let Some(destination) = preflight.presentation_point.clone() else {
+        return;
+    };
+    crate::cursor_overlay::submit(adapter, context, destination, None, false);
+}
+
 pub(super) fn after_dispatch(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
@@ -12,15 +23,19 @@ pub(super) fn after_dispatch(
         Ok(result) => result.disposition(),
         Err(error) => error.disposition,
     };
-    if result.is_err() && !confirms_dispatch(disposition) {
+    if !is_click(action) || !confirms_dispatch(disposition) {
         return;
     }
     let Some(destination) = preflight.presentation_point.clone() else {
         return;
     };
-    let click = is_click(action) && confirms_dispatch(disposition);
-    let target = click.then_some(preflight.presentation_bounds).flatten();
-    crate::cursor_overlay::submit(adapter, context, destination, target, click);
+    crate::cursor_overlay::submit(
+        adapter,
+        context,
+        destination,
+        preflight.presentation_bounds,
+        true,
+    );
 }
 
 fn confirms_dispatch(disposition: DeliverySemantics) -> bool {

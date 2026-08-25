@@ -458,11 +458,28 @@ Sessions are on-disk containers under `<state root>/sessions/<id>/` with a `sess
 ### cursor-overlay enable / disable
 
 ```bash
-agent-desktop --session <id> cursor-overlay enable --label "Opening menu" --max-words 6
+agent-desktop --session <id> cursor-overlay enable --label "Opening menu" --max-words 6 \
+  --fill "#FFFFFF" --rim "#111318" --accent "#4299FF" --size 1.0
+agent-desktop --session <id> cursor-overlay enable --no-ripple --no-highlight
 agent-desktop --session <id> cursor-overlay disable
 ```
 
-The setting is stored in the selected session manifest and inherited by all eligible headless commands, including batch entries scoped to that session. Enabling immediately presents the persistent cursor with “Hey, let's play with this computer!” The current description remains visible; when its value changes, the old card eases out and the new text eases in. Only `cursor-overlay disable` or session end removes the cursor and card. Action and batch-entry schemas do not accept cursor-enable flags. Headed actions temporarily hide the overlay while the real pointer is used. macOS renders the overlay natively; other platforms use the adapter's presentation no-op.
+The whole setting — label, colours, size, and click effects — is stored in the selected session manifest and inherited by all eligible headless commands, including batch entries scoped to that session. Run `enable` again at any time to change the style; the renderer picks it up at once.
+
+| Flag | Meaning | Default |
+|---|---|---|
+| `--label TEXT` | Intent text shown beside the cursor | none |
+| `--max-words N` | Word limit for the label, 1 to 12 | 6 |
+| `--fill HEX` | Cursor body colour | `#FFFFFF` |
+| `--rim HEX` | Cursor outline colour | `#111318` |
+| `--accent HEX` | Ripple and element outline colour | `#4299FF` |
+| `--size N` | Cursor size multiplier, 0.5 to 4.0 | 1.0 |
+| `--no-ripple` | Do not play the ripple on a click | ripple on |
+| `--no-highlight` | Do not outline the clicked element | outline on |
+
+Enabling immediately presents the cursor with “Hey, let's play with this computer!” The current description remains visible; when its value changes, the old card eases out and the new text eases in. The cursor moves on a human path and never rotates or resizes. Its move is sent before the action dispatches, so the two overlap. A click plays a ripple at the destination and outlines the element for about 2.4 seconds.
+
+The overlay fades out after 6 seconds with no command and returns on the next one. `cursor-overlay disable` removes the cursor and card at once and stops the renderer; ending the session is not needed. Action and batch-entry schemas do not accept cursor-enable flags. Headed actions temporarily hide the overlay while the real pointer is used. macOS renders the overlay natively; other platforms use the adapter's presentation no-op.
 
 ### session start
 ```bash
