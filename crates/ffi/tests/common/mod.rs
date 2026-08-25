@@ -12,6 +12,10 @@ pub use agent_desktop_ffi::{
 };
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
+
+#[cfg(target_os = "windows")]
+pub mod win32_fixture;
+
 use std::sync::{
     Mutex,
     atomic::{AtomicU64, Ordering},
