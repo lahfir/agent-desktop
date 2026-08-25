@@ -126,6 +126,9 @@ jobs:
           - platform: Windows
             os: windows-latest
             package: agent-desktop-windows
+          - platform: Windows ARM64
+            os: windows-11-arm
+            package: agent-desktop-windows
           - platform: macOS
             os: macos-latest
             package: agent-desktop-macos
@@ -290,6 +293,8 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+    outputs:
+      lib_tests: ${{ steps.unit_tests.outputs.lib_tests }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -404,11 +409,24 @@ jobs:
       # staging its on-screen host is opt-in so a developer's desktop does not
       # gain a window mid-suite. This lane is the one that runs unattended, so
       # it opts in; without the variable the test body skips and the evidence is
-      # never gathered anywhere.
+      # never gathered anywhere. The passed-test total is exported so the ARM64
+      # lane can prove it executed the same suite rather than silently skipping
+      # tests whose runtime is missing from its image.
       - name: Core and Windows unit tests
+        id: unit_tests
         env:
           AGENT_DESKTOP_LIVE_WPF: "1"
-        run: cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib
+        shell: pwsh
+        run: |
+          $output = cmd /c "cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib 2>&1"
+          $output | ForEach-Object { Write-Host $_ }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $passed = 0
+          foreach ($line in @($output)) {
+            if ("$line" -match '^test result: ok\.\s+(\d+) passed') { $passed += [int]$Matches[1] }
+          }
+          Write-Host "Total lib tests passed: $passed"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "lib_tests=$passed"
 
       # The census example carries the redaction rule that keeps a real
       # application's text out of a committed capture, and a --lib run does not
@@ -513,6 +531,129 @@ jobs:
 
       # The isolation scenario this lane must prove: a test that writes a private
       # artifact observes it under RUNNER_TEMP, never the runner profile.
+      - name: Guard profile isolation
+        shell: pwsh
+        run: |
+          if (-not $env:HOME -or -not $env:HOME.StartsWith($env:RUNNER_TEMP, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "FAIL: HOME is not under RUNNER_TEMP: $env:HOME"
+            exit 1
+          }
+          if (-not $env:USERPROFILE -or -not $env:USERPROFILE.StartsWith($env:RUNNER_TEMP, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "FAIL: USERPROFILE is not under RUNNER_TEMP: $env:USERPROFILE"
+            exit 1
+          }
+          $leak = Join-Path $env:ORIGINAL_USERPROFILE '.agent-desktop'
+          if (Test-Path $leak) {
+            Write-Host "FAIL: a test escaped the isolated HOME and wrote $leak"
+            exit 1
+          }
+          Write-Host 'OK: private artifacts stayed under RUNNER_TEMP'
+
+  # The native ARM64 lane. aarch64-pc-windows-msvc is validated here — built on
+  # every PR via platform-check and its unit suite executed on real ARM64
+  # hardware with the same live-staging opt-in the x64 lane uses. It does not
+  # duplicate the harness-contract gates or fixture smoke; what it answers is
+  # whether the adapter behaves the same on this architecture.
+  test-windows-arm:
+    name: Test (Windows ARM64)
+    runs-on: windows-11-arm
+    needs: test-windows
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Isolate HOME for the whole lane
+        shell: pwsh
+        run: |
+          $cargoHome  = if ($env:CARGO_HOME)  { $env:CARGO_HOME }  else { Join-Path $env:USERPROFILE '.cargo' }
+          $rustupHome = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $env:USERPROFILE '.rustup' }
+          $testHome = Join-Path $env:RUNNER_TEMP ("agent-desktop-test-home-" + [guid]::NewGuid())
+          New-Item -ItemType Directory -Path $testHome | Out-Null
+          Add-Content -Path $env:GITHUB_ENV -Value "ORIGINAL_USERPROFILE=$env:USERPROFILE"
+          Add-Content -Path $env:GITHUB_ENV -Value "CARGO_HOME=$cargoHome"
+          Add-Content -Path $env:GITHUB_ENV -Value "RUSTUP_HOME=$rustupHome"
+          Add-Content -Path $env:GITHUB_ENV -Value "HOME=$testHome"
+          Add-Content -Path $env:GITHUB_ENV -Value "USERPROFILE=$testHome"
+
+      # windows-11-arm reports runner.os == 'Windows' like the x64 lane, so an
+      # unsuffixed key would make both lanes collide on one cache entry.
+      - name: Cache cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ env.CARGO_HOME }}/registry/index/
+            ${{ env.CARGO_HOME }}/registry/cache/
+            ${{ env.CARGO_HOME }}/git/db/
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+
+      - name: Core and Windows unit tests
+        id: unit_tests
+        env:
+          AGENT_DESKTOP_LIVE_WPF: "1"
+        shell: pwsh
+        run: |
+          $output = cmd /c "cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib 2>&1"
+          $output | ForEach-Object { Write-Host $_ }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $passed = 0
+          foreach ($line in @($output)) {
+            if ("$line" -match '^test result: ok\.\s+(\d+) passed') { $passed += [int]$Matches[1] }
+          }
+          Write-Host "Total lib tests passed: $passed"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "lib_tests=$passed"
+
+      # A count below the x64 lane's means tests skipped silently (typically a
+      # missing .NET desktop runtime for the live WPF staging) — that is a
+      # finding to disposition, not a difference to accept.
+      - name: Assert the suite executed as completely as on x64
+        shell: pwsh
+        env:
+          X64_LIB_TESTS: ${{ needs.test-windows.outputs.lib_tests }}
+        run: |
+          $armTests = 0
+          foreach ($line in Get-Content $env:GITHUB_OUTPUT) {
+            if ($line -match '^lib_tests=(\d+)$') { $armTests = [int]$Matches[1] }
+          }
+          if ([string]::IsNullOrWhiteSpace($env:X64_LIB_TESTS)) {
+            Write-Host "FAIL: the x64 lane did not export its lib test count"
+            exit 1
+          }
+          Write-Host "x64 lane lib tests: $($env:X64_LIB_TESTS); ARM64 lane lib tests: $armTests"
+          if ($armTests -ne [int]$env:X64_LIB_TESTS) {
+            Write-Host "FAIL: ARM64 executed $armTests lib tests against the x64 lane's $($env:X64_LIB_TESTS)"
+            exit 1
+          }
+          Write-Host "OK: ARM64 ran all $armTests lib tests the x64 lane ran"
+
+      - name: Build release binary
+        run: cargo build --locked --release -p agent-desktop
+
+      # win32-arm64's npm resolution, shim and wrapper can only be exercised
+      # on this hardware. AGENT_DESKTOP_BINARY_PATH points postinstall at the
+      # binary just built; the download leg itself needs a published asset and
+      # is proven by the release dry run on x64 instead.
+      - name: Install the packed npm package and run it through the shim
+        shell: pwsh
+        run: |
+          $env:AGENT_DESKTOP_BINARY_PATH = (Resolve-Path 'target/release/agent-desktop.exe').Path
+          Push-Location npm
+          npm pack
+          $tarball = Get-ChildItem -Filter 'agent-desktop-*.tgz' | Select-Object -First 1
+          if (-not $tarball) { Write-Host 'FAIL: npm pack produced no tarball'; exit 1 }
+          Pop-Location
+          $prefix = Join-Path $env:RUNNER_TEMP 'npm-arm64-prefix'
+          npm install -g $tarball.FullName --prefix $prefix
+          if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: npm install exited $LASTEXITCODE"; exit $LASTEXITCODE }
+          & (Join-Path $prefix 'agent-desktop.cmd') version
+          if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: agent-desktop version through the npm shim exited $LASTEXITCODE"; exit $LASTEXITCODE }
+          Write-Host 'OK: the win32-arm64 table entry resolves and runs through the npm shim'
+
       - name: Guard profile isolation
         shell: pwsh
         run: |
