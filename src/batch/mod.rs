@@ -206,6 +206,8 @@ struct BatchSessionStartArgs {
     no_trace: bool,
     #[serde(default)]
     screenshots: bool,
+    #[serde(default)]
+    cursor: bool,
 }
 
 #[derive(Deserialize)]
@@ -236,6 +238,7 @@ fn parse_session(args: Value) -> Result<SessionArgs, AppError> {
                 name: args.name,
                 no_trace: args.no_trace,
                 screenshots: args.screenshots,
+                cursor: args.cursor,
             })
         }
         Some("end") => {

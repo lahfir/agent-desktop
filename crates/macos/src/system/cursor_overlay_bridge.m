@@ -234,6 +234,8 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
 
             if (showsBubble) {
                 ADShowBubble(ADBubbleText, bubbleFrame, changedLabel && !reduceMotion);
+            } else {
+                [ADBubbleWindow orderOut:nil];
             }
             return true;
         }

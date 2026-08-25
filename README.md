@@ -178,6 +178,14 @@ agent-desktop session gc
 
 Enable the presentation-only cursor once for a session. Every eligible headless action in that session inherits the setting; action and batch entries do not take cursor-enable flags.
 
+The fastest path is one command. `session start --cursor` creates the session and shows the cursor with its default style — a white body, a near-black rim, a blue ripple, and a blue outline around each clicked element:
+
+```bash
+session_id=$(agent-desktop session start --cursor | jq -r '.data.session_id')
+```
+
+`cursor-overlay enable` with no flags gives the same defaults. Pass a flag only for what you want to change:
+
 ```bash
 agent-desktop --session <session_id> cursor-overlay enable \
   --label "Opening profile menu" --max-words 6 \
@@ -352,7 +360,7 @@ agent-desktop --session run-a batch '[
 ### System
 
 ```bash
-agent-desktop session start [--name LABEL] [--no-trace]  # create session; pass returned ID explicitly
+agent-desktop session start [--name LABEL] [--no-trace] [--cursor]  # create session; pass returned ID explicitly
 agent-desktop session end [id]
 agent-desktop session list
 agent-desktop session gc [--older-than SECS] [--ended]

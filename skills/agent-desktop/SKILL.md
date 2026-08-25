@@ -240,11 +240,12 @@ agent-desktop wait --notification --app "App"   # Wait for new notification
 
 ### System
 ```
-agent-desktop session start [--name LABEL] [--screenshots] [--no-trace]  # Creates a session; pass the returned ID explicitly
+agent-desktop session start [--name LABEL] [--screenshots] [--no-trace] [--cursor]  # Creates a session; pass the returned ID explicitly
 agent-desktop session end [id]                                      # Seal manifest
 agent-desktop session list                                          # List session manifests
 agent-desktop session gc [--older-than SECS] [--ended]              # Reclaim ended/stale sessions
 agent-desktop --session <id> cursor-overlay enable [--label TEXT] [--max-words N] [--fill HEX] [--rim HEX] [--accent HEX] [--size N] [--no-ripple] [--no-highlight]
+#   no flags = white cursor, blue ripple, blue element outline; `session start --cursor` does both steps at once
 agent-desktop --session <id> cursor-overlay disable                 # Remove the session overlay and stop its renderer
 agent-desktop trace show [--limit N] [--event PREFIX]               # Merge trace segments (default tail 500; 0 = all)
 agent-desktop trace export [--out path.html] [--limit N]            # Self-contained HTML viewer (default tail 5000)

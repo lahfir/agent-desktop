@@ -82,10 +82,11 @@ SYSTEM
   skills                     Bundled skill docs for AI agents (list, get, path)
   session start              Create a trace-enabled session; pass its returned ID explicitly
   session start --screenshots  Opt in to screenshot/refmap replay artifacts (requires tracing)
+  session start --cursor    Create the session and show the default visual cursor
   session end                  Seal a manifest (ID from argument, --session, or environment)
   session list                 List session manifests
   session gc                   Remove ended or provably-stale sessions
-  cursor-overlay enable       Enable/style the visual cursor for the selected session
+  cursor-overlay enable       Enable/style the visual cursor for the selected session (no flags = defaults)
   cursor-overlay disable      Disable the visual cursor for the selected session
 
 ENVIRONMENT

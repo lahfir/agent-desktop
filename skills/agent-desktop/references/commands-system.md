@@ -464,6 +464,8 @@ agent-desktop --session <id> cursor-overlay enable --no-ripple --no-highlight
 agent-desktop --session <id> cursor-overlay disable
 ```
 
+Pass no flags at all to get the default look: a white cursor body, a near-black rim, a blue ripple, and a blue outline around each clicked element. `agent-desktop session start --cursor` creates the session and turns the same defaults on in one command, so an agent never has to spell out a style.
+
 The whole setting — label, colours, size, and click effects — is stored in the selected session manifest and inherited by all eligible headless commands, including batch entries scoped to that session. Run `enable` again at any time to change the style; the renderer picks it up at once.
 
 | Flag | Meaning | Default |
