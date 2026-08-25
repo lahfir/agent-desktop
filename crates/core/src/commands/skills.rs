@@ -15,6 +15,15 @@ const SKILL_DESKTOP_REF_WORKFLOWS: &str =
 const SKILL_DESKTOP_REF_MACOS: &str =
     include_str!("../../../../skills/agent-desktop/references/macos.md");
 
+const SKILL_WINDOWS_MAIN: &str = include_str!("../../../../skills/agent-desktop-windows/SKILL.md");
+const SKILL_WINDOWS_REF_PERMISSIONS: &str = include_str!(
+    "../../../../skills/agent-desktop-windows/references/permissions-and-elevation.md"
+);
+const SKILL_WINDOWS_REF_CHROMIUM: &str =
+    include_str!("../../../../skills/agent-desktop-windows/references/chromium-and-electron.md");
+const SKILL_WINDOWS_REF_TROUBLESHOOTING: &str =
+    include_str!("../../../../skills/agent-desktop-windows/references/troubleshooting.md");
+
 const SKILL_FFI_MAIN: &str = include_str!("../../../../skills/agent-desktop-ffi/SKILL.md");
 const SKILL_FFI_REF_BUILD: &str =
     include_str!("../../../../skills/agent-desktop-ffi/references/build-and-link.md");
@@ -89,6 +98,25 @@ fn skill_ffi_refs() -> &'static [SkillRef] {
     SKILL_FFI_REFS
 }
 
+const SKILL_WINDOWS_REFS: &[SkillRef] = &[
+    SkillRef {
+        rel_path: "references/permissions-and-elevation.md",
+        body: SKILL_WINDOWS_REF_PERMISSIONS,
+    },
+    SkillRef {
+        rel_path: "references/chromium-and-electron.md",
+        body: SKILL_WINDOWS_REF_CHROMIUM,
+    },
+    SkillRef {
+        rel_path: "references/troubleshooting.md",
+        body: SKILL_WINDOWS_REF_TROUBLESHOOTING,
+    },
+];
+
+fn skill_windows_refs() -> &'static [SkillRef] {
+    SKILL_WINDOWS_REFS
+}
+
 const SKILLS: &[Skill] = &[
     Skill {
         canonical: "agent-desktop",
@@ -103,6 +131,13 @@ const SKILLS: &[Skill] = &[
         summary: "Embedding agent-desktop in another process via the C ABI. Build/link, error propagation, handle ownership, threading rules.",
         main: SKILL_FFI_MAIN,
         refs: skill_ffi_refs,
+    },
+    Skill {
+        canonical: "agent-desktop-windows",
+        aliases: &["windows", "agent-desktop-windows"],
+        summary: "Windows platform guide. Capability table (what works, what returns PLATFORM_NOT_SUPPORTED), UIPI/elevation boundaries, Chromium/Electron settle behavior, troubleshooting.",
+        main: SKILL_WINDOWS_MAIN,
+        refs: skill_windows_refs,
     },
 ];
 
@@ -192,12 +227,9 @@ fn matches_ref(rel_path: &str, query: &str) -> bool {
     if rel_path.eq_ignore_ascii_case(query) {
         return true;
     }
-    let stem = rel_path
-        .rsplit('/')
-        .next()
-        .and_then(|f| f.strip_suffix(".md").or(Some(f)))
-        .unwrap_or(rel_path);
-    stem.eq_ignore_ascii_case(query)
+    let file = rel_path.rsplit('/').next().unwrap_or(rel_path);
+    let stem = file.strip_suffix(".md").unwrap_or(file);
+    file.eq_ignore_ascii_case(query) || stem.eq_ignore_ascii_case(query)
 }
 
 fn render_full(skill: &Skill) -> String {

@@ -400,3 +400,6 @@ fn coverage_names() -> BTreeSet<&'static str> {
         .copied()
         .collect()
 }
+
+#[path = "windows_capability_claims_tests.rs"]
+mod windows_capability_claims;
