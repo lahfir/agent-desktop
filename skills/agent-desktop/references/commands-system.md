@@ -458,38 +458,46 @@ Sessions are on-disk containers under `<state root>/sessions/<id>/` with a `sess
 ### cursor-overlay enable / disable
 
 ```bash
-agent-desktop --session <id> cursor-overlay enable --label "Opening menu" --max-words 6 \
-  --fill "#FFFFFF" --rim "#111318" --accent "#4299FF" --size 1.0
-agent-desktop --session <id> cursor-overlay enable --no-ripple --no-highlight
+agent-desktop session start --cursor                 # session + default cursor in one command
+agent-desktop --session <id> cursor-overlay enable   # same defaults on an existing session
+agent-desktop --session <id> cursor-overlay enable --label "Opening menu" --accent "#FF3B7B"
 agent-desktop --session <id> cursor-overlay disable
 ```
 
-Pass no flags at all to get the default look: a white cursor body, a near-black rim, a blue ripple, and a blue outline around each clicked element. `agent-desktop session start --cursor` creates the session and turns the same defaults on in one command, so an agent never has to spell out a style.
+No flags gives the default look: white body, near-black rim, blue ripple, blue element outline.
 
-The whole setting — label, colours, size, and click effects — is stored in the selected session manifest and inherited by all eligible headless commands, including batch entries scoped to that session. Run `enable` again at any time to change the style; the renderer picks it up at once.
+Style is stored in the session manifest and inherited by every eligible headless command, batch entries included. Action and batch-entry schemas take no cursor flags. Run `enable` again to restyle; it applies at once.
 
 | Flag | Meaning | Default |
 |---|---|---|
-| `--label TEXT` | Intent text shown beside the cursor | none |
-| `--max-words N` | Word limit for the label, 1 to 12 | 6 |
+| `--label TEXT` | Intent text beside the cursor | none |
+| `--max-words N` | Label word limit, 1 to 12 | 6 |
 | `--fill HEX` | Cursor body colour | `#FFFFFF` |
 | `--rim HEX` | Cursor outline colour | `#111318` |
 | `--accent HEX` | Ripple and element outline colour | `#4299FF` |
 | `--size N` | Cursor size multiplier, 0.5 to 4.0 | 1.0 |
-| `--no-ripple` | Do not play the ripple on a click | ripple on |
-| `--no-highlight` | Do not outline the clicked element | outline on |
+| `--no-ripple` | No ripple on click | ripple on |
+| `--no-highlight` | No element outline on click | outline on |
 
-Enabling immediately presents the cursor with “Hey, let's play with this computer!” The current description remains visible; when its value changes, the old card eases out and the new text eases in. The cursor moves on a human path and never rotates or resizes. The action waits for the cursor to land before it dispatches, bounded at 900 ms. A click plays a ripple at the destination and flashes an outline around the element for about 0.9 seconds.
+Behaviour:
 
-The overlay fades out after 6 seconds with no command and returns on the next one. `cursor-overlay disable` removes the cursor and card at once and stops the renderer; ending the session is not needed. Action and batch-entry schemas do not accept cursor-enable flags. Headed actions temporarily hide the overlay while the real pointer is used. macOS renders the overlay natively; other platforms use the adapter's presentation no-op.
+- Travel is a human path, 90 to 320 ms. The cursor never rotates or resizes.
+- The action waits for the cursor to land, capped at 900 ms. A slow renderer never blocks it.
+- A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
+- The card shows the label. With no label there is no card.
+- Idle for 6 s it fades out; the next command restores it.
+- `disable` removes it and stops the renderer. Ending the session is not needed.
+- Headed actions hide it while the real pointer is in use.
+- macOS renders it natively; other platforms use the adapter's presentation no-op.
 
 ### session start
 ```bash
 agent-desktop session start
 agent-desktop session start --name "nightly-run"
 agent-desktop session start --no-trace          # Namespace only — no automatic JSONL
+agent-desktop session start --cursor            # Also show the default cursor overlay
 ```
-Creates the session directory, pre-creates `trace/` (when tracing is on), writes `session.json` (`trace: on` unless `--no-trace`), and prints `{ "session_id", "name", "trace", "created_at" }`. Pass that ID through global `--session` or `AGENT_DESKTOP_SESSION` on later commands.
+Creates the session directory, pre-creates `trace/` (when tracing is on), writes `session.json` (`trace: on` unless `--no-trace`), and prints `{ "session_id", "name", "trace", "created_at" }`. `--cursor` adds `cursor_overlay` to that response and shows the overlay. Pass that ID through global `--session` or `AGENT_DESKTOP_SESSION` on later commands.
 
 ### session end
 ```bash

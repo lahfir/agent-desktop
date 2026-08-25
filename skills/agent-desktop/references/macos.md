@@ -245,7 +245,13 @@ After `right-click @ref`, inspect the open menu or the target effect. If macOS r
 
 ### Agent cursor overlay
 
-macOS keeps one click-through AppKit child alive for the enabled session, with separate borderless windows for the cursor, the card, the ripple, and the element outline. Enable applies the session style and shows “Hey, let's play with this computer!”, and eases away only the card. Later actions start from the cursor's previous destination and follow the shared human path. The child receives the move before the action dispatches and acknowledges arrival over its session socket, so the action runs only once the cursor has landed. The click effect follows after dispatch confirms. The cursor is a filled dart with a contrasting rim; it never rotates or resizes. A click draws a contact glow and two expanding rings in the accent colour, then flashes a rounded accent border around the element that Core Animation fades over 0.9 seconds without a block on the render loop. After 6 idle seconds the cursor and card fade out; the next command restores them. `cursor-overlay disable` removes everything and stops the child. Headed actions temporarily hide it while the real cursor is in use. The overlay never activates, moves the OS pointer, or changes command delivery, follows Reduce Motion, and fails soft if its child cannot start.
+macOS keeps one click-through AppKit child per enabled session, with separate borderless windows for the cursor, the card, the ripple, and the element outline.
+
+- The cursor is a filled dart with a contrasting rim, drawn from the session style.
+- Effect windows sit one level below the cursor window, so the cursor always stays on top.
+- The child acknowledges arrival over its session socket; the action dispatches only after that.
+- The element outline and the card animate on Core Animation, so neither blocks the render loop.
+- Reduce Motion is honoured. The overlay never activates an app, moves the OS pointer, or changes command delivery, and it fails soft if its child cannot start.
 
 ### App Identification
 

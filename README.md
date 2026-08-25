@@ -176,29 +176,44 @@ agent-desktop session gc
 
 ### Agent cursor overlay (macOS)
 
-Enable the presentation-only cursor once for a session. Every eligible headless action in that session inherits the setting; action and batch entries do not take cursor-enable flags.
-
-The fastest path is one command. `session start --cursor` creates the session and shows the cursor with its default style — a white body, a near-black rim, a blue ripple, and a blue outline around each clicked element:
+A presentation-only cursor that shows what the agent is about to do. Off by default.
 
 ```bash
 session_id=$(agent-desktop session start --cursor | jq -r '.data.session_id')
+agent-desktop --session "$session_id" click @s8f3k2p9:e9
+agent-desktop --session "$session_id" cursor-overlay disable
 ```
 
-`cursor-overlay enable` with no flags gives the same defaults. Pass a flag only for what you want to change:
+`session start --cursor` turns it on with the default look. `cursor-overlay enable` does the same for a session that already exists.
+
+**Style is session-global.** Set it once; every later command uses it. Never pass it per action.
 
 ```bash
-agent-desktop --session <session_id> cursor-overlay enable \
-  --label "Opening profile menu" --max-words 6 \
-  --fill "#FFFFFF" --rim "#111318" --accent "#4299FF" --size 1.0
-agent-desktop --session <session_id> click @s8f3k2p9:e9
-agent-desktop --session <session_id> cursor-overlay disable
+agent-desktop --session "$session_id" cursor-overlay enable --label "Opening the menu"
 ```
 
-Appearance is session-global. Set it once at `enable`; every later command in that session uses it. `--fill` is the cursor body, `--rim` its outline, `--accent` the ripple and element outline, and `--size` a multiplier from 0.5 to 4.0. `--no-ripple` and `--no-highlight` switch off either click effect. Defaults are a white body with a near-black outline and a blue accent.
+| Flag | Meaning | Default |
+|---|---|---|
+| `--label TEXT` | Intent text beside the cursor | none |
+| `--max-words N` | Label word limit, 1–12 | 6 |
+| `--fill HEX` | Cursor body | `#FFFFFF` |
+| `--rim HEX` | Cursor outline | `#111318` |
+| `--accent HEX` | Ripple and element outline | `#4299FF` |
+| `--size N` | Size multiplier, 0.5–4.0 | 1.0 |
+| `--no-ripple` | No ripple on click | ripple on |
+| `--no-highlight` | No element outline on click | outline on |
 
-Enable shows the cursor with “Hey, let's play with this computer!” The card stays until its text changes; the old card then eases out and the new text eases in. Each action moves the cursor from its last position along a human path — fast start, small overshoot, a short correction, a bowed line, and light tremor. The travel takes 90 to 320 ms. The action waits for the cursor to land before it dispatches, so a window never closes before the cursor reaches its close button. The wait is bounded at 900 ms; a slow or missing renderer never blocks an action. Measured overhead is about 150 to 300 ms per action while the overlay is on. The cursor never rotates or changes size. On a click it stays on target while a ripple plays and a rounded accent border flashes around the clicked element for about 0.9 seconds. The ripple and the border draw below the cursor.
+**Behaviour**
 
-After 6 seconds with no command the overlay fades out by itself and the next command brings it back. `cursor-overlay disable` removes it at once and stops the renderer; you do not have to end the session. Headed actions hide it while the real pointer is in use. The overlay never moves or intercepts the OS pointer. macOS renders it natively; Windows and Linux inherit the platform adapter's presentation no-op and need only add their native renderer to support the same session contract.
+- The cursor travels a human path in 90–320 ms. It never rotates or resizes.
+- The action waits for it to land, so a window never closes before the cursor arrives. The wait is capped at 900 ms and never blocks an action.
+- A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
+- Idle for 6 s, it fades out. The next command brings it back.
+- `cursor-overlay disable` removes it now. You do not have to end the session.
+- Headed actions hide it. It never moves or intercepts the OS pointer.
+- Overhead is about 150–300 ms per action, all of it the visible travel.
+
+macOS renders it natively. Windows and Linux inherit the adapter's no-op and need only their own renderer against the same core contract.
 
 ## Driving Chromium apps (CDP)
 
