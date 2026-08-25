@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    AdapterError, CursorMotion, CursorOverlayConfig, CursorOverlayControl,
+    AdapterError, CURSOR_IDLE_REST_MS, CursorMotion, CursorOverlayConfig, CursorOverlayControl,
     CursorOverlayInstruction, CursorOverlayStyle, CursorPose, ErrorCode, Point, place_label,
 };
 use std::io::{Read, Write};
@@ -16,7 +16,6 @@ pub(super) const PROTOCOL_VERSION: &str = "v1";
 pub(super) const SOCKET_ENV: &str = "AGENT_DESKTOP_CURSOR_OVERLAY_SOCKET";
 const MAX_INSTRUCTION_BYTES: u64 = 4 * 1024;
 const BUBBLE_SIZE: (f64, f64) = (232.0, 38.0);
-const IDLE_REST_MS: u128 = 6_000;
 
 #[derive(Default)]
 struct OverlayState {
@@ -76,16 +75,19 @@ fn run() -> Result<(), AdapterError> {
                     bridge::show();
                     state.resting = false;
                 }
-                if handle(&control, &mut state).is_err() {
-                    continue;
-                }
-                if control.is_hide() {
+                let outcome = handle(&control, &mut state);
+                if control.is_hide() || control.is_travel() {
                     let _ = stream.write_all(&[1]);
+                }
+                if outcome.is_err() {
+                    continue;
                 }
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 bridge::idle();
-                if !state.resting && quiet_since.elapsed().as_millis() >= IDLE_REST_MS {
+                if !state.resting
+                    && quiet_since.elapsed().as_millis() >= u128::from(CURSOR_IDLE_REST_MS)
+                {
                     bridge::rest();
                     state.resting = true;
                 }

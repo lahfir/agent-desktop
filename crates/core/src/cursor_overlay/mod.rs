@@ -7,6 +7,7 @@ mod motion;
 mod pose;
 mod style;
 mod submit;
+mod timing;
 
 pub use config::{CursorOverlayConfig, MAX_CURSOR_LABEL_WORDS};
 pub use control::{CURSOR_OVERLAY_GREETING, CursorOverlayControl};
@@ -16,6 +17,7 @@ pub use motion::CursorMotion;
 pub use pose::CursorPose;
 pub use style::CursorOverlayStyle;
 pub(crate) use submit::submit;
+pub use timing::{CURSOR_ARRIVAL_TIMEOUT_MS, CURSOR_HIGHLIGHT_HOLD_MS, CURSOR_IDLE_REST_MS};
 
 #[cfg(test)]
 mod tests;

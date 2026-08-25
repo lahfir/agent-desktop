@@ -1,4 +1,6 @@
-use agent_desktop_core::{AdapterError, CursorOverlayControl, ErrorCode};
+use agent_desktop_core::{
+    AdapterError, CURSOR_ARRIVAL_TIMEOUT_MS, CursorOverlayControl, ErrorCode,
+};
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
@@ -110,7 +112,8 @@ fn send(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterErro
         AdapterError::internal("Could not send the cursor overlay control")
             .with_platform_detail(error.to_string())
     })?;
-    if !control.is_hide() && !control.is_disable() {
+    let travels = control.is_travel();
+    if !travels && !control.is_hide() && !control.is_disable() {
         return Ok(());
     }
     stream
@@ -119,15 +122,25 @@ fn send(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterErro
             AdapterError::internal("Could not finish the cursor overlay control")
                 .with_platform_detail(error.to_string())
         })?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(4)))
-        .map_err(|error| {
-            AdapterError::internal("Could not bound the cursor overlay acknowledgement")
-                .with_platform_detail(error.to_string())
-        })?;
-    let mut acknowledgement = [0_u8; 1];
-    stream.read_exact(&mut acknowledgement).map_err(|error| {
-        AdapterError::internal("macOS cursor overlay did not acknowledge the control")
+    let budget = if travels {
+        Duration::from_millis(CURSOR_ARRIVAL_TIMEOUT_MS)
+    } else {
+        Duration::from_secs(4)
+    };
+    stream.set_read_timeout(Some(budget)).map_err(|error| {
+        AdapterError::internal("Could not bound the cursor overlay acknowledgement")
             .with_platform_detail(error.to_string())
-    })
+    })?;
+    let mut acknowledgement = [0_u8; 1];
+    match stream.read_exact(&mut acknowledgement) {
+        Ok(()) => Ok(()),
+        Err(error) if travels => {
+            tracing::debug!(%error, "cursor overlay arrival was not acknowledged in time");
+            Ok(())
+        }
+        Err(error) => Err(AdapterError::internal(
+            "macOS cursor overlay did not acknowledge the control",
+        )
+        .with_platform_detail(error.to_string())),
+    }
 }

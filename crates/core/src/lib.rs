@@ -171,6 +171,7 @@ pub use clipboard_format::ClipboardFormat;
 pub use containment_predicate::ContainmentPredicate;
 pub use context::{CommandContext, WaitSelector};
 pub use cursor_overlay::{
+    CURSOR_ARRIVAL_TIMEOUT_MS, CURSOR_HIGHLIGHT_HOLD_MS, CURSOR_IDLE_REST_MS,
     CURSOR_OVERLAY_GREETING, CursorMotion, CursorOverlayConfig, CursorOverlayControl,
     CursorOverlayInstruction, CursorOverlayStyle, CursorPose, MAX_CURSOR_LABEL_WORDS, place_label,
 };

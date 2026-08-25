@@ -4,7 +4,6 @@
 const CGFloat ADRippleSize = 108.0;
 static const NSWindowLevel ADEffectLevel = 24;
 static const NSUInteger ADRippleRings = 2;
-static const double ADHighlightSeconds = 2.4;
 
 static AgentDesktopCursorStyle ADCurrentStyle = {
     .fill = {1.0, 1.0, 1.0},
@@ -15,10 +14,6 @@ static AgentDesktopCursorStyle ADCurrentStyle = {
 
 static __strong NSWindow *ADHighlightWindow = nil;
 static __strong CALayer *ADHighlightBorder = nil;
-
-static double ADEase(double t) {
-    return t * t * t * (10.0 + t * (-15.0 + 6.0 * t));
-}
 
 static double ADExpoOut(double t, double rate) {
     return 1.0 - pow(2.0, -rate * t);
@@ -142,11 +137,14 @@ void ADRippleFrame(NSArray<CALayer *> *layers, double progress) {
     }
 }
 
-static CAKeyframeAnimation *ADHold(NSString *path, NSArray *values, NSArray *times) {
+static CAKeyframeAnimation *ADHold(NSString *path,
+                                   NSArray *values,
+                                   NSArray *times,
+                                   double seconds) {
     CAKeyframeAnimation *animation = [CAKeyframeAnimation animationWithKeyPath:path];
     animation.values = values;
     animation.keyTimes = times;
-    animation.duration = ADHighlightSeconds;
+    animation.duration = seconds;
     animation.removedOnCompletion = NO;
     animation.fillMode = kCAFillModeForwards;
     animation.timingFunction =
@@ -154,7 +152,7 @@ static CAKeyframeAnimation *ADHold(NSString *path, NSArray *values, NSArray *tim
     return animation;
 }
 
-void ADHighlightShow(NSRect frame) {
+void ADHighlightShow(NSRect frame, double seconds) {
     if (ADHighlightWindow == nil) {
         ADHighlightWindow = ADWindow(frame);
         ADHighlightWindow.level = ADEffectLevel;
@@ -176,11 +174,13 @@ void ADHighlightShow(NSRect frame) {
     [ADHighlightBorder removeAllAnimations];
     [ADHighlightBorder addAnimation:ADHold(@"opacity",
                                            @[ @0.0, @1.0, @1.0, @0.0 ],
-                                           @[ @0.0, @0.05, @0.78, @1.0 ])
+                                           @[ @0.0, @0.04, @0.55, @1.0 ],
+                                           seconds)
                              forKey:@"agent-highlight-fade"];
     [ADHighlightBorder addAnimation:ADHold(@"transform.scale",
                                            @[ @1.08, @0.99, @1.0, @1.0 ],
-                                           @[ @0.0, @0.09, @0.16, @1.0 ])
+                                           @[ @0.0, @0.12, @0.22, @1.0 ],
+                                           seconds)
                              forKey:@"agent-highlight-pop"];
     [ADHighlightWindow orderFrontRegardless];
 }
@@ -192,31 +192,26 @@ void ADHighlightStop(void) {
     ADHighlightBorder = nil;
 }
 
-void ADRevealBubble(NSApplication *app, NSTextField *text, NSRect final, double frameSeconds) {
+void ADShowBubble(NSTextField *text, NSRect frame, bool changed) {
     NSWindow *bubble = text.window;
     CALayer *surface = bubble.contentView.layer;
     bubble.alphaValue = 1.0;
-    text.alphaValue = 0.0;
-    [bubble setFrame:final display:NO];
-    [bubble orderFrontRegardless];
-    for (double elapsed = 0.0; elapsed < 0.28; elapsed += frameSeconds) {
-        double eased = ADEase(MIN(1.0, elapsed / 0.28));
-        double scale = 0.94 + 0.06 * eased;
-        surface.transform = CATransform3DMakeScale(scale, scale, 1.0);
-        text.alphaValue = eased;
-        ADPump(app);
-        [NSThread sleepForTimeInterval:frameSeconds];
-    }
-    surface.transform = CATransform3DIdentity;
     text.alphaValue = 1.0;
-}
-
-void ADFadeBubble(NSApplication *app, NSWindow *bubble, double frameSeconds) {
-    for (double elapsed = 0.0; elapsed < 0.24; elapsed += frameSeconds) {
-        double t = MIN(1.0, elapsed / 0.24);
-        bubble.alphaValue = 1.0 - t * t * (3.0 - 2.0 * t);
-        ADPump(app);
-        [NSThread sleepForTimeInterval:frameSeconds];
+    [bubble setFrame:frame display:NO];
+    if (changed) {
+        [surface removeAllAnimations];
+        CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+        fade.fromValue = @0.0;
+        fade.toValue = @1.0;
+        fade.duration = 0.18;
+        CABasicAnimation *pop = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
+        pop.fromValue = @0.94;
+        pop.toValue = @1.0;
+        pop.duration = 0.18;
+        pop.timingFunction =
+            [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+        [surface addAnimation:fade forKey:@"agent-bubble-fade"];
+        [surface addAnimation:pop forKey:@"agent-bubble-pop"];
     }
-    [bubble orderOut:nil];
+    [bubble orderFrontRegardless];
 }

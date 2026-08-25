@@ -44,9 +44,9 @@ fn motion_duration_follows_fitts_law_and_stays_bounded() {
     let still = CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 0.0, y: 0.0 });
 
     assert_eq!(still.duration_ms(), 0);
-    assert_eq!(short.duration_ms(), 180);
-    assert!((400..600).contains(&medium.duration_ms()));
-    assert_eq!(long.duration_ms(), 620);
+    assert_eq!(short.duration_ms(), 90);
+    assert!((200..321).contains(&medium.duration_ms()));
+    assert_eq!(long.duration_ms(), 320);
 }
 
 #[test]

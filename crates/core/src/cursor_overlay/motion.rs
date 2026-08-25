@@ -2,7 +2,7 @@ use super::CursorPose;
 use super::hand_path::HandPath;
 use crate::Point;
 
-const RIPPLE_MS: u64 = 460;
+const RIPPLE_MS: u64 = 300;
 
 pub struct CursorMotion {
     path: HandPath,

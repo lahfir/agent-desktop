@@ -477,7 +477,7 @@ The whole setting — label, colours, size, and click effects — is stored in t
 | `--no-ripple` | Do not play the ripple on a click | ripple on |
 | `--no-highlight` | Do not outline the clicked element | outline on |
 
-Enabling immediately presents the cursor with “Hey, let's play with this computer!” The current description remains visible; when its value changes, the old card eases out and the new text eases in. The cursor moves on a human path and never rotates or resizes. Its move is sent before the action dispatches, so the two overlap. A click plays a ripple at the destination and outlines the element for about 2.4 seconds.
+Enabling immediately presents the cursor with “Hey, let's play with this computer!” The current description remains visible; when its value changes, the old card eases out and the new text eases in. The cursor moves on a human path and never rotates or resizes. The action waits for the cursor to land before it dispatches, bounded at 900 ms. A click plays a ripple at the destination and flashes an outline around the element for about 0.9 seconds.
 
 The overlay fades out after 6 seconds with no command and returns on the next one. `cursor-overlay disable` removes the cursor and card at once and stops the renderer; ending the session is not needed. Action and batch-entry schemas do not accept cursor-enable flags. Headed actions temporarily hide the overlay while the real pointer is used. macOS renders the overlay natively; other platforms use the adapter's presentation no-op.
 

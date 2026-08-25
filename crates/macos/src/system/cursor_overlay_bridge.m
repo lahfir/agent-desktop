@@ -16,6 +16,7 @@ typedef struct {
     double bubbleX;
     double bubbleY;
     double target[4];
+    double highlightSeconds;
     uint8_t flags;
 } AgentDesktopCursorRenderConfig;
 
@@ -148,11 +149,13 @@ void agent_desktop_cursor_overlay_show(void) {
     }
 }
 
-static void ADHighlightTarget(const double *target, double mainHeight) {
+static void ADHighlightTarget(const AgentDesktopCursorRenderConfig *config, double mainHeight) {
+    const double *target = config->target;
     ADHighlightShow(NSMakeRect(target[0] - ADHighlightPad,
                                mainHeight - target[1] - target[3] - ADHighlightPad,
                                target[2] + ADHighlightPad * 2.0,
-                               target[3] + ADHighlightPad * 2.0));
+                               target[3] + ADHighlightPad * 2.0),
+                    config->highlightSeconds);
 }
 
 bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
@@ -183,9 +186,6 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
             bool showsBubble = config->label != NULL && config->label[0] != '\0';
             NSString *nextLabel = showsBubble ? @(config->label) : @"";
             bool changedLabel = ![ADBubbleText.stringValue isEqualToString:nextLabel];
-            if (changedLabel && ADBubbleWindow.isVisible) {
-                ADFadeBubble(app, ADBubbleWindow, config->frameSeconds);
-            }
             ADBubbleText.stringValue = nextLabel;
             NSRect bubbleFrame = NSMakeRect(config->bubbleX,
                                             mainHeight - config->bubbleY - ADBubbleHeight,
@@ -212,7 +212,7 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
                         rippleVisible = true;
                     }
                     if (!highlighted) {
-                        ADHighlightTarget(config->target, mainHeight);
+                        ADHighlightTarget(config, mainHeight);
                         highlighted = true;
                     }
                     ADRippleFrame(rippleLayers, ripple);
@@ -229,16 +229,11 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
                 [ADRipple orderOut:nil];
             }
             if (!highlighted) {
-                ADHighlightTarget(config->target, mainHeight);
+                ADHighlightTarget(config, mainHeight);
             }
 
-            if (showsBubble && changedLabel && !reduceMotion) {
-                ADRevealBubble(app, ADBubbleText, bubbleFrame, config->frameSeconds);
-            } else if (showsBubble) {
-                [ADBubbleWindow setFrame:bubbleFrame display:NO];
-                ADBubbleWindow.alphaValue = 1.0;
-                ADBubbleText.alphaValue = 1.0;
-                [ADBubbleWindow orderFrontRegardless];
+            if (showsBubble) {
+                ADShowBubble(ADBubbleText, bubbleFrame, changedLabel && !reduceMotion);
             }
             return true;
         }

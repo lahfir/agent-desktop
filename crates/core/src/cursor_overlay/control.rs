@@ -103,6 +103,14 @@ impl CursorOverlayControl {
         matches!(self, Self::Hide { .. } | Self::Show { .. })
     }
 
+    /// A travel control moves the cursor and carries no click effect. Every
+    /// platform renderer must acknowledge it once the cursor lands, because the
+    /// action waits for that acknowledgement before it dispatches.
+    pub fn is_travel(&self) -> bool {
+        self.instruction()
+            .is_some_and(|instruction| !instruction.is_click())
+    }
+
     pub const fn is_hide(&self) -> bool {
         matches!(self, Self::Hide { .. })
     }

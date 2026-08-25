@@ -1,5 +1,6 @@
 use agent_desktop_core::{
-    AdapterError, CursorOverlayInstruction, CursorOverlayStyle, CursorPose, ErrorCode, Point, Rect,
+    AdapterError, CURSOR_HIGHLIGHT_HOLD_MS, CursorOverlayInstruction, CursorOverlayStyle,
+    CursorPose, ErrorCode, Point, Rect,
 };
 use std::ffi::{CString, c_char};
 
@@ -28,6 +29,7 @@ struct NativeRenderConfig {
     bubble_x: f64,
     bubble_y: f64,
     target: [f64; 4],
+    highlight_seconds: f64,
     flags: u8,
 }
 
@@ -119,6 +121,7 @@ pub(super) fn run(
         bubble_x: bubble.x,
         bubble_y: bubble.y,
         target: target.unwrap_or_default(),
+        highlight_seconds: CURSOR_HIGHLIGHT_HOLD_MS as f64 / 1_000.0,
         flags,
     };
     if unsafe { agent_desktop_cursor_overlay_run(frames.as_ptr(), frames.len(), &config) } {

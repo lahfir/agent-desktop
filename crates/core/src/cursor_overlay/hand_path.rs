@@ -37,7 +37,7 @@ impl HandPath {
         if distance < 1.5 {
             return 0;
         }
-        (60.0 + 120.0 * (distance / 40.0 + 1.0).log2()).clamp(180.0, 620.0) as u64
+        (40.0 + 70.0 * (distance / 40.0 + 1.0).log2()).clamp(90.0, 320.0) as u64
     }
 
     pub(super) fn at(&self, t: f64) -> Point {
