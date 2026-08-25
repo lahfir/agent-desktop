@@ -552,11 +552,26 @@ jobs:
           cat ./*.sha256 > checksums.txt
           cat checksums.txt
 
+      - name: Upload assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          gh release view "$TAG_NAME" >/dev/null 2>&1 \
+            || gh release create "$TAG_NAME" \
+              --title "$TAG_NAME" \
+              --notes "Release ${TAG_NAME}"
+          gh release upload "$TAG_NAME" \
+            ./*.tar.gz ./*.zip checksums.txt \
+            --clobber
+
       # Exact and derived: 4 CLI tarballs + 4 FFI tarballs + 2 FFI zips +
       # checksums.txt = 11. The expected number must equal what the workflow's
       # own matrices imply — scripts/check-npm-package.js recomputes it from
       # those matrices on every PR, so adding or losing a matrix leg without
-      # updating this number fails there first.
+      # updating this number fails there first. Runs after the upload so a
+      # freshly created release is being counted, not an empty one.
       - name: Assert the release's exact asset set
         env:
           GH_TOKEN: ${{ github.token }}
@@ -571,20 +586,6 @@ jobs:
             exit 1
           fi
           echo "OK: exactly ${ASSETS} assets found on release"
-
-      - name: Upload assets to GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
-        run: |
-          gh release view "$TAG_NAME" >/dev/null 2>&1 \
-            || gh release create "$TAG_NAME" \
-              --title "$TAG_NAME" \
-              --notes "Release ${TAG_NAME}"
-          gh release upload "$TAG_NAME" \
-            ./*.tar.gz ./*.zip checksums.txt \
-            --clobber
 
       # Keyless Sigstore provenance. Verify with:
       #   gh attestation verify <file> --repo lahfir/agent-desktop

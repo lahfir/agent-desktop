@@ -65,9 +65,9 @@ fn windows_skill_commands(claimed_working: bool) -> Vec<String> {
 #[cfg(target_os = "windows")]
 fn windows_adapter_still_refuses_what_the_skill_marks_unavailable() {
     use agent_desktop_core::{
-        Deadline, DismissAllNotificationsRequest, DismissNotificationRequest, ErrorCode,
-        InteractionLease, InteractionPolicy, NotificationActionRequest, NotificationFilter,
-        NotificationIdentity, ObservationOps, ProcessIdentity, SystemOps,
+        CursorOverlayControl, Deadline, DismissAllNotificationsRequest, DismissNotificationRequest,
+        ErrorCode, InteractionLease, InteractionPolicy, NotificationActionRequest,
+        NotificationFilter, NotificationIdentity, ObservationOps, ProcessIdentity, SystemOps,
     };
 
     let adapter = agent_desktop_windows::WindowsAdapter::new();
@@ -147,4 +147,14 @@ fn windows_adapter_still_refuses_what_the_skill_marks_unavailable() {
             "{name} changed behaviour; update the Windows skill's capability table"
         );
     }
+
+    SystemOps::update_cursor_overlay(
+        &adapter,
+        &CursorOverlayControl::disable("skill-capability-probe".into()),
+    )
+    .expect(
+        "cursor-overlay must keep core's Ok(()) default on Windows: the skill \
+         documents 'records its session setting, renders nothing', so an \
+         override arriving here needs a capability-table update in the same PR",
+    );
 }

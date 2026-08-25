@@ -1,12 +1,10 @@
 const assert = require('node:assert/strict');
-const { execFileSync, spawn } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
 const {
   chmodSync,
-  closeSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
-  openSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -19,17 +17,14 @@ const { afterEach, test } = require('node:test');
 
 const postinstall = require('../../npm/scripts/postinstall.js');
 const { PLATFORMS, resolve, tarballName } = require('../../npm/lib/platform.js');
+const { runScriptWithOsStub } = require('./helpers.js');
 
 const postinstallScriptPath = join(__dirname, '..', '..', 'npm', 'scripts', 'postinstall.js');
-const wrapperScriptPath = join(__dirname, '..', '..', 'npm', 'bin', 'agent-desktop.js');
 
 const roots = [];
 
 afterEach(() => {
   delete process.env.AGENT_DESKTOP_MACOS_HELPER_PATH;
-  for (const name of ['agent-desktop-win32-x64.exe', 'agent-desktop-win32-arm64.exe']) {
-    try { unlinkSync(join(__dirname, '..', '..', 'npm', 'bin', name)); } catch {}
-  }
   for (const root of roots.splice(0)) {
     postinstall.trashRecoverably(root);
   }
@@ -77,39 +72,6 @@ function captureWarnings(run) {
   }
 }
 
-function runScriptWithOsStub(scriptPath, osPlatform, osArch, args = []) {
-  const stub = join(tmpdir(), `agent-desktop-os-stub-${process.pid}-${osPlatform}-${osArch}.js`);
-  writeFileSync(
-    stub,
-    [
-      "const os = require('os');",
-      `os.platform = () => ${JSON.stringify(osPlatform)};`,
-      `os.arch = () => ${JSON.stringify(osArch)};`,
-      '',
-    ].join('\n'),
-  );
-  const env = { ...process.env };
-  delete env.AGENT_DESKTOP_SKIP_DOWNLOAD;
-  return new Promise((settle) => {
-    let settled = false;
-    let stderr = '';
-    const child = spawn(process.execPath, ['-r', stub, scriptPath, ...args], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env,
-    });
-    child.stderr.on('data', (chunk) => {
-      stderr += String(chunk);
-    });
-    const finish = (code) => {
-      if (settled) return;
-      settled = true;
-      try { unlinkSync(stub); } catch {}
-      settle({ code, stderr });
-    };
-    child.on('close', finish);
-    child.on('error', () => finish(-1));
-  });
-}
 
 test('checksum lookup requires an exact archive name', () => {
   const hash = 'a'.repeat(64);
@@ -390,85 +352,5 @@ test('prompted skills are a subset of the skill packages that exist', () => {
       !existsSync(join(skillsDir, missing)),
       `${missing} must not exist to be advertised`,
     );
-  }
-});
-
-test('wrapper resolves the released win32-x64 mapping and names the missing-binary cause', async () => {
-  const { code, stderr } = await runScriptWithOsStub(wrapperScriptPath, 'win32', 'x64', ['version']);
-  assert.equal(code, 1);
-  assert.match(stderr, /Error: Native binary not found for win32-x64/);
-  assert.match(stderr, /--ignore-scripts/);
-});
-
-test('wrapper resolves the released win32-arm64 mapping and exits non-zero when the binary is absent', async () => {
-  const { code, stderr } = await runScriptWithOsStub(wrapperScriptPath, 'win32', 'arm64', ['version']);
-  assert.equal(code, 1);
-  assert.match(stderr, /Error: Native binary not found for win32-arm64/);
-  assert.match(stderr, /Expected: .*agent-desktop-win32-arm64\.exe/);
-});
-
-test('wrapper refuses an unmapped platform key by name', async () => {
-  const { code, stderr } = await runScriptWithOsStub(wrapperScriptPath, 'sunos', 'x64', ['version']);
-  assert.equal(code, 1);
-  assert.match(stderr, /Error: Unsupported platform: sunos-x64/);
-});
-
-test('wrapper reports a non-zero exit status when the child dies to a signal', {
-  skip: process.platform === 'win32',
-}, async () => {
-  const entry = resolve('darwin', 'arm64');
-  const fakeBinary = join(wrapperScriptPath, '..', entry.binaryName);
-  writeFileSync(fakeBinary, '#!/usr/bin/env node\nprocess.kill(process.pid, "SIGKILL");\n', { mode: 0o755 });
-  chmodSync(fakeBinary, 0o755);
-  try {
-    const { code, stderr } = await runScriptWithOsStub(
-      wrapperScriptPath,
-      'darwin',
-      'arm64',
-      ['version'],
-    );
-    assert.notEqual(code, 0, 'a signal-killed child must not be reported as success');
-    assert.match(stderr, /terminated by signal/);
-  } finally {
-    try { unlinkSync(fakeBinary); } catch {}
-  }
-});
-
-test('AGENT_DESKTOP_BINARY_PATH installs on windows without any helper present', () => {
-  const scratch = temporaryDirectory();
-  const customBinary = join(scratch, 'stand-in.exe');
-  writeFileSync(customBinary, 'fake-win-binary');
-  const installedBinary = join(__dirname, '..', '..', 'npm', 'bin', 'agent-desktop-win32-x64.exe');
-  const stub = join(tmpdir(), `agent-desktop-os-stub-${process.pid}-win32-x64.js`);
-  writeFileSync(stub, [
-    "const os = require('os');",
-    "os.platform = () => 'win32';",
-    "os.arch = () => 'x64';",
-    '',
-  ].join('\n'));
-  let stderr = '';
-  const env = { ...process.env };
-  delete env.AGENT_DESKTOP_SKIP_DOWNLOAD;
-  env.AGENT_DESKTOP_BINARY_PATH = customBinary;
-  const errFile = join(scratch, 'child-stderr.txt');
-  const errFd = openSync(errFile, 'w');
-  try {
-    execFileSync(
-      process.execPath,
-      ['-r', stub, postinstallScriptPath],
-      { env, stdio: ['ignore', 'ignore', errFd] },
-    );
-  } finally {
-    closeSync(errFd);
-    stderr = readFileSync(errFile, 'utf8');
-    try { unlinkSync(stub); } catch {}
-    try { unlinkSync(errFile); } catch {}
-  }
-  try {
-    assert.equal(readFileSync(installedBinary, 'utf8'), 'fake-win-binary');
-    assert.match(stderr, /Using binary from AGENT_DESKTOP_BINARY_PATH/);
-    assert.doesNotMatch(stderr, /macOS helper not found/);
-  } finally {
-    try { unlinkSync(installedBinary); } catch {}
   }
 });
