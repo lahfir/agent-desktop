@@ -118,29 +118,28 @@ fn travel_stays_flat_so_only_the_click_is_a_flourish() {
     let cruise = motion.pose(motion.duration_ms() / 2);
 
     assert_eq!(cruise.scale, 1.0);
-    assert_eq!(cruise.spin, 0.0);
     assert_eq!(cruise.ripple, 0.0);
 }
 
 #[test]
-fn the_click_lifts_spins_one_turn_then_bams_and_ripples() {
+fn the_click_loops_playfully_then_presses_and_ripples() {
     let motion =
         CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 600.0, y: 0.0 }).with_impact(true);
     let flourish = motion.total_ms() - motion.duration_ms();
 
-    let lifted = motion.pose(motion.duration_ms() + flourish * 40 / 100);
-    let bam = motion.pose(motion.duration_ms() + flourish * 58 / 100);
+    let wandering = motion.pose(motion.duration_ms() + flourish * 22 / 100);
+    let pressed = motion.pose(motion.duration_ms() + flourish * 58 / 100);
     let settled = motion.pose(motion.total_ms());
 
-    assert!(lifted.scale > 1.5, "it enlarges first: {}", lifted.scale);
+    let drift = (wandering.point.x - 600.0).hypot(wandering.point.y);
+    assert!(drift > 4.0, "the cursor loops around the target: {drift}");
+    assert!(wandering.scale > 1.0, "it grows while it loops");
     assert!(
-        lifted.spin > 5.0,
-        "it rotates while it lifts: {}",
-        lifted.spin
+        pressed.scale < 0.85,
+        "it presses into the element: {}",
+        pressed.scale
     );
-    assert!(bam.scale < 0.9, "it bams into the element: {}", bam.scale);
     assert!(motion.pose(motion.total_ms() - 40).ripple > 0.0);
-    assert!((settled.spin - std::f64::consts::TAU).abs() < 1e-9);
     assert!((settled.scale - 1.0).abs() < 1e-9);
     assert_eq!(settled.point, Point { x: 600.0, y: 0.0 });
 }

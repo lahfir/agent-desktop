@@ -19,8 +19,6 @@ struct NativeCursorFrame {
     x: f64,
     y: f64,
     scale: f64,
-    spin: f64,
-    tilt: f64,
     ripple: f64,
 }
 
@@ -97,8 +95,6 @@ pub(super) fn run(
             x: pose.point.x,
             y: pose.point.y,
             scale: pose.scale,
-            spin: pose.spin,
-            tilt: pose.tilt,
             ripple: pose.ripple,
         })
         .collect::<Vec<_>>();

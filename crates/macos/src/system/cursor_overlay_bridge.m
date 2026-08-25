@@ -8,8 +8,6 @@ typedef struct {
     double x;
     double y;
     double scale;
-    double spin;
-    double tilt;
     double ripple;
 } AgentDesktopCursorFrame;
 
@@ -72,10 +70,7 @@ static void ADTintPointer(void) {
     dart.strokeColor = ADColor(style->fill, 1.0);
 }
 
-static CALayer *ADPointerLayer(CALayer *stage) {
-    CATransform3D perspective = CATransform3DIdentity;
-    perspective.m34 = -1.0 / 520.0;
-    stage.sublayerTransform = perspective;
+static CALayer *ADPointerLayer(void) {
     CALayer *pointer = [CALayer layer];
     pointer.bounds = CGRectMake(0.0, 0.0, ADBoxWidth, ADBoxHeight);
     pointer.position = CGPointMake(ADStage * 0.5, ADStage * 0.5);
@@ -90,10 +85,8 @@ static CALayer *ADPointerLayer(CALayer *stage) {
 
 static void ADApplyFrame(const AgentDesktopCursorFrame *frame, double mainHeight) {
     [ADCursorWindow setFrameOrigin:NSMakePoint(frame->x - ADTipX, mainHeight - frame->y - ADTipY)];
-    CATransform3D pose = CATransform3DMakeRotation(frame->tilt, 1.0, 0.0, 0.0);
-    pose = CATransform3DRotate(pose, frame->spin, 0.0, 1.0, 0.0);
     double scale = frame->scale * ADStyle()->size;
-    ADPointer.transform = CATransform3DScale(pose, scale, scale, 1.0);
+    ADPointer.transform = CATransform3DMakeScale(scale, scale, 1.0);
 }
 
 static NSWindow *ADBubble(void) {
@@ -181,7 +174,7 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
 
             if (ADCursorWindow == nil) {
                 ADCursorWindow = ADWindow(NSMakeRect(0.0, 0.0, ADStage, ADStage));
-                ADPointer = ADPointerLayer(ADCursorWindow.contentView.layer);
+                ADPointer = ADPointerLayer();
                 [ADCursorWindow.contentView.layer addSublayer:ADPointer];
                 ADBubbleWindow = ADBubble();
                 ADRipple = ADRippleWindow();
