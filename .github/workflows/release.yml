@@ -260,7 +260,9 @@ jobs:
           $tarball = "agent-desktop-v${env:VERSION}-${{ matrix.target }}.tar.gz"
           & tar -czf $tarball -C "target/${{ matrix.target }}/release" agent-desktop.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $listing = @(& tar -tzf $tarball) | Sort-Object
+          # The outer @() matters: a one-element pipeline assigns a scalar
+          # string, whose .Count is its character length.
+          $listing = @(@(& tar -tzf $tarball) | Sort-Object)
           if (($listing.Count -ne 1) -or ($listing[0] -ne 'agent-desktop.exe')) {
             Write-Host "FAIL: Windows archive listing must equal exactly one entry, agent-desktop.exe; got:"
             $listing | ForEach-Object { Write-Host "  $_" }
@@ -486,7 +488,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.release-please.outputs.dry_run == 'true' && github.sha || needs.release-please.outputs.tag_name }}
 
       - name: Install Rust toolchain
         run: rustup show
