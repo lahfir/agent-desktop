@@ -10,6 +10,7 @@ const pkg = require(join(npmDir, 'package.json'));
 const releaseWorkflow = readFileSync(join(root, '.github/workflows/release.yml'), 'utf8');
 const expectedFiles = [
   'bin/agent-desktop.js',
+  'lib/platform.js',
   'package.json',
   'scripts/postinstall.js',
 ];

@@ -17,6 +17,7 @@ const { dirname, isAbsolute, join } = require('path');
 const { platform, arch } = require('os');
 const { execFileSync } = require('child_process');
 const { createHash } = require('crypto');
+const { resolve, tarballName } = require('../lib/platform');
 
 const projectRoot = join(__dirname, '..');
 const binDir = join(projectRoot, 'bin');
@@ -26,24 +27,6 @@ const version = packageJson.version;
 const GITHUB_REPO = 'lahfir/agent-desktop';
 const MACOS_HELPER_NAME = 'agent-desktop-macos-helper';
 const MACOS_HELPER_PATH_ENV = 'AGENT_DESKTOP_MACOS_HELPER_PATH';
-
-const TARGET_MAP = {
-  'darwin-arm64': 'aarch64-apple-darwin',
-  'darwin-x64': 'x86_64-apple-darwin',
-  'linux-x64': 'x86_64-unknown-linux-gnu',
-  'linux-arm64': 'aarch64-unknown-linux-gnu',
-  'win32-x64': 'x86_64-pc-windows-msvc',
-};
-
-const BINARY_NAME_MAP = {
-  'darwin-arm64': 'agent-desktop-darwin-arm64',
-  'darwin-x64': 'agent-desktop-darwin-x64',
-  'linux-x64': 'agent-desktop-linux-x64',
-  'linux-arm64': 'agent-desktop-linux-arm64',
-  'win32-x64': 'agent-desktop-win32-x64.exe',
-};
-
-const SUPPORTED_PLATFORMS = ['darwin'];
 
 function log(msg) {
   process.stderr.write(`agent-desktop: ${msg}\n`);
@@ -174,11 +157,10 @@ function fixGlobalInstallBin() {
   }
 
   const symlinkPath = join(npmBinDir, 'agent-desktop');
-  const platformKey = getPlatformKey();
-  const binaryName = BINARY_NAME_MAP[platformKey];
-  if (!binaryName) return;
+  const entry = resolve(platform(), arch());
+  if (!entry) return;
 
-  const binaryPath = join(binDir, binaryName);
+  const binaryPath = join(binDir, entry.binaryName);
 
   try {
     const stat = lstatSync(symlinkPath);
@@ -220,16 +202,16 @@ function main() {
   }
 
   const platformKey = getPlatformKey();
-  const target = TARGET_MAP[platformKey];
-  const binaryName = BINARY_NAME_MAP[platformKey];
+  const entry = resolve(platform(), arch());
 
-  if (!SUPPORTED_PLATFORMS.includes(platform()) || !target || !binaryName) {
+  if (!entry || !entry.released) {
     log('agent-desktop currently supports macOS only.');
     log('Windows and Linux support is coming in Phase 2.');
     log(`See: https://github.com/${GITHUB_REPO}`);
     return;
   }
 
+  const binaryName = entry.binaryName;
   const binaryPath = join(binDir, binaryName);
   const helperPath = join(binDir, MACOS_HELPER_NAME);
 
@@ -268,7 +250,7 @@ function main() {
     return;
   }
 
-  const tarball = `agent-desktop-v${version}-${target}.tar.gz`;
+  const tarball = tarballName(version, entry.target);
   const baseUrl = `https://github.com/${GITHUB_REPO}/releases/download/v${version}`;
   const tarballUrl = `${baseUrl}/${tarball}`;
   const checksumsUrl = `${baseUrl}/checksums.txt`;

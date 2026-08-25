@@ -4,24 +4,15 @@ const { spawn } = require('child_process');
 const { existsSync, accessSync, chmodSync, constants } = require('fs');
 const { isAbsolute, join } = require('path');
 const { platform, arch } = require('os');
+const { resolve } = require('../lib/platform');
 
 const binDir = __dirname;
 const MACOS_HELPER_NAME = 'agent-desktop-macos-helper';
 const MACOS_HELPER_PATH_ENV = 'AGENT_DESKTOP_MACOS_HELPER_PATH';
 
 function getBinaryName() {
-  const os = platform();
-  const cpuArch = arch();
-
-  const platformMap = {
-    'darwin-arm64': 'agent-desktop-darwin-arm64',
-    'darwin-x64': 'agent-desktop-darwin-x64',
-    'linux-x64': 'agent-desktop-linux-x64',
-    'linux-arm64': 'agent-desktop-linux-arm64',
-    'win32-x64': 'agent-desktop-win32-x64.exe',
-  };
-
-  return platformMap[`${os}-${cpuArch}`] || null;
+  const entry = resolve(platform(), arch());
+  return entry ? entry.binaryName : null;
 }
 
 function main() {
