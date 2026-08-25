@@ -118,7 +118,7 @@ For dense apps (Slack, VS Code, Notion), use **progressive skeleton traversal** 
 agent-desktop snapshot --skeleton --app Slack -i --compact
 # Keep snapshot_id, for example s8f3k2p9
 
-# 2. Drill into a region of interest (named containers get refs as drill targets)
+# 2. Drill into a region of interest (each truncated branch exposes a safe drill ref)
 agent-desktop snapshot --root @e3 --snapshot s8f3k2p9 -i --compact
 
 # 3. Act on an element found in the drill-down
@@ -173,6 +173,19 @@ agent-desktop click @e9 --snapshot s2                    # legacy bare ref, expl
 agent-desktop session end "$AGENT_DESKTOP_SESSION"
 agent-desktop session gc
 ```
+
+### Agent cursor overlay (macOS)
+
+Enable the presentation-only cursor once for a session. Every eligible headless action in that session inherits the setting; action and batch entries do not take cursor-enable flags.
+
+```bash
+agent-desktop --session <session_id> cursor-overlay enable \
+  --label "Opening profile menu" --max-words 6
+agent-desktop --session <session_id> click @s8f3k2p9:e9
+agent-desktop --session <session_id> cursor-overlay disable
+```
+
+Enabling immediately shows the persistent cursor with “Hey, let's play with this computer!” The current card remains visible until its description changes; the old card then eases out and the new text eases in. Actions reuse the cursor's last position for the same eased, swinging glide and briefly switch to a hand pointer for click feedback. The solid white card has a 1.5px near-black border and stays at the cursor's bottom-right. The overlay never moves or intercepts the OS pointer and remains until `cursor-overlay disable` or session end. Headed actions temporarily hide it while the real cursor is in use. macOS renders the overlay natively; Windows and Linux inherit the platform adapter's presentation no-op and need only add their native renderer to support the same session contract.
 
 ## Driving Chromium apps (CDP)
 
@@ -338,6 +351,8 @@ agent-desktop session start [--name LABEL] [--no-trace]  # create session; pass 
 agent-desktop session end [id]
 agent-desktop session list
 agent-desktop session gc [--older-than SECS] [--ended]
+agent-desktop --session <id> cursor-overlay enable [--label TEXT] [--max-words N]
+agent-desktop --session <id> cursor-overlay disable
 agent-desktop status                     # platform, permissions, session_id, tracing, latest snapshot
 agent-desktop permissions                # check accessibility/screen-recording/automation
 agent-desktop permissions --request      # request in the bounded isolated helper

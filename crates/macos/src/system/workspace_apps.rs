@@ -64,6 +64,20 @@ impl WindowOwnerSnapshot {
         self.owners.iter().map(|owner| owner.pid).collect()
     }
 
+    pub(crate) fn matching_pids(&self, identifier: &str) -> rustc_hash::FxHashSet<i32> {
+        self.owners
+            .iter()
+            .filter(|owner| {
+                agent_desktop_core::app_name_matches(&owner.name, identifier)
+                    || owner
+                        .bundle_id
+                        .as_deref()
+                        .is_some_and(|bundle_id| bundle_id.eq_ignore_ascii_case(identifier))
+            })
+            .map(|owner| owner.pid)
+            .collect()
+    }
+
     pub(crate) fn owner(&self, pid: i32) -> Option<&WindowOwner> {
         self.owners.iter().find(|owner| owner.pid == pid)
     }
@@ -87,7 +101,12 @@ pub(crate) fn list_apps_scoped_until(
     deadline: Instant,
 ) -> Result<Vec<AppInfo>, AdapterError> {
     list_apps_with(deadline, |app| {
-        app.name.eq_ignore_ascii_case(name)
+        (agent_desktop_core::app_name_matches(&app.name, name)
+            || (bundle_id.is_none()
+                && app
+                    .bundle_id
+                    .as_deref()
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(name))))
             && bundle_id.is_none_or(|bundle| {
                 app.bundle_id
                     .as_deref()

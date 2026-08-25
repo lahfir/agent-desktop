@@ -398,7 +398,7 @@ Snapshot refs persist through `RefStore`. The default namespace stores snapshots
 **Progressive Skeleton Traversal:**
 - `--skeleton` flag clamps depth to `min(max_depth, 3)`, annotates truncated containers with `children_count` for agent discovery
 - `--root <REF>` flag starts traversal from a previously-discovered ref instead of window root; `--snapshot <snapshot_id>` selects the ref namespace
-- Named or described containers at skeleton boundary receive refs as drill-down targets (with empty `available_actions`)
+- Each truncated skeleton branch exposes its deepest safely resolvable drill target using stable text, native ID, or bounds evidence; anonymous boundaries fall back to their nearest resolvable ancestor
 - Scoped invalidation: re-drilling a ref replaces only that ref's subtree refs, preserving all others
 - Core modules: `ref_alloc.rs` (canonical `allocate_refs` + `RefAllocConfig`), `snapshot_ref.rs` (drill-down flow that delegates allocation to `ref_alloc`)
 - macOS: `count_children()` uses raw `CFArrayGetCount` without materializing `AXElement` wrappers for performance

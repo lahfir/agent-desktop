@@ -119,6 +119,7 @@ fn build_report(
         requirements.pointer_delivery(&request.action, &evidence.available_actions, request.policy);
     let mut checks = Vec::new();
     let mut verified_point = None;
+    let presentation_point = evidence.bounds.and_then(center_point);
     if requirements.visible {
         checks.push(gates::visibility(evidence));
     }
@@ -140,6 +141,7 @@ fn build_report(
         return Ok(ActionabilityReport::from_checks(
             checks,
             verified_point,
+            presentation_point,
             pointer_delivery,
         ));
     }
@@ -160,8 +162,18 @@ fn build_report(
     Ok(ActionabilityReport::from_checks(
         checks,
         verified_point,
+        presentation_point,
         pointer_delivery,
     ))
+}
+
+fn center_point(bounds: crate::Rect) -> Option<crate::Point> {
+    bounds.validate().ok().and_then(|bounds| {
+        (bounds.width > 0.0 && bounds.height > 0.0).then_some(crate::Point {
+            x: bounds.x + bounds.width / 2.0,
+            y: bounds.y + bounds.height / 2.0,
+        })
+    })
 }
 
 fn finish(

@@ -1,6 +1,9 @@
 #![cfg(unix)]
 
-use std::time::Duration;
+use std::{
+    sync::{Mutex, MutexGuard},
+    time::Duration,
+};
 
 use super::*;
 
@@ -30,6 +33,14 @@ fn wait_for_marker(path: &std::path::Path) -> bool {
     path.is_file()
 }
 
+static INTERACTION_LEASE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+fn interaction_lease_test_guard() -> MutexGuard<'static, ()> {
+    INTERACTION_LEASE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 fn test_root(label: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!(
         "agent-desktop-interaction-{label}-{}",
@@ -41,6 +52,7 @@ fn test_root(label: &str) -> PathBuf {
 
 #[test]
 fn a_second_lease_times_out_and_drop_releases_the_first() {
+    let _test_guard = interaction_lease_test_guard();
     let root = test_root("contention");
     let first = acquire_unix_interaction_lease_at(Deadline::after(100).unwrap(), &root).unwrap();
     let deadline = Deadline::after(10).unwrap();
@@ -63,6 +75,7 @@ fn a_second_lease_times_out_and_drop_releases_the_first() {
 
 #[test]
 fn home_changes_do_not_change_the_physical_interaction_lock() {
+    let _test_guard = interaction_lease_test_guard();
     let root = test_root("home");
     let first_home = crate::refs_test_support::HomeGuard::new();
     let first = acquire_unix_interaction_lease_at(Deadline::after(100).unwrap(), &root).unwrap();
@@ -129,6 +142,7 @@ fn subprocess_inherited_fd_is_closed() {
 
 #[test]
 fn different_home_subprocess_contends_and_crash_releases() {
+    let _test_guard = interaction_lease_test_guard();
     let token = crate::refs::new_snapshot_id();
     let directory = std::env::temp_dir().join(format!("agent-desktop-lock-proof-{token}"));
     let interaction_root = directory.join("runtime-root");
@@ -166,6 +180,7 @@ fn different_home_subprocess_contends_and_crash_releases() {
 fn inherited_descriptor_survives_parent_drop_and_crash_releases() {
     use std::os::fd::AsRawFd;
 
+    let _test_guard = interaction_lease_test_guard();
     let root = test_root("inherited");
     let ready = root.join("adopted-ready");
     let lease = acquire_unix_interaction_lease_at(Deadline::after(1_000).unwrap(), &root).unwrap();
@@ -204,6 +219,7 @@ fn inherited_descriptor_must_match_canonical_lock_identity() {
     use std::os::fd::AsRawFd;
     use std::os::unix::fs::OpenOptionsExt;
 
+    let _test_guard = interaction_lease_test_guard();
     let root = test_root("inherited-mismatch");
     let lease = acquire_unix_interaction_lease_at(Deadline::after(1_000).unwrap(), &root).unwrap();
     let unrelated_path = root.join("unrelated.lock");
@@ -230,6 +246,7 @@ fn inherited_descriptor_must_match_canonical_lock_identity() {
 fn inherited_descriptor_serializes_threads_in_one_host_process() {
     use std::os::fd::AsRawFd;
 
+    let _test_guard = interaction_lease_test_guard();
     let root = test_root("inherited-threads");
     let original =
         acquire_unix_interaction_lease_at(Deadline::after(1_000).unwrap(), &root).unwrap();

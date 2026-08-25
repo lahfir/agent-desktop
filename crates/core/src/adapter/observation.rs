@@ -57,7 +57,7 @@ pub trait ObservationOps: Send + Sync {
             .list_apps(deadline)?
             .into_iter()
             .filter(|app| {
-                app.name.eq_ignore_ascii_case(name)
+                app.matches_identifier(name)
                     && bundle_id.is_none_or(|expected| {
                         app.bundle_id
                             .as_deref()

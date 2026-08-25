@@ -1,6 +1,6 @@
 use crate::{
     AppError,
-    adapter::{PlatformAdapter, TreeOptions},
+    adapter::{PlatformAdapter, TreeOptions, WindowFilter},
     context::CommandContext,
     live_locator::{ObservationRequest, ObservationRoot},
     ref_alloc::{self, RefAllocConfig},
@@ -60,6 +60,7 @@ pub fn run_from_ref_with_context(
         .clone();
 
     let deadline = crate::Deadline::after(timeout_ms)?;
+    let window = resolve_result_window(&entry, adapter, deadline)?;
     let handle = adapter.resolve_element_strict(&entry, deadline)?;
 
     let observation_options = opts.with_ref_identity_bounds();
@@ -121,17 +122,6 @@ pub fn run_from_ref_with_context(
         })
     })?;
 
-    let instance = entry.process.process_instance.as_deref().ok_or_else(|| {
-        AppError::Adapter(crate::AdapterError::stale_ref(
-            "root ref has no process-instance identity",
-        ))
-    })?;
-    let window = crate::window_lookup::find_window_for_process(
-        crate::ProcessIdentity::new(entry.process.pid, instance),
-        adapter,
-        deadline,
-    )?;
-
     Ok(SnapshotResult {
         tree,
         refmap,
@@ -140,6 +130,48 @@ pub fn run_from_ref_with_context(
         complete: true,
         nodes_observed,
     })
+}
+
+/// The drill result reports the window the ref was captured from, so it must
+/// resolve that exact window — not any window of the process. Resolving before
+/// observation keeps a failed drill from persisting refs it never returns.
+fn resolve_result_window(
+    entry: &crate::refs::RefEntry,
+    adapter: &dyn PlatformAdapter,
+    deadline: crate::Deadline,
+) -> Result<crate::WindowInfo, AppError> {
+    let Some(window_id) = entry.source.source_window_id.as_deref() else {
+        let instance = entry.process.process_instance.as_deref().ok_or_else(|| {
+            AppError::Adapter(crate::AdapterError::stale_ref(
+                "root ref has no process-instance identity",
+            ))
+        })?;
+        return crate::window_lookup::find_window_for_process(
+            crate::ProcessIdentity::new(entry.process.pid, instance),
+            adapter,
+            deadline,
+        );
+    };
+    let candidates = adapter
+        .list_windows(
+            &WindowFilter {
+                focused_only: false,
+                app: None,
+            },
+            deadline,
+        )?
+        .into_iter()
+        .filter(|window| window.id == window_id && window.pid == entry.process.pid)
+        .collect();
+    crate::window_lookup::select_window(
+        candidates,
+        crate::AdapterError::new(
+            crate::ErrorCode::WindowNotFound,
+            format!("Source window '{window_id}' was not found"),
+        )
+        .with_suggestion("Run 'snapshot' to refresh, then retry with an updated ref"),
+        "Multiple windows matched the source window ID",
+    )
 }
 
 /// A drill-down replaces refs inside an existing snapshot, so it must observe

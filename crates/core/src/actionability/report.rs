@@ -9,6 +9,8 @@ pub(crate) struct ActionabilityReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) verified_point: Option<Point>,
     #[serde(skip)]
+    pub(crate) presentation_point: Option<Point>,
+    #[serde(skip)]
     pub(crate) pointer_delivery: PointerDelivery,
 }
 
@@ -16,6 +18,7 @@ impl ActionabilityReport {
     pub(crate) fn from_checks(
         checks: Vec<ActionabilityCheck>,
         verified_point: Option<Point>,
+        presentation_point: Option<Point>,
         pointer_delivery: PointerDelivery,
     ) -> Self {
         let actionable = checks.iter().all(|check| !is_blocking(check));
@@ -23,6 +26,7 @@ impl ActionabilityReport {
             actionable,
             checks,
             verified_point,
+            presentation_point,
             pointer_delivery,
         }
     }
@@ -92,6 +96,7 @@ mod tests {
                 failed("enabled", None),
                 failed("supported_action", Some(ErrorCode::PolicyDenied)),
             ],
+            None,
             None,
             PointerDelivery::NotApplicable,
         );

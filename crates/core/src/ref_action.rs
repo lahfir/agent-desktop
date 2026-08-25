@@ -11,6 +11,8 @@ use crate::{
 };
 use serde_json::json;
 
+mod presentation;
+
 const TRACE_CAPTURE_BUDGET_MS: u64 = 1_000;
 const PRE_CAPTURE_DISPATCH_RESERVE_MS: u64 = 100;
 
@@ -22,6 +24,7 @@ pub(crate) struct ResolvedRefAction<'a> {
 
 pub(crate) struct ActionabilityPreflight {
     pub(crate) verified_point: Option<crate::Point>,
+    pub(crate) presentation_point: Option<crate::Point>,
     pub(crate) pointer_delivery: actionability::PointerDelivery,
 }
 
@@ -108,9 +111,17 @@ pub(crate) fn dispatch_resolved(
     )?;
     let action_name = request.action.name();
     let raises_surface = request.action.may_raise_surface();
+    let presentation_action = request.action.clone();
     let dispatch_result = final_target
         .adapter
         .execute_action(final_target.handle, request, lease);
+    presentation::after_dispatch(
+        final_target.adapter,
+        final_target.context,
+        preflight.presentation_point,
+        &presentation_action,
+        &dispatch_result,
+    );
     let mut result = dispatch_result?;
     if raises_surface {
         result.surfaces = settled_surfaces(&final_target, expected_process);
@@ -359,3 +370,7 @@ pub(crate) fn into_adapter_error(err: AppError) -> AdapterError {
 #[cfg(test)]
 #[path = "ref_action_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "ref_action_cursor_overlay_tests.rs"]
+mod cursor_overlay_tests;

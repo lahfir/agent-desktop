@@ -16,7 +16,7 @@ mod dispatch;
 mod test_noop_ops;
 
 use agent_desktop_core::{
-    AdapterError, AppError, DeliverySemantics, ErrorCode,
+    AdapterError, AppError, DeliverySemantics, ErrorCode, SystemOps,
     context::{CommandContext, WaitSelector},
     output::{ErrorPayload, Response},
     session::resolve_active_session,
@@ -30,6 +30,13 @@ use std::process::ExitCode;
 const EXIT_INVALID_ARGS: u8 = 2;
 
 fn main() -> ExitCode {
+    if let Some(result) = build_adapter().run_cursor_overlay_child() {
+        return if result.is_ok() {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        };
+    }
     #[cfg(target_os = "macos")]
     if let Some(exit_code) = run_permission_prompt_helper() {
         return exit_code;
@@ -137,7 +144,7 @@ fn run() -> ExitCode {
             };
             let context = match CommandContext::new(session_id, cli.trace, cli.trace_strict) {
                 Ok(context) => context
-                    .with_headed(cli.headed)
+                    .with_headed(cli.interaction.headed)
                     .with_wait_selector(wait_selector.clone()),
                 Err(err) => {
                     return finish(cmd_name, Err(pre_dispatch_error(err)));

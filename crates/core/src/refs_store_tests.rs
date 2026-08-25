@@ -75,31 +75,34 @@ fn snapshot_roundtrip_updates_latest_pointer() {
     assert_eq!(store.load(None).unwrap().len(), 1);
 }
 
-/// Saves under contention, retrying while the store's write lock reports
-/// `TIMEOUT`.
+/// Saves under contention, retrying only while the store's write lock reports
+/// its own `lock_timeout`.
 ///
 /// The lock's budget is a product decision - a caller waiting on a busy store
 /// is told to try again rather than blocked indefinitely - and `TIMEOUT`
 /// carries `retry: safe` precisely so a caller can. Eight writers racing one
-/// lock on a loaded machine will legitimately exhaust that budget, so a test
-/// that requires every writer to win on its first attempt is asserting
-/// something the contract never promised, and fails as load rises rather than
-/// when anything is wrong. Retrying here tests what the name claims: that
-/// concurrent writers each end up with their snapshot preserved.
-fn save_contending(store: &RefStore, name: &str) -> String {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+/// lock legitimately exhaust that budget, so a test requiring every writer to
+/// win on its first attempt asserts something the contract never promised.
+/// Matching on the `kind` keeps that tolerance narrow: a timeout from anywhere
+/// else in the save path is still a failure.
+fn save_snapshot_after_contention(store: &RefStore, name: &str) -> String {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
         match store.save_new_snapshot(&map_with(name)) {
             Ok(id) => return id,
-            Err(error) => {
-                let retryable =
-                    matches!(&error, AppError::Adapter(inner) if inner.code == ErrorCode::Timeout);
-                assert!(
-                    retryable && std::time::Instant::now() < deadline,
-                    "a contended save must fail only with a retryable TIMEOUT, and must                      eventually win the lock: {error:?}"
-                );
+            Err(AppError::Adapter(inner))
+                if inner.code == ErrorCode::Timeout
+                    && inner
+                        .details
+                        .as_ref()
+                        .and_then(|details| details.get("kind"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some("lock_timeout")
+                    && std::time::Instant::now() < deadline =>
+            {
                 std::thread::sleep(std::time::Duration::from_millis(20));
             }
+            Err(error) => panic!("contended snapshot save failed: {error:?}"),
         }
     }
 }
@@ -113,7 +116,7 @@ fn concurrent_writers_preserve_all_snapshots() {
     for i in 0..8 {
         let store = store.clone();
         handles.push(std::thread::spawn(move || {
-            save_contending(&store, &format!("Snapshot {i}"))
+            save_snapshot_after_contention(&store, &format!("Snapshot {i}"))
         }));
     }
 

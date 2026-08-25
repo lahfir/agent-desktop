@@ -216,6 +216,10 @@ The side-effect contract attached to an action request, controlling whether the 
 
 Core owns the precondition each action declares — a focused window for keyboard or focus-sensitive work, a focused window plus a verified cursor target for pointer delivery — and satisfies it before dispatch. For ref actions core focuses the exact source window, not merely the owning application; the platform adapter owns the OS-specific focus primitive and delivery mechanism. Raw coordinate input has no ref identity, so it never infers or focuses a window. Which actions a headed policy makes physical rather than semantic is per-action and per-platform, and is settled by that action's own chain rather than by the policy. On Windows, `type` has no semantic headless path — UIA offers no insert-at-selection write — so strict-headless `type` fails at policy and `set-value` is the headless text path; headed `type` synthesizes keys physically (KTD8, A4-1).
 
+### Agent Cursor Overlay
+
+An optional presentation-only cursor driven by verified action destinations. Its configuration is enabled or disabled once in a session manifest with `cursor-overlay`; action and batch commands inherit it without cursor flags. Headed mode suppresses the overlay because the real pointer already represents the action. It never moves or replaces the OS pointer and never changes Interaction Policy, action delivery, or response semantics. Shared configuration and motion stay platform-neutral; macOS supplies the native renderer while other platforms inherit the adapter's default no-op.
+
 ### Headless Ref Action
 A ref-based action that uses semantic accessibility operations without implicit focus stealing, cursor movement, synthetic keyboard input, or pasteboard use. This is the default mode.
 

@@ -32,7 +32,7 @@ pub(super) trait OwnerSnapshotView {
     fn same_generation(&self, other: &Self) -> bool;
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub(super) enum OwnerGeneration {
     LaunchTime(f64),
     LiveProcess,
@@ -64,17 +64,48 @@ fn capture_global_once(
 
 fn capture_global_with<S: OwnerSnapshotView>(
     focused_only: bool,
-    mut capture_owners: impl FnMut() -> Result<S, AdapterError>,
-    mut capture_records: impl FnMut(&FxHashSet<i32>) -> Result<Vec<WindowRecord>, AdapterError>,
+    capture_owners: impl FnMut() -> Result<S, AdapterError>,
+    capture_records: impl FnMut(&FxHashSet<i32>) -> Result<Vec<WindowRecord>, AdapterError>,
     mut read_frontmost: impl FnMut(i32) -> Result<WindowAxState, AdapterError>,
 ) -> Result<Vec<WindowInfo>, AdapterError> {
+    capture_stable_with(
+        capture_owners,
+        OwnerSnapshotView::eligible_pids,
+        capture_records,
+        |records, owners| {
+            assemble_global_windows(records, owners, focused_only, &mut read_frontmost)
+        },
+    )
+}
+
+pub(super) fn capture_stable_with<S: OwnerSnapshotView>(
+    capture_owners: impl FnMut() -> Result<S, AdapterError>,
+    select_pids: impl FnMut(&S) -> FxHashSet<i32>,
+    capture_records: impl FnMut(&FxHashSet<i32>) -> Result<Vec<WindowRecord>, AdapterError>,
+    assemble: impl FnMut(Vec<WindowRecord>, &S) -> Result<Vec<WindowInfo>, AdapterError>,
+) -> Result<Vec<WindowInfo>, AdapterError> {
+    capture_validated_with(
+        capture_owners,
+        select_pids,
+        capture_records,
+        assemble,
+        |before, after, _, records| validate_snapshot_pair(before, after, records),
+    )
+}
+
+pub(super) fn capture_validated_with<S: OwnerSnapshotView>(
+    mut capture_owners: impl FnMut() -> Result<S, AdapterError>,
+    mut select_pids: impl FnMut(&S) -> FxHashSet<i32>,
+    mut capture_records: impl FnMut(&FxHashSet<i32>) -> Result<Vec<WindowRecord>, AdapterError>,
+    mut assemble: impl FnMut(Vec<WindowRecord>, &S) -> Result<Vec<WindowInfo>, AdapterError>,
+    mut validate: impl FnMut(&S, &S, &FxHashSet<i32>, &[WindowRecord]) -> Result<(), AdapterError>,
+) -> Result<Vec<WindowInfo>, AdapterError> {
     let before = capture_owners()?;
-    let eligible_pids = OwnerSnapshotView::eligible_pids(&before);
+    let eligible_pids = select_pids(&before);
     let records = capture_records(&eligible_pids)?;
-    let assembled =
-        assemble_global_windows(records.clone(), &before, focused_only, &mut read_frontmost);
+    let assembled = assemble(records.clone(), &before);
     let after = capture_owners()?;
-    validate_snapshot_pair(&before, &after, &records)?;
+    validate(&before, &after, &eligible_pids, &records)?;
     assembled
 }
 
@@ -132,6 +163,23 @@ pub(super) fn validate_snapshot_pair<S: OwnerSnapshotView>(
 ) -> Result<(), AdapterError> {
     if !before.same_generation(after) {
         return Err(owner_churn_error(None, "appkit_snapshot_changed"));
+    }
+    validate_record_generations(records, after)
+}
+
+pub(super) fn validate_scoped_snapshot_pair<S: OwnerSnapshotView>(
+    before: &S,
+    after: &S,
+    before_pids: &FxHashSet<i32>,
+    after_pids: &FxHashSet<i32>,
+    records: &[WindowRecord],
+) -> Result<(), AdapterError> {
+    if before_pids != after_pids
+        || before_pids
+            .iter()
+            .any(|pid| before.generation(*pid) != after.generation(*pid))
+    {
+        return Err(owner_churn_error(None, "selected_appkit_snapshot_changed"));
     }
     validate_record_generations(records, after)
 }

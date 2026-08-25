@@ -97,7 +97,7 @@ pub(crate) fn resolve_window_for_surface(
     crate::window_lookup::select_surface_owner(
         windows_for_app(adapter, app_name, deadline)?,
         crate::AdapterError::new(
-            crate::ErrorCode::AppNotFound,
+            crate::ErrorCode::WindowNotFound,
             format!(
                 "No window found to identify the application owning surface '{}'",
                 surface.as_str()
@@ -115,21 +115,7 @@ fn windows_for_app(
         focused_only: app_name.is_none(),
         app: app_name.map(str::to_string),
     };
-    Ok(windows_matching_app(
-        adapter.list_windows(&filter, deadline)?,
-        app_name,
-    ))
-}
-
-/// The adapter filter is advisory, so the app name is applied again here.
-fn windows_matching_app(windows: Vec<WindowInfo>, app_name: Option<&str>) -> Vec<WindowInfo> {
-    match app_name {
-        Some(app) => windows
-            .into_iter()
-            .filter(|window| window.app.eq_ignore_ascii_case(app))
-            .collect(),
-        None => windows,
-    }
+    Ok(adapter.list_windows(&filter, deadline)?)
 }
 
 pub(crate) fn resolve_window(
@@ -157,11 +143,12 @@ pub(crate) fn resolve_window(
         })
     } else if let Some(app) = app_name {
         crate::window_lookup::select_window(
-            windows_matching_app(windows, app_name),
+            windows,
             crate::AdapterError::new(
-                crate::ErrorCode::AppNotFound,
-                format!("No window found for app '{app}'"),
-            ),
+                crate::ErrorCode::WindowNotFound,
+                format!("Application '{app}' is running but has no matching window"),
+            )
+            .with_suggestion("Wait for the app to present a window, or run 'list-windows --app'."),
             "More than one window matches the target",
         )
     } else {
@@ -250,3 +237,7 @@ pub(crate) fn emit_snapshot_saved(
 #[cfg(test)]
 #[path = "snapshot_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "snapshot_window_tests.rs"]
+mod window_tests;

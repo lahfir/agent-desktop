@@ -286,7 +286,7 @@ fn verify_source_application(
     )?;
     if actual
         .as_deref()
-        .is_some_and(|actual| actual.eq_ignore_ascii_case(expected))
+        .is_some_and(|actual| agent_desktop_core::app_name_matches(actual, expected))
     {
         return Ok(());
     }

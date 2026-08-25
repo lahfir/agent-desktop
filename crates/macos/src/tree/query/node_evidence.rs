@@ -3,11 +3,16 @@ use agent_desktop_core::{
     LocatorStats,
 };
 
-pub(crate) fn is_wrapper_candidate(role: Option<&str>, subrole: Option<&str>) -> bool {
-    role == Some("AXGenericElement")
-        && role.is_some_and(|role| {
-            crate::tree::roles::ax_role_and_subrole_to_str(role, subrole) == "group"
-        })
+fn is_wrapper_candidate(
+    role: Option<&str>,
+    subrole: Option<&str>,
+    name: &agent_desktop_core::NameEvidence,
+    value: Option<&str>,
+    identifiers: &IdentifierEvidence,
+) -> bool {
+    role.is_some_and(|role| {
+        crate::tree::roles::ax_role_and_subrole_to_str(role, subrole) == "group"
+    }) && direct_wrapper_identity_is_empty(name, value, identifiers)
 }
 
 pub(crate) fn is_transparent_wrapper(
@@ -18,7 +23,18 @@ pub(crate) fn is_transparent_wrapper(
     identifiers: &IdentifierEvidence,
     actions: &LocatorField<Vec<String>>,
 ) -> bool {
-    let strings = [
+    is_wrapper_candidate(role, subrole, name, value, identifiers)
+        && actions
+            .known()
+            .is_some_and(|actions| actions.iter().all(|action| is_structural_action(action)))
+}
+
+fn direct_wrapper_identity_is_empty(
+    name: &agent_desktop_core::NameEvidence,
+    value: Option<&str>,
+    identifiers: &IdentifierEvidence,
+) -> bool {
+    [
         name.explicit_label.as_deref(),
         name.labelled_by_text.as_deref(),
         name.native_title.as_deref(),
@@ -27,14 +43,20 @@ pub(crate) fn is_transparent_wrapper(
         name.placeholder.as_deref(),
         name.description.as_deref(),
         value,
-    ];
-    is_wrapper_candidate(role, subrole)
-        && strings
-            .into_iter()
-            .all(|text| text.is_none_or(|text| text.trim().is_empty()))
+    ]
+    .into_iter()
+    .all(|text| text.is_none_or(|text| text.trim().is_empty()))
         && identifiers.is_complete()
         && identifiers.identifiers().is_empty()
-        && actions.known().is_some_and(Vec::is_empty)
+}
+
+fn is_structural_action(action: &str) -> bool {
+    matches!(
+        action,
+        agent_desktop_core::capability::RIGHT_CLICK
+            | agent_desktop_core::capability::SCROLL_TO
+            | agent_desktop_core::capability::SET_FOCUS
+    )
 }
 
 pub(crate) fn option_field<T>(value: Option<T>, uncertain: bool) -> LocatorField<T> {
@@ -162,25 +184,19 @@ mod tests {
     }
 
     #[test]
-    fn only_semantically_inert_generic_elements_are_transparent() {
+    fn inert_native_groups_are_transparent() {
         let (name, identifiers, actions) = inert_generic_wrapper();
 
-        assert!(is_transparent_wrapper(
-            Some("AXGenericElement"),
-            None,
-            &name,
-            None,
-            &identifiers,
-            &actions,
-        ));
-        assert!(!is_transparent_wrapper(
-            Some("AXGroup"),
-            None,
-            &name,
-            None,
-            &identifiers,
-            &actions,
-        ));
+        for role in ["AXGenericElement", "AXGroup"] {
+            assert!(is_transparent_wrapper(
+                Some(role),
+                None,
+                &name,
+                None,
+                &identifiers,
+                &actions,
+            ));
+        }
     }
 
     #[test]
@@ -197,9 +213,28 @@ mod tests {
         ));
 
         name.native_title = None;
-        let actions = LocatorField::Known(vec!["AXPress".into()]);
+        let actions = LocatorField::Known(vec![agent_desktop_core::capability::CLICK.into()]);
         assert!(!is_transparent_wrapper(
             Some("AXGenericElement"),
+            None,
+            &name,
+            None,
+            &identifiers,
+            &actions,
+        ));
+    }
+
+    #[test]
+    fn structural_actions_do_not_make_anonymous_groups_consume_depth() {
+        let (name, identifiers, _) = inert_generic_wrapper();
+        let actions = LocatorField::Known(vec![
+            agent_desktop_core::capability::RIGHT_CLICK.into(),
+            agent_desktop_core::capability::SCROLL_TO.into(),
+            agent_desktop_core::capability::SET_FOCUS.into(),
+        ]);
+
+        assert!(is_transparent_wrapper(
+            Some("AXGroup"),
             None,
             &name,
             None,

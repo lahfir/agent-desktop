@@ -1,5 +1,6 @@
 use crate::AccessibilityNode;
 use crate::refs::{RefEntry, RefMap};
+use std::collections::HashSet;
 
 pub(crate) use crate::ref_alloc_config::RefAllocConfig;
 
@@ -159,7 +160,64 @@ pub(crate) fn allocate_refs(
     refmap: &mut RefMap,
     config: &RefAllocConfig,
 ) -> Result<AccessibilityNode, crate::AppError> {
-    allocate_refs_at_path(node, refmap, config, &mut config.scope.path_prefix.to_vec())
+    let mut skeleton_anchors = HashSet::new();
+    if config.scope.root_ref_id.is_none() {
+        plan_skeleton_anchors(&node, &mut Vec::new(), &mut skeleton_anchors);
+    }
+    allocate_refs_at_path(
+        node,
+        refmap,
+        config,
+        &mut config.scope.path_prefix.to_vec(),
+        &skeleton_anchors,
+    )
+}
+
+fn plan_skeleton_anchors(
+    node: &AccessibilityNode,
+    path: &mut Vec<usize>,
+    anchors: &mut HashSet<Vec<usize>>,
+) -> bool {
+    let mut uncovered_boundary = node.children_count.is_some();
+    for (index, child) in node.children.iter().enumerate() {
+        path.push(index);
+        uncovered_boundary |= plan_skeleton_anchors(child, path, anchors);
+        path.pop();
+    }
+    if !uncovered_boundary {
+        return false;
+    }
+    if can_receive_observed_ref(node) && is_ref_able(node) {
+        return false;
+    }
+    if !path.is_empty() && is_resolvable_skeleton_anchor(node) {
+        anchors.insert(path.clone());
+        return false;
+    }
+    true
+}
+
+fn is_resolvable_skeleton_anchor(node: &AccessibilityNode) -> bool {
+    can_receive_observed_ref(node)
+        && (has_meaningful_text(node.identity.name.as_deref())
+            || has_meaningful_text(node.identity.description.as_deref())
+            || node.identity.native_id.as_ref().is_some_and(|identifier| {
+                identifier.kind != crate::IdentifierKind::Unknown
+                    && !identifier.value.trim().is_empty()
+            })
+            || node
+                .presentation
+                .bounds
+                .and_then(|bounds| bounds.bounds_hash())
+                .is_some())
+}
+
+fn can_receive_observed_ref(node: &AccessibilityNode) -> bool {
+    crate::Role::is_canonical(&node.role) && node.role != "unknown"
+}
+
+fn has_meaningful_text(value: Option<&str>) -> bool {
+    value.is_some_and(|text| !text.trim().is_empty())
 }
 
 fn allocate_refs_at_path(
@@ -167,6 +225,7 @@ fn allocate_refs_at_path(
     refmap: &mut RefMap,
     config: &RefAllocConfig,
     path: &mut Vec<usize>,
+    skeleton_anchors: &HashSet<Vec<usize>>,
 ) -> Result<AccessibilityNode, crate::AppError> {
     let node_is_ref_able = is_ref_able(&node);
 
@@ -184,20 +243,7 @@ fn allocate_refs_at_path(
         node.ref_id = allocate_observed_ref(refmap, entry)?;
     }
 
-    let has_label = node
-        .identity
-        .name
-        .as_deref()
-        .is_some_and(|name| !name.is_empty())
-        || node
-            .identity
-            .description
-            .as_deref()
-            .is_some_and(|description| !description.is_empty());
-    let is_skeleton_anchor = !node_is_ref_able
-        && node.children_count.is_some()
-        && has_label
-        && config.scope.root_ref_id.is_none();
+    let is_skeleton_anchor = !node_is_ref_able && skeleton_anchors.contains(path.as_slice());
 
     if is_skeleton_anchor {
         let mut entry = ref_entry_from_node(&node, &config.source, None, path);
@@ -216,7 +262,7 @@ fn allocate_refs_at_path(
     for (idx, child) in node.children.into_iter().enumerate() {
         let collapsible = config.options.compact && is_collapsible(&child);
         path.push(idx);
-        let child = allocate_refs_at_path(child, refmap, config, path)?;
+        let child = allocate_refs_at_path(child, refmap, config, path, skeleton_anchors)?;
         path.pop();
         if collapsible {
             if let Some(child) = child.children.into_iter().next() {

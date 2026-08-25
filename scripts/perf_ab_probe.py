@@ -92,6 +92,7 @@ def fixture_cases(binary, app):
     button, textfield = fixture_refs(binary, app)
     return [
         ("snapshot -i", ["snapshot", "--app", app, "-i"]),
+        ("snapshot skeleton", ["snapshot", "--app", app, "--skeleton"]),
         ("snapshot d30", ["snapshot", "--app", app, "--max-depth", "30"]),
         ("get", ["get", button]),
         ("is visible", ["is", button, "--property", "visible"]),
@@ -104,6 +105,7 @@ def fixture_cases(binary, app):
 def app_cases(app):
     return [
         ("snapshot -i", ["snapshot", "--app", app, "-i"]),
+        ("snapshot skeleton", ["snapshot", "--app", app, "--skeleton"]),
         ("snapshot d30", ["snapshot", "--app", app, "--max-depth", "30"]),
     ]
 
@@ -128,10 +130,10 @@ def summarize(results, shapes):
     report = {}
     for label, cases in results.items():
         for name, samples in cases.items():
-            times = sorted(t for t, _ in samples)
+            times = sorted(t for t, ok in samples if ok)
             report.setdefault(name, {})[label] = {
-                "p50_ms": round(statistics.median(times), 1),
-                "p95_ms": round(times[max(0, int(len(times) * 0.95) - 1)], 1),
+                "p50_ms": round(statistics.median(times), 1) if times else None,
+                "p95_ms": round(times[max(0, int(len(times) * 0.95) - 1)], 1) if times else None,
                 "ok_rate": sum(1 for _, ok in samples if ok) / len(samples),
                 "shape": shapes[label].get(name),
             }
@@ -183,6 +185,8 @@ def main():
             json.dump(payload, handle, indent=1)
     json.dump(payload, sys.stdout, indent=1)
     print()
+    if any(side["ok_rate"] < 1.0 for case in report.values() for side in case.values()):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

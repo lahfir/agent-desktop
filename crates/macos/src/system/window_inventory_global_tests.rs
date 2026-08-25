@@ -338,6 +338,27 @@ fn post_ax_snapshot_is_captured_and_churn_wins_over_stale_ax_failure() {
     assert_eq!(error.details.unwrap()["phase"], "appkit_snapshot_changed");
 }
 
+#[test]
+fn scoped_pid_selection_is_still_bound_to_the_owner_generation() {
+    let snapshots = std::cell::RefCell::new(std::collections::VecDeque::from([
+        owners(&[(10, 100.0), (20, 200.0)], Some(10)),
+        owners(&[(10, 106.0), (20, 200.0)], Some(10)),
+    ]));
+
+    let error = capture_stable_with(
+        || Ok(snapshots.borrow_mut().pop_front().unwrap()),
+        |_| FxHashSet::from_iter([10]),
+        |selected| {
+            assert_eq!(selected, &FxHashSet::from_iter([10]));
+            Ok(vec![record(10, 1, "Target")])
+        },
+        |_, _| Ok(Vec::new()),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.details.unwrap()["phase"], "appkit_snapshot_changed");
+}
+
 fn owners(entries: &[(i32, f64)], frontmost: Option<i32>) -> Owners {
     Owners {
         launches: entries

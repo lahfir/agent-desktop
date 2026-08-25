@@ -14,6 +14,7 @@ pub(crate) fn preflight_from_report(
 ) -> ActionabilityPreflight {
     ActionabilityPreflight {
         verified_point: report.verified_point.clone(),
+        presentation_point: report.presentation_point.clone(),
         pointer_delivery: report.pointer_delivery,
     }
 }

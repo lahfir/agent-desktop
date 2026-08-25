@@ -87,7 +87,7 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 **Skeleton mode (`--skeleton`):**
 - Produces a shallow overview by clamping depth to `min(max_depth, 3)`
 - Truncated containers include a `children_count` field showing how many children were omitted
-- Named or described containers at the truncation boundary receive refs with empty `available_actions`, serving as drill-down targets for `--root`
+- Each truncated branch exposes its deepest safely resolvable drill target using stable text, native ID, or bounds evidence; an anonymous boundary falls back to its nearest resolvable ancestor
 
 **Optional descriptor fields** (emitted by Windows; absent on macOS and Linux; all four are optional and omitted unless a provider produces them):
 - `subrole` — finer role refinement from UIA `AriaRole` (web content)
@@ -134,7 +134,7 @@ menu as a surface on Windows. Snapshot the owning window instead, or use
 `wait --menu` / `wait --menu-closed` to synchronise on menu state.
 - Use `--compact` with `-i` for maximum token efficiency
 - Combine `--max-depth 5` to limit deep trees (e.g., Xcode)
-- Use `--skeleton` first to get a high-level map, then `--root` to drill into specific regions
+- Use exact `find` first when you know the target role or name; otherwise use `--skeleton` for a high-level map, then `--root` to drill into specific regions
 - Combine `--skeleton` with `-i` and `--compact` for the most token-efficient initial overview
 - For a Chromium-based app's web contents (Slack, VS Code, Discord, and similar), `launch --cdp` plus a CDP client is a faster alternative to skeleton traversal on a fresh launch — see `references/commands-system.md`
 - Keep `snapshot_id` when commands must resolve against a specific snapshot instead of the latest snapshot pointer
@@ -241,6 +241,7 @@ agent-desktop is @s8f3k2p9:e2 --property enabled
 agent-desktop is @s8f3k2p9:e3 --property checked
 agent-desktop is @s8f3k2p9:e4 --property focused
 agent-desktop is @s8f3k2p9:e5 --property expanded
+agent-desktop is @s8f3k2p9:e6 --property selected
 ```
 
 | Property | Checks |
@@ -250,6 +251,7 @@ agent-desktop is @s8f3k2p9:e5 --property expanded
 | `checked` | Checkbox/switch is checked |
 | `focused` | Element has keyboard focus |
 | `expanded` | Disclosure/tree item is expanded |
+| `selected` | Selectable element is selected |
 
 **Output:**
 ```json
