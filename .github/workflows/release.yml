@@ -23,6 +23,11 @@ on:
         required: true
         default: true
         type: boolean
+      dry_run:
+        description: Build and archive only — skip every publish job
+        required: false
+        default: false
+        type: boolean
 
 # One release run per commit — never cancel, just queue.
 concurrency:
@@ -48,6 +53,7 @@ jobs:
       version: ${{ steps.release.outputs.major && format('{0}.{1}.{2}', steps.release.outputs.major, steps.release.outputs.minor, steps.release.outputs.patch) || steps.manual.outputs.version }}
       publish_npm: ${{ steps.manual.outputs.publish_npm || 'true' }}
       publish_skills: ${{ steps.manual.outputs.publish_skills || steps.release.outputs.release_created }}
+      dry_run: ${{ steps.manual.outputs.dry_run || 'false' }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         if: github.event_name != 'workflow_dispatch'
@@ -64,6 +70,7 @@ jobs:
           VERSION: ${{ inputs.version }}
           PUBLISH_NPM: ${{ inputs.publish_npm }}
           PUBLISH_SKILLS: ${{ inputs.publish_skills }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "Invalid version: ${VERSION}" >&2
@@ -79,6 +86,7 @@ jobs:
             echo "version=${VERSION}"
             echo "publish_npm=${PUBLISH_NPM}"
             echo "publish_skills=${PUBLISH_SKILLS}"
+            echo "dry_run=${DRY_RUN}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Sync Cargo.lock on release PR
@@ -125,20 +133,30 @@ jobs:
     name: Build (${{ matrix.target }})
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - aarch64-apple-darwin
-          - x86_64-apple-darwin
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          # A dry run dispatched from a branch must build THAT branch's commit,
+          # not the tag's tree: tag_name points at an existing (main) tag whose
+          # crates/windows is still the pre-phase stub, which would build an
+          # archive indistinguishable from a real asset while shipping nothing.
+          ref: ${{ needs.release-please.outputs.dry_run == 'true' && github.sha || needs.release-please.outputs.tag_name }}
 
       - name: Install Rust toolchain
         run: |
@@ -155,12 +173,18 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
 
-      - name: Build release binary
+      - name: Build release binary (macOS)
+        if: runner.os == 'macOS'
         run: |
           cargo build --locked --release -p agent-desktop --target ${{ matrix.target }}
           cargo build --locked --release -p agent-desktop-macos --bin agent-desktop-macos-helper --target ${{ matrix.target }}
 
-      - name: Check binary size
+      - name: Build release binary (Windows)
+        if: runner.os == 'Windows'
+        run: cargo build --locked --release -p agent-desktop --target ${{ matrix.target }}
+
+      - name: Check binary size (macOS)
+        if: runner.os == 'macOS'
         run: |
           SIZE=$(stat -f%z target/${{ matrix.target }}/release/agent-desktop)
           HELPER_SIZE=$(stat -f%z target/${{ matrix.target }}/release/agent-desktop-macos-helper)
@@ -172,7 +196,39 @@ jobs:
             exit 1
           fi
 
-      - name: Create tarball
+      - name: Check binary size (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = Get-Item "target/${{ matrix.target }}/release/agent-desktop.exe"
+          $limit = 15MB
+          Write-Host "Binary size: $($binary.Length) bytes"
+          if ($binary.Length -gt $limit) {
+            Write-Host "FAIL: shipped executable exceeds 15MB limit (binary=$($binary.Length) bytes)"
+            exit 1
+          }
+
+      # A binary that cannot start is not a release artifact, and on ARM64 this
+      # smoke is the only place that can be observed. Run before archiving on
+      # every leg so the step stays uniform rather than special-cased.
+      - name: Smoke-run the built binary (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          OUTPUT=$(target/${{ matrix.target }}/release/agent-desktop version)
+          echo "$OUTPUT"
+
+      - name: Smoke-run the built binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "target/${{ matrix.target }}/release/agent-desktop.exe" version
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "FAIL: agent-desktop version exited $LASTEXITCODE on the freshly built binary"
+            exit $LASTEXITCODE
+          }
+
+      - name: Create tarball (macOS)
+        if: runner.os == 'macOS'
         env:
           VERSION: ${{ needs.release-please.outputs.version }}
         run: |
@@ -187,7 +243,32 @@ jobs:
             echo "Release executable changed while packaging" >&2
             exit 1
           fi
+          LISTING=$(tar -tzf "${TARBALL}" | sort | tr '\n' ' ')
+          EXPECTED="agent-desktop agent-desktop-macos-helper "
+          if [ "$LISTING" != "$EXPECTED" ]; then
+            echo "FAIL: macOS archive listing '$LISTING' != expected '${EXPECTED}'"
+            exit 1
+          fi
           shasum -a 256 "${TARBALL}" > "${TARBALL}.sha256"
+
+      - name: Create tarball (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          $tarball = "agent-desktop-v${env:VERSION}-${{ matrix.target }}.tar.gz"
+          & tar -czf $tarball -C "target/${{ matrix.target }}/release" agent-desktop.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $listing = @(& tar -tzf $tarball) | Sort-Object
+          if (($listing.Count -ne 1) -or ($listing[0] -ne 'agent-desktop.exe')) {
+            Write-Host "FAIL: Windows archive listing must equal exactly one entry, agent-desktop.exe; got:"
+            $listing | ForEach-Object { Write-Host "  $_" }
+            exit 1
+          }
+          Write-Host "OK: archive lists exactly agent-desktop.exe"
+          $hash = (Get-FileHash $tarball -Algorithm SHA256).Hash.ToLower()
+          "$hash  $tarball" | Out-File -Encoding ascii "$tarball.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -239,7 +320,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.release-please.outputs.dry_run == 'true' && github.sha || needs.release-please.outputs.tag_name }}
 
       - name: Install Rust toolchain
         run: |
@@ -450,6 +531,7 @@ jobs:
   publish-github:
     name: Publish to GitHub Release
     needs: [release-please, build, build-ffi, ffi-release-gates]
+    if: needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -467,6 +549,26 @@ jobs:
         run: |
           cat ./*.sha256 > checksums.txt
           cat checksums.txt
+
+      # Exact and derived: 4 CLI tarballs + 4 FFI tarballs + 2 FFI zips +
+      # checksums.txt = 11. The expected number must equal what the workflow's
+      # own matrices imply — scripts/check-npm-package.js recomputes it from
+      # those matrices on every PR, so adding or losing a matrix leg without
+      # updating this number fails there first.
+      - name: Assert the release's exact asset set
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          EXPECTED_ASSETS: 11
+        run: |
+          ASSETS=$(gh release view "$TAG_NAME" --json assets --jq '.assets | length')
+          if [ "$ASSETS" -ne "$EXPECTED_ASSETS" ]; then
+            echo "FAIL: release carries ${ASSETS} assets, expected exactly ${EXPECTED_ASSETS}"
+            echo "      (4 CLI tarballs + 4 FFI tarballs + 2 FFI zips + checksums.txt)"
+            exit 1
+          fi
+          echo "OK: exactly ${ASSETS} assets found on release"
 
       - name: Upload assets to GitHub Release
         env:
@@ -495,7 +597,7 @@ jobs:
   publish-npm:
     name: Publish to npm
     needs: [release-please, publish-github]
-    if: needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.publish_npm == 'true'
+    if: needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.publish_npm == 'true' && needs.release-please.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -511,19 +613,6 @@ jobs:
           node-version: '24'
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
-
-      - name: Verify GitHub Release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
-        run: |
-          # Expected: 2 CLI tarballs + 4 FFI tarballs + 1 FFI zip + checksums = 8.
-          ASSETS=$(gh release view "$TAG_NAME" --json assets --jq '.assets | length')
-          if [ "$ASSETS" -lt 8 ]; then
-            echo "FAIL: expected at least 8 assets, found ${ASSETS}"
-            exit 1
-          fi
-          echo "OK: ${ASSETS} assets found on release"
 
       - name: Prepare npm package
         env:
@@ -547,7 +636,7 @@ jobs:
   publish-skills:
     name: Publish Skills to ClawHub
     needs: [release-please]
-    if: needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.publish_skills == 'true'
+    if: needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.publish_skills == 'true' && needs.release-please.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
