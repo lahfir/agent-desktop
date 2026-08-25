@@ -83,3 +83,23 @@ differently:
   unsigned executables at process creation — including command-line launches,
   the path this CLI actually uses. If enabled, neither the download path nor
   the launch mode avoids it; disable Smart App Control or use a signed build.
+
+## INTERNAL: "private file parent is owned by a foreign principal"
+
+```
+"code": "INTERNAL",
+"message": "private file parent is owned by a foreign principal, not this
+process's token owner"
+```
+
+Cause: the data directory under your home (`~/.agent-desktop`) was created by
+a process with a different token owner than the one now writing into it — on
+Windows this is almost always an elevated (Run as administrator) shell using
+a directory a non-elevated session created, or the reverse. The refusal is
+the private-file ownership check working as designed across an integrity
+boundary; it protects refmaps and trace segments from a pre-planted path.
+
+Fix: run consistently from one elevation level, or point `HOME` at a fresh
+directory for the elevated session so the tool creates its own data tree.
+Do not take ownership of or ACL-open the existing directory to work around
+it — that defeats the check the error exists for.
