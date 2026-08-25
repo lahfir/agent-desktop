@@ -155,8 +155,8 @@ jobs:
             runner: windows-11-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        persist-credentials: false
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.checkout_ref }}
 
       - name: Install Rust toolchain
@@ -322,8 +322,8 @@ jobs:
             lib_name: agent_desktop_ffi.dll
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        persist-credentials: false
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.checkout_ref }}
 
       - name: Install Rust toolchain
@@ -489,8 +489,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        persist-credentials: false
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.checkout_ref }}
 
       - name: Install Rust toolchain
@@ -611,8 +611,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        persist-credentials: false
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.tag_name }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -650,8 +650,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        persist-credentials: false
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.tag_name }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
