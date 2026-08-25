@@ -20,6 +20,7 @@ on:
       - 'probes/windows/22-capture-clipboard/**'
       - 'probes/windows/23-signals-menus/**'
       - 'probes/windows/24-fixture-e2e/**'
+      - 'probes/windows/25-packaging/**'
       - 'probes/windows/FINDINGS.md'
       - 'probes/windows/13-ledger-check.ps1'
       - 'probes/windows/13-ledger-content.ps1'
@@ -120,6 +121,31 @@ jobs:
         run: |
           .\probes\windows\24-fixture-e2e\10-hosted-modern-capture.ps1 -Label ci
 
+      # Area 25 (the packaging environment, sub-phase 2.13): in-box tar/curl
+      # and their PATH order, npm global-install mechanics, Mark-of-the-Web
+      # execution behavior, the FFI cdylib artifact set, and the pack-install
+      # cost baseline. Every leg needs nothing beyond this image's own
+      # System32 tools, bundled npm, in-box csc.exe and the pinned cargo.
+      - name: Run the archive-and-download-tools probe
+        shell: powershell
+        run: |
+          .\probes\windows\25-packaging\01-archive-and-download-tools.ps1 -Label ci
+
+      - name: Run the npm-global-install probe
+        shell: powershell
+        run: |
+          .\probes\windows\25-packaging\02-npm-global-install.ps1 -Label ci
+
+      - name: Run the motw-and-execution probe
+        shell: powershell
+        run: |
+          .\probes\windows\25-packaging\03-motw-and-execution.ps1 -Label ci
+
+      - name: Run the cdylib-artifacts probe
+        shell: powershell
+        run: |
+          .\probes\windows\25-packaging\04-cdylib-artifacts.ps1 -Label ci
+
       # Runs after the area probes so the ledger it audits reflects every
       # capture this job just wrote. Registered here rather than the main CI
       # lane (ci.yml) per KTD12: the gate reads the probe corpus and diffs
@@ -184,6 +210,7 @@ jobs:
             probes/windows/22-capture-clipboard/captures/*-ci.json
             probes/windows/23-signals-menus/captures/*-ci.json
             probes/windows/24-fixture-e2e/captures/*-ci.json
+            probes/windows/25-packaging/captures/*-ci.json
             probes/windows/captures/13-ledger-check/*.json
           # warn, not error. A probe that fails before writing anything leaves
           # nothing to match, and erroring would stack a second "No files were

@@ -1,0 +1,38 @@
+{
+    "probe":  "25-packaging-02-npm-global-install",
+    "question":  "does the npm global-install surface this package relies on behave as the unchanged macOS install path needs on Windows: where does the global prefix sit, does a global install generate the full three-shim bin triad for the one bin entry, and does a postinstall-shaped write into the installed package directory succeed reliably rather than intermittently",
+    "measurable":  true,
+    "branch":  "npm_surface_exercised",
+    "label":  "devbox",
+    "node_major":  24,
+    "npm_major":  12,
+    "platform_key":  "win32-x64",
+    "global_prefix_under_profile":  true,
+    "global_prefix_leaf":  "npm",
+    "global_prefix_segments":  6,
+    "pack_exit_code":  0,
+    "packed_tgz_leaf":  "agent-desktop-0.8.3.tgz",
+    "packed_size_bytes":  4176,
+    "install_exit_code":  0,
+    "shim_triad":  {
+                       "checked":  true,
+                       "cmd_shim_present":  true,
+                       "ps1_shim_present":  true,
+                       "extensionless_shim_present":  true,
+                       "bin_named_files_count":  3,
+                       "top_level_file_count":  3,
+                       "shim_triad_complete":  true
+                   },
+    "installed_package_dir_present":  true,
+    "write_iterations":  12,
+    "writes_ok":  12,
+    "retries_recovered":  0,
+    "failed_write_iterations":  [
+
+                                ],
+    "summary":  {
+                    "install_succeeded":  true,
+                    "shim_triad_complete":  true,
+                    "all_writes_ok":  true
+                }
+}
