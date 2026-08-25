@@ -24,6 +24,7 @@ pub(crate) struct ResolvedRefAction<'a> {
 pub(crate) struct ActionabilityPreflight {
     verified_point: Option<crate::Point>,
     presentation_point: Option<crate::Point>,
+    presentation_bounds: Option<crate::Rect>,
     pointer_delivery: actionability::PointerDelivery,
 }
 
@@ -101,7 +102,7 @@ pub(crate) fn dispatch_resolved(
         request.policy = crate::InteractionPolicy::headless();
     }
     request = request
-        .with_verified_point(preflight.verified_point)
+        .with_verified_point(preflight.verified_point.clone())
         .with_expected_process(expected_process.clone());
     let final_target = ResolvedRefAction::new(target, &handle);
     final_target.context.trace_lazy(
@@ -117,7 +118,7 @@ pub(crate) fn dispatch_resolved(
     presentation::after_dispatch(
         final_target.adapter,
         final_target.context,
-        preflight.presentation_point,
+        &preflight,
         &presentation_action,
         &dispatch_result,
     );
@@ -325,6 +326,7 @@ fn check_actionability_with_trace(
     Ok(ActionabilityPreflight {
         verified_point: report.verified_point,
         presentation_point: report.presentation_point,
+        presentation_bounds: report.presentation_bounds,
         pointer_delivery: report.pointer_delivery,
     })
 }

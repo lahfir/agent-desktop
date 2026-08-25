@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::CursorOverlayConfig;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionManifest {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

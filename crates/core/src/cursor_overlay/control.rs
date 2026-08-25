@@ -1,4 +1,4 @@
-use super::CursorOverlayInstruction;
+use super::{CursorOverlayInstruction, CursorOverlayStyle};
 use crate::{AdapterError, ErrorCode, context::validate_session_id};
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +10,8 @@ pub enum CursorOverlayControl {
     Enable {
         session_id: String,
         label: String,
+        #[serde(default)]
+        style: CursorOverlayStyle,
     },
     Present {
         session_id: String,
@@ -27,10 +29,18 @@ pub enum CursorOverlayControl {
 }
 
 impl CursorOverlayControl {
-    pub fn enable(session_id: String) -> Self {
+    pub fn enable(session_id: String, style: CursorOverlayStyle) -> Self {
         Self::Enable {
             session_id,
             label: CURSOR_OVERLAY_GREETING.into(),
+            style,
+        }
+    }
+
+    pub fn style(&self) -> Option<&CursorOverlayStyle> {
+        match self {
+            Self::Enable { style, .. } => Some(style),
+            _ => None,
         }
     }
 

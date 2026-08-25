@@ -172,7 +172,7 @@ pub use containment_predicate::ContainmentPredicate;
 pub use context::{CommandContext, WaitSelector};
 pub use cursor_overlay::{
     CURSOR_OVERLAY_GREETING, CursorMotion, CursorOverlayConfig, CursorOverlayControl,
-    CursorOverlayInstruction, MAX_CURSOR_LABEL_WORDS, place_label,
+    CursorOverlayInstruction, CursorOverlayStyle, CursorPose, MAX_CURSOR_LABEL_WORDS, place_label,
 };
 pub use deadline::{DEFAULT_OPERATION_TIMEOUT_MS, Deadline};
 pub use delivery_disposition::DeliveryDisposition;

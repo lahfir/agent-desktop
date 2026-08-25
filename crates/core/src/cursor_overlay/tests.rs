@@ -15,20 +15,35 @@ fn motion_reaches_both_endpoints_and_curves_between_them() {
 }
 
 #[test]
-fn motion_eases_in_and_out() {
+fn motion_is_ballistic_then_corrective_like_a_hand() {
     let motion = CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 1_000.0, y: 0.0 });
 
-    assert!(motion.sample(motion.duration_ms() / 4).x < 150.0);
-    assert!(motion.sample(motion.duration_ms() * 3 / 4).x > 850.0);
+    let early = motion.sample(motion.duration_ms() / 2).x;
+    let overshoot = motion.sample(motion.duration_ms() * 3 / 4).x;
+
+    assert!(
+        early > 700.0,
+        "the hand covers most of the gap early: {early}"
+    );
+    assert!(
+        overshoot > 1_000.0,
+        "the hand overshoots before it corrects: {overshoot}"
+    );
+    assert_eq!(
+        motion.sample(motion.duration_ms()),
+        Point { x: 1_000.0, y: 0.0 }
+    );
 }
 
 #[test]
-fn motion_duration_is_distance_aware_and_bounded() {
+fn motion_duration_follows_fitts_law_and_stays_bounded() {
     let short = CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 10.0, y: 0.0 });
+    let medium = CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 600.0, y: 0.0 });
     let long = CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 4_000.0, y: 0.0 });
 
-    assert_eq!(short.duration_ms(), 420);
-    assert_eq!(long.duration_ms(), 720);
+    assert_eq!(short.duration_ms(), 260);
+    assert!((600..760).contains(&medium.duration_ms()));
+    assert_eq!(long.duration_ms(), 950);
 }
 
 #[test]
@@ -85,7 +100,7 @@ fn instruction_rejects_invalid_destination() {
 
 #[test]
 fn control_protocol_carries_the_session_lifecycle() {
-    let enable = CursorOverlayControl::enable("run-1".into());
+    let enable = CursorOverlayControl::enable("run-1".into(), CursorOverlayStyle::default());
     let disable = CursorOverlayControl::disable("run-1".into());
 
     assert_eq!(enable.session_id(), "run-1");
@@ -93,4 +108,75 @@ fn control_protocol_carries_the_session_lifecycle() {
     assert!(enable.is_enable());
     assert_eq!(disable.session_id(), "run-1");
     assert!(disable.is_disable());
+}
+
+#[test]
+fn travel_stays_flat_so_only_the_click_is_a_flourish() {
+    let motion =
+        CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 600.0, y: 0.0 }).with_impact(true);
+
+    let cruise = motion.pose(motion.duration_ms() / 2);
+
+    assert_eq!(cruise.scale, 1.0);
+    assert_eq!(cruise.spin, 0.0);
+    assert_eq!(cruise.ripple, 0.0);
+}
+
+#[test]
+fn the_click_lifts_spins_one_turn_then_bams_and_ripples() {
+    let motion =
+        CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 600.0, y: 0.0 }).with_impact(true);
+    let flourish = motion.total_ms() - motion.duration_ms();
+
+    let lifted = motion.pose(motion.duration_ms() + flourish * 40 / 100);
+    let bam = motion.pose(motion.duration_ms() + flourish * 58 / 100);
+    let settled = motion.pose(motion.total_ms());
+
+    assert!(lifted.scale > 1.5, "it enlarges first: {}", lifted.scale);
+    assert!(
+        lifted.spin > 5.0,
+        "it rotates while it lifts: {}",
+        lifted.spin
+    );
+    assert!(bam.scale < 0.9, "it bams into the element: {}", bam.scale);
+    assert!(motion.pose(motion.total_ms() - 40).ripple > 0.0);
+    assert!((settled.spin - std::f64::consts::TAU).abs() < 1e-9);
+    assert!((settled.scale - 1.0).abs() < 1e-9);
+    assert_eq!(settled.point, Point { x: 600.0, y: 0.0 });
+}
+
+#[test]
+fn a_move_without_a_click_never_flourishes() {
+    let motion = CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 600.0, y: 0.0 });
+
+    let settled = motion.pose(motion.total_ms());
+
+    assert_eq!(motion.total_ms(), motion.duration_ms());
+    assert_eq!(settled, CursorPose::still(Point { x: 600.0, y: 0.0 }));
+}
+
+#[test]
+fn a_clicked_target_rect_reaches_the_renderer() {
+    let config = CursorOverlayConfig::enabled(None, 6).expect("valid config");
+    let bounds = Rect {
+        x: 10.0,
+        y: 20.0,
+        width: 80.0,
+        height: 24.0,
+    };
+    let point = Point { x: 50.0, y: 32.0 };
+    let instruction = CursorOverlayInstruction::new(point.clone(), &config, true)
+        .expect("valid instruction")
+        .with_target(Some(bounds));
+    let degenerate = CursorOverlayInstruction::new(point, &config, true)
+        .expect("valid instruction")
+        .with_target(Some(Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 5.0,
+        }));
+
+    assert_eq!(instruction.target(), Some(&bounds));
+    assert_eq!(degenerate.target(), None);
 }
