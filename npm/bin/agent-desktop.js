@@ -4,7 +4,7 @@ const { spawn } = require('child_process');
 const { existsSync, accessSync, chmodSync, constants } = require('fs');
 const { isAbsolute, join } = require('path');
 const { platform, arch } = require('os');
-const { resolve } = require('../lib/platform');
+const { PLATFORMS, resolve } = require('../lib/platform');
 
 const binDir = __dirname;
 const MACOS_HELPER_NAME = 'agent-desktop-macos-helper';
@@ -19,9 +19,11 @@ function main() {
   const binaryName = getBinaryName();
 
   if (!binaryName) {
+    const releasedKeys = Object.entries(PLATFORMS)
+      .filter(([, candidate]) => candidate.released)
+      .map(([key]) => key);
     console.error(`Error: Unsupported platform: ${platform()}-${arch()}`);
-    console.error('agent-desktop currently supports: macOS (ARM64, x64)');
-    console.error('Windows and Linux support is coming in Phase 2.');
+    console.error(`Released platform keys today: ${releasedKeys.join(', ')}`);
     console.error('See: https://github.com/lahfir/agent-desktop');
     process.exit(1);
   }
@@ -32,6 +34,8 @@ function main() {
     console.error(`Error: Native binary not found for ${platform()}-${arch()}`);
     console.error(`Expected: ${binaryPath}`);
     console.error('');
+    console.error('This usually means the install ran with --ignore-scripts');
+    console.error('or its postinstall download step failed.');
     console.error('Try reinstalling:');
     console.error('  npm install -g agent-desktop');
     console.error('');
@@ -95,7 +99,11 @@ function main() {
     process.exit(1);
   });
 
-  child.on('close', (code) => {
+  child.on('close', (code, signal) => {
+    if (signal) {
+      console.error(`Error: agent-desktop child was terminated by signal: ${signal}`);
+      process.exit(1);
+    }
     process.exit(code ?? 0);
   });
 }

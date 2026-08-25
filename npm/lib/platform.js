@@ -29,13 +29,13 @@ const PLATFORMS = {
     target: 'aarch64-pc-windows-msvc',
     binaryName: 'agent-desktop-win32-arm64.exe',
     entries: ['agent-desktop.exe'],
-    released: false,
+    released: true,
   },
   'win32-x64': {
     target: 'x86_64-pc-windows-msvc',
     binaryName: 'agent-desktop-win32-x64.exe',
     entries: ['agent-desktop.exe'],
-    released: false,
+    released: true,
   },
 };
 

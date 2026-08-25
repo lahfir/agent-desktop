@@ -2,10 +2,14 @@ const assert = require('node:assert/strict');
 const { execFileSync, spawn } = require('node:child_process');
 const {
   chmodSync,
+  closeSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readdirSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } = require('node:fs');
@@ -23,6 +27,9 @@ const roots = [];
 
 afterEach(() => {
   delete process.env.AGENT_DESKTOP_MACOS_HELPER_PATH;
+  for (const name of ['agent-desktop-win32-x64.exe', 'agent-desktop-win32-arm64.exe']) {
+    try { unlinkSync(join(__dirname, '..', '..', 'npm', 'bin', name)); } catch {}
+  }
   for (const root of roots.splice(0)) {
     postinstall.trashRecoverably(root);
   }
@@ -113,19 +120,36 @@ test('checksum lookup requires an exact archive name', () => {
   );
 });
 
-test('archive validation rejects missing and additional payloads', () => {
+test('archive validation rejects missing and additional payloads on the darwin entry set', () => {
   const valid = archive({
     'agent-desktop': 'cli',
     'agent-desktop-macos-helper': 'helper',
   });
-  postinstall.validateArchive(valid.tarball);
+  postinstall.validateArchive(valid.tarball, ['agent-desktop', 'agent-desktop-macos-helper']);
 
   const extra = archive({
     'agent-desktop': 'cli',
     'agent-desktop-macos-helper': 'helper',
     'unexpected': 'payload',
   });
-  assert.throws(() => postinstall.validateArchive(extra.tarball), /unexpected entries/);
+  assert.throws(
+    () => postinstall.validateArchive(extra.tarball, ['agent-desktop', 'agent-desktop-macos-helper']),
+    /unexpected entries/,
+  );
+});
+
+test('archive validation is platform-correct on the win32 single-entry set', () => {
+  const valid = archive({ 'agent-desktop.exe': 'cli' });
+  postinstall.validateArchive(valid.tarball, ['agent-desktop.exe']);
+
+  const extra = archive({
+    'agent-desktop.exe': 'cli',
+    'unexpected.exe': 'payload',
+  });
+  assert.throws(
+    () => postinstall.validateArchive(extra.tarball, ['agent-desktop.exe']),
+    /unexpected entries/,
+  );
 });
 
 test('archive installation preserves the exact paired executables', () => {
@@ -137,10 +161,49 @@ test('archive installation preserves the exact paired executables', () => {
   const binary = join(destination, 'agent-desktop-darwin-arm64');
   const helper = join(destination, 'agent-desktop-macos-helper');
 
-  postinstall.installArchive(payload.tarball, binary, helper);
+  postinstall.installArchive(payload.tarball, binary, helper, resolve('darwin', 'arm64'));
 
   assert.equal(readFileSync(binary, 'utf8'), 'cli-build-v1');
   assert.equal(readFileSync(helper, 'utf8'), 'helper-build-v1');
+});
+
+test('archive installation places the windows executable and leaves no staging directory behind', () => {
+  const payload = archive({ 'agent-desktop.exe': 'cli-win-build' });
+  const destination = temporaryDirectory();
+  const binary = join(destination, 'agent-desktop-win32-x64.exe');
+  const unusedHelper = join(destination, 'unused-helper');
+
+  const before = readdirSync(destination);
+  postinstall.installArchive(payload.tarball, binary, unusedHelper, resolve('win32', 'x64'));
+
+  assert.equal(readFileSync(binary, 'utf8'), 'cli-win-build');
+  const newEntries = readdirSync(destination).filter((name) => !before.includes(name));
+  assert.deepEqual(newEntries.map((name) => join(destination, name)), [binary]);
+});
+
+test('staging cleanup removes its own extract directory and a planted survivor is detectable', () => {
+  const payload = archive({ 'agent-desktop.exe': 'cli-win-build' });
+  const destination = temporaryDirectory();
+  const binary = join(destination, 'agent-desktop-win32-x64.exe');
+  const npmBin = join(__dirname, '..', '..', 'npm', 'bin');
+  const planted = join(npmBin, '.extract-invert-survivor');
+  mkdirSync(planted);
+  try {
+    postinstall.installArchive(
+      payload.tarball,
+      binary,
+      join(destination, 'unused-helper'),
+      resolve('win32', 'x64'),
+    );
+    const leftovers = readdirSync(npmBin).filter((name) => name.startsWith('.extract-'));
+    assert.deepEqual(
+      leftovers.sort(),
+      ['.extract-invert-survivor'],
+      'the real staging must be cleaned while a planted survivor stays detectable',
+    );
+  } finally {
+    rmSync(planted, { recursive: true, force: true });
+  }
 });
 
 test('recoverable cleanup invokes trash and removes the original path', () => {
@@ -190,6 +253,7 @@ test('cleanup failure does not mask a successful archive install', () => {
       payload.tarball,
       binary,
       helper,
+      resolve('darwin', 'arm64'),
       '/definitely-missing-agent-desktop-trash',
     ),
   );
@@ -240,13 +304,13 @@ const EXPECTED_PLATFORM_ROWS = {
     target: 'aarch64-pc-windows-msvc',
     binaryName: 'agent-desktop-win32-arm64.exe',
     entries: ['agent-desktop.exe'],
-    released: false,
+    released: true,
   },
   'win32-x64': {
     target: 'x86_64-pc-windows-msvc',
     binaryName: 'agent-desktop-win32-x64.exe',
     entries: ['agent-desktop.exe'],
-    released: false,
+    released: true,
   },
 };
 
@@ -279,31 +343,132 @@ test('tarball name matches the template postinstall previously constructed inlin
   assert.equal(tarballName('0.8.3', 'x86_64-pc-windows-msvc'), 'agent-desktop-v0.8.3-x86_64-pc-windows-msvc.tar.gz');
 });
 
-test('postinstall refuses unreleased platforms with exit code 0 and the standing message', async () => {
-  for (const [osPlatform, osArch] of [['win32', 'x64'], ['win32', 'arm64']]) {
+test('postinstall refuses unreleased platforms with exit code 0 and names the released keys', async () => {
+  for (const [osPlatform, osArch] of [['linux', 'x64'], ['linux', 'arm64']]) {
     const { code, stderr } = await runScriptWithOsStub(postinstallScriptPath, osPlatform, osArch);
     assert.equal(code, 0, `expected exit 0 for ${osPlatform}-${osArch}`);
-    assert.deepEqual(
-      stderr.split('\n').filter((line) => line.startsWith('agent-desktop: ')),
-      [
-        'agent-desktop: agent-desktop currently supports macOS only.',
-        'agent-desktop: Windows and Linux support is coming in Phase 2.',
-        'agent-desktop: See: https://github.com/lahfir/agent-desktop',
-      ],
+    const lines = stderr.split('\n').filter((line) => line.startsWith('agent-desktop: '));
+    assert.equal(
+      lines[0],
+      `agent-desktop: agent-desktop has no released native binary for ${osPlatform}-${osArch}.`,
       `unexpected refusal output for ${osPlatform}-${osArch}`,
+    );
+    assert.match(lines[1], /^agent-desktop: Released platform keys today: darwin-arm64, darwin-x64, win32-arm64, win32-x64\.$/);
+    assert.equal(lines[2], 'agent-desktop: See: https://github.com/lahfir/agent-desktop');
+  }
+});
+
+test('the manual fallback names every archive member and the verification steps', () => {
+  const warnings = captureWarnings(() =>
+    postinstall.printManualFallback(
+      'https://example.invalid/tarball.tar.gz',
+      'https://example.invalid/checksums.txt',
+      resolve('win32', 'arm64'),
+    ),
+  );
+  assert.match(warnings, /Download manually from:/);
+  assert.match(warnings, /https:\/\/example\.invalid\/tarball\.tar\.gz/);
+  assert.match(warnings, /agent-desktop\.exe/);
+  assert.ok(!warnings.includes('agent-desktop-macos-helper'));
+  assert.match(warnings, /curl -fsSL https:\/\/example\.invalid\/checksums\.txt/);
+  assert.match(warnings, /sha256sum <downloaded-archive>/);
+  assert.match(warnings, /gh attestation verify <downloaded-archive> --repo lahfir\/agent-desktop/);
+});
+
+test('prompted skills are a subset of the skill packages that exist', () => {
+  const source = readFileSync(postinstallScriptPath, 'utf8');
+  const printed = [...source.matchAll(/add-skill lahfir\/([a-z0-9-]+)/g)].map((m) => m[1]);
+  const mapped = [...source.matchAll(/^\s{4}(?:darwin|win32|linux): '([a-z0-9-]+)',$/gm)].map(
+    (m) => m[1],
+  );
+  const skillsDir = join(__dirname, '..', '..', 'skills');
+  for (const name of new Set([...printed, ...mapped])) {
+    assert.ok(existsSync(join(skillsDir, name, 'SKILL.md')), `advertised ${name} must exist`);
+  }
+  for (const missing of ['agent-desktop-macos', 'agent-desktop-linux']) {
+    assert.ok(
+      !existsSync(join(skillsDir, missing)),
+      `${missing} must not exist to be advertised`,
     );
   }
 });
 
-test('wrapper still resolves the unreachable win32-x64 mapping unchanged', async () => {
+test('wrapper resolves the released win32-x64 mapping and names the missing-binary cause', async () => {
   const { code, stderr } = await runScriptWithOsStub(wrapperScriptPath, 'win32', 'x64', ['version']);
   assert.equal(code, 1);
   assert.match(stderr, /Error: Native binary not found for win32-x64/);
+  assert.match(stderr, /--ignore-scripts/);
 });
 
-test('wrapper reports an unsupported platform and exits non-zero', async () => {
+test('wrapper resolves the released win32-arm64 mapping and exits non-zero when the binary is absent', async () => {
   const { code, stderr } = await runScriptWithOsStub(wrapperScriptPath, 'win32', 'arm64', ['version']);
   assert.equal(code, 1);
   assert.match(stderr, /Error: Native binary not found for win32-arm64/);
   assert.match(stderr, /Expected: .*agent-desktop-win32-arm64\.exe/);
+});
+
+test('wrapper refuses an unmapped platform key by name', async () => {
+  const { code, stderr } = await runScriptWithOsStub(wrapperScriptPath, 'sunos', 'x64', ['version']);
+  assert.equal(code, 1);
+  assert.match(stderr, /Error: Unsupported platform: sunos-x64/);
+});
+
+test('wrapper reports a non-zero exit status when the child dies to a signal', {
+  skip: process.platform === 'win32',
+}, async () => {
+  const entry = resolve('darwin', 'arm64');
+  const fakeBinary = join(wrapperScriptPath, '..', entry.binaryName);
+  writeFileSync(fakeBinary, '#!/usr/bin/env node\nprocess.kill(process.pid, "SIGKILL");\n', { mode: 0o755 });
+  chmodSync(fakeBinary, 0o755);
+  try {
+    const { code, stderr } = await runScriptWithOsStub(
+      wrapperScriptPath,
+      'darwin',
+      'arm64',
+      ['version'],
+    );
+    assert.notEqual(code, 0, 'a signal-killed child must not be reported as success');
+    assert.match(stderr, /terminated by signal/);
+  } finally {
+    try { unlinkSync(fakeBinary); } catch {}
+  }
+});
+
+test('AGENT_DESKTOP_BINARY_PATH installs on windows without any helper present', () => {
+  const scratch = temporaryDirectory();
+  const customBinary = join(scratch, 'stand-in.exe');
+  writeFileSync(customBinary, 'fake-win-binary');
+  const installedBinary = join(__dirname, '..', '..', 'npm', 'bin', 'agent-desktop-win32-x64.exe');
+  const stub = join(tmpdir(), `agent-desktop-os-stub-${process.pid}-win32-x64.js`);
+  writeFileSync(stub, [
+    "const os = require('os');",
+    "os.platform = () => 'win32';",
+    "os.arch = () => 'x64';",
+    '',
+  ].join('\n'));
+  let stderr = '';
+  const env = { ...process.env };
+  delete env.AGENT_DESKTOP_SKIP_DOWNLOAD;
+  env.AGENT_DESKTOP_BINARY_PATH = customBinary;
+  const errFile = join(scratch, 'child-stderr.txt');
+  const errFd = openSync(errFile, 'w');
+  try {
+    execFileSync(
+      process.execPath,
+      ['-r', stub, postinstallScriptPath],
+      { env, stdio: ['ignore', 'ignore', errFd] },
+    );
+  } finally {
+    closeSync(errFd);
+    stderr = readFileSync(errFile, 'utf8');
+    try { unlinkSync(stub); } catch {}
+    try { unlinkSync(errFile); } catch {}
+  }
+  try {
+    assert.equal(readFileSync(installedBinary, 'utf8'), 'fake-win-binary');
+    assert.match(stderr, /Using binary from AGENT_DESKTOP_BINARY_PATH/);
+    assert.doesNotMatch(stderr, /macOS helper not found/);
+  } finally {
+    try { unlinkSync(installedBinary); } catch {}
+  }
 });

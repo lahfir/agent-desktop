@@ -9,6 +9,7 @@ const {
   readFileSync,
   readdirSync,
   renameSync,
+  rmSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
@@ -17,7 +18,7 @@ const { dirname, isAbsolute, join } = require('path');
 const { platform, arch } = require('os');
 const { execFileSync } = require('child_process');
 const { createHash } = require('crypto');
-const { resolve, tarballName } = require('../lib/platform');
+const { PLATFORMS, resolve, tarballName } = require('../lib/platform');
 
 const projectRoot = join(__dirname, '..');
 const binDir = join(projectRoot, 'bin');
@@ -42,6 +43,14 @@ function trashRecoverably(path, trashCommand = 'trash') {
       : `trash exited with status ${err.status ?? 'unknown'}`;
     log(`Could not move cleanup artifact to Trash; retained at ${path}: ${reason}`);
   }
+}
+
+function cleanupStaging(path, trashCommand) {
+  if (platform() === 'win32') {
+    rmSync(path, { recursive: true, force: true });
+    return;
+  }
+  trashRecoverably(path, trashCommand);
 }
 
 function getPlatformKey() {
@@ -105,23 +114,24 @@ function customHelperPath(customBinaryPath) {
   return join(dirname(customBinaryPath), MACOS_HELPER_NAME);
 }
 
-function validateArchive(tarballPath) {
+function validateArchive(tarballPath, expectedEntries) {
   const listing = execFileSync('tar', ['-tzf', tarballPath], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 30000,
   })
-    .split('\n')
+    .split(/\r?\n/)
     .filter(Boolean)
     .sort();
-  const expected = ['agent-desktop', MACOS_HELPER_NAME].sort();
+  const expected = [...expectedEntries].sort();
   if (JSON.stringify(listing) !== JSON.stringify(expected)) {
     throw new Error(`Release archive has unexpected entries: ${listing.join(', ')}`);
   }
 }
 
-function installArchive(tarballPath, binaryPath, helperPath, trashCommand = 'trash') {
-  validateArchive(tarballPath);
+function installArchive(tarballPath, binaryPath, helperPath, entry, trashCommand) {
+  const includesHelper = entry.entries.includes(MACOS_HELPER_NAME);
+  validateArchive(tarballPath, entry.entries);
   const staging = mkdtempSync(join(binDir, '.extract-'));
   try {
     execFileSync('tar', ['-xzf', tarballPath, '-C', staging], {
@@ -129,19 +139,25 @@ function installArchive(tarballPath, binaryPath, helperPath, trashCommand = 'tra
       timeout: 30000,
     });
     const entries = readdirSync(staging).sort();
-    const expected = ['agent-desktop', MACOS_HELPER_NAME].sort();
+    const expected = [...entry.entries].sort();
     if (JSON.stringify(entries) !== JSON.stringify(expected)) {
       throw new Error(`Extracted archive has unexpected entries: ${entries.join(', ')}`);
     }
-    const extractedBinary = join(staging, 'agent-desktop');
-    const extractedHelper = join(staging, MACOS_HELPER_NAME);
-    if (!lstatSync(extractedBinary).isFile() || !lstatSync(extractedHelper).isFile()) {
+    const binaryMember = entry.entries.find((member) => member !== MACOS_HELPER_NAME);
+    const extractedBinary = join(staging, binaryMember);
+    if (!lstatSync(extractedBinary).isFile()) {
       throw new Error('Release archive executables must be regular files');
     }
-    installExecutable(extractedHelper, helperPath);
+    if (includesHelper) {
+      const extractedHelper = join(staging, MACOS_HELPER_NAME);
+      if (!lstatSync(extractedHelper).isFile()) {
+        throw new Error('Release archive executables must be regular files');
+      }
+      installExecutable(extractedHelper, helperPath);
+    }
     installExecutable(extractedBinary, binaryPath);
   } finally {
-    trashRecoverably(staging, trashCommand);
+    cleanupStaging(staging, trashCommand ?? 'trash');
   }
 }
 
@@ -180,19 +196,33 @@ function fixGlobalInstallBin() {
 
 function promptSkillInstall() {
   const platformSkill = {
-    darwin: 'agent-desktop-macos',
     win32: 'agent-desktop-windows',
-    linux: 'agent-desktop-linux',
   }[platform()];
+  const skills = ['agent-desktop', 'agent-desktop-ffi'];
+  if (platformSkill) skills.push(platformSkill);
 
   log('');
   log('Claude Code skills available for agent-desktop!');
   log('Install with:');
-  log('  claude mcp add-skill lahfir/agent-desktop');
-  if (platformSkill) {
-    log(`  claude mcp add-skill lahfir/${platformSkill}`);
+  for (const skill of skills) {
+    log(`  claude mcp add-skill lahfir/${skill}`);
   }
   log('');
+}
+
+function printManualFallback(tarballUrl, checksumsUrl, entry) {
+  log('');
+  log('Download manually from:');
+  log(`  ${tarballUrl}`);
+  log('Then place the archive member(s) at:');
+  for (const member of entry.entries) {
+    log(`  ${join(binDir, member)}`);
+  }
+  log('');
+  log('Verify the download before running it:');
+  log(`  curl -fsSL ${checksumsUrl}`);
+  log(`  sha256sum <downloaded-archive>   # compare with the matching checksums.txt line`);
+  log(`  gh attestation verify <downloaded-archive> --repo ${GITHUB_REPO}`);
 }
 
 function main() {
@@ -205,12 +235,16 @@ function main() {
   const entry = resolve(platform(), arch());
 
   if (!entry || !entry.released) {
-    log('agent-desktop currently supports macOS only.');
-    log('Windows and Linux support is coming in Phase 2.');
+    const releasedKeys = Object.entries(PLATFORMS)
+      .filter(([, candidate]) => candidate.released)
+      .map(([key]) => key);
+    log(`agent-desktop has no released native binary for ${platformKey}.`);
+    log(`Released platform keys today: ${releasedKeys.join(', ')}.`);
     log(`See: https://github.com/${GITHUB_REPO}`);
     return;
   }
 
+  const includesHelper = entry.entries.includes(MACOS_HELPER_NAME);
   const binaryName = entry.binaryName;
   const binaryPath = join(binDir, binaryName);
   const helperPath = join(binDir, MACOS_HELPER_NAME);
@@ -225,11 +259,13 @@ function main() {
       if (!existsSync(customPath) || !lstatSync(customPath).isFile()) {
         throw new Error(`binary is not a regular file: ${customPath}`);
       }
-      const sourceHelper = customHelperPath(customPath);
-      if (!existsSync(sourceHelper) || !lstatSync(sourceHelper).isFile()) {
-        throw new Error(`macOS helper not found at ${sourceHelper}`);
+      if (includesHelper) {
+        const sourceHelper = customHelperPath(customPath);
+        if (!existsSync(sourceHelper) || !lstatSync(sourceHelper).isFile()) {
+          throw new Error(`macOS helper not found at ${sourceHelper}`);
+        }
+        installExecutable(sourceHelper, helperPath);
       }
-      installExecutable(sourceHelper, helperPath);
       installExecutable(customPath, binaryPath);
       log(`Using binary from AGENT_DESKTOP_BINARY_PATH: ${customPath}`);
       fixGlobalInstallBin();
@@ -241,10 +277,14 @@ function main() {
     return;
   }
 
-  if (existsSync(binaryPath) && existsSync(helperPath)) {
+  if (existsSync(binaryPath) && (!includesHelper || existsSync(helperPath))) {
     chmodSync(binaryPath, 0o755);
-    chmodSync(helperPath, 0o755);
-    log(`Native executables ready: ${binaryName}, ${MACOS_HELPER_NAME}`);
+    if (includesHelper) chmodSync(helperPath, 0o755);
+    log(
+      includesHelper
+        ? `Native executables ready: ${binaryName}, ${MACOS_HELPER_NAME}`
+        : `Native executable ready: ${binaryName}`,
+    );
     fixGlobalInstallBin();
     promptSkillInstall();
     return;
@@ -270,16 +310,16 @@ function main() {
     unlinkSync(checksumsPath);
     log('Checksum verified');
 
-    installArchive(tarballPath, binaryPath, helperPath);
+    installArchive(tarballPath, binaryPath, helperPath, entry);
     unlinkSync(tarballPath);
-    log(`Installed native executables: ${binaryName}, ${MACOS_HELPER_NAME}`);
+    log(
+      includesHelper
+        ? `Installed native executables: ${binaryName}, ${MACOS_HELPER_NAME}`
+        : `Installed native executable: ${binaryName}`,
+    );
   } catch (err) {
     log(`Could not download native binary: ${err.message}`);
-    log('');
-    log('Download manually from:');
-    log(`  ${tarballUrl}`);
-    log(`Then place agent-desktop at: ${binaryPath}`);
-    log(`And ${MACOS_HELPER_NAME} at: ${helperPath}`);
+    printManualFallback(tarballUrl, checksumsUrl, entry);
 
     try { if (existsSync(tarballPath)) unlinkSync(tarballPath); } catch {}
     try { if (existsSync(checksumsPath)) unlinkSync(checksumsPath); } catch {}
@@ -298,8 +338,11 @@ if (require.main === module) {
 
 module.exports = {
   checksumFor,
+  cleanupStaging,
   customHelperPath,
   installArchive,
+  printManualFallback,
+  promptSkillInstall,
   trashRecoverably,
   validateArchive,
 };
