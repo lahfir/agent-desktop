@@ -8,6 +8,7 @@ const root = join(__dirname, '..');
 const npmDir = join(root, 'npm');
 const pkg = require(join(npmDir, 'package.json'));
 const releaseWorkflow = readFileSync(join(root, '.github/workflows/release.yml'), 'utf8');
+const { PLATFORMS, tarballName } = require(join(npmDir, 'lib', 'platform.js'));
 const expectedFiles = [
   'bin/agent-desktop.js',
   'lib/platform.js',
@@ -16,6 +17,9 @@ const expectedFiles = [
 ];
 
 const NPM_PUBLISH_JOB = 'publish-npm';
+const BUILD_JOB = 'build';
+const BUILD_FFI_JOB = 'build-ffi';
+const PUBLISH_GITHUB_JOB = 'publish-github';
 
 // Returns the YAML block for one job, so a requirement can be asserted about
 // the job that needs it rather than about the file that contains it.
@@ -40,10 +44,88 @@ function jobBlock(workflow, jobName) {
   return (end === -1 ? rest : rest.slice(0, end)).join('\n');
 }
 
+function matrixIncludeTargets(jobText) {
+  const lines = jobText.split('\n');
+  const includeStart = lines.findIndex((line) => line.trim() === 'include:');
+  if (includeStart === -1) {
+    return [];
+  }
+  const targets = [];
+  let baseIndent = null;
+  for (let index = includeStart + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.trim() === '' || !line.startsWith(' ')) break;
+    if (/^\s*-\s+target:\s*(\S+)/.test(line)) {
+      baseIndent = baseIndent ?? line.indexOf('-');
+      targets.push(line.match(/^\s*-\s+target:\s*(\S+)/)[1]);
+      continue;
+    }
+    if (baseIndent !== null && line.indexOf('target:') > -1 && line.trim().startsWith('target:')) {
+      targets.push(line.trim().replace(/^target:\s*/, ''));
+    }
+  }
+  return [...new Set(targets)];
+}
+
+function normaliseTarballConstruction(line) {
+  const match = line.match(/agent-desktop-v[^"']*?\.tar\.gz/);
+  if (!match) return null;
+  return match[0]
+    .replace(/\$\{\{[^}]*\}\}/g, '{T}')
+    .replace(/\$\{[^}]+\}/g, '{V}');
+}
+
+// One tarball-name construction exists per shell dialect: the macOS legs build
+// names in bash, the Windows legs in pwsh. A parser that reads only the bash
+// construction would pass while the pwsh branch quietly built something else,
+// so each branch's construction is extracted and compared independently.
+function tarballConstructionsByOs(jobText) {
+  const constructions = {};
+  let currentOs = null;
+  for (const line of jobText.split('\n')) {
+    const branchMatch = line.match(/if: runner\.os == '(macOS|Windows)'/);
+    if (branchMatch) {
+      currentOs = branchMatch[1];
+      continue;
+    }
+    if (/^\s+- name:/.test(line)) {
+      currentOs = null;
+      continue;
+    }
+    if (!currentOs) continue;
+    const normalised = normaliseTarballConstruction(line);
+    if (normalised && !constructions[currentOs]) {
+      constructions[currentOs] = normalised;
+    }
+  }
+  return constructions;
+}
+
+function expectedAssetCountFromMatrices(cliTargets, ffiJobText) {
+  const lines = ffiJobText.split('\n');
+  const includeStart = lines.findIndex((line) => line.trim() === 'include:');
+  if (includeStart === -1 || cliTargets.length === 0) return null;
+  const entryIndent = lines[includeStart].length - lines[includeStart].trimStart().length + 2;
+  const entryPrefix = ' '.repeat(entryIndent);
+  const archiveKinds = [];
+  for (let index = includeStart + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.trim() === '') continue;
+    if (!line.startsWith(entryPrefix)) break;
+    if (/^\s+-\s/.test(line)) archiveKinds.push(null);
+    const kindMatch = line.match(/^\s+archive:\s*(tar\.gz|zip)\s*$/);
+    if (kindMatch) archiveKinds[archiveKinds.length - 1] = kindMatch[1];
+  }
+  if (archiveKinds.some((kind) => kind === null) || archiveKinds.length === 0) return null;
+  const tarGzCount = archiveKinds.filter((kind) => kind === 'tar.gz').length;
+  const zipCount = archiveKinds.filter((kind) => kind === 'zip').length;
+  return cliTargets.length + tarGzCount + zipCount + 1;
+}
+
 // The single owner of the workflow rules. The real check and `selfTest` both
 // call it, so the fixtures drive the shipped rules rather than a copy of them
 // that can drift.
-function workflowViolations(workflow) {
+function workflowViolations(workflow, platforms = PLATFORMS, tarballPatternFor = tarballName) {
   const violations = [];
 
   // Negative rules stay whole-file: a long-lived token anywhere in the release
@@ -68,6 +150,70 @@ function workflowViolations(workflow) {
       violations.push(message);
     }
   }
+
+  const buildJob = jobBlock(workflow, BUILD_JOB);
+  if (buildJob === null) {
+    violations.push(`release workflow must define a ${BUILD_JOB} job for every released CLI target`);
+    return violations;
+  }
+
+  const cliTargets = matrixIncludeTargets(buildJob);
+  if (cliTargets.length === 0) {
+    violations.push(
+      `could not locate the ${BUILD_JOB} job's build matrix in release.yml — the gate fails closed`,
+    );
+    return violations;
+  }
+
+  const releasedTargets = Object.entries(platforms)
+    .filter(([, entry]) => entry.released)
+    .map(([, entry]) => entry.target);
+  for (const target of releasedTargets) {
+    if (!cliTargets.includes(target)) {
+      violations.push(
+        `npm installs ${target} but the release workflow builds none of: ${cliTargets.join(', ')}`,
+      );
+    }
+  }
+
+  const packagePattern = tarballPatternFor('{V}', '{T}');
+  const constructions = tarballConstructionsByOs(buildJob);
+  for (const osName of ['macOS', 'Windows']) {
+    if (!constructions[osName]) {
+      violations.push(
+        `could not locate the ${osName} tarball-name construction in the ${BUILD_JOB} job — the gate fails closed`,
+      );
+    } else if (constructions[osName] !== packagePattern) {
+      violations.push(
+        `${osName} release legs construct "${constructions[osName]}" but the npm package constructs "${packagePattern}"`,
+      );
+    }
+  }
+
+  const publishGithub = jobBlock(workflow, PUBLISH_GITHUB_JOB);
+  if (publishGithub === null) {
+    violations.push(`release workflow must define a ${PUBLISH_GITHUB_JOB} job`);
+    return violations;
+  }
+  const declaredCount = publishGithub.match(/EXPECTED_ASSETS:\s*(\d+)/);
+  const computedCount = expectedAssetCountFromMatrices(
+    cliTargets,
+    jobBlock(workflow, BUILD_FFI_JOB) ?? '',
+  );
+  if (!declaredCount) {
+    violations.push(
+      `could not locate EXPECTED_ASSETS in the ${PUBLISH_GITHUB_JOB} job — the gate fails closed`,
+    );
+  } else if (computedCount === null) {
+    violations.push(
+      `could not locate the ${BUILD_FFI_JOB} matrix in release.yml — the gate fails closed`,
+    );
+  } else if (Number(declaredCount[1]) !== computedCount) {
+    violations.push(
+      `${PUBLISH_GITHUB_JOB} expects ${declaredCount[1]} assets but the matrices imply exactly ${computedCount}`,
+    );
+  }
+
   return violations;
 }
 
@@ -80,8 +226,34 @@ function selfTest() {
     '  publish-github:',
     '    permissions:',
     '      id-token: write        # Sigstore OIDC exchange',
+    '    env:',
+    '      EXPECTED_ASSETS: 5',
+    '  build:',
+    '    strategy:',
+    '      matrix:',
+    '        include:',
+    '          - target: x86_64-apple-darwin',
+    '            runner: macos-latest',
+    '          - target: x86_64-pc-windows-msvc',
+    '            runner: windows-latest',
     '    steps:',
-    '      - run: echo sign',
+    '      - name: Create tarball (macOS)',
+    "        if: runner.os == 'macOS'",
+    '        run: |',
+    '          TARBALL="agent-desktop-v${VERSION}-${{ matrix.target }}.tar.gz"',
+    '      - name: Create tarball (Windows)',
+    "        if: runner.os == 'Windows'",
+    '        shell: pwsh',
+    '        run: |',
+    '          $tarball = "agent-desktop-v${env:VERSION}-${{ matrix.target }}.tar.gz"',
+    '  build-ffi:',
+    '    strategy:',
+    '      matrix:',
+    '        include:',
+    '          - target: x86_64-apple-darwin',
+    '            archive: tar.gz',
+    '          - target: x86_64-pc-windows-msvc',
+    '            archive: zip',
     '  publish-npm:',
     '    permissions:',
     '      contents: read',
@@ -97,17 +269,24 @@ function selfTest() {
     '',
   ].join('\n');
 
+  const fixturePlatforms = {
+    'darwin-x64': { target: 'x86_64-apple-darwin', released: true },
+    'win32-x64': { target: 'x86_64-pc-windows-msvc', released: true },
+    'linux-x64': { target: 'x86_64-unknown-linux-gnu', released: false },
+  };
+  const violationsFor = (workflow) => workflowViolations(workflow, fixturePlatforms, tarballName);
+
   const failures = [];
   const expectCaught = (name, workflow, needle) => {
-    const found = workflowViolations(workflow);
+    const found = violationsFor(workflow);
     if (!found.some((violation) => violation.includes(needle))) {
       failures.push(`self-test FAIL (missed): ${name} -> ${JSON.stringify(found)}`);
     }
   };
 
-  if (workflowViolations(sound).length !== 0) {
+  if (violationsFor(sound).length !== 0) {
     failures.push(
-      `self-test FAIL (false positive): a sound workflow was rejected -> ${JSON.stringify(workflowViolations(sound))}`,
+      `self-test FAIL (false positive): a sound workflow was rejected -> ${JSON.stringify(violationsFor(sound))}`,
     );
   }
   expectCaught(
@@ -127,6 +306,32 @@ function selfTest() {
   );
   expectCaught('the npm job is gone entirely', sound.replace('  publish-npm:', '  publish-other:'), 'must define a');
   expectCaught('a long-lived token appears', `${sound}\n          NODE_AUTH_TOKEN: x\n`, 'long-lived npm tokens');
+
+  expectCaught(
+    'a released npm target has no CLI matrix leg',
+    sound.replace('          - target: x86_64-pc-windows-msvc\n            runner: windows-latest\n', ''),
+    'npm installs x86_64-pc-windows-msvc',
+  );
+  expectCaught(
+    'the pwsh Windows branch constructs a different archive extension than the package',
+    sound.replace('$tarball = "agent-desktop-v${env:VERSION}-${{ matrix.target }}.tar.gz"', '$tarball = "agent-desktop-v${env:VERSION}-${{ matrix.target }}.zip"'),
+    'could not locate the Windows tarball-name',
+  );
+  expectCaught(
+    'only the pwsh branch diverges while bash stays correct',
+    sound.replace('$tarball = "agent-desktop-v${env:VERSION}-${{ matrix.target }}.tar.gz"', '$tarball = "agent-desktop-v${env:VERSION}-pwsh-${{ matrix.target }}.tar.gz"'),
+    'Windows release legs construct',
+  );
+  expectCaught(
+    'publish-github carries a stale asset count',
+    sound.replace('EXPECTED_ASSETS: 5', 'EXPECTED_ASSETS: 6'),
+    'expects 6 assets but the matrices imply exactly 5',
+  );
+  expectCaught(
+    'the build matrix is restructured beyond recognition',
+    sound.replace('    strategy:\n      matrix:\n        include:', '    strategy:\n      matrix:\n          legs:'),
+    'could not locate the build job\'s build matrix',
+  );
 
   if (failures.length > 0) {
     throw new Error(`The npm release-workflow rules do not behave as documented:\n${failures.join('\n')}`);
