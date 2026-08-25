@@ -2,6 +2,7 @@
 #import <math.h>
 
 const CGFloat ADRippleSize = 108.0;
+static const NSWindowLevel ADEffectLevel = 24;
 static const NSUInteger ADRippleRings = 2;
 static const double ADHighlightSeconds = 2.4;
 
@@ -102,6 +103,7 @@ static CAShapeLayer *ADRing(CGFloat radius, BOOL filled) {
 
 NSWindow *ADRippleWindow(void) {
     NSWindow *window = ADWindow(NSMakeRect(0.0, 0.0, ADRippleSize, ADRippleSize));
+    window.level = ADEffectLevel;
     [window.contentView.layer addSublayer:ADRing(19.0, YES)];
     for (NSUInteger index = 0; index < ADRippleRings; index += 1) {
         [window.contentView.layer addSublayer:ADRing(ADRippleSize * 0.5 - 4.0, NO)];
@@ -155,6 +157,7 @@ static CAKeyframeAnimation *ADHold(NSString *path, NSArray *values, NSArray *tim
 void ADHighlightShow(NSRect frame) {
     if (ADHighlightWindow == nil) {
         ADHighlightWindow = ADWindow(frame);
+        ADHighlightWindow.level = ADEffectLevel;
         ADHighlightBorder = [CALayer layer];
         ADHighlightBorder.borderWidth = 2.5;
         ADHighlightBorder.cornerRadius = 8.0;
