@@ -232,6 +232,10 @@ jobs:
             runner: windows-latest
             archive: zip
             lib_name: agent_desktop_ffi.dll
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+            archive: zip
+            lib_name: agent_desktop_ffi.dll
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -303,6 +307,9 @@ jobs:
             cp "target/${{ matrix.target }}/release/agent-desktop-macos-helper" "$STAGE/lib/"
             chmod +x "$STAGE/lib/agent-desktop-macos-helper"
           fi
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp "target/${{ matrix.target }}/release-ffi/agent_desktop_ffi.dll.lib" "$STAGE/lib/"
+          fi
           cp crates/ffi/include/agent_desktop.h "$STAGE/include/"
           cp LICENSE "$STAGE/"
           cat > "$STAGE/README.md" <<EOF
@@ -313,14 +320,24 @@ jobs:
           - \`LICENSE\` — Apache-2.0
 
           Docs: https://github.com/lahfir/agent-desktop/tree/main/skills/agent-desktop-ffi
-
-          macOS \`install_name\` is \`@rpath/libagent_desktop_ffi.dylib\` — linking
-          consumers need \`-rpath\` pointing at the dylib's directory; \`dlopen\` /
-          ctypes callers resolve by path and need nothing.
           EOF
           if [ "$RUNNER_OS" = "macOS" ]; then
+            cat >> "$STAGE/README.md" <<'MACEOF'
+
+          macOS `install_name` is `@rpath/libagent_desktop_ffi.dylib` — linking
+          consumers need `-rpath` pointing at the dylib's directory; `dlopen` /
+          ctypes callers resolve by path and need nothing.
+          MACEOF
             # shellcheck disable=SC2016
             echo '- `lib/agent-desktop-macos-helper` — required helper, colocated for dylib-image discovery' >> "$STAGE/README.md"
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            cat >> "$STAGE/README.md" <<'WINEOF'
+
+          `dlopen` / Python `ctypes` / Node `ffi-napi` callers load
+          `lib/agent_desktop_ffi.dll` by path and need nothing else. An MSVC
+          linking consumer (C++ or Rust) needs `lib/agent_desktop_ffi.dll.lib`
+          beside it — that import library is what you link against at build time.
+          WINEOF
           fi
           if [ "$RUNNER_OS" != "Windows" ]; then
             (cd "$STAGE" && shasum -a 256 lib/* include/* LICENSE > SHA256SUMS)
@@ -343,6 +360,24 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path "${env:STAGE}" -DestinationPath "${env:STAGE}.zip"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead("${env:STAGE}.zip")
+          try {
+            $entries = $zip.Entries.FullName
+          } finally {
+            $zip.Dispose()
+          }
+          # Compress-Archive records '\' separators inside the archive on
+          # Windows, so the comparison normalizes both sides before matching.
+          $names = @($entries) | ForEach-Object { $_.Replace('\', '/') }
+          $importLib = "${env:STAGE}/lib/agent_desktop_ffi.dll.lib"
+          if ($names -notcontains $importLib) {
+            Write-Output "FAIL: Windows FFI archive is missing the MSVC import library '$importLib'"
+            Write-Output "Archive entries:"
+            $names | ForEach-Object { Write-Output "  $_" }
+            exit 1
+          }
+          Write-Output "OK: archive contains $importLib"
           $hash = (Get-FileHash "${env:STAGE}.zip" -Algorithm SHA256).Hash.ToLower()
           "$hash  ${env:STAGE}.zip" | Out-File -Encoding ascii "${env:STAGE}.zip.sha256"
 
