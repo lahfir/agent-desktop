@@ -105,7 +105,8 @@ fn pattern_fixture_window_capture_matches_when_supported() {
     if samples.iter().all(|sample| *sample == [0u8; 3]) {
         eprintln!(
             "skip: host compositor produced no pixels (uniform black across two \
-             settled captures); color matching cannot be evaluated in this session"
+             settled captures); color matching cannot be evaluated in this session, \
+             while any nonzero-but-wrong sample would still fail the assertion below"
         );
         return;
     }
