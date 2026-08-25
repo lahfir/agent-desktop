@@ -28,7 +28,11 @@ impl ObservationOps for CursorAdapter {
         Ok(NativeHandle::null())
     }
 
-    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
+    crate::adapter::complete_live_observation!(
+        "textfield",
+        "Run",
+        [capability::CLICK, capability::SET_VALUE]
+    );
 }
 
 impl ActionOps for CursorAdapter {
@@ -70,7 +74,7 @@ fn entry() -> RefEntry {
             process_instance: Some("test-instance".into()),
         },
         identity: crate::RefEntryIdentity {
-            role: "button".into(),
+            role: "textfield".into(),
             name: Some("Run".into()),
             value: None,
             description: None,
@@ -82,7 +86,7 @@ fn entry() -> RefEntry {
         },
         capabilities: crate::RefCapabilities {
             states: vec![],
-            available_actions: vec![capability::CLICK.into()],
+            available_actions: vec![capability::CLICK.into(), capability::SET_VALUE.into()],
         },
         source: crate::RefSource {
             source_app: Some("Fixture".into()),
@@ -169,4 +173,25 @@ fn renderer_failure_does_not_change_successful_action() {
     .expect("presentation failure stays fail-soft");
 
     assert_eq!(result.action, "click");
+}
+
+#[test]
+fn a_value_write_outlines_the_element_without_a_click_ripple() {
+    let adapter = CursorAdapter::new(false);
+
+    execute_entry_with_context(
+        &adapter,
+        &entry(),
+        ActionRequest::headless(Action::SetValue("Paris".into())),
+        &enabled_context(),
+    )
+    .expect("set-value succeeds");
+
+    let presented = adapter.presented.lock().unwrap();
+    assert_eq!(presented.len(), 2, "travel then effect, same as a click");
+    let effect = presented[1].instruction().expect("effect instruction");
+
+    assert!(!effect.is_click(), "a value write must not ripple");
+    assert!(effect.target().is_some(), "but it must outline the element");
+    assert_eq!(effect.phase(), crate::CursorPhase::Effect);
 }

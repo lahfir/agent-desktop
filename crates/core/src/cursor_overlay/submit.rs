@@ -1,3 +1,4 @@
+use super::CursorPhase;
 use crate::{CommandContext, PlatformAdapter, Point, Rect};
 
 pub(crate) fn submit(
@@ -6,6 +7,7 @@ pub(crate) fn submit(
     destination: Point,
     target: Option<Rect>,
     click: bool,
+    phase: CursorPhase,
 ) {
     if context.is_headed() || !context.cursor_overlay().is_enabled() {
         return;
@@ -15,7 +17,10 @@ pub(crate) fn submit(
     };
     let instruction =
         match super::CursorOverlayInstruction::new(destination, context.cursor_overlay(), click) {
-            Ok(instruction) => instruction.with_target(target),
+            Ok(instruction) => match phase {
+                CursorPhase::Travel => instruction,
+                CursorPhase::Effect => instruction.with_target(target).as_effect(),
+            },
             Err(error) => {
                 tracing::warn!(code = %error.code.as_str(), "agent cursor instruction was skipped");
                 return;

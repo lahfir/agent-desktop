@@ -459,9 +459,9 @@ Sessions are on-disk containers under `<state root>/sessions/<id>/` with a `sess
 
 ```bash
 agent-desktop session start --cursor                 # session + default cursor in one command
-agent-desktop --session <id> cursor-overlay enable   # same defaults on an existing session
 agent-desktop --session <id> cursor-overlay enable --label "Opening menu" --accent "#FF3B7B"
-agent-desktop --session <id> cursor-overlay disable
+export AGENT_DESKTOP_SESSION=<id>
+agent-desktop cursor-overlay disable
 ```
 
 No flags gives the default look: white body, near-black rim, blue ripple, blue element outline.

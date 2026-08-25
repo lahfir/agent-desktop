@@ -1,5 +1,5 @@
-use agent_desktop_core::{AdapterError, ErrorCode};
-use rustc_hash::FxHashMap;
+use agent_desktop_core::{AdapterError, ErrorCode, WindowInfo};
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::time::Instant;
 
 type AxWindowIdentity = (Option<String>, Option<i64>);
@@ -8,36 +8,27 @@ type AxWindowIdentity = (Option<String>, Option<i64>);
 pub(crate) struct WindowAxState {
     pub(crate) focused: Option<AxWindowIdentity>,
     pub(crate) minimized_by_id: FxHashMap<i64, bool>,
+    pub(crate) accessible_window_ids: FxHashSet<i64>,
 }
 
 pub(crate) fn read_until(pid: i32, deadline: Instant) -> Result<WindowAxState, AdapterError> {
     let app = crate::tree::element_for_pid(pid);
     let focused = focused_identity(&app, pid, deadline)?;
     let mut minimized_by_id = FxHashMap::default();
-    for window in crate::tree::surface_read::elements(&app, "AXWindows", deadline)? {
-        if crate::tree::surface_read::string(&window, "AXRole", deadline)?.as_deref()
-            != Some("AXWindow")
-        {
-            continue;
-        }
-        let window_id =
-            match crate::system::window_resolve::ax_window_id_with_deadline(&window, deadline) {
-                Ok(window_id) => window_id,
-                Err(error) if crate::system::window_bridge::is_unavailable(&error) => break,
-                Err(error) => return Err(error),
-            };
-        let Some(window_id) = window_id else {
-            continue;
-        };
+    let mut accessible_window_ids = FxHashSet::default();
+    for_each_window(pid, deadline, |window, window_id| {
+        accessible_window_ids.insert(window_id);
         if let Some(minimized) =
-            crate::tree::surface_read::boolean(&window, "AXMinimized", deadline)?
+            crate::tree::surface_read::boolean(window, "AXMinimized", deadline)?
         {
             minimized_by_id.insert(window_id, minimized);
         }
-    }
+        Ok(())
+    })?;
     Ok(WindowAxState {
         focused,
         minimized_by_id,
+        accessible_window_ids,
     })
 }
 
@@ -49,7 +40,57 @@ pub(crate) fn read_frontmost_until(
     Ok(WindowAxState {
         focused: focused_identity(&app, pid, deadline)?,
         minimized_by_id: FxHashMap::default(),
+        accessible_window_ids: FxHashSet::default(),
     })
+}
+
+pub(crate) fn accessible_window_ids_until(
+    pid: i32,
+    deadline: Instant,
+) -> Result<FxHashSet<i64>, AdapterError> {
+    let mut ids = FxHashSet::default();
+    for_each_window(pid, deadline, |_, id| {
+        ids.insert(id);
+        Ok(())
+    })?;
+    Ok(ids)
+}
+
+fn for_each_window(
+    pid: i32,
+    deadline: Instant,
+    mut visit: impl FnMut(&crate::tree::AXElement, i64) -> Result<(), AdapterError>,
+) -> Result<(), AdapterError> {
+    let app = crate::tree::element_for_pid(pid);
+    for window in crate::tree::surface_read::elements(&app, "AXWindows", deadline)? {
+        match crate::system::window_resolve::ax_window_id_with_deadline(&window, deadline) {
+            Ok(Some(id)) => visit(&window, id)?,
+            Ok(None) => {}
+            Err(error) if crate::system::window_bridge::is_unavailable(&error) => break,
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn label_accessibility(
+    windows: &mut [WindowInfo],
+    mut read: impl FnMut(i32) -> Result<FxHashSet<i64>, AdapterError>,
+) {
+    let mut pids = windows.iter().map(|window| window.pid).collect::<Vec<_>>();
+    pids.sort_unstable();
+    pids.dedup();
+    for pid in pids {
+        let accessible_ids = crate::system::process_identity::to_pid_t(pid)
+            .ok()
+            .and_then(|pid| read(pid).ok())
+            .unwrap_or_default();
+        for window in windows.iter_mut().filter(|window| window.pid == pid) {
+            window.state.accessible =
+                crate::system::window_resolve::parse_window_number(&window.id)
+                    .is_some_and(|id| accessible_ids.contains(&id));
+        }
+    }
 }
 
 /// Frontmost-ness only selects whether a focused window is reported, and a busy

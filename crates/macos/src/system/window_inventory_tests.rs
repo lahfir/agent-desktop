@@ -34,6 +34,7 @@ fn ax_state(focused: FocusedWindowIdentity) -> crate::system::window_ax_state::W
     crate::system::window_ax_state::WindowAxState {
         focused,
         minimized_by_id: FxHashMap::default(),
+        accessible_window_ids: rustc_hash::FxHashSet::default(),
     }
 }
 
@@ -124,6 +125,20 @@ fn windows_from_records_preserve_capture_bounds() {
     .unwrap();
 
     assert_eq!(windows[0].bounds, Some(expected));
+}
+
+#[test]
+fn cg_window_without_an_ax_element_is_labelled_inaccessible() {
+    let windows = windows_from_records_with_focus(
+        vec![record("Clock", 10, "Untitled", 7)],
+        false,
+        |_| Ok(ax_state(None)),
+        |_, _| Ok(true),
+    )
+    .unwrap();
+
+    let value = serde_json::to_value(&windows[0]).unwrap();
+    assert_eq!(value["accessible"], false);
 }
 
 #[test]
@@ -317,6 +332,7 @@ fn window_with_state(id: &str, visible: Option<bool>, minimized: Option<bool>) -
         bounds: None,
         state: agent_desktop_core::WindowState {
             is_focused: false,
+            accessible: true,
             minimized,
             visible,
         },

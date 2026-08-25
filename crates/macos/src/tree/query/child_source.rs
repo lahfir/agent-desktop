@@ -4,6 +4,35 @@ use super::{
 };
 
 const CANONICAL_CHILDREN: &str = "AXChildren";
+const READ_ATTEMPTS: usize = 3;
+
+pub(super) fn read_resilient(
+    attributes: &[&str],
+    deadline: std::time::Instant,
+    mut read_attribute: impl FnMut(&str) -> ChildRead,
+) -> ChildRead {
+    let mut status = ChildReadStatus::default();
+    let mut attempt = 0;
+    loop {
+        let mut read = read_first_nonempty(attributes, &mut read_attribute);
+        attempt += 1;
+        let retry = !read.complete
+            && !read.status.invalid_element
+            && !read.status.api_disabled
+            && attempt < READ_ATTEMPTS
+            && std::time::Instant::now() < deadline;
+        status.merge(std::mem::take(&mut read.status));
+        if !retry {
+            read.status = status;
+            return read;
+        }
+        std::thread::sleep(
+            deadline
+                .saturating_duration_since(std::time::Instant::now())
+                .min(std::time::Duration::from_millis(1)),
+        );
+    }
+}
 
 pub(super) fn read_first_nonempty(
     attributes: &[&str],
@@ -122,6 +151,38 @@ mod tests {
 
         assert_eq!(attributes, ["AXChildren"]);
         assert_eq!(selected.elements.len(), 1);
+        assert!(!selected.complete);
+    }
+
+    #[test]
+    fn resilient_read_recovers_after_two_incomplete_attempts() {
+        let mut attempts = 0;
+        let selected = read_resilient(
+            &["AXChildren"],
+            std::time::Instant::now() + std::time::Duration::from_secs(1),
+            |_| {
+                attempts += 1;
+                read(1, attempts == 3, ChildSourceAvailability::Available)
+            },
+        );
+
+        assert_eq!(attempts, 3);
+        assert!(selected.complete);
+    }
+
+    #[test]
+    fn resilient_read_stops_cleanly_after_three_incomplete_attempts() {
+        let mut attempts = 0;
+        let selected = read_resilient(
+            &["AXChildren"],
+            std::time::Instant::now() + std::time::Duration::from_secs(1),
+            |_| {
+                attempts += 1;
+                read(0, false, ChildSourceAvailability::Unknown)
+            },
+        );
+
+        assert_eq!(attempts, 3);
         assert!(!selected.complete);
     }
 }

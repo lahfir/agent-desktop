@@ -1,4 +1,4 @@
-use super::{CursorOverlayInstruction, CursorOverlayStyle};
+use super::{CursorOverlayInstruction, CursorOverlayStyle, CursorPhase};
 use crate::{AdapterError, ErrorCode, context::validate_session_id};
 use serde::{Deserialize, Serialize};
 
@@ -108,7 +108,7 @@ impl CursorOverlayControl {
     /// action waits for that acknowledgement before it dispatches.
     pub fn is_travel(&self) -> bool {
         self.instruction()
-            .is_some_and(|instruction| !instruction.is_click())
+            .is_some_and(|instruction| instruction.phase() == CursorPhase::Travel)
     }
 
     pub const fn is_hide(&self) -> bool {

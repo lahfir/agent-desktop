@@ -8,13 +8,23 @@ pub enum CursorOverlayAction {
 }
 
 pub fn execute(session_id: &str, action: CursorOverlayAction) -> Result<Value, AppError> {
-    let cursor_overlay = match action {
-        CursorOverlayAction::Enable(config) => config,
-        CursorOverlayAction::Disable => CursorOverlayConfig::default(),
+    let (cursor_overlay, next) = match action {
+        CursorOverlayAction::Enable(config) => {
+            (config, Some(super::session::activation_export(session_id)))
+        }
+        CursorOverlayAction::Disable => (CursorOverlayConfig::default(), None),
     };
     let manifest = set_cursor_overlay(session_id, cursor_overlay)?;
-    Ok(json!({
+    let mut response = json!({
         "session_id": manifest.id,
         "cursor_overlay": manifest.cursor_overlay,
-    }))
+    });
+    if let Some(next) = next {
+        response["next"] = next.into();
+    }
+    Ok(response)
 }
+
+#[cfg(test)]
+#[path = "cursor_overlay_tests.rs"]
+mod tests;

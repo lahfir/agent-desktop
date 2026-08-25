@@ -1,4 +1,4 @@
-use super::CursorOverlayConfig;
+use super::{CursorOverlayConfig, CursorPhase};
 use crate::{AdapterError, ErrorCode, Point, Rect};
 use serde::{Deserialize, Serialize};
 
@@ -11,6 +11,8 @@ pub struct CursorOverlayInstruction {
     click: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     target: Option<Rect>,
+    #[serde(default)]
+    phase: CursorPhase,
 }
 
 impl CursorOverlayInstruction {
@@ -31,7 +33,17 @@ impl CursorOverlayInstruction {
             label: config.label().map(str::to_owned),
             click,
             target: None,
+            phase: CursorPhase::Travel,
         })
+    }
+
+    pub const fn as_effect(mut self) -> Self {
+        self.phase = CursorPhase::Effect;
+        self
+    }
+
+    pub const fn phase(&self) -> CursorPhase {
+        self.phase
     }
 
     pub fn with_target(mut self, target: Option<Rect>) -> Self {

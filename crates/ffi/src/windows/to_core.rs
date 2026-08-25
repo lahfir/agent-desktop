@@ -70,6 +70,7 @@ fn decode_window(w: &AdWindowInfo, process_instance: String) -> Result<WindowInf
         bounds,
         state: agent_desktop_core::WindowState {
             is_focused: w.is_focused,
+            accessible: true,
             minimized: None,
             visible: None,
         },

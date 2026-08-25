@@ -180,8 +180,9 @@ A presentation-only cursor that shows what the agent is about to do. Off by defa
 
 ```bash
 session_id=$(agent-desktop session start --cursor | jq -r '.data.session_id')
-agent-desktop --session "$session_id" click @s8f3k2p9:e9
-agent-desktop --session "$session_id" cursor-overlay disable
+export AGENT_DESKTOP_SESSION="$session_id"
+agent-desktop click @s8f3k2p9:e9
+agent-desktop cursor-overlay disable
 ```
 
 `session start --cursor` turns it on with the default look. `cursor-overlay enable` does the same for a session that already exists.
@@ -190,6 +191,7 @@ agent-desktop --session "$session_id" cursor-overlay disable
 
 ```bash
 agent-desktop --session "$session_id" cursor-overlay enable --label "Opening the menu"
+export AGENT_DESKTOP_SESSION="$session_id"
 ```
 
 | Flag | Meaning | Default |
@@ -380,7 +382,8 @@ agent-desktop session end [id]
 agent-desktop session list
 agent-desktop session gc [--older-than SECS] [--ended]
 agent-desktop --session <id> cursor-overlay enable [--label TEXT] [--max-words N] [--fill HEX] [--rim HEX] [--accent HEX] [--size N] [--no-ripple] [--no-highlight]
-agent-desktop --session <id> cursor-overlay disable
+export AGENT_DESKTOP_SESSION=<id>
+agent-desktop cursor-overlay disable
 agent-desktop status                     # platform, permissions, session_id, tracing, latest snapshot
 agent-desktop permissions                # check accessibility/screen-recording/automation
 agent-desktop permissions --request      # request in the bounded isolated helper

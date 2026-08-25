@@ -117,6 +117,7 @@ mod tests {
             }),
             state: agent_desktop_core::WindowState {
                 is_focused: true,
+                accessible: true,
                 minimized: None,
                 visible: None,
             },

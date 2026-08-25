@@ -24,6 +24,7 @@ impl WindowRecord {
         self,
         is_focused: bool,
         minimized: Option<bool>,
+        accessible: bool,
     ) -> Result<WindowInfo, AdapterError> {
         let title = self.title.unwrap_or_else(|| self.app_name.clone());
         Ok(WindowInfo {
@@ -35,6 +36,7 @@ impl WindowRecord {
             bounds: Some(self.bounds),
             state: agent_desktop_core::WindowState {
                 is_focused,
+                accessible,
                 minimized,
                 visible: Some(self.visible),
             },

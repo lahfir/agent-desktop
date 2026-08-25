@@ -1,4 +1,5 @@
 use super::ActionabilityPreflight;
+use crate::cursor_overlay::CursorPhase;
 use crate::{Action, CommandContext, DeliveryDisposition, DeliverySemantics, PlatformAdapter};
 
 pub(super) fn before_dispatch(
@@ -9,7 +10,14 @@ pub(super) fn before_dispatch(
     let Some(destination) = preflight.presentation_point.clone() else {
         return;
     };
-    crate::cursor_overlay::submit(adapter, context, destination, None, false);
+    crate::cursor_overlay::submit(
+        adapter,
+        context,
+        destination,
+        None,
+        false,
+        CursorPhase::Travel,
+    );
 }
 
 pub(super) fn after_dispatch(
@@ -23,7 +31,7 @@ pub(super) fn after_dispatch(
         Ok(result) => result.disposition(),
         Err(error) => error.disposition,
     };
-    if !is_click(action) || !confirms_dispatch(disposition) {
+    if !confirms_dispatch(disposition) {
         return;
     }
     let Some(destination) = preflight.presentation_point.clone() else {
@@ -34,7 +42,8 @@ pub(super) fn after_dispatch(
         context,
         destination,
         preflight.presentation_bounds,
-        true,
+        is_click(action),
+        CursorPhase::Effect,
     );
 }
 
