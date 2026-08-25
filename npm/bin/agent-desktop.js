@@ -4,10 +4,9 @@ const { spawn } = require('child_process');
 const { existsSync, accessSync, chmodSync, constants } = require('fs');
 const { isAbsolute, join } = require('path');
 const { platform, arch } = require('os');
-const { PLATFORMS, resolve } = require('../lib/platform');
+const { MACOS_HELPER_NAME, releasedKeys, resolve } = require('../lib/platform');
 
 const binDir = __dirname;
-const MACOS_HELPER_NAME = 'agent-desktop-macos-helper';
 const MACOS_HELPER_PATH_ENV = 'AGENT_DESKTOP_MACOS_HELPER_PATH';
 
 function getBinaryName() {
@@ -19,18 +18,15 @@ function main() {
   const binaryName = getBinaryName();
 
   if (!binaryName) {
-    const releasedKeys = Object.entries(PLATFORMS)
-      .filter(([, candidate]) => candidate.released)
-      .map(([key]) => key);
     console.error(`Error: Unsupported platform: ${platform()}-${arch()}`);
-    console.error(`Released platform keys today: ${releasedKeys.join(', ')}`);
+    console.error(`Released platform keys today: ${releasedKeys().join(', ')}`);
     console.error('See: https://github.com/lahfir/agent-desktop');
     process.exit(1);
   }
 
   const binaryPath = join(binDir, binaryName);
 
-  if (!binaryPath || !existsSync(binaryPath)) {
+  if (!existsSync(binaryPath)) {
     console.error(`Error: Native binary not found for ${platform()}-${arch()}`);
     console.error(`Expected: ${binaryPath}`);
     console.error('');

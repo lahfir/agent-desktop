@@ -18,7 +18,7 @@ const { dirname, isAbsolute, join } = require('path');
 const { platform, arch } = require('os');
 const { execFileSync } = require('child_process');
 const { createHash } = require('crypto');
-const { PLATFORMS, resolve, tarballName } = require('../lib/platform');
+const { MACOS_HELPER_NAME, releasedKeys, resolve, tarballName } = require('../lib/platform');
 
 const projectRoot = join(__dirname, '..');
 const binDir = join(projectRoot, 'bin');
@@ -26,7 +26,6 @@ const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), '
 const version = packageJson.version;
 
 const GITHUB_REPO = 'lahfir/agent-desktop';
-const MACOS_HELPER_NAME = 'agent-desktop-macos-helper';
 const MACOS_HELPER_PATH_ENV = 'AGENT_DESKTOP_MACOS_HELPER_PATH';
 
 function log(msg) {
@@ -157,7 +156,7 @@ function installArchive(tarballPath, binaryPath, helperPath, entry, trashCommand
     }
     installExecutable(extractedBinary, binaryPath);
   } finally {
-    cleanupStaging(staging, trashCommand ?? 'trash');
+    cleanupStaging(staging, trashCommand);
   }
 }
 
@@ -235,11 +234,8 @@ function main() {
   const entry = resolve(platform(), arch());
 
   if (!entry || !entry.released) {
-    const releasedKeys = Object.entries(PLATFORMS)
-      .filter(([, candidate]) => candidate.released)
-      .map(([key]) => key);
     log(`agent-desktop has no released native binary for ${platformKey}.`);
-    log(`Released platform keys today: ${releasedKeys.join(', ')}.`);
+    log(`Released platform keys today: ${releasedKeys().join(', ')}.`);
     log(`See: https://github.com/${GITHUB_REPO}`);
     return;
   }

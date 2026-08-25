@@ -557,10 +557,11 @@ jobs:
   test-windows-arm:
     name: Test (Windows ARM64)
     runs-on: windows-11-arm
-    needs: test-windows
     timeout-minutes: 45
     permissions:
       contents: read
+    outputs:
+      lib_tests: ${{ steps.unit_tests.outputs.lib_tests }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -608,29 +609,6 @@ jobs:
           Write-Host "Total lib tests passed: $passed"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "lib_tests=$passed"
 
-      # A count below the x64 lane's means tests skipped silently (typically a
-      # missing .NET desktop runtime for the live WPF staging) — that is a
-      # finding to disposition, not a difference to accept.
-      - name: Assert the suite executed as completely as on x64
-        shell: pwsh
-        env:
-          X64_LIB_TESTS: ${{ needs.test-windows.outputs.lib_tests }}
-        run: |
-          $armTests = 0
-          foreach ($line in Get-Content $env:GITHUB_OUTPUT) {
-            if ($line -match '^lib_tests=(\d+)$') { $armTests = [int]$Matches[1] }
-          }
-          if ([string]::IsNullOrWhiteSpace($env:X64_LIB_TESTS)) {
-            Write-Host "FAIL: the x64 lane did not export its lib test count"
-            exit 1
-          }
-          Write-Host "x64 lane lib tests: $($env:X64_LIB_TESTS); ARM64 lane lib tests: $armTests"
-          if ($armTests -ne [int]$env:X64_LIB_TESTS) {
-            Write-Host "FAIL: ARM64 executed $armTests lib tests against the x64 lane's $($env:X64_LIB_TESTS)"
-            exit 1
-          }
-          Write-Host "OK: ARM64 ran all $armTests lib tests the x64 lane ran"
-
       - name: Build release binary
         run: cargo build --locked --release -p agent-desktop
 
@@ -671,6 +649,34 @@ jobs:
             exit 1
           }
           Write-Host 'OK: private artifacts stayed under RUNNER_TEMP'
+
+  # A count below the x64 lane's means tests skipped silently on the ARM image
+  # (typically a missing .NET desktop runtime for the live WPF staging) — that
+  # is a finding to disposition, not a difference to accept. This job waits for
+  # BOTH lanes so they can run concurrently instead of serializing the ARM64
+  # hardware behind the whole x64 suite.
+  windows-lib-test-parity:
+    name: Windows lib-test parity (x64 vs ARM64)
+    runs-on: ubuntu-latest
+    needs: [test-windows, test-windows-arm]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Compare exported lib test counts
+        run: |
+          X64="${{ needs.test-windows.outputs.lib_tests }}"
+          ARM="${{ needs.test-windows-arm.outputs.lib_tests }}"
+          echo "x64 lane lib tests: ${X64}; ARM64 lane lib tests: ${ARM}"
+          if [ -z "$X64" ] || [ -z "$ARM" ]; then
+            echo "FAIL: a lane did not export its lib test count (x64='${X64}', arm64='${ARM}')"
+            exit 1
+          fi
+          if [ "$X64" != "$ARM" ]; then
+            echo "FAIL: ARM64 executed ${ARM} lib tests against the x64 lane's ${X64}"
+            exit 1
+          fi
+          echo "OK: both Windows lanes executed ${X64} lib tests"
 
   ffi-python-smoke:
     name: FFI Python Smoke

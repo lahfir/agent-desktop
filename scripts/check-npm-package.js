@@ -55,12 +55,13 @@ function matrixIncludeTargets(jobText) {
   for (let index = includeStart + 1; index < lines.length; index += 1) {
     const line = lines[index];
     if (line.trim() === '' || !line.startsWith(' ')) break;
-    if (/^\s*-\s+target:\s*(\S+)/.test(line)) {
+    let match;
+    if ((match = line.match(/^\s*-\s+target:\s*(\S+)/))) {
       baseIndent = baseIndent ?? line.indexOf('-');
-      targets.push(line.match(/^\s*-\s+target:\s*(\S+)/)[1]);
+      targets.push(match[1]);
       continue;
     }
-    if (baseIndent !== null && line.indexOf('target:') > -1 && line.trim().startsWith('target:')) {
+    if (baseIndent !== null && line.trim().startsWith('target:')) {
       targets.push(line.trim().replace(/^target:\s*/, ''));
     }
   }

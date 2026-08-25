@@ -43,12 +43,20 @@ function resolve(osPlatform, osArch) {
   return PLATFORMS[`${osPlatform}-${osArch}`];
 }
 
+function releasedKeys() {
+  return Object.entries(PLATFORMS)
+    .filter(([, entry]) => entry.released)
+    .map(([key]) => key);
+}
+
 function tarballName(version, target) {
   return `agent-desktop-v${version}-${target}.tar.gz`;
 }
 
 module.exports = {
+  MACOS_HELPER_NAME,
   PLATFORMS,
+  releasedKeys,
   resolve,
   tarballName,
 };

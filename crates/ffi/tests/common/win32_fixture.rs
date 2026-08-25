@@ -275,7 +275,7 @@ fn activate_common_controls_v6() {
     ACTIVATED.call_once(|| {
         let directory = std::env::temp_dir().join("agent-desktop-ffi-fixture-manifests");
         let _ = std::fs::create_dir_all(&directory);
-        let path = directory.join(format!("comctl32-v6-{}.manifest", std::process::id()));
+        let path = directory.join("comctl32-v6-shared.manifest");
         if std::fs::write(&path, COMCTL32_V6_MANIFEST).is_err() {
             return;
         }

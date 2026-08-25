@@ -5,8 +5,7 @@ mod common;
 use agent_desktop_ffi::AdActionKind;
 use common::win32_fixture::stage_click_fixture;
 use common::{
-    AdAction, AdDragParams, AdKeyCombo, AdPoint, AdPolicyKind, AdResult, AdScrollParams,
-    ad_execute_by_ref, ad_free_string, ad_snapshot, with_adapter,
+    AdAction, AdPolicyKind, AdResult, ad_execute_by_ref, ad_free_string, ad_snapshot, with_adapter,
 };
 use std::ffi::{CStr, CString, c_char};
 
@@ -17,22 +16,7 @@ const CLICK_BUDGET_MS: u64 = 10_000;
 fn click_action() -> AdAction {
     AdAction {
         kind: AdActionKind::Click as i32,
-        text: std::ptr::null(),
-        scroll: AdScrollParams {
-            direction: 0,
-            amount: 0,
-        },
-        key: AdKeyCombo {
-            key: std::ptr::null(),
-            modifiers: std::ptr::null(),
-            modifier_count: 0,
-        },
-        drag: AdDragParams {
-            from: AdPoint { x: 0.0, y: 0.0 },
-            to: AdPoint { x: 0.0, y: 0.0 },
-            duration_ms: 0,
-            drop_delay_ms: 0,
-        },
+        ..common::default_action()
     }
 }
 
