@@ -17,10 +17,7 @@ pub(crate) fn submit(
     };
     let instruction =
         match super::CursorOverlayInstruction::new(destination, context.cursor_overlay(), click) {
-            Ok(instruction) => match phase {
-                CursorPhase::Travel => instruction,
-                CursorPhase::Effect => instruction.with_target(target).as_effect(),
-            },
+            Ok(instruction) => instruction.with_target(target).with_phase(phase),
             Err(error) => {
                 tracing::warn!(code = %error.code.as_str(), "agent cursor instruction was skipped");
                 return;

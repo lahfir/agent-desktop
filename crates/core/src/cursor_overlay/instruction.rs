@@ -37,8 +37,8 @@ impl CursorOverlayInstruction {
         })
     }
 
-    pub const fn as_effect(mut self) -> Self {
-        self.phase = CursorPhase::Effect;
+    pub const fn with_phase(mut self, phase: CursorPhase) -> Self {
+        self.phase = phase;
         self
     }
 
