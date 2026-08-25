@@ -320,7 +320,7 @@ test('postinstall refuses unreleased platforms with exit code 0 and names the re
   }
 });
 
-test('the manual fallback names every archive member and the verification steps', () => {
+test('the manual fallback names installed destinations the wrapper resolves', () => {
   const warnings = captureWarnings(() =>
     postinstall.printManualFallback(
       'https://example.invalid/tarball.tar.gz',
@@ -330,27 +330,56 @@ test('the manual fallback names every archive member and the verification steps'
   );
   assert.match(warnings, /Download manually from:/);
   assert.match(warnings, /https:\/\/example\.invalid\/tarball\.tar\.gz/);
-  assert.match(warnings, /agent-desktop\.exe/);
+  assert.match(warnings, /bin\\agent-desktop-win32-arm64\.exe|bin\/agent-desktop-win32-arm64\.exe/);
   assert.ok(!warnings.includes('agent-desktop-macos-helper'));
+  const darwin = captureWarnings(() =>
+    postinstall.printManualFallback(
+      'https://example.invalid/tarball.tar.gz',
+      'https://example.invalid/checksums.txt',
+      resolve('darwin', 'arm64'),
+    ),
+  );
+  assert.match(darwin, /agent-desktop-darwin-arm64/);
+  assert.match(darwin, /agent-desktop-macos-helper/);
   assert.match(warnings, /curl -fsSL https:\/\/example\.invalid\/checksums\.txt/);
   assert.match(warnings, /sha256sum <downloaded-archive>/);
   assert.match(warnings, /gh attestation verify <downloaded-archive> --repo lahfir\/agent-desktop/);
 });
 
-test('prompted skills are a subset of the skill packages that exist', () => {
-  const source = readFileSync(postinstallScriptPath, 'utf8');
-  const printed = [...source.matchAll(/add-skill lahfir\/([a-z0-9-]+)/g)].map((m) => m[1]);
-  const mapped = [...source.matchAll(/^\s{4}(?:darwin|win32|linux): '([a-z0-9-]+)',$/gm)].map(
-    (m) => m[1],
-  );
-  const skillsDir = join(__dirname, '..', '..', 'skills');
-  for (const name of new Set([...printed, ...mapped])) {
-    assert.ok(existsSync(join(skillsDir, name, 'SKILL.md')), `advertised ${name} must exist`);
+function promptSkillOutputFor(osPlatform) {
+  const os = require('node:os');
+  const originalPlatform = os.platform;
+  os.platform = () => osPlatform;
+  const modulePath = require.resolve('../../npm/scripts/postinstall.js');
+  try {
+    delete require.cache[modulePath];
+    const fresh = require('../../npm/scripts/postinstall.js');
+    return captureWarnings(() => {
+      fresh.promptSkillInstall();
+      return '';
+    });
+  } finally {
+    os.platform = originalPlatform;
+    delete require.cache[modulePath];
   }
-  for (const missing of ['agent-desktop-macos', 'agent-desktop-linux']) {
-    assert.ok(
-      !existsSync(join(skillsDir, missing)),
-      `${missing} must not exist to be advertised`,
+}
+
+test('prompted skills are a subset of the skill packages that exist', () => {
+  const skillsDir = join(__dirname, '..', '..', 'skills');
+  for (const osPlatform of ['darwin', 'win32', 'linux']) {
+    const output = promptSkillOutputFor(osPlatform);
+    const advertised = [...output.matchAll(/add-skill lahfir\/([a-z0-9-]+)/g)].map((m) => m[1]);
+    assert.ok(advertised.includes('agent-desktop'), `${osPlatform} must advertise the base skill`);
+    for (const name of advertised) {
+      assert.ok(existsSync(join(skillsDir, name, 'SKILL.md')), `advertised ${name} must exist`);
+    }
+  }
+  assert.match(promptSkillOutputFor('win32'), /lahfir\/agent-desktop-windows/);
+  for (const osPlatform of ['darwin', 'linux']) {
+    assert.doesNotMatch(
+      promptSkillOutputFor(osPlatform),
+      /agent-desktop-(macos|linux)/,
+      `${osPlatform} must not advertise a nonexistent platform skill`,
     );
   }
 });

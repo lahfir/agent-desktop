@@ -54,6 +54,10 @@ jobs:
       publish_npm: ${{ steps.manual.outputs.publish_npm || 'true' }}
       publish_skills: ${{ steps.manual.outputs.publish_skills || steps.release.outputs.release_created }}
       dry_run: ${{ steps.manual.outputs.dry_run || 'false' }}
+      # A dry run dispatched from a branch must build THAT branch's commit, not
+      # the tag's tree: tag_name points at an existing (main) tag whose crates/
+      # windows is still the pre-phase stub. Real releases resolve the tag.
+      checkout_ref: ${{ (steps.manual.outputs.dry_run || 'false') == 'true' && github.sha || (steps.release.outputs.tag_name || steps.manual.outputs.tag_name) }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         if: github.event_name != 'workflow_dispatch'
@@ -152,11 +156,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # A dry run dispatched from a branch must build THAT branch's commit,
-          # not the tag's tree: tag_name points at an existing (main) tag whose
-          # crates/windows is still the pre-phase stub, which would build an
-          # archive indistinguishable from a real asset while shipping nothing.
-          ref: ${{ needs.release-please.outputs.dry_run == 'true' && github.sha || needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.release-please.outputs.checkout_ref }}
 
       - name: Install Rust toolchain
         run: |
@@ -322,7 +322,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.dry_run == 'true' && github.sha || needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.release-please.outputs.checkout_ref }}
 
       - name: Install Rust toolchain
         run: |
@@ -488,7 +488,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.dry_run == 'true' && github.sha || needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.release-please.outputs.checkout_ref }}
 
       - name: Install Rust toolchain
         run: rustup show

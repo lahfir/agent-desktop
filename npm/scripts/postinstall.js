@@ -46,7 +46,11 @@ function trashRecoverably(path, trashCommand = 'trash') {
 
 function cleanupStaging(path, trashCommand) {
   if (platform() === 'win32') {
-    rmSync(path, { recursive: true, force: true });
+    try {
+      rmSync(path, { recursive: true, force: true });
+    } catch (err) {
+      log(`Could not remove staging directory; retained at ${path}: ${err.message}`);
+    }
     return;
   }
   trashRecoverably(path, trashCommand);
@@ -213,9 +217,11 @@ function printManualFallback(tarballUrl, checksumsUrl, entry) {
   log('');
   log('Download manually from:');
   log(`  ${tarballUrl}`);
-  log('Then place the archive member(s) at:');
-  for (const member of entry.entries) {
-    log(`  ${join(binDir, member)}`);
+  const includesHelper = entry.entries.includes(MACOS_HELPER_NAME);
+  log('Then extract the archive so the installed file(s) are at:');
+  log(`  ${join(binDir, entry.binaryName)}`);
+  if (includesHelper) {
+    log(`  ${join(binDir, MACOS_HELPER_NAME)}`);
   }
   log('');
   log('Verify the download before running it:');
