@@ -59,8 +59,11 @@ test('wrapper reports a non-zero exit status when the child dies to a signal', {
 }, async () => {
   const entry = resolve('darwin', 'arm64');
   const fakeBinary = join(wrapperScriptPath, '..', entry.binaryName);
+  const fakeHelper = join(wrapperScriptPath, '..', 'agent-desktop-macos-helper');
   writeFileSync(fakeBinary, '#!/usr/bin/env node\nprocess.kill(process.pid, "SIGKILL");\n', { mode: 0o755 });
   chmodSync(fakeBinary, 0o755);
+  writeFileSync(fakeHelper, '#!/usr/bin/env node\n', { mode: 0o755 });
+  chmodSync(fakeHelper, 0o755);
   try {
     const { code, stderr } = await runScriptWithOsStub(
       wrapperScriptPath,
@@ -72,6 +75,7 @@ test('wrapper reports a non-zero exit status when the child dies to a signal', {
     assert.match(stderr, /terminated by signal/);
   } finally {
     try { unlinkSync(fakeBinary); } catch {}
+    try { unlinkSync(fakeHelper); } catch {}
   }
 });
 
