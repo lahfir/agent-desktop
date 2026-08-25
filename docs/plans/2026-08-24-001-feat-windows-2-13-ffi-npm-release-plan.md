@@ -84,7 +84,7 @@ Documentation truth:
 
 - R18. **`skills/agent-desktop-windows/` ships and `agent-desktop skills` serves it** — `list` names it, `get` returns its body, and `get --reference` returns each of its references.
 - R19. **A test fails when a skill document on disk is not reachable from the embedding module.** Coverage is derived from the module's own source, never from a second hand-maintained list of the first.
-- R20. **Every capability claim in the new and updated documents matches the adapter.** `list-surfaces`, the four notification commands, and cursor-overlay rendering are documented as unavailable on Windows; every command documented as working is one `WindowsAdapter` implements.
+- R20. **Every capability claim in the new and updated documents matches the adapter, and no shipped document instructs a Windows agent to use something that exists only on macOS.** `list-surfaces`, the four notification commands, and cursor-overlay rendering are documented as unavailable on Windows; every command documented as working is one `WindowsAdapter` implements; and `skills/agent-desktop/references/workflows.md`, which the binary embeds and serves on every platform, gains a Windows branch for its macOS-only first-time-setup instructions.
 - R21. **`README.md`'s Platform Support table, installation section and permissions section state what is true on Windows** — six rows flip to **Yes**, Notifications stays **Planned**, and the macOS-only build and permission prose gains its Windows counterpart.
 
 Evidence:
@@ -332,7 +332,7 @@ Rows are listed in dependency order; U-IDs are stable identifiers, not sequence 
 - **Goal:** Ship `skills/agent-desktop-windows/`, make the binary serve it, make its capability claims true, and make a future unwired skill file fail a test.
 - **Requirements:** R18, R19, R20.
 - **Dependencies:** none.
-- **Files:** `skills/agent-desktop-windows/SKILL.md`, `skills/agent-desktop-windows/references/permissions-and-elevation.md`, `skills/agent-desktop-windows/references/chromium-and-electron.md`, `skills/agent-desktop-windows/references/troubleshooting.md`, `crates/core/src/commands/skills.rs`, `crates/core/src/commands/skills_tests.rs`, `skills/agent-desktop/SKILL.md`.
+- **Files:** `skills/agent-desktop-windows/SKILL.md`, `skills/agent-desktop-windows/references/permissions-and-elevation.md`, `skills/agent-desktop-windows/references/chromium-and-electron.md`, `skills/agent-desktop-windows/references/troubleshooting.md`, `crates/core/src/commands/skills.rs`, `crates/core/src/commands/skills_tests.rs`, `skills/agent-desktop/SKILL.md`, `skills/agent-desktop/references/workflows.md`.
 - **Approach:**
   1. `SKILL.md` follows the frontmatter and section shape of `skills/agent-desktop/SKILL.md:1-21` — `name`, `version`, `tags`, `requirements`, folded `description` — and opens with a capability table stating, per command group, what works on Windows and what returns `PLATFORM_NOT_SUPPORTED`. The three honest negatives are named explicitly: `list-surfaces`, the four notification commands, and cursor-overlay rendering (recorded as a session setting, not drawn).
   2. `references/permissions-and-elevation.md` covers what a Windows agent must know before it acts: UIA needs no special permission for same-integrity targets; UIPI blocks `SendInput` and `PostMessage` from Medium to High integrity and detection is a token-integrity read rather than a `SendInput` return value (`A9-2`, `A9-3`, `A20-1`); window activation is the measured exception that succeeds across that boundary (`A24-16`); the blocked-combo list and why `ctrl+alt+delete` is deliberately absent from it; protected process names; and the cross-process interaction lease that serialises interactive work.
@@ -341,6 +341,7 @@ Rows are listed in dependency order; U-IDs are stable identifiers, not sequence 
   5. Wire all four files into `crates/core/src/commands/skills.rs` as `include_str!` constants and a third `SKILLS` entry with canonical name `agent-desktop-windows` and the alias `windows`, embedded unconditionally per KTD6.
   6. Add the two tests KTD7 describes to `skills_tests.rs`: the derived coverage test that every `.md` under `skills/` appears as a path in `skills.rs`'s own source text, and a behavioural test that `list` names the new skill and `get --reference` returns each of its references.
   7. Update `skills/agent-desktop/SKILL.md`: add the Windows skill to the reference-files table, replace the macOS-only installation and permission prose with text that covers both platforms, and correct the Observation quick-reference so `list-surfaces` carries its macOS-only caveat.
+  8. Update `skills/agent-desktop/references/workflows.md`, which is embedded in the binary as `SKILL_DESKTOP_REF_WORKFLOWS` and is therefore served to every agent on every platform. Its "First-Time Setup" section is macOS-only today — `agent-desktop permissions --request` followed by *"System Settings > Privacy & Security > Accessibility > enable your terminal"* (`workflows.md:9-18`) — so a Windows agent following the shipped guidance is sent to a menu that does not exist. Give the section a Windows branch, and add one Windows-specific workflow example, per the origin's Skill Update line. This file is the sharpest instance of the sub-phase's second theme: it is not merely absent on Windows, it is actively wrong there, and it ships inside the binary.
 - **Non-goals for this unit:** no `references/windows.md` under the existing skill, and no change to the `cfg`-gating of `references/macos.md` (KTD6).
 - **Patterns to follow:** `skills/agent-desktop/references/macos.md` for the per-platform reference voice and length; `skills/agent-desktop-ffi/` for a second top-level skill package's layout; `skills.rs:4-26, 92-107` for the embedding shape. `scripts/check-no-phase-references.sh` already scans `skills/`, so no plan or sub-phase id may appear in any of these files — probe row ids are exempt and are the correct way to cite evidence here.
 - **Test scenarios:**
@@ -348,6 +349,7 @@ Rows are listed in dependency order; U-IDs are stable identifiers, not sequence 
   - The coverage test fails when a new `.md` is added under `skills/` and not wired into `skills.rs` — invert-verified by adding a scratch file, watching the test fail, and removing it.
   - The coverage test fails when an existing `include_str!` line is deleted — invert-verified, since this is the regression it exists to catch.
   - A capability-claim test asserts that every command the Windows skill's capability table marks as working is one the Windows adapter implements, and that `list-surfaces` and the notification commands are marked unavailable. This is the test R20 needs, and it fails if the adapter later implements one without the document being updated.
+  - No shipped skill document sends a Windows reader to a macOS-only affordance: a test asserts `workflows.md`'s setup section names both platforms, so the file cannot regress to single-platform instructions.
   - `bash scripts/check-no-phase-references.sh` passes with the new files in scope.
   - `bash scripts/link-skills.sh` picks up the new directory with no change to the script.
 - **Verification:** the binary serves the new skill, its claims match the adapter under test rather than under description, and a future skill file that is committed but not embedded cannot pass CI.
@@ -380,6 +382,7 @@ Rows are listed in dependency order; U-IDs are stable identifiers, not sequence 
   4. `npm pack` the package and install the resulting tarball globally on this machine with `AGENT_DESKTOP_BINARY_PATH` pointing at the binary step 3 installed, then run `agent-desktop version`, `agent-desktop snapshot --app <real app> -i`, and one interaction through the npm shim. This exercises packaging, the generated `.cmd` shim, the wrapper's binary resolution and its exit-code propagation against the real product.
   5. **State what this does not prove.** The `curl` fetch of a GitHub Release URL and of `checksums.txt` is not exercised here, because no Windows asset is published yet. That code is platform-agnostic, unchanged by this sub-phase, and exercised on every macOS install; the Windows-specific parts of the path — platform key resolution, expected-entry set, extraction, shim, wrapper — are all covered by steps 3 and 4. This split is recorded in the PR rather than glossed, because "verified end to end" and "verified except for the one step that needs publication" are different claims.
   6. Record the ARM64 archive's existence, size and checksum, and the ARM64 leg's `version` smoke output from the runner log. This machine is x64, so the ARM64 binary is not run here; R17 is satisfied on the runner and this unit records where.
+  7. The origin's Release checklist also asks that the release notes document Windows support. Nothing in this PR writes that text: `release-please` composes the release body from Conventional Commit subjects, so the notes say what the commits say. Record in the PR description that this sub-phase's `feat:` subjects name Windows explicitly, which is the whole mechanism — there is no separate notes file to edit, and inventing one would add a surface the release pipeline does not read.
 - **Test scenarios:**
   - The downloaded archive's SHA-256 matches its `.sha256` line, compared with the same lower-cased hex form postinstall's parser uses.
   - `validateArchive` accepts the real Windows archive and rejects it when a second entry is added to a copy.
@@ -448,7 +451,7 @@ Every requirement maps to at least one test that fails if the requirement is vio
 | R17 | the ARM64 leg's `version` smoke step fails if the built binary does not start | U3 |
 | R18 | `skills list` / `get` / `get --reference` return the new skill and each reference | U7 |
 | R19 | adding an unwired `.md` under `skills/`, or deleting an `include_str!`, fails the coverage test | U7 |
-| R20 | the capability-claim test fails when a documented-working command is not implemented, or a documented-unavailable one is | U7, U8 |
+| R20 | the capability-claim test fails when a documented-working command is not implemented, or a documented-unavailable one is; the setup-section test fails when a shipped skill document names only one platform | U7, U8 |
 | R21 | every **Yes** row corresponds to an implemented adapter method, checked against U7's table | U8 |
 | R22 | `13-ledger-check.ps1` and `check-capture-redaction.ps1` pass over area 25 | U1 |
 | R23 | `check-phases-ledger-citations.ps1` passes; no §2.13 clause contradicts what shipped | U10 |
@@ -477,7 +480,7 @@ Every requirement maps to at least one test that fails if the requirement is vio
 5. `cargo test -p agent-desktop-ffi --lib` runs on a Windows lane, and a test drives the real `WindowsAdapter` through the C ABI against a window it staged, confirming the click by the window's own state rather than by the returned envelope.
 6. The Windows FFI archive carries the MSVC import library, the ARM64 cdylib is built and released, and `cbindgen --verify` reports no drift.
 7. `aarch64-pc-windows-msvc` compiles on every PR and the Windows unit suite runs on a native ARM64 lane.
-8. `skills/agent-desktop-windows/` ships, the binary serves it, every capability claim in it matches the adapter, and a skill document committed without being embedded fails a test.
+8. `skills/agent-desktop-windows/` ships, the binary serves it, every capability claim in it matches the adapter, the embedded `workflows.md` no longer sends a Windows agent to a macOS-only menu, and a skill document committed without being embedded fails a test.
 9. `README.md`'s Platform Support table, installation and permissions sections state what is true on Windows, with Notifications still **Planned**.
 10. Probe **area 25** is committed with rows written against their captures, and is registered in `.github/workflows/windows-capability-probe.yml` in both the `paths` filter and a run step, with its captures uploading from the CI run.
 11. **Every `FINDINGS.md` row whose action column names this sub-phase is disposed of.** Verified at planning time: no row names 2.13, so the obligation is discharged by re-verification at close rather than by work.
@@ -502,7 +505,7 @@ The origin estimates ~1.2k LOC. Counted the way this document's delivery model d
 | FFI Win32 fixture and round-trip test | ~250 | yes |
 | `skills.rs` wiring and the two new tests | ~70 | yes |
 | **Product code total** | **~810** | **yes** |
-| `skills/agent-desktop-windows/` (4 documents) | ~800 | documentation |
+| `skills/agent-desktop-windows/` (4 documents) plus the `agent-desktop` skill's Windows branches | ~850 | documentation |
 | `README.md`, `docs/phases.md` | ~90 | documentation |
 | Probe area 25 (4 scripts) plus captures and rows | ~450 | evidence, exempt |
 
