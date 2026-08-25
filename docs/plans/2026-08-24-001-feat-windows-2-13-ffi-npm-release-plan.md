@@ -451,7 +451,7 @@ Every requirement maps to at least one test that fails if the requirement is vio
 | R14 | the dry-run Windows FFI zip contains `agent_desktop_ffi.dll.lib` | U6, U9 |
 | R15 | the `build-ffi` ARM64 Windows leg produces its zip in the dry run | U6, U9 |
 | R16 | `platform-check` fails on `windows-11-arm` when `aarch64-pc-windows-msvc` does not compile; `test-windows-arm` fails when the unit suite does | U3 |
-| R17 | the ARM64 leg's `version` smoke step fails if the built binary does not start | U3 |
+| R17 | the ARM64 leg's `version` smoke step fails if the built binary does not start | U3, U9 |
 | R18 | `skills list` / `get` / `get --reference` return the new skill and each reference | U7 |
 | R19 | adding an unwired `.md` under `skills/`, or deleting an `include_str!`, fails the coverage test | U7 |
 | R20 | the capability-claim test fails when a documented-working command is not implemented, or a documented-unavailable one is; the setup-section test fails when a shipped skill document names only one platform | U7, U8 |
