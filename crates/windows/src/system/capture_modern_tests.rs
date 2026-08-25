@@ -86,12 +86,6 @@ fn pattern_fixture_window_capture_matches_when_supported() {
     for (index, point) in expectation.sample_points().into_iter().enumerate() {
         samples[index] = sample_rgb(&bgra, width, point.x, point.y);
     }
-    // A hosted session whose compositor never produces pixels captures
-    // uniform black for every window. One settled re-capture rules out a
-    // cold first frame; if the frame is still entirely black the session
-    // cannot render at all, which is an environment bound (named below),
-    // not a color-matching defect - any nonzero-but-wrong sample still
-    // fails the assertion underneath.
     if samples.iter().all(|sample| *sample == [0u8; 3]) {
         std::thread::sleep(std::time::Duration::from_millis(500));
         let retried = capture_window(fixture.handle() as _, 1.0, deadline())
