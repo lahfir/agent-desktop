@@ -7,6 +7,10 @@ const postinstallScriptPath = join(__dirname, '..', '..', 'npm', 'scripts', 'pos
 const wrapperScriptPath = join(__dirname, '..', '..', 'npm', 'bin', 'agent-desktop.js');
 
 function writeOsStub(osPlatform, osArch) {
+  const known = /^[a-zA-Z0-9]+$/;
+  if (!known.test(osPlatform) || !known.test(osArch)) {
+    throw new Error(`unsupported os stub identity: ${osPlatform}-${osArch}`);
+  }
   const stub = join(tmpdir(), `agent-desktop-os-stub-${process.pid}-${osPlatform}-${osArch}.js`);
   writeFileSync(
     stub,

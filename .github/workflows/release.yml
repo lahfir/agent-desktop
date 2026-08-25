@@ -155,6 +155,7 @@ jobs:
             runner: windows-11-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        persist-credentials: false
         with:
           ref: ${{ needs.release-please.outputs.checkout_ref }}
 
@@ -321,6 +322,7 @@ jobs:
             lib_name: agent_desktop_ffi.dll
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        persist-credentials: false
         with:
           ref: ${{ needs.release-please.outputs.checkout_ref }}
 
@@ -487,6 +489,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        persist-credentials: false
         with:
           ref: ${{ needs.release-please.outputs.checkout_ref }}
 
@@ -608,6 +611,7 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        persist-credentials: false
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
 
@@ -646,6 +650,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        persist-credentials: false
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
 
