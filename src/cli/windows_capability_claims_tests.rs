@@ -11,6 +11,20 @@ const MUST_STAY_UNAVAILABLE_ON_WINDOWS: &[&str] = &[
     "cursor-overlay",
 ];
 
+/// Commands the Windows table documents as unavailable that no adapter method
+/// backs: core refuses them on every platform before dispatch reaches an
+/// adapter, so the behavioural pin cannot cover them and must not pretend to.
+/// They are listed rather than ignored so the closure assertion below stays
+/// exhaustive.
+const REFUSED_BY_CORE_ON_EVERY_PLATFORM: &[&str] =
+    &["key-down", "key-up", "mouse-down", "mouse-up"];
+
+/// The behavioural pin is one-directional: it proves the six named commands are
+/// still documented as unavailable, and says nothing about a seventh row added
+/// later. Such a row would satisfy every per-name assertion while never being
+/// checked against the adapter at all, which is how a false claim ships. The
+/// closing set assertion makes adding a row a decision: pin it behaviourally,
+/// or declare it refused by core before any adapter is reached.
 #[test]
 fn windows_skill_capability_claims_resolve_against_dispatch() {
     let dispatchable: BTreeSet<String> = cli_command_names().into_iter().collect();
@@ -37,6 +51,19 @@ fn windows_skill_capability_claims_resolve_against_dispatch() {
             "the Windows skill stopped documenting '{name}' as unavailable on Windows"
         );
     }
+
+    let documented: BTreeSet<&str> = unavailable.iter().map(String::as_str).collect();
+    let accounted: BTreeSet<&str> = MUST_STAY_UNAVAILABLE_ON_WINDOWS
+        .iter()
+        .copied()
+        .chain(REFUSED_BY_CORE_ON_EVERY_PLATFORM.iter().copied())
+        .collect();
+    assert_eq!(
+        documented, accounted,
+        "every command the Windows table documents as unavailable must be either \
+         behaviourally pinned in MUST_STAY_UNAVAILABLE_ON_WINDOWS or declared in \
+         REFUSED_BY_CORE_ON_EVERY_PLATFORM; an unaccounted row is never verified"
+    );
 }
 
 fn windows_skill_commands(claimed_working: bool) -> Vec<String> {

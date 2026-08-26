@@ -90,9 +90,7 @@ pub(super) fn environment_block(
 ) -> Result<Vec<u16>, AdapterError> {
     let mut block = Vec::new();
     for (key, value) in merge_environment(std::env::vars(), overrides)? {
-        for unit in format!("{key}={value}").encode_utf16() {
-            block.push(unit);
-        }
+        block.extend(format!("{key}={value}").encode_utf16());
         block.push(0);
     }
     block.push(0);

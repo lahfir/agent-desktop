@@ -44,7 +44,7 @@ struct Skill {
     aliases: &'static [&'static str],
     summary: &'static str,
     main: &'static str,
-    refs: fn() -> &'static [SkillRef],
+    refs: &'static [SkillRef],
 }
 
 const SKILL_DESKTOP_REFS: &[SkillRef] = &[
@@ -71,10 +71,6 @@ const SKILL_DESKTOP_REFS: &[SkillRef] = &[
     },
 ];
 
-fn skill_desktop_refs() -> &'static [SkillRef] {
-    SKILL_DESKTOP_REFS
-}
-
 const SKILL_FFI_REFS: &[SkillRef] = &[
     SkillRef {
         rel_path: "references/build-and-link.md",
@@ -94,10 +90,6 @@ const SKILL_FFI_REFS: &[SkillRef] = &[
     },
 ];
 
-fn skill_ffi_refs() -> &'static [SkillRef] {
-    SKILL_FFI_REFS
-}
-
 const SKILL_WINDOWS_REFS: &[SkillRef] = &[
     SkillRef {
         rel_path: "references/permissions-and-elevation.md",
@@ -113,31 +105,27 @@ const SKILL_WINDOWS_REFS: &[SkillRef] = &[
     },
 ];
 
-fn skill_windows_refs() -> &'static [SkillRef] {
-    SKILL_WINDOWS_REFS
-}
-
 const SKILLS: &[Skill] = &[
     Skill {
         canonical: "agent-desktop",
         aliases: &["desktop", "agent-desktop"],
         summary: "Primary guide. Snapshot/ref loop, JSON envelope, 59 commands including session lifecycle, cursor overlay, observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
         main: SKILL_DESKTOP_MAIN,
-        refs: skill_desktop_refs,
+        refs: SKILL_DESKTOP_REFS,
     },
     Skill {
         canonical: "agent-desktop-ffi",
         aliases: &["ffi", "agent-desktop-ffi"],
         summary: "Embedding agent-desktop in another process via the C ABI. Build/link, error propagation, handle ownership, threading rules.",
         main: SKILL_FFI_MAIN,
-        refs: skill_ffi_refs,
+        refs: SKILL_FFI_REFS,
     },
     Skill {
         canonical: "agent-desktop-windows",
         aliases: &["windows", "agent-desktop-windows"],
         summary: "Windows platform guide. Capability table (what works, what returns PLATFORM_NOT_SUPPORTED), UIPI/elevation boundaries, Chromium/Electron settle behavior, troubleshooting.",
         main: SKILL_WINDOWS_MAIN,
-        refs: skill_windows_refs,
+        refs: SKILL_WINDOWS_REFS,
     },
 ];
 
@@ -155,7 +143,7 @@ pub fn list() -> Result<Value, AppError> {
                 "name": s.canonical,
                 "aliases": s.aliases,
                 "summary": s.summary,
-                "references": (s.refs)().iter().map(|r| r.rel_path).collect::<Vec<_>>(),
+                "references": s.refs.iter().map(|r| r.rel_path).collect::<Vec<_>>(),
             })
         })
         .collect();
@@ -166,7 +154,7 @@ pub fn get(args: GetArgs) -> Result<Value, AppError> {
     let skill = find_skill(&args.name)?;
 
     if let Some(rel) = args.reference {
-        let refs = (skill.refs)();
+        let refs = skill.refs;
         let r = refs
             .iter()
             .find(|r| matches_ref(r.rel_path, &rel))
@@ -233,7 +221,7 @@ fn matches_ref(rel_path: &str, query: &str) -> bool {
 }
 
 fn render_full(skill: &Skill) -> String {
-    let refs = (skill.refs)();
+    let refs = skill.refs;
     let mut out = String::with_capacity(
         skill.main.len() + refs.iter().map(|r| r.body.len() + 64).sum::<usize>(),
     );
