@@ -113,7 +113,7 @@ regression in the shipped rule is a regression the fixture can see.
 
 These gates look like they run everywhere, and they do not. Both
 `check-no-phase-references.sh` and `check-rust-file-size.sh` are steps of the
-macOS-only `Test` job in `.github/workflows/ci.yml` (lines 126-130); the Linux
+macOS-only `Test` job in `.github/workflows/ci.yml` (lines 190-194); the Linux
 and Windows CI lanes (`test-linux`, `test-windows`) never invoke them.
 `.githooks/pre-commit` used to be the reason neither script ran on the
 Windows dev box at all, back when its documented invocation there was
@@ -204,9 +204,9 @@ instead of discoverable only when a real commit happens to exercise the gap.
   docs, so the body skipped on every run and reported green forever —
   indistinguishable, again, from a test that ran and found nothing wrong. The
   fix set the variable on the CI lane that owns staging the fixture
-  (`.github/workflows/ci.yml:339-342`) and added
+  (`.github/workflows/ci.yml:415-417`) and added
   `the_windows_lane_stages_the_live_wpf_host`
-  (`crates/windows/src/tree/envelope_live_tests.rs:108-124`), which reads
+  (`crates/windows/src/tree/envelope_live_tests.rs:109-131`), which reads
   `ci.yml` itself and asserts the assignment sits on the step that runs the
   library tests, so the variable cannot silently vanish from the one place
   that makes it real. Recording that nothing was found is data; recording
