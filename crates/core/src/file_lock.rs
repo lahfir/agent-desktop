@@ -4,7 +4,26 @@ use std::time::Duration;
 
 use crate::{AdapterError, Deadline, ErrorCode};
 
+/// An advisory lock released by closing its descriptor, deliberately without
+/// an explicit unlock on drop.
+///
+/// The two are identical for a lease nobody shared and opposite for one handed
+/// to a child. `duplicate_inheritable` hands out an `F_DUPFD` descriptor, which
+/// shares this lock's *open file description*, and an advisory lock lives on
+/// that description rather than on any one descriptor. Unlocking therefore
+/// released it for every holder of the description, so a parent dropping its
+/// lease after a child had adopted the inherited descriptor revoked the
+/// child's exclusivity — the single guarantee the lease exists to provide —
+/// and let a second acquirer through. Whether that happened depended on which
+/// of the two calls landed first, which is why it surfaced as an intermittent
+/// failure of the adoption test rather than a constant one. Closing releases
+/// only when the last descriptor closes, which is what the adopt path is
+/// written against.
 pub(crate) struct FileLock {
+    /// Held for its lifetime rather than read: closing it is what releases the
+    /// lock, so the value being alive *is* its purpose. Unix additionally reads
+    /// it to duplicate the descriptor for a child.
+    #[cfg_attr(not(unix), allow(dead_code))]
     file: File,
     #[cfg(unix)]
     contention_count: u64,
@@ -86,12 +105,6 @@ impl FileLock {
             ));
         }
         lock_file(inherited, deadline, purpose, canonical_path)
-    }
-}
-
-impl Drop for FileLock {
-    fn drop(&mut self) {
-        let _ = self.file.unlock();
     }
 }
 
