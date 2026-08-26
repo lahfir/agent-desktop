@@ -3,7 +3,6 @@ const { execFileSync } = require('node:child_process');
 const {
   chmodSync,
   existsSync,
-  mkdtempSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -11,7 +10,6 @@ const {
   unlinkSync,
   writeFileSync,
 } = require('node:fs');
-const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { afterEach, test } = require('node:test');
 
@@ -22,24 +20,18 @@ const {
   tarCommand,
   tarballName,
 } = require('../../npm/lib/platform.js');
-const { runScriptWithOsStub } = require('./helpers.js');
+const { createTemporaryRoots, runScriptWithOsStub } = require('./helpers.js');
 
 const postinstallScriptPath = join(__dirname, '..', '..', 'npm', 'scripts', 'postinstall.js');
 
-const roots = [];
+const { temporaryDirectory, trackRoot, drainRoots } = createTemporaryRoots();
 
 afterEach(() => {
   delete process.env.AGENT_DESKTOP_MACOS_HELPER_PATH;
-  for (const root of roots.splice(0)) {
+  for (const root of drainRoots()) {
     postinstall.trashRecoverably(root);
   }
 });
-
-function temporaryDirectory() {
-  const root = mkdtempSync(join(tmpdir(), 'agent-desktop-npm-test-'));
-  roots.push(root);
-  return root;
-}
 
 function archive(entries) {
   const root = temporaryDirectory();
@@ -191,7 +183,7 @@ const POSIX_CLEANUP_ONLY = process.platform === 'win32'
 test('recoverable cleanup invokes trash and removes the original path', { skip: POSIX_CLEANUP_ONLY }, () => {
   const target = temporaryDirectory();
   const recovered = `${target}.recovered`;
-  roots.push(recovered);
+  trackRoot(recovered);
   const fakeTrash = executable('#!/bin/sh\nmv "$1" "$1.recovered"\n');
 
   postinstall.trashRecoverably(target, fakeTrash);
@@ -251,7 +243,7 @@ test('cleanup failure does not mask a successful archive install', { skip: POSIX
   const retained = warnings.match(/retained at (.*\.extract-[^:]+):/)?.[1];
   assert.ok(retained);
   assert.equal(existsSync(retained), true);
-  roots.push(retained);
+  trackRoot(retained);
 });
 
 test('custom helper override must be absolute', () => {
