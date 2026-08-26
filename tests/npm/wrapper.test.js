@@ -14,6 +14,7 @@ const postinstall = require('../../npm/scripts/postinstall.js');
 const { resolve } = require('../../npm/lib/platform.js');
 const {
   createTemporaryRoots,
+  osStubEnv,
   postinstallScriptPath,
   runScriptWithOsStub,
   wrapperScriptPath,
@@ -87,6 +88,7 @@ test('AGENT_DESKTOP_BINARY_PATH installs on windows without any helper present',
   const env = { ...process.env };
   delete env.AGENT_DESKTOP_SKIP_DOWNLOAD;
   env.AGENT_DESKTOP_BINARY_PATH = customBinary;
+  Object.assign(env, osStubEnv('win32', 'x64'));
   const errFile = join(scratch, 'child-stderr.txt');
   const errFd = openSync(errFile, 'w');
   try {
