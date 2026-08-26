@@ -28,6 +28,11 @@ on:
         required: false
         default: false
         type: boolean
+      allow_republish:
+        description: Replace the assets of a release that already carries them
+        required: false
+        default: false
+        type: boolean
 
 # One release run per commit — never cancel, just queue.
 concurrency:
@@ -54,6 +59,7 @@ jobs:
       publish_npm: ${{ steps.manual.outputs.publish_npm || 'true' }}
       publish_skills: ${{ steps.manual.outputs.publish_skills || steps.release.outputs.release_created }}
       dry_run: ${{ steps.manual.outputs.dry_run || 'false' }}
+      allow_republish: ${{ steps.manual.outputs.allow_republish || 'false' }}
       # A dry run dispatched from a branch must build THAT branch's commit, not
       # the tag's tree: tag_name points at an existing (main) tag whose crates/
       # windows is still the pre-phase stub. Real releases resolve the tag.
@@ -75,6 +81,7 @@ jobs:
           PUBLISH_NPM: ${{ inputs.publish_npm }}
           PUBLISH_SKILLS: ${{ inputs.publish_skills }}
           DRY_RUN: ${{ inputs.dry_run }}
+          ALLOW_REPUBLISH: ${{ inputs.allow_republish }}
         run: |
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "Invalid version: ${VERSION}" >&2
@@ -91,6 +98,7 @@ jobs:
             echo "publish_npm=${PUBLISH_NPM}"
             echo "publish_skills=${PUBLISH_SKILLS}"
             echo "dry_run=${DRY_RUN}"
+            echo "allow_republish=${ALLOW_REPUBLISH}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Sync Cargo.lock on release PR
@@ -165,6 +173,10 @@ jobs:
           rustup target add ${{ matrix.target }}
 
       - name: Cache cargo registry
+        # A dry run checks out an arbitrary dispatching ref, so a cache written
+        # from it would later be restored by the default branch's own release
+        # build. Only the trusted release-tag checkout touches the shared cache.
+        if: needs.release-please.outputs.dry_run != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -332,6 +344,10 @@ jobs:
           rustup target add ${{ matrix.target }}
 
       - name: Cache cargo registry
+        # A dry run checks out an arbitrary dispatching ref, so a cache written
+        # from it would later be restored by the default branch's own release
+        # build. Only the trusted release-tag checkout touches the shared cache.
+        if: needs.release-please.outputs.dry_run != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -497,6 +513,10 @@ jobs:
         run: rustup show
 
       - name: Cache cargo registry
+        # A dry run checks out an arbitrary dispatching ref, so a cache written
+        # from it would later be restored by the default branch's own release
+        # build. Only the trusted release-tag checkout touches the shared cache.
+        if: needs.release-please.outputs.dry_run != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -560,11 +580,30 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          ALLOW_REPUBLISH: ${{ needs.release-please.outputs.allow_republish }}
         run: |
-          gh release view "$TAG_NAME" >/dev/null 2>&1 \
-            || gh release create "$TAG_NAME" \
+          # A re-dispatch of an already-shipped version would otherwise replace
+          # its assets in place: --clobber overwrites them and the asset-count
+          # assertion then passes over whatever survived, so every gate stays
+          # green while users' downloads change underneath them.
+          #
+          # Existence is the wrong discriminator - release-please creates the
+          # release itself when it merges the release PR, so a normal run finds
+          # one already there. What distinguishes a first upload from a
+          # re-dispatch is whether assets have been attached yet.
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            ATTACHED=$(gh release view "$TAG_NAME" --json assets --jq '.assets | length')
+            if [ "${ATTACHED}" -gt 0 ] && [ "${ALLOW_REPUBLISH}" != "true" ]; then
+              echo "FAIL: ${TAG_NAME} already carries ${ATTACHED} asset(s)."
+              echo "Re-uploading would replace shipped downloads. Cut a new version,"
+              echo "or dispatch with allow_republish=true if replacing them is intended."
+              exit 1
+            fi
+          else
+            gh release create "$TAG_NAME" \
               --title "$TAG_NAME" \
               --notes "Release ${TAG_NAME}"
+          fi
           gh release upload "$TAG_NAME" \
             ./*.tar.gz ./*.zip checksums.txt \
             --clobber
