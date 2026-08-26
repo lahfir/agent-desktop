@@ -1,5 +1,5 @@
 const { spawn } = require('node:child_process');
-const { unlinkSync, writeFileSync } = require('node:fs');
+const { mkdtempSync, unlinkSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 
@@ -49,7 +49,29 @@ function runScriptWithOsStub(scriptPath, osPlatform, osArch, args = []) {
   });
 }
 
+// Both suites create scratch directories and sweep them in afterEach. They
+// keep separate collections because their teardown differs in what else it
+// removes, so the factory hands each file its own rather than sharing one.
+function createTemporaryRoots() {
+  const roots = [];
+  return {
+    temporaryDirectory() {
+      const root = mkdtempSync(join(tmpdir(), 'agent-desktop-npm-test-'));
+      roots.push(root);
+      return root;
+    },
+    trackRoot(root) {
+      roots.push(root);
+      return root;
+    },
+    drainRoots() {
+      return roots.splice(0);
+    },
+  };
+}
+
 module.exports = {
+  createTemporaryRoots,
   postinstallScriptPath,
   runScriptWithOsStub,
   wrapperScriptPath,

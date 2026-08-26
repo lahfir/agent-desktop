@@ -2,37 +2,35 @@ const assert = require('node:assert/strict');
 const {
   chmodSync,
   closeSync,
-  mkdtempSync,
   openSync,
   readFileSync,
   unlinkSync,
   writeFileSync,
 } = require('node:fs');
-const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { afterEach, test } = require('node:test');
 
 const postinstall = require('../../npm/scripts/postinstall.js');
 const { resolve } = require('../../npm/lib/platform.js');
-const { postinstallScriptPath, runScriptWithOsStub, wrapperScriptPath, writeOsStub } = require('./helpers.js');
+const {
+  createTemporaryRoots,
+  postinstallScriptPath,
+  runScriptWithOsStub,
+  wrapperScriptPath,
+  writeOsStub,
+} = require('./helpers.js');
 
-const roots = [];
+const { temporaryDirectory, drainRoots } = createTemporaryRoots();
 
 afterEach(() => {
   delete process.env.AGENT_DESKTOP_MACOS_HELPER_PATH;
   for (const name of ['agent-desktop-win32-x64.exe', 'agent-desktop-win32-arm64.exe']) {
     try { unlinkSync(join(__dirname, '..', '..', 'npm', 'bin', name)); } catch {}
   }
-  for (const root of roots.splice(0)) {
+  for (const root of drainRoots()) {
     postinstall.trashRecoverably(root);
   }
 });
-
-function temporaryDirectory() {
-  const root = mkdtempSync(join(tmpdir(), 'agent-desktop-npm-test-'));
-  roots.push(root);
-  return root;
-}
 
 test('wrapper resolves the released win32-x64 mapping and names the missing-binary cause', async () => {
   const { code, stderr } = await runScriptWithOsStub(wrapperScriptPath, 'win32', 'x64', ['version']);
