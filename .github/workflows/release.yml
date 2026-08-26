@@ -23,11 +23,6 @@ on:
         required: true
         default: true
         type: boolean
-      dry_run:
-        description: Build and archive only — skip every publish job
-        required: false
-        default: false
-        type: boolean
       allow_republish:
         description: Replace the assets of a release that already carries them
         required: false
@@ -58,12 +53,7 @@ jobs:
       version: ${{ steps.release.outputs.major && format('{0}.{1}.{2}', steps.release.outputs.major, steps.release.outputs.minor, steps.release.outputs.patch) || steps.manual.outputs.version }}
       publish_npm: ${{ steps.manual.outputs.publish_npm || 'true' }}
       publish_skills: ${{ steps.manual.outputs.publish_skills || steps.release.outputs.release_created }}
-      dry_run: ${{ steps.manual.outputs.dry_run || 'false' }}
       allow_republish: ${{ steps.manual.outputs.allow_republish || 'false' }}
-      # A dry run dispatched from a branch must build THAT branch's commit, not
-      # the tag's tree: tag_name points at an existing (main) tag whose crates/
-      # windows is still the pre-phase stub. Real releases resolve the tag.
-      checkout_ref: ${{ (steps.manual.outputs.dry_run || 'false') == 'true' && github.sha || (steps.release.outputs.tag_name || steps.manual.outputs.tag_name) }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         if: github.event_name != 'workflow_dispatch'
@@ -80,7 +70,6 @@ jobs:
           VERSION: ${{ inputs.version }}
           PUBLISH_NPM: ${{ inputs.publish_npm }}
           PUBLISH_SKILLS: ${{ inputs.publish_skills }}
-          DRY_RUN: ${{ inputs.dry_run }}
           ALLOW_REPUBLISH: ${{ inputs.allow_republish }}
         run: |
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
@@ -97,7 +86,6 @@ jobs:
             echo "version=${VERSION}"
             echo "publish_npm=${PUBLISH_NPM}"
             echo "publish_skills=${PUBLISH_SKILLS}"
-            echo "dry_run=${DRY_RUN}"
             echo "allow_republish=${ALLOW_REPUBLISH}"
           } >> "$GITHUB_OUTPUT"
 
@@ -165,19 +153,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ needs.release-please.outputs.checkout_ref }}
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
-      # No cargo cache in this job, deliberately. It checks out
-      # release-please's checkout_ref, which a dispatch can aim at any branch,
-      # and a privileged job that builds that code while writing a shared cache
-      # is a poisoning vector the default branch later restores from
-      # (CodeQL actions/cache-poisoning/poisonable-step). A runtime `if:` does
-      # not remove it - the build steps are what CodeQL flags. Releases are
-      # rare, so a cold build is the right trade.
       - name: Install Rust toolchain
         run: |
           rustup show
           rustup target add ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build release binary (macOS)
         if: runner.os == 'macOS'
@@ -329,15 +320,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ needs.release-please.outputs.checkout_ref }}
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
-      # No cargo cache in this job, deliberately. It checks out
-      # release-please's checkout_ref, which a dispatch can aim at any branch,
-      # and a privileged job that builds that code while writing a shared cache
-      # is a poisoning vector the default branch later restores from
-      # (CodeQL actions/cache-poisoning/poisonable-step). A runtime `if:` does
-      # not remove it - the build steps are what CodeQL flags. Releases are
-      # rare, so a cold build is the right trade.
       - name: Install Rust toolchain
         run: |
           rustup show
@@ -345,6 +329,16 @@ jobs:
 
       # NEVER add --features stub-adapter to the release FFI build — it ships a no-op dylib
       # where every adapter call returns PLATFORM_NOT_SUPPORTED. The guard step below enforces this.
+      - name: Cache cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-
+
       - name: Guard — release dylib must not be a stub build
         shell: bash
         run: |
@@ -493,17 +487,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ needs.release-please.outputs.checkout_ref }}
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
-      # No cargo cache in this job, deliberately. It checks out
-      # release-please's checkout_ref, which a dispatch can aim at any branch,
-      # and a privileged job that builds that code while writing a shared cache
-      # is a poisoning vector the default branch later restores from
-      # (CodeQL actions/cache-poisoning/poisonable-step). A runtime `if:` does
-      # not remove it - the build steps are what CodeQL flags. Releases are
-      # rare, so a cold build is the right trade.
       - name: Install Rust toolchain
         run: rustup show
+
+      - name: Cache cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-ffi-gates-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-ffi-gates-cargo-
 
       - name: Install pinned cbindgen 0.29.4
         run: cargo install cbindgen --version 0.29.4 --locked
@@ -535,7 +532,7 @@ jobs:
   publish-github:
     name: Publish to GitHub Release
     needs: [release-please, build, build-ffi, ffi-release-gates]
-    if: needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.dry_run != 'true'
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -621,7 +618,7 @@ jobs:
   publish-npm:
     name: Publish to npm
     needs: [release-please, publish-github]
-    if: needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.publish_npm == 'true' && needs.release-please.outputs.dry_run != 'true'
+    if: needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.publish_npm == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -661,7 +658,7 @@ jobs:
   publish-skills:
     name: Publish Skills to ClawHub
     needs: [release-please]
-    if: needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.publish_skills == 'true' && needs.release-please.outputs.dry_run != 'true'
+    if: needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.publish_skills == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
