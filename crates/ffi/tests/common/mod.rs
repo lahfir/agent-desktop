@@ -28,9 +28,16 @@ static HOME_ID: AtomicU64 = AtomicU64::new(1);
 /// the *fallback* in `resolve_configured_state_root`, which reads
 /// `AGENT_DESKTOP_HOME` first and uses it verbatim when set - so a developer
 /// who exports that variable has every refmap these tests write land in their
-/// real state directory instead of the temporary one. The variable is pinned
-/// to the same isolated path rather than merely cleared, so the isolation
-/// holds whichever of the two the resolver consults.
+/// real state directory instead of the temporary one.
+///
+/// The variable is **cleared** rather than pointed at the isolated directory.
+/// Pinning it would isolate just as well but would also change which branch
+/// resolves the root, and the two branches do not produce the same layout: the
+/// env value is used verbatim while the fallback appends `.agent-desktop`.
+/// `c_abi_windows_private_file_install` plants a junction at exactly that
+/// appended component, so a pinned variable moves the state root out from
+/// under the junction and the refusal it asserts never happens. Clearing keeps
+/// every existing test on the layout it was written against.
 struct IsolatedHome {
     _lock: std::sync::MutexGuard<'static, ()>,
     path: std::path::PathBuf,
@@ -52,7 +59,7 @@ impl IsolatedHome {
         let previous = std::env::var_os("HOME");
         let previous_state_root = std::env::var_os("AGENT_DESKTOP_HOME");
         unsafe { std::env::set_var("HOME", &path) };
-        unsafe { std::env::set_var("AGENT_DESKTOP_HOME", &path) };
+        unsafe { std::env::remove_var("AGENT_DESKTOP_HOME") };
         Self {
             _lock: lock,
             path,
