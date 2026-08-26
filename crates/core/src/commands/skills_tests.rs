@@ -145,7 +145,7 @@ fn served_skill_paths() -> BTreeSet<String> {
     let mut served = BTreeSet::new();
     for skill in SKILLS {
         served.insert(format!("{}/SKILL.md", skill.canonical));
-        for reference in (skill.refs)() {
+        for reference in skill.refs {
             served.insert(format!("{}/{}", skill.canonical, reference.rel_path));
         }
     }

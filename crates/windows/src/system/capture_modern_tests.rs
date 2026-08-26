@@ -68,6 +68,14 @@ fn unsupported_host_reports_unavailable_without_capture_api() {
     );
 }
 
+/// Uniform black has two causes that look identical from the capture alone:
+/// this session composites nothing, or the capture path is broken and always
+/// yields a black frame. Skipping on the captured result alone would treat the
+/// code under test as its own oracle, and the second cause reproduces on every
+/// run - so the defect this test exists to catch would report a pass forever.
+/// An independent reader settles it: GDI blits the same client area without
+/// going through the capture path at all, so a window that demonstrably
+/// painted turns the skip into a failure.
 #[test]
 fn pattern_fixture_window_capture_matches_when_supported() {
     bootstrap();
@@ -97,12 +105,23 @@ fn pattern_fixture_window_capture_matches_when_supported() {
         }
     }
     if samples.iter().all(|sample| *sample == [0u8; 3]) {
-        eprintln!(
-            "skip: host compositor produced no pixels (uniform black across two \
-             settled captures); color matching cannot be evaluated in this session, \
-             while any nonzero-but-wrong sample would still fail the assertion below"
-        );
-        return;
+        match fixture.blit_client_samples() {
+            Ok(gdi) if expectation.matches_samples(&gdi) => {
+                panic!(
+                    "window capture returned uniform black while GDI read the expected \
+                     pattern from the same client area ({gdi:?}); the window painted, so \
+                     this is a capture defect rather than a session without a compositor"
+                );
+            }
+            _ => {
+                eprintln!(
+                    "skip: neither the capture path nor an independent GDI read of the \
+                     same client area produced pixels; this session composites nothing, \
+                     so color matching cannot be evaluated here"
+                );
+                return;
+            }
+        }
     }
     assert!(
         expectation.matches_samples(&samples),
