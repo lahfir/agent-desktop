@@ -143,7 +143,43 @@ test('archive installation places the windows executable and leaves no staging d
 
   assert.equal(readFileSync(binary, 'utf8'), 'cli-win-build');
   const newEntries = readdirSync(destination).filter((name) => !before.includes(name));
-  assert.deepEqual(newEntries.map((name) => join(destination, name)), [binary]);
+  assert.deepEqual(
+    newEntries.map((name) => join(destination, name)).sort(),
+    [binary, `${binary}.sha256`].sort(),
+    'installing leaves the executable and its digest sidecar, and nothing else',
+  );
+  assert.ok(
+    postinstall.matchesRecordedDigest(binary),
+    'the recorded digest must match the installed bytes',
+  );
+});
+
+test('a corrupted installed binary is not served by the fast path', () => {
+  const payload = archive({ 'agent-desktop.exe': 'cli-win-build' });
+  const destination = temporaryDirectory();
+  const binary = join(destination, 'agent-desktop-win32-x64.exe');
+
+  postinstall.installArchive(
+    payload.tarball,
+    binary,
+    join(destination, 'unused-helper'),
+    resolve('win32', 'x64'),
+  );
+  assert.ok(postinstall.matchesRecordedDigest(binary));
+
+  writeFileSync(binary, 'tampered-or-truncated');
+  assert.equal(
+    postinstall.matchesRecordedDigest(binary),
+    false,
+    'a binary whose bytes changed since install must not be declared ready',
+  );
+
+  unlinkSync(`${binary}.sha256`);
+  assert.equal(
+    postinstall.matchesRecordedDigest(binary),
+    false,
+    'a binary with no recorded digest is unverifiable, so it re-downloads once',
+  );
 });
 
 test('staging cleanup removes its own extract directory and a planted survivor is detectable', () => {
