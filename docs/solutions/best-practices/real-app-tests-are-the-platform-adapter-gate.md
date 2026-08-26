@@ -10,7 +10,7 @@ applies_when:
   - "Changing a platform adapter's tree, resolution, window, input, or accessibility code"
   - "Changing release-binary integration behavior"
   - "Fixing a bug that a mock adapter could not expose"
-tags: [e2e, fixture-app, accessibility, macos, regression, adapters]
+tags: [e2e, fixture-app, accessibility, macos, windows, regression, adapters]
 ---
 
 # Make permissioned fixture and real-app checks the adapter gate
@@ -60,13 +60,30 @@ deletion without treating a mock as a platform oracle.
 
 ## Standing practice on Windows
 
-Windows carries no fixture harness, so the gate takes the form of a scripted
-dogfood run against off-the-shelf software, and every sub-phase does one before
-it merges. The committed reports in `docs/dogfood-reports/` are the record: the
-macOS enhanced-reliability run that set the pattern, then vocabulary
-(sub-phase 2.3), the observation read path (2.4), resolution and the live
-locator (2.5), and actionability and occlusion (2.6). This is not a rule that
-recurred; it is how each layer of the adapter enters the product.
+Through sub-phase 2.11, Windows carried no fixture harness, so the gate took
+the form of a scripted dogfood run against off-the-shelf software, and every
+sub-phase did one before it merged. Sub-phase 2.12 shipped `tests/e2e-windows/`
+alongside a WinForms fixture app at `tests/fixture-app-windows/`: a PowerShell
+5.1 harness that stages the real, hashed `agent-desktop.exe`, drives it against
+the fixture, and asserts every effect by independent re-observation — the same
+discipline as macOS's `tests/e2e/run.sh`. `Run-E2E.ps1` is the one
+process-terminating entry point; the hosted CI lane runs its seeded-failure
+self-test (`Run-E2E.ps1 -SelfTestSeedFailure`) on every PR, proving a failing
+leg reaches a non-zero exit code, while the live suite needs a real desktop and
+the `DesktopLease` exclusivity guard, so it runs locally rather than on hosted
+CI.
+
+Dogfood against real off-the-shelf software remains a separate, additional gate
+every sub-phase still runs regardless of fixture coverage: the fixture buys
+deterministic mutation coverage the way `tests/e2e/run.sh` does on macOS, while
+dogfood proves the adapter against native seams — Explorer's DirectUI shell,
+Chromium/Electron hosts, System Settings — that no fixture can emulate. The
+committed reports in `docs/dogfood-reports/` are the record: the macOS
+enhanced-reliability run that set the pattern, then vocabulary (sub-phase 2.3),
+the observation read path (2.4), resolution and the live locator (2.5),
+actionability and occlusion (2.6), on through the fixture/e2e harness sub-phase
+itself (2.12) and every sub-phase since. This is not a rule that recurred; it is
+how each layer of the adapter enters the product.
 
 The vocabulary run shows what the shape buys. `probes/windows/scratch/run-dogfood.ps1` drove the
 `ControlType`→`Role`, action, and state vocabulary against four real UI stacks nobody in this
