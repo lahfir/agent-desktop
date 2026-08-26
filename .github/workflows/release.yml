@@ -167,24 +167,17 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.release-please.outputs.checkout_ref }}
 
+      # No cargo cache in this job, deliberately. It checks out
+      # release-please's checkout_ref, which a dispatch can aim at any branch,
+      # and a privileged job that builds that code while writing a shared cache
+      # is a poisoning vector the default branch later restores from
+      # (CodeQL actions/cache-poisoning/poisonable-step). A runtime `if:` does
+      # not remove it - the build steps are what CodeQL flags. Releases are
+      # rare, so a cold build is the right trade.
       - name: Install Rust toolchain
         run: |
           rustup show
           rustup target add ${{ matrix.target }}
-
-      - name: Cache cargo registry
-        # A dry run checks out an arbitrary dispatching ref, so a cache written
-        # from it would later be restored by the default branch's own release
-        # build. Only the trusted release-tag checkout touches the shared cache.
-        if: needs.release-please.outputs.dry_run != 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build release binary (macOS)
         if: runner.os == 'macOS'
@@ -338,24 +331,17 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.release-please.outputs.checkout_ref }}
 
+      # No cargo cache in this job, deliberately. It checks out
+      # release-please's checkout_ref, which a dispatch can aim at any branch,
+      # and a privileged job that builds that code while writing a shared cache
+      # is a poisoning vector the default branch later restores from
+      # (CodeQL actions/cache-poisoning/poisonable-step). A runtime `if:` does
+      # not remove it - the build steps are what CodeQL flags. Releases are
+      # rare, so a cold build is the right trade.
       - name: Install Rust toolchain
         run: |
           rustup show
           rustup target add ${{ matrix.target }}
-
-      - name: Cache cargo registry
-        # A dry run checks out an arbitrary dispatching ref, so a cache written
-        # from it would later be restored by the default branch's own release
-        # build. Only the trusted release-tag checkout touches the shared cache.
-        if: needs.release-please.outputs.dry_run != 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-
 
       # NEVER add --features stub-adapter to the release FFI build — it ships a no-op dylib
       # where every adapter call returns PLATFORM_NOT_SUPPORTED. The guard step below enforces this.
@@ -509,22 +495,15 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.release-please.outputs.checkout_ref }}
 
+      # No cargo cache in this job, deliberately. It checks out
+      # release-please's checkout_ref, which a dispatch can aim at any branch,
+      # and a privileged job that builds that code while writing a shared cache
+      # is a poisoning vector the default branch later restores from
+      # (CodeQL actions/cache-poisoning/poisonable-step). A runtime `if:` does
+      # not remove it - the build steps are what CodeQL flags. Releases are
+      # rare, so a cold build is the right trade.
       - name: Install Rust toolchain
         run: rustup show
-
-      - name: Cache cargo registry
-        # A dry run checks out an arbitrary dispatching ref, so a cache written
-        # from it would later be restored by the default branch's own release
-        # build. Only the trusted release-tag checkout touches the shared cache.
-        if: needs.release-please.outputs.dry_run != 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-ffi-gates-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-ffi-gates-cargo-
 
       - name: Install pinned cbindgen 0.29.4
         run: cargo install cbindgen --version 0.29.4 --locked
