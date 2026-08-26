@@ -18,7 +18,13 @@ const { dirname, isAbsolute, join } = require('path');
 const { platform, arch } = require('os');
 const { execFileSync } = require('child_process');
 const { createHash } = require('crypto');
-const { MACOS_HELPER_NAME, releasedKeys, resolve, tarballName } = require('../lib/platform');
+const {
+  MACOS_HELPER_NAME,
+  releasedKeys,
+  resolve,
+  tarCommand,
+  tarballName,
+} = require('../lib/platform');
 
 const projectRoot = join(__dirname, '..');
 const binDir = join(projectRoot, 'bin');
@@ -118,7 +124,7 @@ function customHelperPath(customBinaryPath) {
 }
 
 function validateArchive(tarballPath, expectedEntries) {
-  const listing = execFileSync('tar', ['-tzf', tarballPath], {
+  const listing = execFileSync(tarCommand(platform(), process.env), ['-tzf', tarballPath], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 30000,
@@ -137,7 +143,7 @@ function installArchive(tarballPath, binaryPath, helperPath, entry, trashCommand
   validateArchive(tarballPath, entry.entries);
   const staging = mkdtempSync(join(binDir, '.extract-'));
   try {
-    execFileSync('tar', ['-xzf', tarballPath, '-C', staging], {
+    execFileSync(tarCommand(platform(), process.env), ['-xzf', tarballPath, '-C', staging], {
       stdio: 'pipe',
       timeout: 30000,
     });

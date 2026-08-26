@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-const { execFileSync } = require('child_process');
+const { execFileSync, execSync } = require('child_process');
 const { readFileSync } = require('fs');
 const { join } = require('path');
+const { tmpdir } = require('os');
 
 const root = join(__dirname, '..');
 const npmDir = join(root, 'npm');
@@ -354,16 +355,42 @@ if (workflowProblems.length > 0) {
   throw new Error(workflowProblems.join('\n'));
 }
 
-const output = execFileSync('npm', ['pack', '--dry-run', '--json'], {
+// npm is a shell wrapper on Windows (npm.cmd), which execFileSync can neither
+// find by bare name nor, since Node's batch-file argument hardening, launch
+// directly - the two failures are ENOENT and EINVAL respectively, and both
+// leave this gate unrunnable on the platform the package now installs on.
+// Windows therefore goes through a shell; every argument here is a fixed
+// literal and the directory is passed as `cwd`, so nothing is interpolated
+// into the command line. POSIX keeps the direct, shell-free spawn.
+const onWindows = process.platform === 'win32';
+const packOptions = {
   cwd: npmDir,
   encoding: 'utf8',
   env: {
     ...process.env,
-    npm_config_cache: process.env.npm_config_cache || '/tmp/agent-desktop-npm-cache',
+    npm_config_cache:
+      process.env.npm_config_cache || join(tmpdir(), 'agent-desktop-npm-cache'),
   },
-});
+};
 
-const pack = JSON.parse(output)[0];
+// The command is a fixed literal with nothing interpolated into it, so the
+// shell form carries no injection surface; POSIX still spawns npm directly.
+const output = onWindows
+  ? execSync('npm pack --dry-run --json', packOptions)
+  : execFileSync('npm', ['pack', '--dry-run', '--json'], packOptions);
+
+// `npm pack --json` reported an array of packed packages up to npm 10 and
+// reports an object keyed by package name from npm 11 on. CI pins a Node major
+// rather than an npm version, so the shape moves underneath this gate without
+// anything in the repository changing. Accept both, and refuse a third rather
+// than indexing into it and reporting a confusing TypeError.
+const packed = JSON.parse(output);
+const pack = Array.isArray(packed) ? packed[0] : Object.values(packed)[0];
+if (!pack || !Array.isArray(pack.files)) {
+  throw new Error(
+    'npm pack --json returned an unrecognised shape; this gate cannot verify the packed file list',
+  );
+}
 const actualFiles = pack.files.map((file) => file.path).sort();
 const expected = [...expectedFiles].sort();
 

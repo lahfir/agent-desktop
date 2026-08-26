@@ -1,3 +1,6 @@
+const { existsSync } = require('fs');
+const { join } = require('path');
+
 const MACOS_HELPER_NAME = 'agent-desktop-macos-helper';
 
 const PLATFORMS = {
@@ -53,10 +56,32 @@ function tarballName(version, target) {
   return `agent-desktop-v${version}-${target}.tar.gz`;
 }
 
+// Windows ships bsdtar at System32\tar.exe, and that is the tar this package
+// is designed around: it reads a gzip tarball and accepts a drive-letter path.
+// A bare `tar` is resolved through PATH, where Git for Windows, MSYS and
+// Cygwin all place a GNU tar earlier. GNU tar reads `C:\dir\file.tar.gz` as
+// the `host:path` form of a remote archive and fails with
+// "Cannot connect to C: resolve failed" before it opens anything, so an
+// install on a developer machine with Git installed cannot unpack its own
+// release. Resolving the in-box tool by absolute path removes PATH from the
+// decision; a Windows without it falls back to PATH rather than refusing.
+function tarCommand(osPlatform, environment) {
+  if (osPlatform !== 'win32') {
+    return 'tar';
+  }
+  const systemRoot = environment.SystemRoot || environment.windir;
+  if (!systemRoot) {
+    return 'tar';
+  }
+  const inBox = join(systemRoot, 'System32', 'tar.exe');
+  return existsSync(inBox) ? inBox : 'tar';
+}
+
 module.exports = {
   MACOS_HELPER_NAME,
   PLATFORMS,
   releasedKeys,
   resolve,
+  tarCommand,
   tarballName,
 };
