@@ -103,12 +103,35 @@ function installExecutable(source, destination) {
   try {
     writeFileSync(temporary, readFileSync(source), { mode: 0o755 });
     chmodSync(temporary, 0o755);
-    if (sha256(source) !== sha256(temporary)) {
+    const digest = sha256(source);
+    if (digest !== sha256(temporary)) {
       throw new Error(`Executable copy verification failed for ${destination}`);
     }
     renameSync(temporary, destination);
+    writeFileSync(`${destination}.sha256`, `${digest}\n`);
   } finally {
     try { unlinkSync(temporary); } catch {}
+  }
+}
+
+/// Reports whether an already-present executable still matches what was
+/// installed. A reinstall that finds the file and stops has verified only that
+/// a name exists - the bytes could be a truncated download, a half-written
+/// file from an interrupted install, or something a user dropped there
+/// following the manual-recovery instructions. Without a recorded digest there
+/// is no heal path either: the fast path would keep declaring a corrupt binary
+/// ready forever. An unrecorded digest is treated as unverifiable rather than
+/// as a failure, so a binary installed before this sidecar existed re-downloads
+/// once instead of erroring.
+function matchesRecordedDigest(destination) {
+  const sidecar = `${destination}.sha256`;
+  if (!existsSync(sidecar)) {
+    return false;
+  }
+  try {
+    return readFileSync(sidecar, 'utf8').trim() === sha256(destination);
+  } catch {
+    return false;
   }
 }
 
@@ -285,7 +308,12 @@ function main() {
     return;
   }
 
-  if (existsSync(binaryPath) && (!includesHelper || existsSync(helperPath))) {
+  const alreadyInstalled =
+    existsSync(binaryPath) &&
+    matchesRecordedDigest(binaryPath) &&
+    (!includesHelper || (existsSync(helperPath) && matchesRecordedDigest(helperPath)));
+
+  if (alreadyInstalled) {
     chmodSync(binaryPath, 0o755);
     if (includesHelper) chmodSync(helperPath, 0o755);
     log(
@@ -349,6 +377,7 @@ module.exports = {
   cleanupStaging,
   customHelperPath,
   installArchive,
+  matchesRecordedDigest,
   printManualFallback,
   promptSkillInstall,
   trashRecoverably,
