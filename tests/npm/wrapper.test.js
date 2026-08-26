@@ -25,8 +25,13 @@ const { temporaryDirectory, drainRoots } = createTemporaryRoots();
 
 afterEach(() => {
   delete process.env.AGENT_DESKTOP_MACOS_HELPER_PATH;
+  // Installing now also writes a digest sidecar. Leaving one behind puts an
+  // unexpected file in npm/bin, which `npm pack` would include and the package
+  // contract gate rejects - so the sweep has to match what installing creates.
   for (const name of ['agent-desktop-win32-x64.exe', 'agent-desktop-win32-arm64.exe']) {
-    try { unlinkSync(join(__dirname, '..', '..', 'npm', 'bin', name)); } catch {}
+    const installed = join(__dirname, '..', '..', 'npm', 'bin', name);
+    try { unlinkSync(installed); } catch {}
+    try { unlinkSync(`${installed}.sha256`); } catch {}
   }
   for (const root of drainRoots()) {
     postinstall.trashRecoverably(root);
@@ -109,5 +114,6 @@ test('AGENT_DESKTOP_BINARY_PATH installs on windows without any helper present',
     assert.doesNotMatch(stderr, /macOS helper not found/);
   } finally {
     try { unlinkSync(installedBinary); } catch {}
+    try { unlinkSync(`${installedBinary}.sha256`); } catch {}
   }
 });
