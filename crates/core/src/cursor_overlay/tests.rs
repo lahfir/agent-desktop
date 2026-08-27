@@ -114,6 +114,24 @@ fn control_protocol_carries_the_session_lifecycle() {
 }
 
 #[test]
+fn present_control_carries_the_session_style() {
+    let mut style = CursorOverlayStyle::default();
+    style.set_size(2.0);
+    style.set_effects(false, true);
+    let config = CursorOverlayConfig::enabled(None, 6)
+        .expect("valid config")
+        .with_style(style.clone())
+        .expect("valid style");
+    let instruction = CursorOverlayInstruction::new(Point { x: 20.0, y: 40.0 }, &config, true)
+        .expect("valid instruction");
+
+    let control = CursorOverlayControl::present_with_style("run-1".into(), instruction, style);
+
+    assert_eq!(control.style().map(CursorOverlayStyle::size), Some(2.0));
+    assert_eq!(control.style().map(CursorOverlayStyle::ripple), Some(false));
+}
+
+#[test]
 fn travel_never_ripples_before_the_cursor_lands() {
     let motion =
         CursorMotion::new(Point { x: 0.0, y: 0.0 }, Point { x: 600.0, y: 0.0 }).with_impact(true);

@@ -42,8 +42,8 @@ Consumers must call `ad_init(AD_ABI_VERSION_MAJOR)` after `dlopen` to verify the
 loaded dylib matches the header the consumer was built against.
 
 Use additive versioned `AdExactRefEntry`, `AdExactWindowInfo`, and
-`AdExactSurfaceInfo` APIs when round-tripping observed identities. Legacy ABI-v3
-layouts remain binary-compatible but cannot express process generation or a
+`AdExactSurfaceInfo` APIs when round-tripping observed identities. Legacy
+layouts remain available but cannot express process generation or a
 surface ID; legacy direct window/ref targeting therefore fails closed.
 
 ## Command wrappers

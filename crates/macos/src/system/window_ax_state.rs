@@ -81,10 +81,12 @@ pub(crate) fn label_accessibility(
     pids.sort_unstable();
     pids.dedup();
     for pid in pids {
-        let accessible_ids = crate::system::process_identity::to_pid_t(pid)
+        let Some(accessible_ids) = crate::system::process_identity::to_pid_t(pid)
             .ok()
             .and_then(|pid| read(pid).ok())
-            .unwrap_or_default();
+        else {
+            continue;
+        };
         for window in windows.iter_mut().filter(|window| window.pid == pid) {
             window.state.accessible =
                 crate::system::window_resolve::parse_window_number(&window.id)
@@ -154,7 +156,9 @@ fn is_transient_surface_role(role: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_transient_surface_role;
+    use super::{is_transient_surface_role, label_accessibility};
+    use agent_desktop_core::{ProcessId, WindowInfo, WindowState};
+    use rustc_hash::FxHashSet;
 
     #[test]
     fn modal_surfaces_can_temporarily_own_focused_window() {
@@ -162,5 +166,33 @@ mod tests {
             assert!(is_transient_surface_role(role));
         }
         assert!(!is_transient_surface_role("AXButton"));
+    }
+
+    #[test]
+    fn failed_pid_probe_keeps_unknown_window_selectable() {
+        let mut windows = vec![window(10, "w-1"), window(20, "w-2")];
+
+        label_accessibility(&mut windows, |pid| {
+            if pid == 10 {
+                Ok(FxHashSet::default())
+            } else {
+                Err(agent_desktop_core::AdapterError::timeout("busy"))
+            }
+        });
+
+        assert!(!windows[0].state.accessible);
+        assert!(windows[1].state.accessible);
+    }
+
+    fn window(pid: u32, id: &str) -> WindowInfo {
+        WindowInfo {
+            id: id.into(),
+            title: "Main".into(),
+            app: "Fixture".into(),
+            pid: ProcessId::new(pid),
+            process_instance: Some(format!("{pid}:100")),
+            bounds: None,
+            state: WindowState::default(),
+        }
     }
 }

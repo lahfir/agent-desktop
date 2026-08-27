@@ -16,6 +16,8 @@ pub enum CursorOverlayControl {
     Present {
         session_id: String,
         instruction: CursorOverlayInstruction,
+        #[serde(default)]
+        style: CursorOverlayStyle,
     },
     Hide {
         session_id: String,
@@ -39,15 +41,24 @@ impl CursorOverlayControl {
 
     pub fn style(&self) -> Option<&CursorOverlayStyle> {
         match self {
-            Self::Enable { style, .. } => Some(style),
+            Self::Enable { style, .. } | Self::Present { style, .. } => Some(style),
             _ => None,
         }
     }
 
     pub fn present(session_id: String, instruction: CursorOverlayInstruction) -> Self {
+        Self::present_with_style(session_id, instruction, CursorOverlayStyle::default())
+    }
+
+    pub fn present_with_style(
+        session_id: String,
+        instruction: CursorOverlayInstruction,
+        style: CursorOverlayStyle,
+    ) -> Self {
         Self::Present {
             session_id,
             instruction,
+            style,
         }
     }
 

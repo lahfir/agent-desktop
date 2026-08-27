@@ -22,11 +22,11 @@ typedef struct {
 
 static const uint8_t ADReduceMotion = 1 << 2;
 static const uint8_t ADHighlightCue = 1 << 3;
-static const CGFloat ADStage = 120.0;
+static const CGFloat ADStage = 240.0;
 static const CGFloat ADBoxWidth = 32.0;
 static const CGFloat ADBoxHeight = 40.0;
-static const CGFloat ADTipX = 45.0;
-static const CGFloat ADTipY = 75.0;
+static const CGFloat ADTipX = 88.0;
+static const CGFloat ADTipY = 172.0;
 static const CGFloat ADBubbleWidth = 232.0;
 static const CGFloat ADBubbleHeight = 38.0;
 static const CGFloat ADHighlightPad = 5.0;
@@ -62,8 +62,8 @@ static CAShapeLayer *ADDartLayer(void) {
 
 static void ADTintPointer(void) {
     const AgentDesktopCursorStyle *style = ADStyle();
-    CAShapeLayer *dart = (CAShapeLayer *)ADPointer.sublayers.firstObject;
-    CAShapeLayer *rim = (CAShapeLayer *)ADPointer.sublayers.lastObject;
+    CAShapeLayer *rim = (CAShapeLayer *)ADPointer.sublayers.firstObject;
+    CAShapeLayer *dart = (CAShapeLayer *)ADPointer.sublayers.lastObject;
     rim.fillColor = ADColor(style->rim, 1.0);
     rim.strokeColor = ADColor(style->rim, 1.0);
     dart.fillColor = ADColor(style->fill, 1.0);
@@ -74,7 +74,8 @@ static void ADTintPointer(void) {
 static CALayer *ADPointerLayer(void) {
     CALayer *pointer = [CALayer layer];
     pointer.bounds = CGRectMake(0.0, 0.0, ADBoxWidth, ADBoxHeight);
-    pointer.position = CGPointMake(ADStage * 0.5, ADStage * 0.5);
+    pointer.anchorPoint = CGPointMake(1.0 / ADBoxWidth, 35.0 / ADBoxHeight);
+    pointer.position = CGPointMake(ADTipX, ADTipY);
     ADFreezeLayer(pointer);
     CAShapeLayer *rim = ADDartLayer();
     rim.lineWidth = 6.5;
@@ -140,6 +141,8 @@ void agent_desktop_cursor_overlay_rest(void) {
 void agent_desktop_cursor_overlay_hide(void) {
     [ADCursorWindow orderOut:nil];
     [ADBubbleWindow orderOut:nil];
+    [ADRipple orderOut:nil];
+    ADHighlightStop();
 }
 
 void agent_desktop_cursor_overlay_show(void) {
@@ -192,41 +195,37 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
                                             ADBubbleWidth,
                                             ADBubbleHeight);
             bool followsBubble = showsBubble && !changedLabel && ADBubbleWindow.isVisible;
-            NSArray<CALayer *> *rippleLayers = ADRipple.contentView.layer.sublayers;
             [ADRipple setFrameOrigin:NSMakePoint(last->x - ADRippleSize * 0.5,
                                                  mainHeight - last->y - ADRippleSize * 0.5)];
-            bool rippleVisible = false;
+            size_t movementFrameCount = frameCount;
+            bool playsRipple = false;
+            for (size_t index = 0; index < frameCount; index += 1) {
+                if (frames[index].ripple > 0.0) {
+                    movementFrameCount = index;
+                    playsRipple = true;
+                    break;
+                }
+            }
             bool highlighted = (config->flags & ADHighlightCue) == 0 || reduceMotion;
 
-            for (size_t index = 0; index < frameCount; index += 1) {
+            for (size_t index = 0; index < movementFrameCount; index += 1) {
                 ADMoveCursor(&frames[index], mainHeight);
                 if (followsBubble) {
                     [ADBubbleWindow setFrameOrigin:NSMakePoint(
                         bubbleFrame.origin.x + frames[index].x - last->x,
                         bubbleFrame.origin.y - frames[index].y + last->y)];
                 }
-                double ripple = frames[index].ripple;
-                if (ripple > 0.0 && ripple < 1.0) {
-                    if (!rippleVisible) {
-                        [ADRipple orderFrontRegardless];
-                        rippleVisible = true;
-                    }
-                    if (!highlighted) {
-                        ADHighlightTarget(config, mainHeight);
-                        highlighted = true;
-                    }
-                    ADRippleFrame(rippleLayers, ripple);
-                } else if (rippleVisible) {
-                    [ADRipple orderOut:nil];
-                    rippleVisible = false;
-                }
                 ADPump(app);
-                if (index + 1 < frameCount) {
+                if (index + 1 < movementFrameCount) {
                     [NSThread sleepForTimeInterval:config->frameSeconds];
                 }
             }
-            if (rippleVisible) {
-                [ADRipple orderOut:nil];
+            if (playsRipple) {
+                ADRipplePlay(ADRipple);
+                if (!highlighted) {
+                    ADHighlightTarget(config, mainHeight);
+                    highlighted = true;
+                }
             }
             if (!highlighted) {
                 ADHighlightTarget(config, mainHeight);

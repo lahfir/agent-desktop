@@ -7,13 +7,22 @@ use std::sync::Mutex;
 
 struct CursorAdapter {
     presented: Mutex<Vec<CursorOverlayControl>>,
+    events: Mutex<Vec<CursorEvent>>,
     fail_presentation: bool,
+}
+
+#[derive(Debug, PartialEq)]
+enum CursorEvent {
+    Travel,
+    Dispatch,
+    Effect,
 }
 
 impl CursorAdapter {
     fn new(fail_presentation: bool) -> Self {
         Self {
             presented: Mutex::new(Vec::new()),
+            events: Mutex::new(Vec::new()),
             fail_presentation,
         }
     }
@@ -42,6 +51,7 @@ impl ActionOps for CursorAdapter {
         _request: ActionRequest,
         _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
+        self.events.lock().unwrap().push(CursorEvent::Dispatch);
         Ok(ActionResult::delivered_unverified("click"))
     }
 }
@@ -56,6 +66,11 @@ impl SystemOps for CursorAdapter {
         if self.fail_presentation {
             return Err(AdapterError::internal("renderer unavailable"));
         }
+        self.events.lock().unwrap().push(if control.is_travel() {
+            CursorEvent::Travel
+        } else {
+            CursorEvent::Effect
+        });
         self.presented.lock().unwrap().push(control.clone());
         Ok(())
     }
@@ -140,6 +155,28 @@ fn enabled_cursor_moves_before_dispatch_then_clicks_after_it() {
     );
     assert_eq!(click.target().map(|rect| rect.width), Some(20.0));
     assert_eq!(presented[0].label(), Some("Opening menu"));
+    assert_eq!(
+        *adapter.events.lock().unwrap(),
+        [
+            CursorEvent::Travel,
+            CursorEvent::Dispatch,
+            CursorEvent::Effect
+        ]
+    );
+}
+
+#[test]
+fn short_action_budget_skips_optional_travel_before_dispatch() {
+    let adapter = CursorAdapter::new(false);
+    let request = ActionRequest::headless(Action::Click).with_timeout_ms(Some(1_000));
+
+    execute_entry_with_context(&adapter, &entry(), request, &enabled_context())
+        .expect("click succeeds without optional travel");
+
+    assert_eq!(
+        *adapter.events.lock().unwrap(),
+        [CursorEvent::Dispatch, CursorEvent::Effect]
+    );
 }
 
 #[test]

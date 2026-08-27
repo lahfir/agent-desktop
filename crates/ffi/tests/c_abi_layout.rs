@@ -240,15 +240,16 @@ fn exact_ref_entry_is_additive_versioned_and_layout_pinned() {
 
 #[test]
 fn exact_window_info_is_additive_versioned_and_layout_pinned() {
-    assert_eq!(agent_desktop_ffi::AD_EXACT_WINDOW_INFO_VERSION, 1);
-    assert_eq!(agent_desktop_ffi::AD_EXACT_WINDOW_INFO_SIZE, 88);
-    assert_eq!(unsafe { common::ad_exact_window_info_size() }, 88);
-    assert_eq!(size_of::<AdExactWindowInfo>(), 88);
+    assert_eq!(agent_desktop_ffi::AD_EXACT_WINDOW_INFO_VERSION, 2);
+    assert_eq!(agent_desktop_ffi::AD_EXACT_WINDOW_INFO_SIZE, 96);
+    assert_eq!(unsafe { common::ad_exact_window_info_size() }, 96);
+    assert_eq!(size_of::<AdExactWindowInfo>(), 96);
     assert_eq!(align_of::<AdExactWindowInfo>(), align_of::<usize>());
     assert_eq!(offset_of!(AdExactWindowInfo, version), 0);
     assert_eq!(offset_of!(AdExactWindowInfo, size), 4);
     assert_eq!(offset_of!(AdExactWindowInfo, window), 8);
     assert_eq!(offset_of!(AdExactWindowInfo, process_instance), 80);
+    assert_eq!(offset_of!(AdExactWindowInfo, accessible), 88);
 }
 
 #[test]

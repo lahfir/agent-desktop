@@ -17,7 +17,7 @@ NSWindow *ADWindow(NSRect frame);
 void ADPump(NSApplication *app);
 void ADFreezeLayer(CALayer *layer);
 NSWindow *ADRippleWindow(void);
-void ADRippleFrame(NSArray<CALayer *> *layers, double progress);
+void ADRipplePlay(NSWindow *window);
 void ADHighlightShow(NSRect frame, double seconds);
 void ADHighlightStop(void);
 void ADShowBubble(NSTextField *text, NSRect frame, bool changed);

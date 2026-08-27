@@ -12,7 +12,6 @@ use std::time::Duration;
 use super::bridge;
 
 pub(super) const MARKER: &str = "AGENT_DESKTOP_CURSOR_OVERLAY_CHILD";
-pub(super) const PROTOCOL_VERSION: &str = "v1";
 pub(super) const SOCKET_ENV: &str = "AGENT_DESKTOP_CURSOR_OVERLAY_SOCKET";
 const MAX_INSTRUCTION_BYTES: u64 = 4 * 1024;
 const BUBBLE_SIZE: (f64, f64) = (232.0, 38.0);
@@ -27,7 +26,7 @@ struct OverlayState {
 pub(crate) fn entry_from_env() -> Option<Result<(), AdapterError>> {
     match std::env::var(MARKER) {
         Err(_) => None,
-        Ok(value) if value == PROTOCOL_VERSION => Some(run()),
+        Ok(value) if value == super::endpoint::PROTOCOL_VERSION => Some(run()),
         Ok(_) => Some(Err(AdapterError::internal(
             "Invalid cursor overlay child protocol marker",
         ))),
@@ -38,6 +37,10 @@ fn run() -> Result<(), AdapterError> {
     let initial = read_control(std::io::stdin())?;
     let socket = socket_path(&initial)?;
     prepare_socket(&socket)?;
+    let mut state = OverlayState::default();
+    if !handle(&initial, &mut state)? {
+        return cleanup(socket);
+    }
     let listener = UnixListener::bind(&socket).map_err(|error| {
         AdapterError::internal("Could not bind the cursor overlay session socket")
             .with_platform_detail(error.to_string())
@@ -50,11 +53,7 @@ fn run() -> Result<(), AdapterError> {
         AdapterError::internal("Could not configure the cursor overlay session socket")
             .with_platform_detail(error.to_string())
     })?;
-    let mut state = OverlayState::default();
     let mut quiet_since = std::time::Instant::now();
-    if !handle(&initial, &mut state)? {
-        return cleanup(socket);
-    }
     loop {
         match listener.accept() {
             Ok((mut stream, _)) => {
@@ -76,7 +75,7 @@ fn run() -> Result<(), AdapterError> {
                     state.resting = false;
                 }
                 let outcome = handle(&control, &mut state);
-                if control.is_hide() || control.is_travel() {
+                if outcome.is_ok() && (control.is_hide() || control.is_travel()) {
                     let _ = stream.write_all(&[1]);
                 }
                 if outcome.is_err() {
@@ -160,6 +159,16 @@ fn motion_frames(
     fps: u32,
 ) -> Vec<CursorPose> {
     let destination = instruction.destination();
+    if instruction.phase() == agent_desktop_core::CursorPhase::Effect {
+        let mut frames = vec![CursorPose::still(destination.clone())];
+        if instruction.is_click() && state.style.ripple() {
+            frames.push(CursorPose {
+                point: destination.clone(),
+                ripple: 1.0,
+            });
+        }
+        return frames;
+    }
     let start = state.at.clone().unwrap_or_else(|| Point {
         x: (destination.x - 180.0).clamp(screen.x, screen.x + screen.width),
         y: (destination.y + 108.0).clamp(screen.y, screen.y + screen.height),
@@ -319,5 +328,19 @@ mod tests {
         assert!(clicked.len() > moved.len());
         assert!(clicked.iter().any(|pose| pose.ripple > 0.0));
         assert_eq!(clicked.last().map(|pose| &pose.point), Some(&destination));
+    }
+
+    #[test]
+    fn click_effect_returns_immediately_to_the_control_loop() {
+        let destination = Point { x: 900.0, y: 500.0 };
+        let effect = instruction(destination.clone(), true)
+            .with_phase(agent_desktop_core::CursorPhase::Effect);
+
+        let frames = motion_frames(&state(Some(destination.clone())), &effect, &screen(), 120);
+
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[0], CursorPose::still(destination.clone()));
+        assert_eq!(frames[1].point, destination);
+        assert_eq!(frames[1].ripple, 1.0);
     }
 }

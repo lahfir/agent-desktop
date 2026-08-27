@@ -21,6 +21,7 @@ pub fn execute(session_id: &str, action: CursorOverlayAction) -> Result<Value, A
     });
     if let Some(next) = next {
         response["next"] = next.into();
+        response["activation"] = super::session::activation(session_id);
     }
     Ok(response)
 }

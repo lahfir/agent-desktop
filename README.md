@@ -101,7 +101,7 @@ Every GitHub Release ships a prebuilt C-ABI cdylib (`libagent_desktop_ffi`) for 
 ```python
 import ctypes
 lib = ctypes.CDLL("./lib/libagent_desktop_ffi.dylib")
-lib.ad_init(3)  # verify ABI major (AD_ABI_VERSION_MAJOR) before any call
+lib.ad_init(4)  # verify ABI major (AD_ABI_VERSION_MAJOR) before any call
 adapter = lib.ad_adapter_create()
 # observe -> act: ad_snapshot -> parse a qualified ref -> ad_execute_by_ref ...
 lib.ad_adapter_destroy(adapter)
@@ -181,7 +181,8 @@ A presentation-only cursor that shows what the agent is about to do. Off by defa
 ```bash
 session_id=$(agent-desktop session start --cursor | jq -r '.data.session_id')
 export AGENT_DESKTOP_SESSION="$session_id"
-agent-desktop click @s8f3k2p9:e9
+agent-desktop snapshot --app Finder -i
+agent-desktop click <qualified-ref-from-snapshot>
 agent-desktop cursor-overlay disable
 ```
 

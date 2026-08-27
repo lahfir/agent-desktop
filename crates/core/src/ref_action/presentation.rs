@@ -1,18 +1,25 @@
-use super::ActionabilityPreflight;
+use super::{ActionabilityPreflight, ResolvedRefAction};
 use crate::cursor_overlay::CursorPhase;
 use crate::{Action, CommandContext, DeliveryDisposition, DeliverySemantics, PlatformAdapter};
 
+const DISPATCH_RESERVE_MS: u64 = 100;
+
 pub(super) fn before_dispatch(
-    adapter: &dyn PlatformAdapter,
-    context: &CommandContext,
+    target: &ResolvedRefAction<'_>,
     preflight: &ActionabilityPreflight,
+    lease: &crate::InteractionLease,
 ) {
+    if lease.deadline().remaining_ms()
+        <= crate::CURSOR_ARRIVAL_TIMEOUT_MS.saturating_add(DISPATCH_RESERVE_MS)
+    {
+        return;
+    }
     let Some(destination) = preflight.presentation_point.clone() else {
         return;
     };
     crate::cursor_overlay::submit(
-        adapter,
-        context,
+        target.adapter,
+        target.context,
         destination,
         None,
         false,

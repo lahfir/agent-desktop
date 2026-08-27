@@ -11,14 +11,18 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use super::child::{MARKER, PROTOCOL_VERSION, SOCKET_ENV};
+use super::child::{MARKER, SOCKET_ENV};
 
 const MAX_INSTRUCTION_BYTES: usize = 4 * 1024;
 
 pub(crate) fn update(control: &CursorOverlayControl) -> Result<(), AdapterError> {
     control.validate()?;
     let socket = super::endpoint::path(control.session_id())?;
-    if send(&socket, control).is_ok() || control.is_disable() || control.is_transient() {
+    if send(&socket, control).is_ok() {
+        return Ok(());
+    }
+    retire_legacy(control);
+    if control.is_disable() || (control.is_transient() && !control.is_travel()) {
         return Ok(());
     }
     let lock_path = super::endpoint::lock_path()?;
@@ -62,7 +66,7 @@ fn spawn(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterErr
         ));
     }
     let mut child = Command::new(executable)
-        .env(MARKER, PROTOCOL_VERSION)
+        .env(MARKER, super::endpoint::PROTOCOL_VERSION)
         .env(SOCKET_ENV, socket)
         .process_group(0)
         .stdin(Stdio::piped())
@@ -81,7 +85,7 @@ fn spawn(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterErr
             .with_platform_detail(error.to_string())
     })?;
     drop(stdin);
-    let deadline = Instant::now() + Duration::from_millis(500);
+    let deadline = Instant::now() + Duration::from_millis(CURSOR_ARRIVAL_TIMEOUT_MS);
     while Instant::now() < deadline {
         if UnixStream::connect(socket).is_ok() {
             return Ok(());
@@ -91,6 +95,14 @@ fn spawn(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterErr
     Err(AdapterError::internal(
         "macOS cursor overlay did not become ready",
     ))
+}
+
+fn retire_legacy(control: &CursorOverlayControl) {
+    let Ok(socket) = super::endpoint::legacy_path(control.session_id()) else {
+        return;
+    };
+    let disable = CursorOverlayControl::disable(control.session_id().to_owned());
+    let _ = send(&socket, &disable);
 }
 
 fn send(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterError> {

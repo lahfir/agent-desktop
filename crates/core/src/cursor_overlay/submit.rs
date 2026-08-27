@@ -23,7 +23,11 @@ pub(crate) fn submit(
                 return;
             }
         };
-    let control = super::CursorOverlayControl::present(session_id.to_owned(), instruction);
+    let control = super::CursorOverlayControl::present_with_style(
+        session_id.to_owned(),
+        instruction,
+        context.cursor_overlay().style().clone(),
+    );
     if let Err(error) = adapter.update_cursor_overlay(&control) {
         tracing::warn!(code = %error.code.as_str(), "agent cursor presentation was skipped");
     }

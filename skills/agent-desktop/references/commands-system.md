@@ -145,7 +145,7 @@ Applications with no user interface at all are excluded.
 agent-desktop list-windows
 agent-desktop list-windows --app "Finder"
 ```
-Lists all visible windows, optionally filtered by app. Returns array of `{ id, title, app_name, pid, bounds, is_focused }`. Focus is detected through the platform's frontmost/focused-window APIs, not window stacking order.
+Lists all visible windows, optionally filtered by app. Returns array of `{ id, title, app_name, pid, bounds, is_focused, accessible }`. Focus is detected through the platform's frontmost/focused-window APIs, not window stacking order. `accessible` is false only when the platform confirmed that semantic accessibility commands cannot reach the window; transient probe failures and omitted legacy values preserve the default true value.
 
 The inventory comes from the window server, which knows more windows than the
 accessibility layer exposes. Targeting one an application never published

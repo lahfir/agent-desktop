@@ -50,6 +50,7 @@ pub fn execute(action: SessionAction) -> Result<Value, AppError> {
                 "artifacts": manifest.artifacts,
                 "created_at": manifest.created_at,
                 "next": activation_export(&manifest.id),
+                "activation": activation(&manifest.id),
             }))
         }
         SessionAction::End { id } => {
@@ -89,5 +90,15 @@ pub fn execute(action: SessionAction) -> Result<Value, AppError> {
 }
 
 pub(super) fn activation_export(session_id: &str) -> String {
+    #[cfg(windows)]
+    return format!("$env:AGENT_DESKTOP_SESSION = '{session_id}'");
+    #[cfg(not(windows))]
     format!("export AGENT_DESKTOP_SESSION={session_id}")
+}
+
+pub(super) fn activation(session_id: &str) -> Value {
+    json!({
+        "environment": "AGENT_DESKTOP_SESSION",
+        "value": session_id,
+    })
 }

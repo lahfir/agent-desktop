@@ -1,5 +1,4 @@
 #import "cursor_overlay_chrome.h"
-#import <math.h>
 
 const CGFloat ADRippleSize = 108.0;
 static const NSWindowLevel ADEffectLevel = 24;
@@ -14,10 +13,6 @@ static AgentDesktopCursorStyle ADCurrentStyle = {
 
 static __strong NSWindow *ADHighlightWindow = nil;
 static __strong CALayer *ADHighlightBorder = nil;
-
-static double ADExpoOut(double t, double rate) {
-    return 1.0 - pow(2.0, -rate * t);
-}
 
 CGColorRef ADColor(const double *rgb, CGFloat alpha) {
     return [NSColor colorWithSRGBRed:rgb[0] green:rgb[1] blue:rgb[2] alpha:alpha].CGColor;
@@ -106,34 +101,29 @@ NSWindow *ADRippleWindow(void) {
     return window;
 }
 
-static void ADContactGlow(CAShapeLayer *layer, double progress) {
-    double t = MIN(1.0, progress / 0.22);
-    double burst = 0.22 + 0.9 * ADExpoOut(t, 7.0);
-    layer.fillColor = ADColor(ADCurrentStyle.accent, 1.0);
-    layer.shadowColor = ADColor(ADCurrentStyle.accent, 1.0);
-    layer.shadowOpacity = (float)(0.55 * pow(1.0 - t, 2.0));
-    layer.transform = CATransform3DMakeScale(burst, burst, 1.0);
-    layer.opacity = (float)(0.42 * pow(1.0 - t, 2.6));
-}
-
-static void ADWaterRing(CAShapeLayer *layer, double progress, NSUInteger index) {
-    double u = (progress - (double)index * 0.15) / 0.72;
-    if (u <= 0.0 || u >= 1.0) {
-        layer.opacity = 0.0;
-        return;
-    }
-    double spread = 0.04 + 0.96 * ADExpoOut(u, 8.5);
-    double stretch = 1.0 + 0.09 * pow(1.0 - u, 3.0);
-    layer.strokeColor = ADColor(ADCurrentStyle.accent, 1.0);
-    layer.lineWidth = 3.4 * pow(1.0 - u, 1.5) + 0.35;
-    layer.transform = CATransform3DMakeScale(spread * stretch, spread, 1.0);
-    layer.opacity = (float)(pow(1.0 - u, 1.9) * (index == 0 ? 0.95 : 0.55));
-}
-
-void ADRippleFrame(NSArray<CALayer *> *layers, double progress) {
-    ADContactGlow((CAShapeLayer *)layers.firstObject, progress);
-    for (NSUInteger index = 1; index < layers.count; index += 1) {
-        ADWaterRing((CAShapeLayer *)layers[index], progress, index - 1);
+void ADRipplePlay(NSWindow *window) {
+    NSArray<CALayer *> *layers = window.contentView.layer.sublayers;
+    [window orderFrontRegardless];
+    for (NSUInteger index = 0; index < layers.count; index += 1) {
+        CAShapeLayer *layer = (CAShapeLayer *)layers[index];
+        [layer removeAllAnimations];
+        layer.fillColor = index == 0 ? ADColor(ADCurrentStyle.accent, 1.0)
+                                     : NSColor.clearColor.CGColor;
+        layer.strokeColor = ADColor(ADCurrentStyle.accent, 1.0);
+        CAKeyframeAnimation *opacity =
+            [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+        opacity.values = index == 0 ? @[ @0.0, @0.42, @0.0 ] : @[ @0.0, @0.9, @0.0 ];
+        opacity.keyTimes = @[ @0.0, @0.18, @1.0 ];
+        CABasicAnimation *spread =
+            [CABasicAnimation animationWithKeyPath:@"transform.scale"];
+        spread.fromValue = index == 0 ? @0.22 : @0.04;
+        spread.toValue = index == 0 ? @1.12 : @1.0;
+        CAAnimationGroup *effect = [CAAnimationGroup animation];
+        effect.animations = @[ opacity, spread ];
+        effect.duration = 0.3;
+        effect.timingFunction =
+            [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+        [layer addAnimation:effect forKey:@"agent-ripple"];
     }
 }
 

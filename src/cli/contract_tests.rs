@@ -94,6 +94,9 @@ fn cursor_overlay_enable_is_session_scoped_and_bounded() {
         "Opening the profile menu for this account now",
         "--max-words",
         "5",
+        "--size",
+        "2.5",
+        "--no-ripple",
     ])
     .expect("valid cursor overlay command");
     let Commands::CursorOverlay(args) = cli.command.expect("command") else {
@@ -108,6 +111,9 @@ fn cursor_overlay_enable_is_session_scoped_and_bounded() {
     assert_eq!(cli.session.as_deref(), Some("run-1"));
     assert!(config.is_enabled());
     assert_eq!(config.label(), Some("Opening the profile menu for…"));
+    assert_eq!(config.style().size(), 2.5);
+    assert!(!config.style().ripple());
+    assert!(config.style().highlight());
 }
 
 #[test]
