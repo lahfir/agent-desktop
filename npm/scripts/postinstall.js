@@ -114,15 +114,7 @@ function installExecutable(source, destination) {
   }
 }
 
-/// Reports whether an already-present executable still matches what was
-/// installed. A reinstall that finds the file and stops has verified only that
-/// a name exists - the bytes could be a truncated download, a half-written
-/// file from an interrupted install, or something a user dropped there
-/// following the manual-recovery instructions. Without a recorded digest there
-/// is no heal path either: the fast path would keep declaring a corrupt binary
-/// ready forever. An unrecorded digest is treated as unverifiable rather than
-/// as a failure, so a binary installed before this sidecar existed re-downloads
-/// once instead of erroring.
+// Verify executable hasn't been tampered with; missing digest means re-download once.
 function matchesRecordedDigest(destination) {
   const sidecar = `${destination}.sha256`;
   if (!existsSync(sidecar)) {

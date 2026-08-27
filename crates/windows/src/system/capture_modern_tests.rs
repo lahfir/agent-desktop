@@ -68,14 +68,8 @@ fn unsupported_host_reports_unavailable_without_capture_api() {
     );
 }
 
-/// Uniform black has two causes that look identical from the capture alone:
-/// this session composites nothing, or the capture path is broken and always
-/// yields a black frame. Skipping on the captured result alone would treat the
-/// code under test as its own oracle, and the second cause reproduces on every
-/// run - so the defect this test exists to catch would report a pass forever.
-/// An independent reader settles it: GDI blits the same client area without
-/// going through the capture path at all, so a window that demonstrably
-/// painted turns the skip into a failure.
+/// Uniform black alone cannot distinguish session compositing from capture failure.
+/// GDI independently verifies the window painted, making black a failure not a skip.
 #[test]
 fn pattern_fixture_window_capture_matches_when_supported() {
     bootstrap();

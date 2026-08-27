@@ -9,11 +9,7 @@ const wrapperScriptPath = join(__dirname, '..', '..', 'npm', 'bin', 'agent-deskt
 const OS_STUB_PLATFORM_ENV = 'AGENT_DESKTOP_TEST_OS_PLATFORM';
 const OS_STUB_ARCH_ENV = 'AGENT_DESKTOP_TEST_OS_ARCH';
 
-// The stub is a constant: it reads the identity it should report from the
-// environment rather than having that identity compiled into it. Generating
-// the source from the arguments instead - even validated and JSON-encoded -
-// makes this a code-construction sink, which is both a real shape to avoid in
-// a package that runs on install and one CodeQL flags on sight.
+// Read identity from env to avoid code-construction sink (CodeQL concern).
 const OS_STUB_SOURCE = [
   "const os = require('os');",
   `const platform = process.env[${JSON.stringify(OS_STUB_PLATFORM_ENV)}];`,
@@ -65,9 +61,7 @@ function runScriptWithOsStub(scriptPath, osPlatform, osArch, args = []) {
   });
 }
 
-// Both suites create scratch directories and sweep them in afterEach. They
-// keep separate collections because their teardown differs in what else it
-// removes, so the factory hands each file its own rather than sharing one.
+// Separate collections for each suite; their teardown strategies differ.
 function createTemporaryRoots() {
   const roots = [];
   return {

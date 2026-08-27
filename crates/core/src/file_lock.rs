@@ -4,21 +4,8 @@ use std::time::Duration;
 
 use crate::{AdapterError, Deadline, ErrorCode};
 
-/// An advisory lock released by closing its descriptor, deliberately without
-/// an explicit unlock on drop.
-///
-/// The two are identical for a lease nobody shared and opposite for one handed
-/// to a child. `duplicate_inheritable` hands out an `F_DUPFD` descriptor, which
-/// shares this lock's *open file description*, and an advisory lock lives on
-/// that description rather than on any one descriptor. Unlocking therefore
-/// released it for every holder of the description, so a parent dropping its
-/// lease after a child had adopted the inherited descriptor revoked the
-/// child's exclusivity — the single guarantee the lease exists to provide —
-/// and let a second acquirer through. Whether that happened depended on which
-/// of the two calls landed first, which is why it surfaced as an intermittent
-/// failure of the adoption test rather than a constant one. Closing releases
-/// only when the last descriptor closes, which is what the adopt path is
-/// written against.
+/// Releases by closing rather than unlocking: a duplicated descriptor shares
+/// the lock and unlocking would release it for the other holder too.
 pub(crate) struct FileLock {
     /// Held for its lifetime rather than read: closing it is what releases the
     /// lock, so the value being alive *is* its purpose. Unix additionally reads
@@ -108,17 +95,8 @@ impl FileLock {
     }
 }
 
-/// Abandons a lock it decided not to return by dropping the file, never by
-/// unlocking it.
-///
-/// The distinction matters on the adopt path, where `file` is a dup of an
-/// inherited descriptor and therefore shares its open file description with
-/// whoever handed it over. `try_lock` on a description that already holds the
-/// lock succeeds immediately, so the expiry branch below is reachable with a
-/// lock this call did not take — and unlocking there would release it for the
-/// parent too, handing back `TIMEOUT` while quietly stripping the exclusivity
-/// the parent still believes it holds. Dropping releases a description this
-/// call opened and leaves a shared one alone, which is right in both cases.
+/// Drops a contended lock without unlocking: shared file descriptions need drop,
+/// not unlock. On adopt path, shared descriptions exist and must be left alone.
 fn lock_file(
     file: File,
     deadline: Deadline,

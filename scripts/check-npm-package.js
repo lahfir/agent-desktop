@@ -355,13 +355,7 @@ if (workflowProblems.length > 0) {
   throw new Error(workflowProblems.join('\n'));
 }
 
-// npm is a shell wrapper on Windows (npm.cmd), which execFileSync can neither
-// find by bare name nor, since Node's batch-file argument hardening, launch
-// directly - the two failures are ENOENT and EINVAL respectively, and both
-// leave this gate unrunnable on the platform the package now installs on.
-// Windows therefore goes through a shell; every argument here is a fixed
-// literal and the directory is passed as `cwd`, so nothing is interpolated
-// into the command line. POSIX keeps the direct, shell-free spawn.
+// npm.cmd on Windows needs shell spawn; POSIX uses direct execFileSync. All arguments are fixed literals.
 const onWindows = process.platform === 'win32';
 const packOptions = {
   cwd: npmDir,

@@ -19,12 +19,8 @@ const MUST_STAY_UNAVAILABLE_ON_WINDOWS: &[&str] = &[
 const REFUSED_BY_CORE_ON_EVERY_PLATFORM: &[&str] =
     &["key-down", "key-up", "mouse-down", "mouse-up"];
 
-/// The behavioural pin is one-directional: it proves the six named commands are
-/// still documented as unavailable, and says nothing about a seventh row added
-/// later. Such a row would satisfy every per-name assertion while never being
-/// checked against the adapter at all, which is how a false claim ships. The
-/// closing set assertion makes adding a row a decision: pin it behaviourally,
-/// or declare it refused by core before any adapter is reached.
+/// Set assertion enforces that new unavailable commands are explicitly listed:
+/// per-name checks alone miss rows that satisfy old assertions while never being verified.
 #[test]
 fn windows_skill_capability_claims_resolve_against_dispatch() {
     let dispatchable: BTreeSet<String> = cli_command_names().into_iter().collect();

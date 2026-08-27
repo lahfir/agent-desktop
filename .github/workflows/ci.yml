@@ -672,10 +672,8 @@ jobs:
             echo "FAIL: a lane did not export its lib test count (x64='${X64}', arm64='${ARM}')"
             exit 1
           fi
-          # Zero on both lanes satisfies the equality below while proving
-          # nothing: the counts come from a regex over cargo's summary line, and
-          # if that stops matching, both lanes export 0 while cargo still exits
-          # 0. Parity between two silences is not parity.
+          # Parity between two silences is not parity: if the count regex stops
+          # matching, both lanes export 0 while cargo still exits 0.
           if [ "$X64" = "0" ] || [ "$ARM" = "0" ]; then
             echo "FAIL: a lane exported zero lib tests (x64='${X64}', arm64='${ARM}') - the count extraction stopped matching cargo's summary line"
             exit 1
