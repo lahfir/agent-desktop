@@ -12,10 +12,13 @@
     will re-read before it reaches a public repository:
 
       1. The CLI-envelope fixtures under
-         scripts/fixtures/capture-redaction/{must-catch,must-pass}/ prove
-         Test-CaptureCliRedaction's per-field rules (name, value,
-         description, title, path[], occluder.name, pid) independently of
-         this machine's identity.
+          scripts/fixtures/capture-redaction/{must-catch,must-pass}/ prove
+          Test-CaptureCliRedaction's per-field rules (name, value,
+          description, title, app_name, body, attribution, path[],
+          actions[], occluder.name, pid) independently of
+          this machine's identity - each MUST-CATCH fixture keyed to one
+          serialized NotificationInfo field or array walk, invert-verifiable
+          one rule at a time.
       2. Test-CaptureRedaction's own machine-identity rules (user name,
          profile path) are proven against fixtures generated at run time
          from this process's live USERNAME/USERPROFILE and deleted

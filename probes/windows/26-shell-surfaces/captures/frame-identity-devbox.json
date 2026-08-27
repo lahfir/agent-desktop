@@ -1,0 +1,54 @@
+{
+    "probe":  "26-shell-surfaces/04-frame-identity",
+    "question":  "which of the frame window\u0027s children belong to a different process than the frame itself (pid-equality classes only), and which shell host owns the CoreWindow the Meta key raises",
+    "cites":  [
+                  "KTD7"
+              ],
+    "label":  "devbox",
+    "frame_leg":  {
+                      "measurable":  true,
+                      "branch":  "foreground_frame_walked_on_existing_settings_instance",
+                      "launch_route_recorded":  "ms_settings_uri_shell_dispatch",
+                      "suspended_frames_closed_before_launch":  0,
+                      "foreground_class":  "ApplicationFrameWindow",
+                      "frame_owner_host_token":  "frame_host",
+                      "frame_class_is_application_frame_window":  true,
+                      "child_instances_by_class":  [
+                                                       {
+                                                           "class":  "ApplicationFrameInputSinkWindow",
+                                                           "instances":  1,
+                                                           "owner_pid_equals_frame_pid_count":  1,
+                                                           "any_owner_differs_from_frame":  false
+                                                       },
+                                                       {
+                                                           "class":  "ApplicationFrameTitleBarWindow",
+                                                           "instances":  2,
+                                                           "owner_pid_equals_frame_pid_count":  2,
+                                                           "any_owner_differs_from_frame":  false
+                                                       },
+                                                       {
+                                                           "class":  "Windows.UI.Core.CoreWindow",
+                                                           "instances":  1,
+                                                           "owner_pid_equals_frame_pid_count":  0,
+                                                           "any_owner_differs_from_frame":  true
+                                                       }
+                                                   ],
+                      "child_classes_with_owner_differing_from_frame":  [
+                                                                            "Windows.UI.Core.CoreWindow"
+                                                                        ],
+                      "core_window_child_present":  true,
+                      "core_window_owner_differs_from_frame":  true
+                  },
+    "start_leg":  {
+                      "measurable":  true,
+                      "branch":  "accelerator_raised_corewindow_surface_read",
+                      "foreground_host_token":  "search_host",
+                      "shell_host_owns_raised_surface":  "search_host",
+                      "root_control_type":  "Window",
+                      "root_automation_id_tag":  "-",
+                      "direct_children_automation_id_tags":  [
+                                                                 "PaneRoot",
+                                                                 "SearchTextBox"
+                                                             ]
+                  }
+}

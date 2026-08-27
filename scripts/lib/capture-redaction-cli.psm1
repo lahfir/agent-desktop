@@ -8,9 +8,12 @@
     domain SIDs). It has no idea that agent-desktop's own JSON envelope
     carries real target content in a small, fixed set of fields regardless
     of which machine produced it: `name`, `value`, `description`, `title`,
-    every element of a `path` array (crates/core/src/commands/find.rs:194
+    `app_name`, `body`, `attribution` (the serialized NotificationInfo
+    field names the shell/notification surfaces publish), every element of
+    a `path` array (crates/core/src/commands/find.rs:194
     and live_locator/select.rs's node_label both populate it as
-    "role:label"), `error.details.checks[].occluder.name`, and any literal
+    "role:label"), every element of an `actions` array (notification
+    verb-button labels), `error.details.checks[].occluder.name`, and any literal
     pid field (pid/processid/parentprocessid/ownerprocessid/sessionprocessid
     - the corpus safety envelope forbids a pid outright, never merely an
     unreduced one). A capture
@@ -110,7 +113,11 @@ function Test-CliRedactionValueReduced {
         legitimately contain a literal ']' (real window/document titles do),
         and a text-only regex would end the array match inside that quoted
         string, leaving every element after it - including a genuinely
-        unreduced one - outside the scanned body entirely.
+        unreduced one - outside the scanned body entirely. The `actions[]`
+        array gets the identical JSON-aware walk: notification verb-button
+        labels are plain strings, so unlike `path[]` there is no role
+        prefix to allow, and a label element that does not decode to the
+        reduced marker or the unnamed sentinel fails closed.
     .OUTPUTS
         String[] - one message per violation found, empty when none.
     #>
@@ -154,7 +161,7 @@ function Get-CaptureCliRedactionViolationsFromText {
     $violations = New-Object System.Collections.Generic.List[string]
     $regexOptions = [System.Text.RegularExpressions.RegexOptions]'IgnoreCase, Singleline'
 
-    $fieldPattern = '"(?<field>name|value|description|title)"\s*:\s*"(?<val>(?:\\.|[^"\\])*)"'
+    $fieldPattern = '"(?<field>name|value|description|title|app_name|body|attribution)"\s*:\s*"(?<val>(?:\\.|[^"\\])*)"'
     foreach ($m in [regex]::Matches($Text, $fieldPattern, $regexOptions)) {
         $raw = $m.Groups['val'].Value
         if (-not (Test-CliRedactionValueReduced -RawJsonString $raw)) {
@@ -184,6 +191,28 @@ function Get-CaptureCliRedactionViolationsFromText {
             $raw = $element.Groups['val'].Value
             if (-not (Test-CliRedactionValueReduced -RawJsonString $raw -AllowRolePrefix)) {
                 [void]$violations.Add("$Source`: field 'path[]' holds an unreduced element ($($raw.Length) raw chars)")
+            }
+        }
+    }
+
+    <#
+        Notification verb-button labels are plain strings ("Reply", "Archive"),
+        not node_label's "role:label" composition, so no AllowRolePrefix here:
+        stripping before the first ':' would let a label whose own text leads
+        with a colon-prefixed fragment through unchecked. Fail closed on the
+        same rule the scalar fields use.
+    #>
+    $actionsArrayOpenPattern = '"actions"\s*:\s*\['
+    foreach ($m in [regex]::Matches($Text, $actionsArrayOpenPattern, $regexOptions)) {
+        $bodyStart = $m.Index + $m.Length
+        $endIndex = Find-CliJsonArrayEnd -Text $Text -StartIndex $bodyStart
+        if ($endIndex -lt 0) { continue }
+        $body = $Text.Substring($bodyStart, $endIndex - $bodyStart)
+        $elementPattern = '"(?<val>(?:\\.|[^"\\])*)"'
+        foreach ($element in [regex]::Matches($body, $elementPattern, $regexOptions)) {
+            $raw = $element.Groups['val'].Value
+            if (-not (Test-CliRedactionValueReduced -RawJsonString $raw)) {
+                [void]$violations.Add("$Source`: field 'actions[]' holds an unreduced element ($($raw.Length) raw chars)")
             }
         }
     }
@@ -225,7 +254,8 @@ function Test-CaptureCliRedaction {
     <#
     .SYNOPSIS
         R21's CLI-envelope redaction check. True when Path carries no
-        unreduced name/value/description/title/path[]/occluder.name
+        unreduced name/value/description/title/app_name/body/attribution/
+        path[]/actions[]/occluder.name
         content; false (with each violation on its own Write-Warning line)
         otherwise. Mirrors Test-CaptureRedaction's bool-return, log-on-
         failure shape.
