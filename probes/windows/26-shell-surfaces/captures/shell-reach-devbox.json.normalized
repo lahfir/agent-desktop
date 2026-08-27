@@ -1,0 +1,272 @@
+{
+    "probe":  "26-shell-surfaces/probe",
+    "question":  "is the immersive Action Center surface reachable by EnumWindows or only through the UIA root children, and what do WS_EX_TOOLWINDOW / DWMWA_CLOAKED / GetParent read for it open versus closed - measured so KTD1\u0027s two-mechanism reach decision rests on committed capture rather than plan prose",
+    "cites":  [
+                  "KTD1"
+              ],
+    "label":  "devbox",
+    "client_stack":  "uia3-com",
+    "measurable":  true,
+    "branch":  "measured_open_and_closed_with_predicate_reads",
+    "raise_attempts_used":  1,
+    "classification":  {
+                           "control_leg_shell_tray_wnd_yielded_in_both_walks":  true,
+                           "shell_tray_yielded_closed":  true,
+                           "shell_tray_yielded_open":  true,
+                           "surface_among_enum_walk_open":  false,
+                           "surface_among_uia_root_children_open":  true,
+                           "surface_among_uia_root_children_closed":  true,
+                           "uia_root_child_count_closed":  9,
+                           "uia_root_child_count_open":  10,
+                           "uia_root_child_count_delta_open_minus_closed":  1,
+                           "find_window_route_finds_core_window_class":  null,
+                           "core_window_class_top_level_matches_after_dismissal":  1,
+                           "window_survives_dismissal":  true,
+                           "window_among_root_children_after_dismissal":  false,
+                           "cloak_state_open":  "none",
+                           "cloak_state_closed":  "cloaked_app"
+                       },
+    "closed_scan":  {
+                        "mode":  "reachscan",
+                        "client_stack":  "uia3-com",
+                        "binding":  "CUIAutomation8",
+                        "enum_walk_yields_shell_tray_wnd":  true,
+                        "enum_walk_shell_tray_visible":  true,
+                        "enum_walk_yields_progman":  true,
+                        "enum_walk_yields_notify_icon_overflow_class":  true,
+                        "notify_icon_overflow_visible_instances":  0,
+                        "surface_present_in_enum_walk":  false,
+                        "uia_root_child_count":  9,
+                        "action_center_candidate_corewindows":  0,
+                        "surface_open_handle_found":  false,
+                        "find_window_route_finds_shell_tray_wnd":  true,
+                        "find_window_route_finds_notify_icon_overflow_window":  true,
+                        "children":  [
+                                         {
+                                             "ct":  "Pane",
+                                             "cls":  "Worker Window",
+                                             "host_token":  "explorer",
+                                             "ac_candidate":  false,
+                                             "landmark_main_list_view_present":  false,
+                                             "landmark_quick_actions_present":  false,
+                                             "landmark_start_menu_frame_present":  false,
+                                             "nativewindowhandle":  <hwnd>
+                                         },
+                                         {
+                                             "ct":  "Pane",
+                                             "cls":  "Shell_TrayWnd",
+                                             "host_token":  "explorer",
+                                             "ac_candidate":  false,
+                                             "landmark_main_list_view_present":  false,
+                                             "landmark_quick_actions_present":  false,
+                                             "landmark_start_menu_frame_present":  false,
+                                             "nativewindowhandle":  <hwnd>
+                                         },
+                                         {
+                                             "ct":  "Window",
+                                             "cls":  "org.wezfurlong.wezterm",
+                                             "host_token":  "other",
+                                             "ac_candidate":  false,
+                                             "landmark_main_list_view_present":  false,
+                                             "landmark_quick_actions_present":  false,
+                                             "landmark_start_menu_frame_present":  false,
+                                             "nativewindowhandle":  <hwnd>
+                                         },
+                                         {
+                                             "ct":  "Window",
+                                             "cls":  "ApplicationFrameWindow",
+                                             "host_token":  "frame_host",
+                                             "ac_candidate":  false,
+                                             "landmark_main_list_view_present":  false,
+                                             "landmark_quick_actions_present":  false,
+                                             "landmark_start_menu_frame_present":  false,
+                                             "nativewindowhandle":  <hwnd>
+                                         },
+                                         {
+                                             "ct":  "Window",
+                                             "cls":  "Chrome_WidgetWin_1",
+                                             "host_token":  "other",
+                                             "ac_candidate":  false,
+                                             "landmark_main_list_view_present":  false,
+                                             "landmark_quick_actions_present":  false,
+                                             "landmark_start_menu_frame_present":  false,
+                                             "nativewindowhandle":  <hwnd>
+                                         },
+                                         {
+                                             "ct":  "Pane",
+                                             "cls":  "Cua.AgentCursorOverlay",
+                                             "host_token":  "other",
+                                             "ac_candidate":  false,
+                                             "landmark_main_list_view_present":  false,
+                                             "landmark_quick_actions_present":  false,
+                                             "landmark_start_menu_frame_present":  false,
+                                             "nativewindowhandle":  <hwnd>
+                                         },
+                                         {
+                                             "ct":  "Window",
+                                             "cls":  "Window",
+                                             "host_token":  "other",
+                                             "ac_candidate":  false,
+                                             "landmark_main_list_view_present":  false,
+                                             "landmark_quick_actions_present":  false,
+                                             "landmark_start_menu_frame_present":  false,
+                                             "nativewindowhandle":  <hwnd>
+                                         },
+                                         {
+                                             "ct":  "List",
+                                             "cls":  "SysListView32",
+                                             "host_token":  "explorer",
+                                             "ac_candidate":  false,
+                                             "landmark_main_list_view_present":  false,
+                                             "landmark_quick_actions_present":  false,
+                                             "landmark_start_menu_frame_present":  false,
+                                             "nativewindowhandle":  <hwnd>
+                                         },
+                                         {
+                                             "ct":  "Pane",
+                                             "cls":  "Progman",
+                                             "host_token":  "explorer",
+                                             "ac_candidate":  false,
+                                             "landmark_main_list_view_present":  false,
+                                             "landmark_quick_actions_present":  false,
+                                             "landmark_start_menu_frame_present":  false,
+                                             "nativewindowhandle":  <hwnd>
+                                         }
+                                     ],
+                        "taken_after_baseline_reset":  true
+                    },
+    "open_scan":  {
+                      "mode":  "reachscan",
+                      "client_stack":  "uia3-com",
+                      "binding":  "CUIAutomation8",
+                      "enum_walk_yields_shell_tray_wnd":  true,
+                      "enum_walk_shell_tray_visible":  true,
+                      "enum_walk_yields_progman":  true,
+                      "enum_walk_yields_notify_icon_overflow_class":  true,
+                      "notify_icon_overflow_visible_instances":  0,
+                      "surface_present_in_enum_walk":  false,
+                      "uia_root_child_count":  10,
+                      "action_center_candidate_corewindows":  1,
+                      "surface_open_handle_found":  true,
+                      "find_window_route_finds_shell_tray_wnd":  true,
+                      "find_window_route_finds_notify_icon_overflow_window":  true,
+                      "children":  [
+                                       {
+                                           "ct":  "Pane",
+                                           "cls":  "Worker Window",
+                                           "host_token":  "explorer",
+                                           "ac_candidate":  false,
+                                           "landmark_main_list_view_present":  false,
+                                           "landmark_quick_actions_present":  false,
+                                           "landmark_start_menu_frame_present":  false,
+                                           "nativewindowhandle":  <hwnd>
+                                       },
+                                       {
+                                           "ct":  "Window",
+                                           "cls":  "Windows.UI.Core.CoreWindow",
+                                           "host_token":  "shell_experience_host",
+                                           "ac_candidate":  true,
+                                           "landmark_main_list_view_present":  false,
+                                           "landmark_quick_actions_present":  true,
+                                           "landmark_start_menu_frame_present":  false,
+                                           "nativewindowhandle":  <hwnd>
+                                       },
+                                       {
+                                           "ct":  "Pane",
+                                           "cls":  "Shell_TrayWnd",
+                                           "host_token":  "explorer",
+                                           "ac_candidate":  false,
+                                           "landmark_main_list_view_present":  false,
+                                           "landmark_quick_actions_present":  false,
+                                           "landmark_start_menu_frame_present":  false,
+                                           "nativewindowhandle":  <hwnd>
+                                       },
+                                       {
+                                           "ct":  "Window",
+                                           "cls":  "org.wezfurlong.wezterm",
+                                           "host_token":  "other",
+                                           "ac_candidate":  false,
+                                           "landmark_main_list_view_present":  false,
+                                           "landmark_quick_actions_present":  false,
+                                           "landmark_start_menu_frame_present":  false,
+                                           "nativewindowhandle":  <hwnd>
+                                       },
+                                       {
+                                           "ct":  "Window",
+                                           "cls":  "ApplicationFrameWindow",
+                                           "host_token":  "frame_host",
+                                           "ac_candidate":  false,
+                                           "landmark_main_list_view_present":  false,
+                                           "landmark_quick_actions_present":  false,
+                                           "landmark_start_menu_frame_present":  false,
+                                           "nativewindowhandle":  <hwnd>
+                                       },
+                                       {
+                                           "ct":  "Window",
+                                           "cls":  "Chrome_WidgetWin_1",
+                                           "host_token":  "other",
+                                           "ac_candidate":  false,
+                                           "landmark_main_list_view_present":  false,
+                                           "landmark_quick_actions_present":  false,
+                                           "landmark_start_menu_frame_present":  false,
+                                           "nativewindowhandle":  <hwnd>
+                                       },
+                                       {
+                                           "ct":  "Pane",
+                                           "cls":  "Cua.AgentCursorOverlay",
+                                           "host_token":  "other",
+                                           "ac_candidate":  false,
+                                           "landmark_main_list_view_present":  false,
+                                           "landmark_quick_actions_present":  false,
+                                           "landmark_start_menu_frame_present":  false,
+                                           "nativewindowhandle":  <hwnd>
+                                       },
+                                       {
+                                           "ct":  "Window",
+                                           "cls":  "Window",
+                                           "host_token":  "other",
+                                           "ac_candidate":  false,
+                                           "landmark_main_list_view_present":  false,
+                                           "landmark_quick_actions_present":  false,
+                                           "landmark_start_menu_frame_present":  false,
+                                           "nativewindowhandle":  <hwnd>
+                                       },
+                                       {
+                                           "ct":  "List",
+                                           "cls":  "SysListView32",
+                                           "host_token":  "explorer",
+                                           "ac_candidate":  false,
+                                           "landmark_main_list_view_present":  false,
+                                           "landmark_quick_actions_present":  false,
+                                           "landmark_start_menu_frame_present":  false,
+                                           "nativewindowhandle":  <hwnd>
+                                       },
+                                       {
+                                           "ct":  "Pane",
+                                           "cls":  "Progman",
+                                           "host_token":  "explorer",
+                                           "ac_candidate":  false,
+                                           "landmark_main_list_view_present":  false,
+                                           "landmark_quick_actions_present":  false,
+                                           "landmark_start_menu_frame_present":  false,
+                                           "nativewindowhandle":  <hwnd>
+                                       }
+                                   ]
+                  },
+    "predicate_open":  {
+                           "ws_ex_tool_window":  false,
+                           "cloak_state":  "none",
+                           "is_window_visible":  true,
+                           "has_parent":  false,
+                           "parent_class":  "-",
+                           "host_token":  "shell_experience_host"
+                       },
+    "predicate_closed":  {
+                             "ws_ex_tool_window":  false,
+                             "cloak_state":  "cloaked_app",
+                             "is_window_visible":  true,
+                             "has_parent":  false,
+                             "parent_class":  "-",
+                             "host_token":  "shell_experience_host"
+                         }
+}

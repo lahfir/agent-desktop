@@ -21,6 +21,7 @@ on:
       - 'probes/windows/23-signals-menus/**'
       - 'probes/windows/24-fixture-e2e/**'
       - 'probes/windows/25-packaging/**'
+      - 'probes/windows/26-shell-surfaces/**'
       - 'probes/windows/FINDINGS.md'
       - 'probes/windows/13-ledger-check.ps1'
       - 'probes/windows/13-ledger-content.ps1'
@@ -146,6 +147,38 @@ jobs:
         run: |
           .\probes\windows\25-packaging\04-cdylib-artifacts.ps1 -Label ci
 
+      # Area 26 (the shell surfaces and notifications, sub-phase 2.14 U1):
+      # reach and predicate readings for the immersive/tray surfaces, the
+      # Action Center shape and listener readings, tray rows on the COM
+      # stack, frame identity, and the platform-cost baseline. Every script
+      # binds the UIA3 COM shim (KTD3) through probes/windows/26-shell-
+      # surfaces/lib.ps1 and needs nothing beyond this image's csc.exe and
+      # desktop.
+      - name: Run the shell-surface reach probe
+        shell: powershell
+        run: |
+          .\probes\windows\26-shell-surfaces\probe.ps1 -Label ci
+
+      - name: Run the notifications shape and listener probe
+        shell: powershell
+        run: |
+          .\probes\windows\26-shell-surfaces\02-notifications.ps1 -Label ci
+
+      - name: Run the tray probe
+        shell: powershell
+        run: |
+          .\probes\windows\26-shell-surfaces\03-tray.ps1 -Label ci
+
+      - name: Run the frame-identity probe
+        shell: powershell
+        run: |
+          .\probes\windows\26-shell-surfaces\04-frame-identity.ps1 -Label ci
+
+      - name: Run the shell platform-cost probe
+        shell: powershell
+        run: |
+          .\probes\windows\26-shell-surfaces\06-cost.ps1 -Label ci
+
       # Runs after the area probes so the ledger it audits reflects every
       # capture this job just wrote. Registered here rather than the main CI
       # lane (ci.yml) per KTD12: the gate reads the probe corpus and diffs
@@ -211,6 +244,7 @@ jobs:
             probes/windows/23-signals-menus/captures/*-ci.json
             probes/windows/24-fixture-e2e/captures/*-ci.json
             probes/windows/25-packaging/captures/*-ci.json
+            probes/windows/26-shell-surfaces/captures/*-ci.json
             probes/windows/captures/13-ledger-check/*.json
           # warn, not error. A probe that fails before writing anything leaves
           # nothing to match, and erroring would stack a second "No files were
