@@ -9,11 +9,7 @@ const { MACOS_HELPER_NAME, releasedKeys, resolve } = require('../lib/platform');
 const binDir = __dirname;
 const MACOS_HELPER_PATH_ENV = 'AGENT_DESKTOP_MACOS_HELPER_PATH';
 
-// A table entry exists for platforms the release does not build yet, so
-// presence alone is the wrong question. Without the `released` check a Linux
-// user - whose postinstall correctly declined to download anything - reaches
-// the missing-binary branch and is told to reinstall, which can never help,
-// instead of the unsupported-platform branch that names what is released.
+// Check `released` flag, not just table presence, to distinguish unsupported vs missing binary.
 function getBinaryName() {
   const entry = resolve(platform(), arch());
   return entry && entry.released ? entry.binaryName : null;

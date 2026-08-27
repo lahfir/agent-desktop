@@ -56,15 +56,8 @@ function tarballName(version, target) {
   return `agent-desktop-v${version}-${target}.tar.gz`;
 }
 
-// Windows ships bsdtar at System32\tar.exe, and that is the tar this package
-// is designed around: it reads a gzip tarball and accepts a drive-letter path.
-// A bare `tar` is resolved through PATH, where Git for Windows, MSYS and
-// Cygwin all place a GNU tar earlier. GNU tar reads `C:\dir\file.tar.gz` as
-// the `host:path` form of a remote archive and fails with
-// "Cannot connect to C: resolve failed" before it opens anything, so an
-// install on a developer machine with Git installed cannot unpack its own
-// release. Resolving the in-box tool by absolute path removes PATH from the
-// decision; a Windows without it falls back to PATH rather than refusing.
+// Windows has bsdtar at System32\tar.exe; GNU tar via PATH misinterprets drive-letter paths.
+// Resolve in-box by absolute path, fall back to PATH if missing.
 function tarCommand(osPlatform, environment) {
   if (osPlatform !== 'win32') {
     return 'tar';

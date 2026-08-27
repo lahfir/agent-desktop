@@ -1,26 +1,8 @@
 name: Release Dry Run
 
-# Builds the release artifacts for the dispatching branch and stops.
-#
-# This lives apart from release.yml on purpose. A dry run's whole value is that
-# it compiles the branch under review rather than an already-published tag, and
-# a workflow that both checks out a dispatch-chosen ref and runs on the default
-# branch is a cache-poisoning vector: the untrusted build populates a cache the
-# privileged release later restores from. Keeping the two apart removes that by
-# construction instead of by condition - this workflow never runs on `main`,
-# holds no write permission, and has no publish job to reach.
-#
-# What it proves: the release matrix produces the named archives, each carries
-# exactly the expected entries, the checksum line parses, and the built binary
-# starts on its own architecture. What it cannot prove is the GitHub-Release
-# hosting step, which needs a real release.
-
-# `workflow_dispatch` alone would make this unusable by the sub-phase that
-# needs it: GitHub only offers that trigger for workflows already on the
-# default branch, so a dry run would first be available at the very merge it
-# exists to de-risk. The `pull_request` trigger is what makes it runnable now,
-# scoped to the paths that decide artifact *shape* rather than to every change
-# that merely alters what the binary does.
+# Builds release artifacts for review without cache-poisoning the real release.
+# Proves binary starts and archives contain expected entries; cannot prove GitHub-Release upload.
+# pull_request trigger on artifact-shape paths lets this run pre-merge for the PRs that need it.
 on:
   workflow_dispatch:
     inputs:

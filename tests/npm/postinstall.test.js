@@ -207,11 +207,7 @@ test('staging cleanup removes its own extract directory and a planted survivor i
   }
 });
 
-// The two tests below drive `trashRecoverably`, which is the POSIX cleanup
-// branch, and they drive it through a `#!/bin/sh` stand-in. Windows neither
-// takes that branch nor executes a shell script, so running them there asserts
-// against a path the host does not use. They are skipped by host rather than
-// rewritten, so the branch keeps its coverage on the runners that own it.
+// POSIX-only branch via shell script; skipped on Windows to preserve coverage on native host.
 const POSIX_CLEANUP_ONLY = process.platform === 'win32'
   ? 'trashRecoverably is the POSIX branch and its stand-in is a shell script'
   : false;
@@ -249,11 +245,7 @@ test('recoverable cleanup retains artifacts and warns when trash is unavailable 
   }
 });
 
-// A cleanup *failure* cannot be staged on Windows: `cleanupStaging` ignores
-// the trash command there and removes the directory outright, so there is no
-// input that makes it fail on purpose. The Windows branch is covered instead
-// by the planted-survivor test above, which proves the real staging is removed
-// while a decoy survives.
+// Cleanup can't fail on Windows (unconditional rm); covered by planted-survivor test.
 test('cleanup failure does not mask a successful archive install', { skip: POSIX_CLEANUP_ONLY }, () => {
   const payload = archive({
     'agent-desktop': 'cli-build-v2',
