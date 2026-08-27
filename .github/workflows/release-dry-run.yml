@@ -15,6 +15,12 @@ name: Release Dry Run
 # starts on its own architecture. What it cannot prove is the GitHub-Release
 # hosting step, which needs a real release.
 
+# `workflow_dispatch` alone would make this unusable by the sub-phase that
+# needs it: GitHub only offers that trigger for workflows already on the
+# default branch, so a dry run would first be available at the very merge it
+# exists to de-risk. The `pull_request` trigger is what makes it runnable now,
+# scoped to the paths that decide artifact *shape* rather than to every change
+# that merely alters what the binary does.
 on:
   workflow_dispatch:
     inputs:
@@ -22,6 +28,12 @@ on:
         description: Semver version to name the archives with, for example 0.9.0
         required: true
         type: string
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - '.github/workflows/release-dry-run.yml'
+      - 'npm/**'
+      - 'crates/ffi/Cargo.toml'
 
 permissions: {}
 
@@ -79,7 +91,7 @@ jobs:
       - name: Create tarball (macOS)
         if: runner.os == 'macOS'
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ inputs.version || format('0.0.0-pr{0}', github.event.pull_request.number) }}
         run: |
           TARBALL="agent-desktop-v${VERSION}-${{ matrix.target }}.tar.gz"
           tar -czf "${TARBALL}" -C "target/${{ matrix.target }}/release" \
@@ -93,7 +105,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ inputs.version || format('0.0.0-pr{0}', github.event.pull_request.number) }}
         run: |
           $tarball = "agent-desktop-v${env:VERSION}-${{ matrix.target }}.tar.gz"
           & tar -czf $tarball -C "target/${{ matrix.target }}/release" agent-desktop.exe
@@ -149,7 +161,7 @@ jobs:
       - name: Stage and verify archive contents
         shell: pwsh
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ inputs.version || format('0.0.0-pr{0}', github.event.pull_request.number) }}
         run: |
           $stage = "agent-desktop-ffi-v${env:VERSION}-${{ matrix.target }}"
           New-Item -ItemType Directory -Path "$stage/lib", "$stage/include" | Out-Null
