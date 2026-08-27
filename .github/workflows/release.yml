@@ -23,6 +23,11 @@ on:
         required: true
         default: true
         type: boolean
+      allow_republish:
+        description: Replace the assets of a release that already carries them
+        required: false
+        default: false
+        type: boolean
 
 # One release run per commit — never cancel, just queue.
 concurrency:
@@ -48,6 +53,7 @@ jobs:
       version: ${{ steps.release.outputs.major && format('{0}.{1}.{2}', steps.release.outputs.major, steps.release.outputs.minor, steps.release.outputs.patch) || steps.manual.outputs.version }}
       publish_npm: ${{ steps.manual.outputs.publish_npm || 'true' }}
       publish_skills: ${{ steps.manual.outputs.publish_skills || steps.release.outputs.release_created }}
+      allow_republish: ${{ steps.manual.outputs.allow_republish || 'false' }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         if: github.event_name != 'workflow_dispatch'
@@ -64,6 +70,7 @@ jobs:
           VERSION: ${{ inputs.version }}
           PUBLISH_NPM: ${{ inputs.publish_npm }}
           PUBLISH_SKILLS: ${{ inputs.publish_skills }}
+          ALLOW_REPUBLISH: ${{ inputs.allow_republish }}
         run: |
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "Invalid version: ${VERSION}" >&2
@@ -79,6 +86,7 @@ jobs:
             echo "version=${VERSION}"
             echo "publish_npm=${PUBLISH_NPM}"
             echo "publish_skills=${PUBLISH_SKILLS}"
+            echo "allow_republish=${ALLOW_REPUBLISH}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Sync Cargo.lock on release PR
@@ -125,19 +133,26 @@ jobs:
     name: Build (${{ matrix.target }})
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - aarch64-apple-darwin
-          - x86_64-apple-darwin
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.tag_name }}
 
       - name: Install Rust toolchain
@@ -155,12 +170,18 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
 
-      - name: Build release binary
+      - name: Build release binary (macOS)
+        if: runner.os == 'macOS'
         run: |
           cargo build --locked --release -p agent-desktop --target ${{ matrix.target }}
           cargo build --locked --release -p agent-desktop-macos --bin agent-desktop-macos-helper --target ${{ matrix.target }}
 
-      - name: Check binary size
+      - name: Build release binary (Windows)
+        if: runner.os == 'Windows'
+        run: cargo build --locked --release -p agent-desktop --target ${{ matrix.target }}
+
+      - name: Check binary size (macOS)
+        if: runner.os == 'macOS'
         run: |
           SIZE=$(stat -f%z target/${{ matrix.target }}/release/agent-desktop)
           HELPER_SIZE=$(stat -f%z target/${{ matrix.target }}/release/agent-desktop-macos-helper)
@@ -172,7 +193,39 @@ jobs:
             exit 1
           fi
 
-      - name: Create tarball
+      - name: Check binary size (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = Get-Item "target/${{ matrix.target }}/release/agent-desktop.exe"
+          $limit = 15MB
+          Write-Host "Binary size: $($binary.Length) bytes"
+          if ($binary.Length -gt $limit) {
+            Write-Host "FAIL: shipped executable exceeds 15MB limit (binary=$($binary.Length) bytes)"
+            exit 1
+          }
+
+      # A binary that cannot start is not a release artifact, and on ARM64 this
+      # smoke is the only place that can be observed. Run before archiving on
+      # every leg so the step stays uniform rather than special-cased.
+      - name: Smoke-run the built binary (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          OUTPUT=$(target/${{ matrix.target }}/release/agent-desktop version)
+          echo "$OUTPUT"
+
+      - name: Smoke-run the built binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "target/${{ matrix.target }}/release/agent-desktop.exe" version
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "FAIL: agent-desktop version exited $LASTEXITCODE on the freshly built binary"
+            exit $LASTEXITCODE
+          }
+
+      - name: Create tarball (macOS)
+        if: runner.os == 'macOS'
         env:
           VERSION: ${{ needs.release-please.outputs.version }}
         run: |
@@ -187,7 +240,34 @@ jobs:
             echo "Release executable changed while packaging" >&2
             exit 1
           fi
+          LISTING=$(tar -tzf "${TARBALL}" | sort | tr '\n' ' ')
+          EXPECTED="agent-desktop agent-desktop-macos-helper "
+          if [ "$LISTING" != "$EXPECTED" ]; then
+            echo "FAIL: macOS archive listing '$LISTING' != expected '${EXPECTED}'"
+            exit 1
+          fi
           shasum -a 256 "${TARBALL}" > "${TARBALL}.sha256"
+
+      - name: Create tarball (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          $tarball = "agent-desktop-v${env:VERSION}-${{ matrix.target }}.tar.gz"
+          & tar -czf $tarball -C "target/${{ matrix.target }}/release" agent-desktop.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # The outer @() matters: a one-element pipeline assigns a scalar
+          # string, whose .Count is its character length.
+          $listing = @(@(& tar -tzf $tarball) | Sort-Object)
+          if (($listing.Count -ne 1) -or ($listing[0] -ne 'agent-desktop.exe')) {
+            Write-Host "FAIL: Windows archive listing must equal exactly one entry, agent-desktop.exe; got:"
+            $listing | ForEach-Object { Write-Host "  $_" }
+            exit 1
+          }
+          Write-Host "OK: archive lists exactly agent-desktop.exe"
+          $hash = (Get-FileHash $tarball -Algorithm SHA256).Hash.ToLower()
+          "$hash  $tarball" | Out-File -Encoding ascii "$tarball.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -232,9 +312,14 @@ jobs:
             runner: windows-latest
             archive: zip
             lib_name: agent_desktop_ffi.dll
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+            archive: zip
+            lib_name: agent_desktop_ffi.dll
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.tag_name }}
 
       - name: Install Rust toolchain
@@ -242,6 +327,8 @@ jobs:
           rustup show
           rustup target add ${{ matrix.target }}
 
+      # NEVER add --features stub-adapter to the release FFI build — it ships a no-op dylib
+      # where every adapter call returns PLATFORM_NOT_SUPPORTED. The guard step below enforces this.
       - name: Cache cargo registry
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -252,8 +339,6 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-${{ matrix.target }}-ffi-cargo-
 
-      # NEVER add --features stub-adapter to the release FFI build — it ships a no-op dylib
-      # where every adapter call returns PLATFORM_NOT_SUPPORTED. The guard step below enforces this.
       - name: Guard — release dylib must not be a stub build
         shell: bash
         run: |
@@ -303,6 +388,9 @@ jobs:
             cp "target/${{ matrix.target }}/release/agent-desktop-macos-helper" "$STAGE/lib/"
             chmod +x "$STAGE/lib/agent-desktop-macos-helper"
           fi
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp "target/${{ matrix.target }}/release-ffi/agent_desktop_ffi.dll.lib" "$STAGE/lib/"
+          fi
           cp crates/ffi/include/agent_desktop.h "$STAGE/include/"
           cp LICENSE "$STAGE/"
           cat > "$STAGE/README.md" <<EOF
@@ -313,14 +401,24 @@ jobs:
           - \`LICENSE\` — Apache-2.0
 
           Docs: https://github.com/lahfir/agent-desktop/tree/main/skills/agent-desktop-ffi
-
-          macOS \`install_name\` is \`@rpath/libagent_desktop_ffi.dylib\` — linking
-          consumers need \`-rpath\` pointing at the dylib's directory; \`dlopen\` /
-          ctypes callers resolve by path and need nothing.
           EOF
           if [ "$RUNNER_OS" = "macOS" ]; then
+            cat >> "$STAGE/README.md" <<'MACEOF'
+
+          macOS `install_name` is `@rpath/libagent_desktop_ffi.dylib` — linking
+          consumers need `-rpath` pointing at the dylib's directory; `dlopen` /
+          ctypes callers resolve by path and need nothing.
+          MACEOF
             # shellcheck disable=SC2016
             echo '- `lib/agent-desktop-macos-helper` — required helper, colocated for dylib-image discovery' >> "$STAGE/README.md"
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            cat >> "$STAGE/README.md" <<'WINEOF'
+
+          `dlopen` / Python `ctypes` / Node `ffi-napi` callers load
+          `lib/agent_desktop_ffi.dll` by path and need nothing else. An MSVC
+          linking consumer (C++ or Rust) needs `lib/agent_desktop_ffi.dll.lib`
+          beside it — that import library is what you link against at build time.
+          WINEOF
           fi
           if [ "$RUNNER_OS" != "Windows" ]; then
             (cd "$STAGE" && shasum -a 256 lib/* include/* LICENSE > SHA256SUMS)
@@ -343,6 +441,24 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path "${env:STAGE}" -DestinationPath "${env:STAGE}.zip"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead("${env:STAGE}.zip")
+          try {
+            $entries = $zip.Entries.FullName
+          } finally {
+            $zip.Dispose()
+          }
+          # Compress-Archive records '\' separators inside the archive on
+          # Windows, so the comparison normalizes both sides before matching.
+          $names = @($entries) | ForEach-Object { $_.Replace('\', '/') }
+          $importLib = "${env:STAGE}/lib/agent_desktop_ffi.dll.lib"
+          if ($names -notcontains $importLib) {
+            Write-Output "FAIL: Windows FFI archive is missing the MSVC import library '$importLib'"
+            Write-Output "Archive entries:"
+            $names | ForEach-Object { Write-Output "  $_" }
+            exit 1
+          }
+          Write-Output "OK: archive contains $importLib"
           $hash = (Get-FileHash "${env:STAGE}.zip" -Algorithm SHA256).Hash.ToLower()
           "$hash  ${env:STAGE}.zip" | Out-File -Encoding ascii "${env:STAGE}.zip.sha256"
 
@@ -370,6 +486,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.tag_name }}
 
       - name: Install Rust toolchain
@@ -415,6 +532,7 @@ jobs:
   publish-github:
     name: Publish to GitHub Release
     needs: [release-please, build, build-ffi, ffi-release-gates]
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -438,14 +556,50 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          ALLOW_REPUBLISH: ${{ needs.release-please.outputs.allow_republish }}
         run: |
-          gh release view "$TAG_NAME" >/dev/null 2>&1 \
-            || gh release create "$TAG_NAME" \
+          # A re-dispatch of an already-shipped version would otherwise replace
+          # its assets in place: --clobber overwrites them and the asset-count
+          # assertion then passes over whatever survived, so every gate stays
+          # green while users' downloads change underneath them.
+          #
+          # Existence is the wrong discriminator - release-please creates the
+          # release itself when it merges the release PR, so a normal run finds
+          # one already there. What distinguishes a first upload from a
+          # re-dispatch is whether assets have been attached yet.
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            ATTACHED=$(gh release view "$TAG_NAME" --json assets --jq '.assets | length')
+            if [ "${ATTACHED}" -gt 0 ] && [ "${ALLOW_REPUBLISH}" != "true" ]; then
+              echo "FAIL: ${TAG_NAME} already carries ${ATTACHED} asset(s)."
+              echo "Re-uploading would replace shipped downloads. Cut a new version,"
+              echo "or dispatch with allow_republish=true if replacing them is intended."
+              exit 1
+            fi
+          else
+            gh release create "$TAG_NAME" \
               --title "$TAG_NAME" \
               --notes "Release ${TAG_NAME}"
+          fi
           gh release upload "$TAG_NAME" \
             ./*.tar.gz ./*.zip checksums.txt \
             --clobber
+
+      # Asset count: 4 CLI tarballs + 4 FFI tarballs + 2 FFI zips + checksums.txt = 11.
+      # Mismatch here fails check-npm-package.js first; this runs after upload to count the release.
+      - name: Assert the release's exact asset set
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          EXPECTED_ASSETS: 11
+        run: |
+          ASSETS=$(gh release view "$TAG_NAME" --json assets --jq '.assets | length')
+          if [ "$ASSETS" -ne "$EXPECTED_ASSETS" ]; then
+            echo "FAIL: release carries ${ASSETS} assets, expected exactly ${EXPECTED_ASSETS}"
+            echo "      (4 CLI tarballs + 4 FFI tarballs + 2 FFI zips + checksums.txt)"
+            exit 1
+          fi
+          echo "OK: exactly ${ASSETS} assets found on release"
 
       # Keyless Sigstore provenance. Verify with:
       #   gh attestation verify <file> --repo lahfir/agent-desktop
@@ -469,6 +623,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.tag_name }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -476,19 +631,6 @@ jobs:
           node-version: '24'
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
-
-      - name: Verify GitHub Release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
-        run: |
-          # Expected: 2 CLI tarballs + 4 FFI tarballs + 1 FFI zip + checksums = 8.
-          ASSETS=$(gh release view "$TAG_NAME" --json assets --jq '.assets | length')
-          if [ "$ASSETS" -lt 8 ]; then
-            echo "FAIL: expected at least 8 assets, found ${ASSETS}"
-            exit 1
-          fi
-          echo "OK: ${ASSETS} assets found on release"
 
       - name: Prepare npm package
         env:
@@ -520,6 +662,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.tag_name }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

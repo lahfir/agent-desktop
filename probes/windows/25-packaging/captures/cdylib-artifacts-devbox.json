@@ -1,0 +1,49 @@
+{
+    "probe":  "25-packaging-04-cdylib-artifacts",
+    "question":  "what does the pinned release-ffi profile actually produce for the Windows cdylib: which of the DLL, its MSVC import library, its export file and its debug database appear in the profile directory, and how large is the import library a linking consumer needs beside the DLL release.yml stages today",
+    "measurable":  true,
+    "branch":  "artifact_set_recorded",
+    "label":  "devbox",
+    "build_invocation":  "cargo build --locked --profile release-ffi -p agent-desktop-ffi",
+    "build_exit_code":  0,
+    "build_timed_out":  false,
+    "artifact_count":  5,
+    "artifacts":  [
+                      {
+                          "artifact":  "agent_desktop_ffi.d",
+                          "kind":  "dep_info",
+                          "byte_len":  36616
+                      },
+                      {
+                          "artifact":  "agent_desktop_ffi.dll",
+                          "kind":  "cdylib",
+                          "byte_len":  2289664
+                      },
+                      {
+                          "artifact":  "agent_desktop_ffi.dll.exp",
+                          "kind":  "export_file",
+                          "byte_len":  15000
+                      },
+                      {
+                          "artifact":  "agent_desktop_ffi.dll.lib",
+                          "kind":  "import_library",
+                          "byte_len":  26298
+                      },
+                      {
+                          "artifact":  "agent_desktop_ffi.pdb",
+                          "kind":  "debug_database",
+                          "byte_len":  2568192
+                      }
+                  ],
+    "dll_present":  true,
+    "import_lib_present":  true,
+    "exp_present":  true,
+    "pdb_present":  true,
+    "import_lib_bytes":  26298,
+    "all_expected_kinds_present":  true,
+    "summary":  {
+                    "build_ok":  true,
+                    "all_expected_kinds_present":  true,
+                    "import_lib_overhead_kb_rounded":  26
+                }
+}

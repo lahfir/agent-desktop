@@ -68,6 +68,8 @@ fn unsupported_host_reports_unavailable_without_capture_api() {
     );
 }
 
+/// Uniform black alone cannot distinguish session compositing from capture failure.
+/// GDI independently verifies the window painted, making black a failure not a skip.
 #[test]
 fn pattern_fixture_window_capture_matches_when_supported() {
     bootstrap();
@@ -85,6 +87,35 @@ fn pattern_fixture_window_capture_matches_when_supported() {
     let mut samples = [[0u8; 3]; 4];
     for (index, point) in expectation.sample_points().into_iter().enumerate() {
         samples[index] = sample_rgb(&bgra, width, point.x, point.y);
+    }
+    if samples.iter().all(|sample| *sample == [0u8; 3]) {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let retried = capture_window(fixture.handle() as _, 1.0, deadline())
+            .expect("WGC window capture of the pattern fixture succeeds");
+        let (bgra, width, _) =
+            decode_png_to_bgra(&retried.data, deadline()).expect("decode retried PNG");
+        for (index, point) in expectation.sample_points().into_iter().enumerate() {
+            samples[index] = sample_rgb(&bgra, width, point.x, point.y);
+        }
+    }
+    if samples.iter().all(|sample| *sample == [0u8; 3]) {
+        match fixture.blit_client_samples() {
+            Ok(gdi) if expectation.matches_samples(&gdi) => {
+                panic!(
+                    "window capture returned uniform black while GDI read the expected \
+                     pattern from the same client area ({gdi:?}); the window painted, so \
+                     this is a capture defect rather than a session without a compositor"
+                );
+            }
+            _ => {
+                eprintln!(
+                    "skip: neither the capture path nor an independent GDI read of the \
+                     same client area produced pixels; this session composites nothing, \
+                     so color matching cannot be evaluated here"
+                );
+                return;
+            }
+        }
     }
     assert!(
         expectation.matches_samples(&samples),

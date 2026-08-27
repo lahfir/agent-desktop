@@ -34,7 +34,7 @@ npm install -g agent-desktop
 bun install -g --trust agent-desktop
 ```
 
-Requires macOS 12+ with Accessibility permission granted to your terminal. Screen Recording permission is also required for screenshots.
+macOS requires macOS 12+; grant Accessibility permission to your terminal, plus Screen Recording for screenshots. Windows requires Windows 10 1809+ / Server 2019+ and needs no permission grant for same-integrity UI Automation targets (elevated targets want an elevated terminal — see the `agent-desktop-windows` skill).
 
 ## Reference Files
 
@@ -45,8 +45,9 @@ Detailed documentation is split into focused reference files. Read them as neede
 | `references/commands-observation.md` | snapshot, find, get, is, screenshot, list-surfaces — all flags, output examples |
 | `references/commands-interaction.md` | click, type, set-value, select, toggle, scroll, drag, keyboard, mouse — choosing the right command |
 | `references/commands-system.md` | launch (including `--cdp` for Chromium web contents), close, windows, clipboard, wait, batch, session, status, permissions, version |
-| `references/workflows.md` | 16 common patterns: forms, menus, dialogs, scroll-find, drag-drop, async wait, anti-patterns |
+| `references/workflows.md` | 17 common patterns: forms, menus, dialogs, scroll-find, drag-drop, async wait, anti-patterns |
 | `references/macos.md` | macOS permissions/TCC, AX API internals, smart activation chain, surfaces, Notification Center, troubleshooting |
+| `agent-desktop-windows` skill | Separate bundled package (`skills get agent-desktop-windows`): Windows capability table, UIPI/elevation, Chromium/Electron settle behavior, troubleshooting |
 
 ## The Observe-Act Loop (Progressive Skeleton Traversal)
 
@@ -148,7 +149,7 @@ agent-desktop find --root @s8f3k2p9:e3 --role button        # Search one region 
 agent-desktop find --app "App" --surface menubar --name "Save" --first  # Search a menu
 agent-desktop get @e1 --snapshot <snapshot_id> --property text       # Read element property
 agent-desktop is @e1 --snapshot <snapshot_id> --property enabled     # Check element state
-agent-desktop list-surfaces --app "App"                     # Available surfaces
+agent-desktop list-surfaces --app "App"                     # Available surfaces (macOS only; Windows returns PLATFORM_NOT_SUPPORTED)
 ```
 
 ### Interaction

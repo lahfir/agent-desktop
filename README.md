@@ -57,10 +57,27 @@
 npm install -g agent-desktop        # downloads prebuilt binary automatically
 ```
 
+The same command installs on macOS (ARM64, x64) and Windows (x64, ARM64). The installer downloads a `.tar.gz` release asset, verifies its SHA-256 against the release's `checksums.txt`, and places the native binary beside the `agent-desktop` launcher.
+
 Or without installing:
 
 ```bash
 npx agent-desktop snapshot --app Finder -i
+```
+
+### Direct download
+
+Windows binaries are also published as GitHub Release assets:
+
+- `agent-desktop-v<version>-x86_64-pc-windows-msvc.tar.gz`
+- `agent-desktop-v<version>-aarch64-pc-windows-msvc.tar.gz`
+
+Each archive contains one entry, `agent-desktop.exe`. Verify a manual download before running it:
+
+```bash
+curl -fsSL https://github.com/lahfir/agent-desktop/releases/download/v<version>/checksums.txt
+sha256sum <downloaded-archive>   # compare with the matching checksums.txt line
+gh attestation verify <downloaded-archive> --repo lahfir/agent-desktop
 ```
 
 ### From source
@@ -72,7 +89,7 @@ cargo build --release
 cp target/release/agent-desktop /usr/local/bin/
 ```
 
-Requires Rust 1.89+ and macOS 13.0+.
+Requires Rust 1.89+. On macOS this means macOS 13.0+ with the Xcode command-line tools; on Windows it requires the MSVC toolchain (Visual Studio Build Tools with the "Desktop development with C++" workload).
 
 ### Permissions
 
@@ -81,6 +98,8 @@ macOS requires Accessibility permission. Screenshots also require Screen Recordi
 ```bash
 agent-desktop permissions --request   # request missing permissions in an isolated helper
 ```
+
+Windows needs no permission grant for reading or acting on applications at the same integrity level as your terminal: UI Automation requires no TCC-style consent. An elevated target (an app running as administrator) can only be driven by an elevated agent, because UIPI blocks synthesized input across that boundary while reads still succeed. Because the shipped binary is unsigned, three Windows execution controls may still intervene: a browser-downloaded copy shows the SmartScreen warning on first GUI launch (the npm install path attaches no Mark-of-the-Web, so no prompt fires there), antivirus software may quarantine a freshly downloaded unsigned executable, and Smart App Control on a clean Windows 11 install blocks unknown unsigned executables at process creation regardless of launch mode.
 
 Permission fields are explicit objects, for example:
 
@@ -413,13 +432,16 @@ snapshot → act → STALE_REF or AMBIGUOUS_TARGET? → wait/snapshot again → 
 
 | | macOS | Windows | Linux |
 |---|:---:|:---:|:---:|
-| Accessibility tree | **Yes** | Planned | Planned |
-| Click / type / keyboard | **Yes** | Planned | Planned |
-| Mouse input | **Yes** | Planned | Planned |
-| Screenshot | **Yes** | Planned | Planned |
-| Clipboard | **Yes** | Planned | Planned |
-| App & window management | **Yes** | Planned | Planned |
+| Accessibility tree | **Yes** | Yes\* | Planned |
+| Click / type / keyboard | **Yes** | **Yes** | Planned |
+| Mouse input | **Yes** | **Yes** | Planned |
+| Screenshot | **Yes** | **Yes** | Planned |
+| Clipboard | **Yes** | **Yes** | Planned |
+| App & window management | **Yes** | Yes\*\* | Planned |
 | Notifications | **Yes** | Planned | Planned |
+
+\* `list-surfaces` returns `PLATFORM_NOT_SUPPORTED` on Windows; window and focused-surface observation is fully available.
+\*\* `launch` on Windows resolves an absolute path or a bare name found under System32 or the Windows directory — it cannot resolve display names such as "Google Chrome".
 
 ## Development
 

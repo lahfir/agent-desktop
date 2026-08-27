@@ -88,27 +88,46 @@ pub(super) fn image_file_name(id: &str) -> &str {
 pub(super) fn environment_block(
     overrides: &BTreeMap<String, String>,
 ) -> Result<Vec<u16>, AdapterError> {
-    let mut merged: BTreeMap<String, (String, String)> = std::env::vars()
+    let mut block = Vec::new();
+    for (key, value) in merge_environment(std::env::vars(), overrides)? {
+        block.extend(format!("{key}={value}").encode_utf16());
+        block.push(0);
+    }
+    block.push(0);
+    Ok(block)
+}
+
+/// Folds the inherited environment and caller overrides into one entry list.
+///
+/// Inherited entries with malformed names - empty, or containing `=` or NUL,
+/// the hidden current-directory variables some Windows images carry in their
+/// process environment - are skipped rather than fatal: this process did not
+/// choose them, and one stray machine-level entry must not fail every launch
+/// on that machine. Caller overrides are held to the strict rule instead,
+/// because a rejected launch with `InvalidArgs` is the honest answer to input
+/// this tool was handed directly. The returned keys are still folded to ASCII
+/// uppercase for collision detection; values keep their inherited spelling.
+pub(super) fn merge_environment(
+    inherited: impl Iterator<Item = (String, String)>,
+    overrides: &BTreeMap<String, String>,
+) -> Result<Vec<(String, String)>, AdapterError> {
+    let mut merged: BTreeMap<String, (String, String)> = inherited
+        .filter(|(key, _)| !key.is_empty() && !key.contains('=') && !key.contains('\0'))
         .map(|(key, value)| (key.to_ascii_uppercase(), (key, value)))
         .collect();
     for (key, value) in overrides {
         merged.insert(key.to_ascii_uppercase(), (key.clone(), value.clone()));
     }
-    let mut block = Vec::new();
-    for (key, value) in merged.into_values() {
+    let entries: Vec<(String, String)> = merged.into_values().collect();
+    for (key, value) in &entries {
         if key.contains('=') || key.contains('\0') || value.contains('\0') {
             return Err(AdapterError::new(
                 ErrorCode::InvalidArgs,
                 "Launch environment entries must not contain NUL or '=' in the key",
             ));
         }
-        for unit in format!("{key}={value}").encode_utf16() {
-            block.push(unit);
-        }
-        block.push(0);
     }
-    block.push(0);
-    Ok(block)
+    Ok(entries)
 }
 
 /// The block a launch actually hands to `CreateProcessW`: `None` only when
@@ -266,5 +285,32 @@ mod tests {
                 .any(|entry| entry.to_ascii_uppercase().starts_with(&folded_prefix)),
             "the strip_key entry must not survive into the built block: {text:?}"
         );
+    }
+
+    /// **Invert-verified**: removing the inherited-entry filter makes this
+    /// fail with the `InvalidArgs` error every launch on a machine whose
+    /// environment carries a malformed hidden variable (an `=C:=`-style
+    /// current-directory entry) produced on the ARM64 hosted runner.
+    #[test]
+    fn malformed_inherited_entries_are_skipped_not_fatal() {
+        let inherited = vec![
+            ("=C:".to_string(), "C:\\hidden".to_string()),
+            ("Path".to_string(), "kept".to_string()),
+        ];
+        let merged = merge_environment(inherited.into_iter(), &BTreeMap::new())
+            .expect("a malformed inherited entry is skipped, not fatal");
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].0, "Path", "inherited spelling is preserved");
+        assert_eq!(merged[0].1, "kept");
+    }
+
+    /// Caller-supplied overrides keep the strict rule the inherited filter
+    /// relaxed: a launch handed a malformed name directly must refuse.
+    #[test]
+    fn override_keys_still_reject_invalid_names() {
+        let mut overrides = BTreeMap::new();
+        overrides.insert("BAD=KEY".to_string(), "value".to_string());
+        let error = merge_environment(std::env::vars(), &overrides).expect_err("invalid override");
+        assert_eq!(error.code, ErrorCode::InvalidArgs);
     }
 }

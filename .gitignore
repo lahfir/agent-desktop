@@ -87,6 +87,8 @@ docs/*
 !docs/phases.md
 !docs/solutions/
 !docs/solutions/**
+!docs/residual-review-findings/
+!docs/residual-review-findings/**
 !docs/plans/
 !docs/plans/**
 !docs/dogfood-reports/
