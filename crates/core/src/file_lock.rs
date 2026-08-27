@@ -108,6 +108,17 @@ impl FileLock {
     }
 }
 
+/// Abandons a lock it decided not to return by dropping the file, never by
+/// unlocking it.
+///
+/// The distinction matters on the adopt path, where `file` is a dup of an
+/// inherited descriptor and therefore shares its open file description with
+/// whoever handed it over. `try_lock` on a description that already holds the
+/// lock succeeds immediately, so the expiry branch below is reachable with a
+/// lock this call did not take — and unlocking there would release it for the
+/// parent too, handing back `TIMEOUT` while quietly stripping the exclusivity
+/// the parent still believes it holds. Dropping releases a description this
+/// call opened and leaves a shared one alone, which is right in both cases.
 fn lock_file(
     file: File,
     deadline: Deadline,
@@ -122,7 +133,6 @@ fn lock_file(
         match file.try_lock() {
             Ok(()) => {
                 if deadline.is_expired() {
-                    let _ = file.unlock();
                     return Err(lock_timeout(deadline, purpose, path, contention_count));
                 }
                 return Ok(FileLock {
