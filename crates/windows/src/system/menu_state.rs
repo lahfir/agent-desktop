@@ -43,6 +43,10 @@ pub(crate) fn menu_is_open(pid: ProcessId, deadline: Deadline) -> Result<bool, A
 mod multi;
 pub(crate) use multi::menus_open_for;
 
+#[path = "menu_state_locate.rs"]
+mod locate;
+pub(crate) use locate::locate_menu;
+
 #[cfg(target_os = "windows")]
 #[path = "menu_state_chromium.rs"]
 mod chromium;
@@ -252,24 +256,40 @@ pub(super) fn probe_candidate(
     condition: &uiautomation::core::UICondition,
     handle: isize,
 ) -> Result<bool, AdapterError> {
+    probe_candidate_element(client, condition, handle).map(|found| found.is_some())
+}
+
+/// [`probe_candidate`] with the found element kept instead of dropped. The
+/// probe already located the menu-family element on its positive answer; the
+/// `Menu` surface arm needs exactly that element to root the observation at,
+/// so the discard was the only difference between the two callers.
+#[cfg(target_os = "windows")]
+pub(super) fn probe_candidate_element(
+    client: &uiautomation::UIAutomation,
+    condition: &uiautomation::core::UICondition,
+    handle: isize,
+) -> Result<Option<uiautomation::UIElement>, AdapterError> {
     use uiautomation::types::{Handle, TreeScope};
 
     if !crate::tree::automation::window_exists(handle) {
-        return Ok(false);
+        return Ok(None);
     }
     if !window_is_responsive(handle as *mut core::ffi::c_void) {
         return Err(unresponsive_menu_probe_error());
     }
     let element = match client.element_from_handle(Handle::from(handle)) {
         Ok(element) => element,
-        Err(error) => return probe_step(&error, "resolve a candidate menu window"),
+        Err(error) => {
+            return probe_step(&error, "resolve a candidate menu window").map(|_| None);
+        }
     };
     match element.find_first(TreeScope::Subtree, condition) {
-        Ok(_) => Ok(true),
+        Ok(found) => Ok(Some(found)),
         Err(error) => probe_step(
             &error,
             "search a candidate window for a reachable menu element",
-        ),
+        )
+        .map(|_| None),
     }
 }
 

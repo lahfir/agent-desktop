@@ -44,6 +44,24 @@ pub(crate) fn surface_root(
                 ))
             }
         }
+        (ObservationRoot::Window(window), SnapshotSurface::Menu) => {
+            let location = crate::system::menu_state::locate_menu(window.pid, deadline)?
+                .ok_or_else(|| {
+                    AdapterError::new(
+                        ErrorCode::WindowNotFound,
+                        "No open menu was found for this application",
+                    )
+                })?;
+            root_from_hwnd(location.root_handle(), deadline)
+        }
+        (ObservationRoot::Window(window), SnapshotSurface::StartMenu)
+        | (ObservationRoot::Window(window), SnapshotSurface::Taskbar)
+        | (ObservationRoot::Window(window), SnapshotSurface::SystemTray)
+        | (ObservationRoot::Window(window), SnapshotSurface::SystemTrayOverflow)
+        | (ObservationRoot::Window(window), SnapshotSurface::ActionCenter) => {
+            let handle = window_hwnd(&window.id)?;
+            root_from_hwnd(handle, deadline)
+        }
         (ObservationRoot::Element { handle, .. }, _) => {
             super::element::uia_element(handle).cloned().map_err(|_| {
                 AdapterError::new(
@@ -126,54 +144,5 @@ pub(crate) fn window_is_modal_sheet(_root: &UIAElement, _chromium: bool) -> bool
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn a_malformed_window_id_is_rejected_before_the_platform_is_reached() {
-        let error = window_hwnd("not-a-window").expect_err("must reject");
-        assert_eq!(error.code, ErrorCode::InvalidArgs);
-    }
-
-    /// `window_is_modal_sheet` reads the property with no provider; an absent
-    /// or unknown read is not a sheet.
-    #[cfg(not(target_os = "windows"))]
-    #[test]
-    fn an_absent_window_modal_read_is_not_a_sheet() {
-        use super::super::element::{CannedElement, UIAElement};
-        let element = UIAElement::from(CannedElement);
-        assert!(!window_is_modal_sheet(&element, true));
-    }
-
-    /// The shipped predicate, on the lane that runs it.
-    ///
-    /// The non-Windows arm above drives a stub whose body is `false`, so it
-    /// answers correctly for its own reasons and says nothing about the real
-    /// read. This drives the real one against a live top-level window that is
-    /// not modal, and asserts the provider's own answer first: with the
-    /// provider confirmed to be reporting `false`, a predicate that ignored
-    /// the read or inverted its comparison would classify an ordinary window
-    /// as a `Sheet` surface and fail here.
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn a_live_non_modal_window_is_not_classified_as_a_sheet() {
-        use super::super::fixture::{HostedFixture, ensure_test_apartment};
-        use super::super::walker_fake::deadline;
-
-        ensure_test_apartment();
-        let fixture = HostedFixture::spawn().expect("the fixture spawns");
-        let root = root_from_hwnd(fixture.handle(), deadline()).expect("the fixture window roots");
-
-        assert_eq!(
-            read_one(&root, TreeProperty::WindowIsModal).flag(),
-            Some(false),
-            "the provider must answer this read for the classification below to be tested"
-        );
-        assert!(!window_is_modal_sheet(&root, false));
-        assert!(
-            !window_is_modal_sheet(&root, true),
-            "the chromium flag is not consulted by this classification"
-        );
-    }
-}
+#[path = "surfaces_tests.rs"]
+mod tests;

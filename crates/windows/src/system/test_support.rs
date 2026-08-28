@@ -32,6 +32,15 @@ use std::sync::Mutex;
 
 pub(crate) static FIXTURE_APP_NAME_LOCK: Mutex<()> = Mutex::new(());
 
+/// Serializes every test that raises or dismisses a shell surface. The
+/// surfaces are machine-global desktop state - two tests racing the Action
+/// Center resolve each other's surfaces and dismiss each other's cleanup -
+/// so every such test holds this lock for its whole body. Defined beside the
+/// other cross-module test locks rather than in one surface test module so
+/// the tree-side surface tests and the system-side shell tests share one
+/// serialization instead of two that never meet.
+pub(crate) static SHELL_SURFACE_LOCK: Mutex<()> = Mutex::new(());
+
 /// Serializes every test that reaches the real, machine-global interaction
 /// lease - `ProcessLeaseGuard`'s `AtomicBool` is process-wide, so two lease
 /// tests in different OS threads of the same `cargo test` binary contend on
