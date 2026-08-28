@@ -176,10 +176,17 @@ fn build_menus(window: HWND) {
     MENU_BAR.with(|cell| cell.set(bar));
 
     let popup = unsafe { CreatePopupMenu() };
-    let item_label = fixture_window::wide("fixture-menu-item");
-    unsafe { AppendMenuW(popup, MF_STRING, 2, item_label.as_ptr()) };
+    for index in 0..CONTEXT_MENU_ITEM_COUNT {
+        let item_label = fixture_window::wide(&format!("fixture-menu-item-{index}"));
+        unsafe { AppendMenuW(popup, MF_STRING, 2 + index, item_label.as_ptr()) };
+    }
     MENU_POPUP.with(|cell| cell.set(popup));
 }
+
+/// How many items the context menu is staged with. Assertions count the
+/// surface inventory against this constant rather than a literal, so a
+/// fixture change cannot let a count assertion pass vacuously.
+pub(crate) const CONTEXT_MENU_ITEM_COUNT: usize = 1;
 
 fn open_context_menu(window: HWND) {
     let popup = MENU_POPUP.with(Cell::get);

@@ -45,7 +45,7 @@ pub(crate) use multi::menus_open_for;
 
 #[path = "menu_state_locate.rs"]
 mod locate;
-pub(crate) use locate::locate_menu;
+pub(crate) use locate::{MenuLocation, locate_menu};
 
 #[cfg(target_os = "windows")]
 #[path = "menu_state_chromium.rs"]
