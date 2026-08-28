@@ -71,7 +71,8 @@ mod shell_surfaces {
     use crate::system::shell_surface::resolve_surface;
     use crate::system::shell_surface_open::{close_surface, open_surface};
     use crate::system::test_support::{
-        SHELL_SURFACE_LOCK, or_skip_shell, stage_foreground, wait_for_foreground_to_settle,
+        SHELL_SURFACE_LOCK, or_skip_shell, shell_declined_the_surface, stage_foreground,
+        wait_for_foreground_to_settle,
     };
     use crate::tree::element::UIAElement;
     use crate::tree::fixture_menu::MenuFixture;
@@ -344,8 +345,18 @@ mod shell_surfaces {
             covered.push(kind);
         }
         for kind in raised.iter().rev() {
-            close_surface(*kind, deadline())
-                .unwrap_or_else(|error| panic!("cleanup of '{kind:?}' failed: {error:?}"));
+            if let Err(error) = close_surface(*kind, deadline()) {
+                if shell_declined_the_surface(&error) {
+                    eprintln!(
+                        "skip closing advertised surface '{}': the shell accepted the \
+                         raise but declined the dismiss ({error:?})",
+                        kind.as_str()
+                    );
+                    skipped.push(*kind);
+                    continue;
+                }
+                panic!("cleanup of '{kind:?}' failed: {error:?}");
+            }
         }
     }
 

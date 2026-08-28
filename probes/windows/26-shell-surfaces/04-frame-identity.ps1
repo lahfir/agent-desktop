@@ -64,6 +64,8 @@ try {
     # ------------------------------------------------------------- A26-8
     if (-not (Test-Path -LiteralPath (Join-Path $env:WINDIR 'ImmersiveControlPanel\SystemSettings.exe'))) {
         $frameLeg['branch'] = 'system_settings_exe_not_found_at_immersive_control_panel_path'
+        $frameLeg['staged'] = $false
+        $frameLeg['declined_reason'] = $frameLeg['branch']
     } else {
         function Get-FrameCandidateHandles {
             $found = New-Object System.Collections.ArrayList
@@ -136,7 +138,13 @@ try {
         }
 
         if (-not $frameActivated -or -not $foreground) {
+            # Settings never presented a frame on this shell: the frame walk
+            # could not be staged, an environment outcome rather than a failed
+            # read (a walk that runs once Settings DOES activate and then fails
+            # still throws below and stays a strict failure).
             $frameLeg['branch'] = 'application_frame_window_never_reached_foreground'
+            $frameLeg['staged'] = $false
+            $frameLeg['declined_reason'] = $frameLeg['branch']
         } else {
             $framePredicate = Invoke-ShellProbe -Arguments @('predicate', '--hwnd', ([string]$foreground.nativewindowhandle))
             $frameWalk = Invoke-ShellProbe -Arguments @('framewalk', '--frame', ([string]$foreground.nativewindowhandle))
@@ -171,7 +179,13 @@ try {
         $startLeg['root_automation_id_tag'] = [string]$rootIds.root_automation_id_tag
         $startLeg['direct_children_automation_id_tags'] = @($rootIds.direct_children_automation_id_tags)
     } else {
+        # The Meta key raised nothing the shell would present: a Start/immersive
+        # surface this shell genuinely does not expose is an environment
+        # outcome, recorded honestly and skipped rather than failed.
         $startLeg['branch'] = 'accelerator_did_not_raise_a_shell_core_window_foreground'
+        $startLeg['staged'] = $false
+        $startLeg['raisable'] = $false
+        $startLeg['declined_reason'] = $startLeg['branch']
         $startLeg['observed_foreground_class'] = $(if ([bool]$raisedFg.foreground_present) { [string]$raisedFg.foreground_class } else { '<none>' })
         $startLeg['observed_foreground_host_token'] = $(if ([bool]$raisedFg.foreground_present) { [string]$raisedFg.foreground_host_token } else { $null })
     }
@@ -186,6 +200,19 @@ try {
     try { Invoke-ShellProbe -Arguments @('key', '--seq', 'esc') | Out-Null } catch { }
 }
 
+# A leg whose staging the shell declined is an environment outcome, not a
+# failure: name it in the result and skip. A leg that WAS staged and then
+# threw already failed the run inside the try above.
+if ($status -eq 'ok') {
+    $declinedReasons = @()
+    if ($frameLeg.measurable -eq $false -and $frameLeg.Contains('declined_reason')) { $declinedReasons += [string]$frameLeg['declined_reason'] }
+    if ($startLeg.measurable -eq $false -and $startLeg.Contains('declined_reason')) { $declinedReasons += [string]$startLeg['declined_reason'] }
+    if ($declinedReasons.Count -gt 0) {
+        $status = 'skip'
+        $message = ($declinedReasons -join '; ')
+    }
+}
+
 $content = ConvertTo-Json -InputObject ([ordered]@{
         probe         = $script:Probe
         question      = 'which of the frame window''s children belong to a different process than the frame itself (pid-equality classes only), and which shell host owns the CoreWindow the Meta key raises'
@@ -195,7 +222,7 @@ $content = ConvertTo-Json -InputObject ([ordered]@{
         start_leg     = $startLeg
     }) -Depth 20
 
-if ($status -ne 'ok') {
+if ($status -eq 'fail') {
     $placeholder = New-NotMeasuredResult -Reason $message
     $content = ConvertTo-Json -InputObject ([ordered]@{
             probe        = $script:Probe
@@ -208,7 +235,7 @@ if ($status -ne 'ok') {
 
 try {
     $capturePath = Write-Shell26Capture -Name "frame-identity-$Label.json" -Content $content
-    Register-MandatoryPass -Capture $capturePath -Result @{ measurable_placeholder_written = $false; status_ok = ($status -eq 'ok'); not_measured = ($status -ne 'ok') }
+    Register-MandatoryPass -Capture $capturePath -Result @{ measurable_placeholder_written = $false; status_ok = ($status -eq 'ok'); not_measured = ($status -eq 'fail') }
 } catch {
     $status = 'fail'
     $message = ('capture write failed: ' + $_.Exception.Message)

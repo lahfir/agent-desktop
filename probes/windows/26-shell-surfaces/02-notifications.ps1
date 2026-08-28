@@ -136,6 +136,8 @@ function Measure-ShapeLeg {
 
     if (-not (Reset-ShellSurfaceBaseline)) {
         $leg['branch'] = 'shell_baseline_not_clean_before_raise'
+        $leg['staged'] = $false
+        $leg['declined_reason'] = 'shell_baseline_not_clean_before_raise'
         return $leg
     }
 
@@ -147,7 +149,14 @@ function Measure-ShapeLeg {
         if ($c.ac_candidate -and $c.nativewindowhandle -ne 0) { $candidate = $c; break }
     }
     if (-not $candidate) {
+        # The shell never presented the surface, so this script's whole premise
+        # - an open center to read the shape of and to stage a toast against -
+        # is declined. That is an environment outcome, not a failed read: it is
+        # recorded honestly and the run skips instead of failing.
         $leg['branch'] = 'action_center_not_raisable_by_lwin_a_accelerator'
+        $leg['staged'] = $false
+        $leg['raisable'] = $false
+        $leg['declined_reason'] = 'action_center_not_raisable_by_lwin_a_accelerator'
         Invoke-ShellProbe -Arguments @('key', '--seq', 'esc') | Out-Null
         return $leg
     }
@@ -308,9 +317,17 @@ try {
 }
 
 if ($shape.measurable -eq $false) {
-    # Prefer measuring; only report failure when even landmark presence could
-    # not be observed. The placeholder path keeps the artifact trail honest.
-    if ($shape.branch -match 'not_raisable|baseline|threw') {
+    # A declined raise or an unclean baseline is an environment outcome the
+    # capture records honestly (staged:false + declined_reason) - the run
+    # skips. A shape leg that threw after staging was possible failed a
+    # mandatory measurement, and that stays a strict failure.
+    if ($shape.branch -match 'not_raisable|baseline') {
+        $status = 'skip'
+        $message = [string]$shape['branch']
+    } elseif ($shape.branch -eq 'shape_leg_threw') {
+        $status = 'fail'
+        $message = ('shape_leg_threw: ' + $(if ($shapeError) { ($shapeError -replace '[\r\n]+', ' ') } else { [string]$shape['error_class'] }))
+    } else {
         $message = ('shape leg unmeasurable: ' + $shape.branch)
     }
 }
@@ -320,5 +337,6 @@ Write-ProbeResult -Probe $script:Probe -Status $status -Message $message -Data @
     rows     = @('A26-3', 'A26-4')
     stack    = 'uia3-com'
 }
+if ($status -eq 'fail') { exit 1 }
 Assert-MandatoryMeasurement -Probe $script:Probe -Label $Label
 exit 0

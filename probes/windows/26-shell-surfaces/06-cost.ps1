@@ -55,6 +55,16 @@ try {
     $costLeg['branch'] = 'platform_costs_measured_in_single_com_process'
     $costLeg['note'] = 'pre-implementation platform-cost reference, NOT the shipped command cost; U16 takes the product baseline through the release binary'
     $costLeg['cost'] = $cost
+    if ([int]$cost.open_detection_failures -ge [int]$cost.cycles_attempted) {
+        # Every raise detection deadline missed: this shell never presented the
+        # Action Center, so the raise-dependent components (the raise/close
+        # cycles and the Action Center tree read) recorded no samples - their
+        # stats are honest empties, and only the tray enumeration and the
+        # root-children resolution are measurements here. The decline is the
+        # environment outcome, recorded as such.
+        $costLeg['raisable'] = $false
+        $costLeg['declined_reason'] = 'action_center_not_raisable_by_lwin_a_accelerator'
+    }
 } catch {
     $costLeg = [ordered]@{
         measurable   = $false
@@ -267,6 +277,19 @@ $a2613 = Measure-A2613
 $status = 'ok'
 $message = 'platform costs + A26-13 leaf classification captured'
 
+# A declined raise is the environment outcome the cost leg records honestly
+# (raisable:false + declined_reason) - the run skips. A cost leg that threw
+# failed a mandatory measurement, and that stays a strict failure.
+if ($costLeg.measurable -eq $false) {
+    if ($costLeg.branch -eq 'cost_leg_threw') {
+        $status = 'fail'
+        $message = ('cost leg threw: ' + [string]$costLeg['error_class'])
+    }
+} elseif ($costLeg.Contains('declined_reason')) {
+    $status = 'skip'
+    $message = [string]$costLeg['declined_reason']
+}
+
 $content = ConvertTo-Json -InputObject ([ordered]@{
         probe              = $script:Probe
         question           = 'what do the raw platform operations cost and does the nameless content-leaf population A24-11''s fallback depends on actually present positive-area rectangles when measured live'
@@ -279,7 +302,7 @@ $content = ConvertTo-Json -InputObject ([ordered]@{
 
 try {
     $capturePath = Write-Shell26Capture -Name "platform-cost-$Label.json" -Content $content
-    Register-MandatoryPass -Capture $capturePath -Result @{ measurable_placeholder_written = $false; status_ok = ($status -eq 'ok'); not_measured = $false }
+    Register-MandatoryPass -Capture $capturePath -Result @{ measurable_placeholder_written = $false; status_ok = ($status -eq 'ok'); not_measured = ($status -eq 'fail') }
 } catch {
     $status = 'fail'
     $message = ('capture write failed: ' + $_.Exception.Message)
@@ -290,5 +313,6 @@ Write-ProbeResult -Probe $script:Probe -Status $status -Message $message -Data @
     rows      = @('A26-10', 'A26-13')
     stack     = 'uia3-com'
 }
+if ($status -eq 'fail') { exit 1 }
 Assert-MandatoryMeasurement -Probe $script:Probe -Label $Label
 exit 0

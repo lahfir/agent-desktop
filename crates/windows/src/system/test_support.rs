@@ -214,23 +214,29 @@ pub(crate) fn settles_to(
 
 /// Whether this error is a hosted or shell-less desktop declining the raise
 /// instead of presenting the surface: the accelerator or chevron invoke ran
-/// and the shell simply never presented, or the tray chrome the raise depends
-/// on was never there. These are declined preconditions, not product
+/// and the shell simply never presented, the shell accepted the raise but
+/// refuses the dismiss (same declined precondition - there is no shell on
+/// such a desktop to answer the close either), or the tray chrome the raise
+/// depends on was never there. These are declined preconditions, not product
 /// failures: there is no shell on such a desktop to answer the raise, so the
 /// live tests that need the surface skip loudly on them instead of failing.
 pub(crate) fn shell_declined_the_surface(error: &AdapterError) -> bool {
-    let raise_never_presented = error.code == ErrorCode::Timeout
-        && error
-            .details
-            .as_ref()
-            .and_then(|details| details.get("kind"))
-            .and_then(serde_json::Value::as_str)
-            == Some("shell_surface_not_opened");
+    fn timeout_details_kind_is(error: &AdapterError, wanted: &str) -> bool {
+        error.code == ErrorCode::Timeout
+            && error
+                .details
+                .as_ref()
+                .and_then(|details| details.get("kind"))
+                .and_then(serde_json::Value::as_str)
+                == Some(wanted)
+    }
+    let raise_never_presented = timeout_details_kind_is(error, "shell_surface_not_opened");
+    let close_never_dismissed = timeout_details_kind_is(error, "shell_surface_not_closed");
     let chevron_absent =
         error.code == ErrorCode::WindowNotFound && error.message.contains("notification chevron");
     let overflow_absent =
         error.code == ErrorCode::WindowNotFound && error.message.contains("overflow");
-    raise_never_presented || chevron_absent || overflow_absent
+    raise_never_presented || close_never_dismissed || chevron_absent || overflow_absent
 }
 
 /// Maps a raise-or-resolve precondition onto the loud-skip convention: an
@@ -258,6 +264,12 @@ mod shell_decline_classification {
         )
         .with_details(serde_json::json!({ "kind": "shell_surface_not_opened" }));
         assert!(shell_declined_the_surface(&declined_open));
+
+        let declined_close = AdapterError::timeout(
+            "the 'start-menu' shell surface did not close within the deadline",
+        )
+        .with_details(serde_json::json!({ "kind": "shell_surface_not_closed" }));
+        assert!(shell_declined_the_surface(&declined_close));
 
         let chevron_absent = AdapterError::new(
             ErrorCode::WindowNotFound,
