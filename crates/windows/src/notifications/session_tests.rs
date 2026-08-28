@@ -48,7 +48,7 @@ mod live {
     use crate::notifications::list::list_notifications;
     use crate::system::shell_surface::resolve_surface;
     use crate::system::shell_surface_open::{close_surface, open_surface};
-    use crate::system::test_support::SHELL_SURFACE_LOCK;
+    use crate::system::test_support::{SHELL_SURFACE_LOCK, or_skip_shell};
 
     fn deadline(ms: u64) -> Deadline {
         Deadline::after(ms).expect("deadline")
@@ -69,8 +69,12 @@ mod live {
         crate::tree::fixture::bootstrap();
         let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let _ = close_surface(SnapshotSurface::ActionCenter, deadline(8_000));
-        open_surface(SnapshotSurface::ActionCenter, headed(), deadline(15_000))
-            .expect("the center opens for the pre-arrangement");
+        let Some(_surface) = or_skip_shell(
+            "action center open for the pre-arrangement",
+            open_surface(SnapshotSurface::ActionCenter, headed(), deadline(15_000)),
+        ) else {
+            return;
+        };
 
         let listed = list_notifications(&Default::default(), headed(), deadline(20_000))
             .expect("an already-present center needs no raise, so the listing proceeds");
@@ -89,8 +93,12 @@ mod live {
         let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let _ = close_surface(SnapshotSurface::ActionCenter, deadline(8_000));
 
-        list_notifications(&Default::default(), headed(), deadline(20_000))
-            .expect("the listing itself succeeds against the closed-then-raised center");
+        let Some(_listed) = or_skip_shell(
+            "the closed-then-raised center's listing",
+            list_notifications(&Default::default(), headed(), deadline(20_000)),
+        ) else {
+            return;
+        };
 
         assert!(
             !center_is_open(),

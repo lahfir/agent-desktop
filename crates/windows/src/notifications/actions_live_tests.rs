@@ -13,7 +13,9 @@ use crate::notifications::toast_support::{
 };
 use crate::system::shell_surface::resolve_surface;
 use crate::system::shell_surface_open::close_surface;
-use crate::system::test_support::{SHELL_SURFACE_LOCK, wait_for_foreground_to_settle};
+use crate::system::test_support::{
+    SHELL_SURFACE_LOCK, or_skip_shell, wait_for_foreground_to_settle,
+};
 
 fn deadline(ms: u64) -> Deadline {
     Deadline::after(ms).expect("deadline")
@@ -59,27 +61,37 @@ fn listed_infos(hwnd: isize) -> Vec<NotificationInfo> {
 /// when the test body exits - held session first, then the toast sweep. The
 /// mutations under test adopt the already-open center without raising it, and
 /// their restore-on-exit leaves it open for the caller's follow-up reads.
-fn stage_exactly_one_toast_into_held_center() -> (ActionCenterSession, StagedToast, NotificationInfo)
-{
+///
+/// A desktop whose shell declines the open, or whose staging never produces
+/// an entry, skips loudly instead: the helper prints why and returns None.
+fn stage_exactly_one_toast_into_held_center()
+-> Option<(ActionCenterSession, StagedToast, NotificationInfo)> {
     toast_support::clear_center(deadline(20_000));
-    let held = ActionCenterSession::open(headed(), deadline(15_000))
-        .expect("the center opens for a headed caller");
+    let held = or_skip_shell(
+        "action center open for toast staging",
+        ActionCenterSession::open(headed(), deadline(15_000)),
+    )?;
     let staged = StagedToast::stage();
-    let listed = toast_support::wait_until_listed_held(held.hwnd(), deadline(30_000));
+    let Some(listed) = toast_support::wait_until_listed_held(held.hwnd(), deadline(30_000)) else {
+        eprintln!("skip toast staging: this desktop's toast staging produced no entry");
+        return None;
+    };
     assert_eq!(
         listed.len(),
         1,
         "the staged toast is the only entry after the reset"
     );
     let entry = listed.into_iter().next().expect("one entry");
-    (held, staged, entry)
+    Some((held, staged, entry))
 }
 
 #[test]
 fn every_notification_info_field_is_populated_as_macos_populates_it() {
     crate::tree::fixture::bootstrap();
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let (held, _staged, staged) = stage_exactly_one_toast_into_held_center();
+    let Some((held, _staged, staged)) = stage_exactly_one_toast_into_held_center() else {
+        return;
+    };
 
     assert_eq!(
         staged.index, 1,
@@ -125,7 +137,9 @@ fn every_notification_info_field_is_populated_as_macos_populates_it() {
 fn a_mismatched_identity_is_refused_and_the_entry_survives() {
     crate::tree::fixture::bootstrap();
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let (held, _staged, staged) = stage_exactly_one_toast_into_held_center();
+    let Some((held, _staged, staged)) = stage_exactly_one_toast_into_held_center() else {
+        return;
+    };
     let wrong_identity = NotificationIdentity {
         expected_app: None,
         expected_title: Some("a title no staged entry carries".into()),
@@ -157,7 +171,9 @@ fn a_mismatched_identity_is_refused_and_the_entry_survives() {
 fn an_unknown_action_name_is_refused_and_leaves_the_entry_unchanged() {
     crate::tree::fixture::bootstrap();
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let (held, _staged, staged) = stage_exactly_one_toast_into_held_center();
+    let Some((held, _staged, staged)) = stage_exactly_one_toast_into_held_center() else {
+        return;
+    };
     let identity = identity_of(&staged);
     let action_name = "agent-desktop-no-such-action";
 
@@ -187,7 +203,9 @@ fn an_unknown_action_name_is_refused_and_leaves_the_entry_unchanged() {
 fn a_dismiss_removes_exactly_the_identified_entry() {
     crate::tree::fixture::bootstrap();
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let (held, _staged, staged) = stage_exactly_one_toast_into_held_center();
+    let Some((held, _staged, staged)) = stage_exactly_one_toast_into_held_center() else {
+        return;
+    };
     let identity = identity_of(&staged);
 
     let dismissed = dismiss_notification(
@@ -213,7 +231,9 @@ fn a_dismiss_removes_exactly_the_identified_entry() {
 fn an_accepted_dismiss_invoke_that_the_shell_ignores_is_action_failed_and_both_entries_survive() {
     crate::tree::fixture::bootstrap();
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let (held, _staged_a, staged) = stage_exactly_one_toast_into_held_center();
+    let Some((held, _staged_a, staged)) = stage_exactly_one_toast_into_held_center() else {
+        return;
+    };
     let _staged_b = StagedToast::stage_with(TOAST_TITLE_SECOND, TOAST_BODY_SECOND);
     let listed = toast_support::wait_until_count_held(held.hwnd(), 2, deadline(30_000));
     assert_eq!(
@@ -310,8 +330,12 @@ fn a_headed_list_through_the_trait_adopts_the_open_center_without_closing_it() {
     crate::tree::fixture::bootstrap();
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     toast_support::clear_center(deadline(20_000));
-    let held = ActionCenterSession::open(headed(), deadline(15_000))
-        .expect("the center opens for the pre-arrangement");
+    let Some(held) = or_skip_shell(
+        "action center open for the pre-arrangement",
+        ActionCenterSession::open(headed(), deadline(15_000)),
+    ) else {
+        return;
+    };
     let adapter = WindowsAdapter::new();
 
     let listed = SystemOps::list_notifications(

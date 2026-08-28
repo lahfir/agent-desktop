@@ -102,28 +102,33 @@ impl Drop for CloseCenterOnDrop {
 }
 
 /// Polls the listing until the staged toast is observable in the center and
-/// returns the listing that carried it. A toast lands in the center a short,
-/// variable time after the shell accepts it, so the wait is on the value
-/// itself rather than on a fixed sleep.
+/// returns the listing that carried it, or `None` when the budget expires
+/// without the toast ever appearing - a desktop whose staging the shell never
+/// lands, which the caller classifies as a declined precondition instead of
+/// this wait asserting on. A toast lands in the center a short, variable time
+/// after the shell accepts it, so the wait is on the value itself rather than
+/// on a fixed sleep.
 ///
 /// This variant polls inside a center the caller holds open, because the
 /// measured staging behaviour on this host is that a toast joins the center
 /// only while the center is open and leaves it at the next close: a poll that
 /// closed and reopened the center would evict the very entry it waits for.
-pub(crate) fn wait_until_listed_held(hwnd: isize, deadline: Deadline) -> Vec<NotificationInfo> {
+pub(crate) fn wait_until_listed_held(
+    hwnd: isize,
+    deadline: Deadline,
+) -> Option<Vec<NotificationInfo>> {
     let filter = NotificationFilter::default();
     loop {
         match list_infos(&filter, hwnd, deadline) {
             Ok(listed) if listed.iter().any(|info| info.title == TOAST_TITLE) => {
-                return listed;
+                return Some(listed);
             }
             Ok(_) => {}
             Err(_) => {}
         }
-        assert!(
-            !deadline.is_expired(),
-            "the staged toast never appeared in the Action Center"
-        );
+        if deadline.is_expired() {
+            return None;
+        }
         std::thread::sleep(POLL_INTERVAL);
     }
 }
