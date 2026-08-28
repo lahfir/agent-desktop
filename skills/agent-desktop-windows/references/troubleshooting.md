@@ -84,6 +84,52 @@ differently:
   the path this CLI actually uses. If enabled, neither the download path nor
   the launch mode avoids it; disable Smart App Control or use a signed build.
 
+## POLICY_DENIED from a Shell-Surface or Notification Command
+
+```
+"code": "POLICY_DENIED"
+```
+
+Symptom: `open-system-surface`, `list-notifications`, `wait --notification`
+or a notification mutation refuses without touching the desktop.
+
+Cause: the command raises shell chrome — a shell surface or the Action
+Center — and takes the foreground by definition, so a strict-headless call is
+refused before anything is raised.
+
+Fix: pass global `--headed`, or put the surface up yourself first.
+`snapshot --surface <kind>` reads an already-present shell surface headless,
+and `list-notifications` / `wait --notification` adopt an already-open Action
+Center without raising it.
+
+## wait --notification Times Out While Toasts Are Being Posted
+
+Cause: on this shell the Action Center collects a toast only while it is
+open, and a center that closes evicts its entries (A26-3). The wait holds no
+long-lived session — it opens and closes the center per poll, adopting one
+that is already present and restoring the entry state afterwards, so the
+window between polls is exactly where a staged toast is lost.
+
+Fix: hold the center open yourself across the staging window — open it
+before the toasts are posted and the wait's polls will adopt it without
+closing it — or confirm the toast landed with a `list-notifications` taken
+while the center is open.
+
+## A Hosted (UWP) App Reads as ApplicationFrameHost
+
+Symptom: `focused_window` or `list-windows` reports a hosted UWP application
+(Settings and peers) under the frame host's identity instead of the app's
+own, or an identity that was verified against the app's pid stops resolving.
+
+Cause: the app is suspended. Suspension drops the app's
+`Windows.UI.Core.CoreWindow` while its `ApplicationFrameWindow` frame
+survives, and the frame is what the listing reports (A26-8).
+
+Fix: activate the app so it resumes, then re-list — the hosted identity
+returns. When the app is live, the documented shape is a deliberate split:
+`id` is the frame's handle (the handle every window operation targets) while
+`app` and `pid` name the hosted application read one level down.
+
 ## INTERNAL: "private file parent is owned by a foreign principal"
 
 ```
