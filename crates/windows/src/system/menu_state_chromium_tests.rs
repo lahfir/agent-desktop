@@ -37,14 +37,9 @@ fn a_permanent_win32_menu_bar_never_fires_the_chromium_source() {
 
     let quiet = || chromium_dom_menu_reachable(pid, deadline()).expect("chromium probe reads it");
 
-    // The fixture's main window is this source's exact candidate pool - a
-    // visible, non-tool, root-level window of the pid - and it carries a
-    // permanent Win32 menu bar whose own MenuItem elements would fire a
-    // bare menu-family search here. The framework gate is what keeps the
-    // predicate at rest: removing it fails this assertion.
     assert!(
         !quiet(),
-        "a Win32 menu bar at rest must not read as a Chromium menu open"
+        "the fixture's main window is this source's exact candidate pool - a visible, non-tool, root-level window of the pid carrying a permanent Win32 menu bar whose own MenuItem elements would fire a bare menu-family search; the framework gate is what keeps the predicate at rest, and removing it fails this assertion"
     );
     assert!(
         !menu_is_open(pid, deadline()).expect("predicate reads the fixture"),
