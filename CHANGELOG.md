@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.4](https://github.com/lahfir/agent-desktop/compare/v0.8.3...v0.8.4) (2026-08-28)
+
+
+### Features
+
+* rebuild the agent cursor overlay and fix seen-but-unactionable elements ([#145](https://github.com/lahfir/agent-desktop/issues/145)) ([5ec2504](https://github.com/lahfir/agent-desktop/commit/5ec2504bec0e9face5a69ef25c58bb1273772f2f))
+
 ## [0.8.3](https://github.com/lahfir/agent-desktop/compare/v0.8.2...v0.8.3) (2026-08-22)
 
 
