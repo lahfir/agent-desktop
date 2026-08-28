@@ -44,6 +44,26 @@ fn process_facts(
     None
 }
 
+/// Reads the window class of a handle, or `None` when the handle addresses
+/// nothing or the read fails - the same unanswerable contract
+/// `live_window_owner` draws for the process read beside which this sits.
+#[cfg(target_os = "windows")]
+pub(crate) fn window_class_name(handle: super::window_enum::WindowHandle) -> Option<String> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetClassNameW;
+
+    let mut buffer = [0u16; 256];
+    let length = unsafe { GetClassNameW(handle, buffer.as_mut_ptr(), buffer.len() as i32) };
+    if length <= 0 {
+        return None;
+    }
+    Some(String::from_utf16_lossy(&buffer[..length as usize]))
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn window_class_name(_handle: super::window_enum::WindowHandle) -> Option<String> {
+    None
+}
+
 /// Builds one `WindowInfo` from an enumerated window, corroborating identity
 /// with the process token.
 fn window_info_from(

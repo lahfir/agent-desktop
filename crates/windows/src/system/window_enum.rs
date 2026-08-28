@@ -104,8 +104,15 @@ pub(crate) fn enumerate_top_level(
     Ok(())
 }
 
+/// Whether the DWM cloaks a window right now.
+///
+/// Shared because two predicates read the same attribute for different
+/// reasons: the enumeration filter excludes cloaked windows from the agent
+/// inventory, and the shell-surface liveness predicate reads the cloak as the
+/// open/closed signal itself (A26-2 - a dismissed surface survives, cloaked,
+/// with `IsWindowVisible` still true).
 #[cfg(target_os = "windows")]
-fn is_cloaked(window: HWND) -> bool {
+pub(crate) fn is_cloaked(window: HWND) -> bool {
     let mut cloaked: u32 = 0;
     let succeeded = unsafe {
         windows_sys::Win32::Graphics::Dwm::DwmGetWindowAttribute(
@@ -125,7 +132,7 @@ fn is_tool_window(window: HWND) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn window_rect(window: HWND) -> Rect {
+pub(crate) fn window_rect(window: HWND) -> Rect {
     let mut rect = windows_sys::Win32::Foundation::RECT::default();
     if unsafe { GetWindowRect(window, &mut rect) } == 0 {
         return Rect {

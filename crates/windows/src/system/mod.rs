@@ -37,6 +37,10 @@ pub(crate) mod process_state;
 #[cfg(target_os = "windows")]
 pub(crate) mod screenshot;
 pub(crate) mod session;
+pub(crate) mod shell_surface;
+pub(crate) mod shell_surface_kinds;
+pub(crate) mod shell_surface_open;
+pub(crate) mod shell_surface_raise;
 pub(crate) mod signal_filter_apply;
 pub(crate) mod signal_inventory;
 pub(crate) mod signal_surfaces;
