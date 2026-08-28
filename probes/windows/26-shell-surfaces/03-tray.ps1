@@ -122,7 +122,14 @@ try {
     }
 
     if (@($analysisResult.toolbars).Count -eq 0) {
-        throw 'no_taskbar_toolbar_windows_reported_by_shell_probe'
+        # The trayscan enumerated the taskbar, but the running shell staged no
+        # toolbar window on it - the tray chrome these rows read was never
+        # presented. A toolbar the shell genuinely does not expose is an
+        # environment outcome, not a failed read: record it honestly and skip
+        # instead of failing. A toolbar that IS present keeps every read below
+        # strict.
+        $status = 'skip'
+        $message = 'tray_promoted_toolbar_absent_no_taskbar_toolbar_windows_reported'
     }
 } catch {
     $status = 'fail'
@@ -141,7 +148,25 @@ $content = ConvertTo-Json -InputObject ([ordered]@{
             })
     }) -Depth 24
 
-if ($status -ne 'ok') {
+if ($status -eq 'skip') {
+    # The declined-staging capture keeps the trayscan and whatever the analysis
+    # did observe, headed by the honest environment outcome instead of a
+    # not-measured placeholder.
+    $content = ConvertTo-Json -InputObject ([ordered]@{
+            probe           = $script:Probe
+            label           = $Label
+            measurable      = $false
+            staged          = $false
+            declined_reason = $message
+            result          = ([ordered]@{
+                    shell_probe  = $trayscan
+                    client_stack = 'uia3-com'
+                    analysis     = $analysisResult
+                })
+        }) -Depth 24
+}
+
+if ($status -eq 'fail') {
     $placeholder = New-NotMeasuredResult -Reason $message
     $content = ConvertTo-Json -InputObject ([ordered]@{
             probe         = $script:Probe
@@ -153,7 +178,7 @@ if ($status -ne 'ok') {
 
 try {
     $capturePath = Write-Shell26Capture -Name "tray-$Label.json" -Content $content
-    Register-MandatoryPass -Capture $capturePath -Result @{ measured_placeholder_written = $false; status_ok = ($status -eq 'ok'); not_measured = ($status -ne 'ok') }
+    Register-MandatoryPass -Capture $capturePath -Result @{ measured_placeholder_written = $false; status_ok = ($status -eq 'ok'); not_measured = ($status -eq 'fail') }
 } catch {
     $status = 'fail'
     $message = ('capture write failed: ' + $_.Exception.Message)

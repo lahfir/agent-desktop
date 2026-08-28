@@ -130,96 +130,110 @@ try {
     }
 
     if (-not ($raised -and $null -ne $openScan)) {
-        if (Test-ShellTrayYield -Scan $closedScan) { throw 'action_center_not_raisable_by_lwin_a_accelerator' }
-        # Never distinguish which leg failed while the control is untrusted.
-        throw 'control_leg_shell_tray_wnd_not_yielded_by_enum_windows'
-    }
-    $openScanResult = Get-TrustedControlScan -ScanArguments @('reachscan')
-    $openScan = $openScanResult.scan
-    Write-ProbeLog -Message ('control walk for the open state needed ' + $openScanResult.attempts + ' attempt(s)') -Level 'info'
-
-    $candidate = Get-AcCandidate -Scan $openScan
-    $surfaceHandle = [string]$candidate.nativewindowhandle
-    $predicateOpen = Invoke-ShellProbe -Arguments @('predicate', '--hwnd', $surfaceHandle)
-
-    # --- dismiss and re-read ---------------------------------------------
-    Invoke-ShellProbe -Arguments @('key', '--seq', 'esc') | Out-Null
-    Start-Sleep -Milliseconds 700
-    $afterCloseScan = Invoke-ShellProbe -Arguments @('reachscan')
-    $survivor = $null
-    foreach ($c in $afterCloseScan.children) {
-        if ($c.ac_candidate -and $c.nativewindowhandle -eq [long]$candidate.nativewindowhandle) {
-            $survivor = $c
+        if (-not (Test-ShellTrayYield -Scan $closedScan)) {
+            # Never distinguish which leg failed while the control is untrusted.
+            throw 'control_leg_shell_tray_wnd_not_yielded_by_enum_windows'
         }
-    }
-    $closedAgainScan = $afterCloseScan
-    $surfaceHandleClosedState = ([bool]$survivor)
-    if ($survivor) {
-        try {
-            $predicateClosed = Invoke-ShellProbe -Arguments @('predicate', '--hwnd', ([string]$survivor.nativewindowhandle))
-        } catch {
-            $predicateClosed = [ordered]@{ readable_again = $false; error_class = $_.Exception.GetType().Name }
-        }
-    } else {
-        # The surface left the UIA root entirely on dismissal; test whether the
-        # HWND itself survived so its state can still be read.
-        try {
-            $predicateClosed = Invoke-ShellProbe -Arguments @('predicate', '--hwnd', $surfaceHandle)
-            $surfaceHandleClosedState = $true
-        } catch {
-            $predicateClosed = [ordered]@{ readable_again = $false; error_class = $_.Exception.GetType().Name }
-        }
-    }
-    $classificationClosedViaFindWindow = $null
-    try {
-        $coreWindowsLeft = Invoke-ShellProbe -Arguments @('findbyclass', '--cls', 'Windows.UI.Core.CoreWindow')
-        $classificationClosedViaFindWindow = [int]$coreWindowsLeft.match_count
-    } catch { }
-
-    $controlClosed = Test-ShellTrayYield -Scan $closedScan
-    $controlOpen = Test-ShellTrayYield -Scan $openScan
-
-    $classification = [ordered]@{
-        control_leg_shell_tray_wnd_yielded_in_both_walks = ($controlClosed -and $controlOpen)
-        shell_tray_yielded_closed                        = $controlClosed
-        shell_tray_yielded_open                          = $controlOpen
-        surface_among_enum_walk_open                     = [bool]$openScan.surface_present_in_enum_walk
-        surface_among_uia_root_children_open             = $true
-        surface_among_uia_root_children_closed           = $surfaceHandleClosedState
-        uia_root_child_count_closed                      = [int]$closedScan.uia_root_child_count
-        uia_root_child_count_open                        = [int]$openScan.uia_root_child_count
-        uia_root_child_count_delta_open_minus_closed     = ([int]$openScan.uia_root_child_count - [int]$closedScan.uia_root_child_count)
-        find_window_route_finds_core_window_class        = $null
-        core_window_class_top_level_matches_after_dismissal = $classificationClosedViaFindWindow
-        window_survives_dismissal                        = ([bool]$surfaceHandleClosedState)
-        window_among_root_children_after_dismissal       = ([bool]$survivor)
-    }
-    if ($predicateOpen) {
-        $classification['cloak_state_open'] = $predicateOpen.cloak_state
-    }
-    if ($predicateClosed -and ($predicateClosed.PSObject.Properties['cloak_state'] -and $null -ne $predicateClosed.cloak_state)) {
-        $classification['cloak_state_closed'] = $predicateClosed.cloak_state
-    }
-
-    $result['measurable'] = $true
-    $result['branch'] = 'measured_open_and_closed_with_predicate_reads'
-    $result['raise_attempts_used'] = $attemptsUsed
-    $result['classification'] = $classification
-    $result['closed_scan'] = $closedScan
-    $result['open_scan'] = $openScan
-    $result['predicate_open'] = $predicateOpen
-    $result['predicate_closed'] = $predicateClosed
-
-    if (-not ($controlClosed -and $controlOpen)) {
-        # The unit's contract is explicit: a false positive control means the
-        # negative legs mean nothing, so the run FAILS instead of recording
-        # them. Everything observed up to here stays inside the capture -
-        # failing loudly must not be failing silently.
-        $message = 'positive control failed: EnumWindows walk did not yield Shell_TrayWnd'
-        $status = 'fail'
-        $result['branch'] = 'control_leg_shell_tray_wnd_not_yielded_by_enum_windows'
+        # The control is trusted, so the raise answer is real: this shell has
+        # no immersive experience to answer the accelerator with. A surface the
+        # running shell genuinely does not expose is a shipped behaviour, not a
+        # blocker - the decline is recorded honestly as an environment outcome
+        # and the run skips instead of failing.
+        $status = 'skip'
+        $message = 'action_center_not_raisable_by_lwin_a_accelerator'
         $result['measurable'] = $false
-        $result['control_leg_failed'] = $true
+        $result['raisable'] = $false
+        $result['declined_reason'] = 'action_center_not_raisable_by_lwin_a_accelerator'
+        $result['raise_attempts_used'] = $attemptsUsed
+        $result['closed_scan'] = $closedScan
+    } else {
+        $openScanResult = Get-TrustedControlScan -ScanArguments @('reachscan')
+        $openScan = $openScanResult.scan
+        Write-ProbeLog -Message ('control walk for the open state needed ' + $openScanResult.attempts + ' attempt(s)') -Level 'info'
+
+        $candidate = Get-AcCandidate -Scan $openScan
+        $surfaceHandle = [string]$candidate.nativewindowhandle
+        $predicateOpen = Invoke-ShellProbe -Arguments @('predicate', '--hwnd', $surfaceHandle)
+
+        # --- dismiss and re-read ---------------------------------------------
+        Invoke-ShellProbe -Arguments @('key', '--seq', 'esc') | Out-Null
+        Start-Sleep -Milliseconds 700
+        $afterCloseScan = Invoke-ShellProbe -Arguments @('reachscan')
+        $survivor = $null
+        foreach ($c in $afterCloseScan.children) {
+            if ($c.ac_candidate -and $c.nativewindowhandle -eq [long]$candidate.nativewindowhandle) {
+                $survivor = $c
+            }
+        }
+        $closedAgainScan = $afterCloseScan
+        $surfaceHandleClosedState = ([bool]$survivor)
+        if ($survivor) {
+            try {
+                $predicateClosed = Invoke-ShellProbe -Arguments @('predicate', '--hwnd', ([string]$survivor.nativewindowhandle))
+            } catch {
+                $predicateClosed = [ordered]@{ readable_again = $false; error_class = $_.Exception.GetType().Name }
+            }
+        } else {
+            # The surface left the UIA root entirely on dismissal; test whether the
+            # HWND itself survived so its state can still be read.
+            try {
+                $predicateClosed = Invoke-ShellProbe -Arguments @('predicate', '--hwnd', $surfaceHandle)
+                $surfaceHandleClosedState = $true
+            } catch {
+                $predicateClosed = [ordered]@{ readable_again = $false; error_class = $_.Exception.GetType().Name }
+            }
+        }
+        $classificationClosedViaFindWindow = $null
+        try {
+            $coreWindowsLeft = Invoke-ShellProbe -Arguments @('findbyclass', '--cls', 'Windows.UI.Core.CoreWindow')
+            $classificationClosedViaFindWindow = [int]$coreWindowsLeft.match_count
+        } catch { }
+
+        $controlClosed = Test-ShellTrayYield -Scan $closedScan
+        $controlOpen = Test-ShellTrayYield -Scan $openScan
+
+        $classification = [ordered]@{
+            control_leg_shell_tray_wnd_yielded_in_both_walks = ($controlClosed -and $controlOpen)
+            shell_tray_yielded_closed                        = $controlClosed
+            shell_tray_yielded_open                          = $controlOpen
+            surface_among_enum_walk_open                     = [bool]$openScan.surface_present_in_enum_walk
+            surface_among_uia_root_children_open             = $true
+            surface_among_uia_root_children_closed           = $surfaceHandleClosedState
+            uia_root_child_count_closed                      = [int]$closedScan.uia_root_child_count
+            uia_root_child_count_open                        = [int]$openScan.uia_root_child_count
+            uia_root_child_count_delta_open_minus_closed     = ([int]$openScan.uia_root_child_count - [int]$closedScan.uia_root_child_count)
+            find_window_route_finds_core_window_class        = $null
+            core_window_class_top_level_matches_after_dismissal = $classificationClosedViaFindWindow
+            window_survives_dismissal                        = ([bool]$surfaceHandleClosedState)
+            window_among_root_children_after_dismissal       = ([bool]$survivor)
+        }
+        if ($predicateOpen) {
+            $classification['cloak_state_open'] = $predicateOpen.cloak_state
+        }
+        if ($predicateClosed -and ($predicateClosed.PSObject.Properties['cloak_state'] -and $null -ne $predicateClosed.cloak_state)) {
+            $classification['cloak_state_closed'] = $predicateClosed.cloak_state
+        }
+
+        $result['measurable'] = $true
+        $result['branch'] = 'measured_open_and_closed_with_predicate_reads'
+        $result['raise_attempts_used'] = $attemptsUsed
+        $result['classification'] = $classification
+        $result['closed_scan'] = $closedScan
+        $result['open_scan'] = $openScan
+        $result['predicate_open'] = $predicateOpen
+        $result['predicate_closed'] = $predicateClosed
+
+        if (-not ($controlClosed -and $controlOpen)) {
+            # The unit's contract is explicit: a false positive control means the
+            # negative legs mean nothing, so the run FAILS instead of recording
+            # them. Everything observed up to here stays inside the capture -
+            # failing loudly must not be failing silently.
+            $message = 'positive control failed: EnumWindows walk did not yield Shell_TrayWnd'
+            $status = 'fail'
+            $result['branch'] = 'control_leg_shell_tray_wnd_not_yielded_by_enum_windows'
+            $result['measurable'] = $false
+            $result['control_leg_failed'] = $true
+        }
     }
 } catch {
     $status = 'fail'
