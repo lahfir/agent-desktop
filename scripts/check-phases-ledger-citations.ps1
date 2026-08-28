@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     Fail when docs/phases.md and probes/windows/FINDINGS.md drift apart, or
-    when a corrected sub-phase 2.12 statement's retired wording reappears.
+    when a corrected statement's retired wording reappears.
     Self-tests MUST-CATCH / MUST-PASS against the same Test-PhasesLedgerCitations
     function the real run calls, plus a non-empty-input assertion so an empty
     or unparsed input cannot pass vacuously.
@@ -11,22 +11,26 @@
     Three rules:
       (a) every `A<n>-<m>` id cited in docs/phases.md must exist as a row id
           in probes/windows/FINDINGS.md.
-      (b) every FINDINGS.md row whose action cell names `closure: 2.12` must
-          have its row id cited somewhere in docs/phases.md - a row assigned
-          to this sub-phase that the document never mentions is an
-          undispositioned deferral.
-      (c) none of the retired stems below - phrases sub-phase 2.12's own
-          plan corrected out of docs/phases.md - may reappear anywhere in the
-          file. Matching is case-insensitive substring over the WHOLE file,
-          not scoped to any one section: a retired phrase can resurface in a
-          different section with slightly different wording around it, which
-          a section-scoped or whole-phrase match would walk past.
+      (b) every FINDINGS.md row whose action cell names `closure: <target>`
+          for one of the $ClosureTargets sub-phases must have its row id
+          cited somewhere in docs/phases.md - a row assigned to that
+          sub-phase that the document never mentions is an undispositioned
+          deferral. 2.12 was the original target; 2.14 was added when the
+          shell-surfaces sub-phase became a closure owner in its own right,
+          so a `closure: 2.14` row is enforced exactly as a 2.12 row is.
+      (c) none of the retired stems below - phrases a sub-phase's own
+          correction pass took out of docs/phases.md - may reappear anywhere
+          in the file. Matching is case-insensitive substring over the WHOLE
+          file, not scoped to any one section: a retired phrase can resurface
+          in a different section with slightly different wording around it,
+          which a section-scoped or whole-phrase match would walk past.
 #>
 [CmdletBinding()]
 param(
     [string]$RepoRoot = '',
     [string]$PhasesPath = '',
-    [string]$FindingsPath = ''
+    [string]$FindingsPath = '',
+    [string[]]$ClosureTargets = @('2.12', '2.14')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,11 +48,12 @@ if ([string]::IsNullOrWhiteSpace($FindingsPath)) {
     $FindingsPath = Join-Path $RepoRoot 'probes\windows\FINDINGS.md'
 }
 
-# The minimum retired-stem list docs/phases.md's own correction pass
-# names. A stem is kept short enough to catch a variant elsewhere in the
+# The minimum retired-stem list docs/phases.md's own correction passes
+# name. A stem is kept short enough to catch a variant elsewhere in the
 # document that restates the same corrected fact in different words (see
 # the case-insensitive-whole-file note above) - each was chosen against a
-# specific line this sub-phase's plan corrected in place.
+# specific line a sub-phase's plan corrected in place. The first block is
+# sub-phase 2.12's; the second is the shell-surfaces sub-phase's (2.14).
 $RetiredStems = @(
     'no probe has established',
     'mirroring `AgentDeskFixture.swift`',
@@ -59,7 +64,16 @@ $RetiredStems = @(
     'is registered at 2.12',
     'where that runner is registered',
     'contended re-measure owned by §2.12',
-    '§2.12 owns the `focused_window`'
+    '§2.12 owns the `focused_window`',
+    'SNI-equivalent',
+    'via UIA focus-changed events',
+    'permission-specific suggestion',
+    'when package identity/capability and explicit user permission are available',
+    'none installed',
+    'host edition that carries WinUI/UWP hosts',
+    'no modern-shell host exists in any environment',
+    'owns the by-name/AUMID path once a shell binding is taken',
+    'third attempt also found nothing'
 )
 
 function Get-CitedProbeIds {
@@ -72,14 +86,24 @@ function Get-CitedProbeIds {
 }
 
 function Get-FindingsRows {
-    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text,
+        [Parameter(Mandatory = $true)][string[]]$ClosureTargets
+    )
     $rows = New-Object System.Collections.Generic.List[object]
     foreach ($line in ($Text -split "`r?`n")) {
         $m = [regex]::Match($line, '^\|\s*(A[0-9]+-[0-9]+)\s*\|')
         if (-not $m.Success) { continue }
+        $closureTarget = $null
+        foreach ($target in $ClosureTargets) {
+            if ([regex]::IsMatch($line, ('closure:\s*' + [regex]::Escape($target) + '\b'), 'IgnoreCase')) {
+                $closureTarget = $target
+                break
+            }
+        }
         $rows.Add([pscustomobject]@{
-                Id                  = $m.Groups[1].Value
-                NamesClosureAt212   = [regex]::IsMatch($line, 'closure:\s*2\.12\b', 'IgnoreCase')
+                Id                 = $m.Groups[1].Value
+                NamesClosureTarget = $closureTarget
             })
     }
     return $rows.ToArray()
@@ -89,12 +113,13 @@ function Test-PhasesLedgerCitations {
     param(
         [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PhasesText,
         [Parameter(Mandatory = $true)][AllowEmptyString()][string]$FindingsText,
-        [Parameter(Mandatory = $true)][string[]]$RetiredStems
+        [Parameter(Mandatory = $true)][string[]]$RetiredStems,
+        [Parameter(Mandatory = $true)][string[]]$ClosureTargets
     )
     $failures = New-Object System.Collections.Generic.List[string]
 
     $citedIds = @(Get-CitedProbeIds -Text $PhasesText)
-    $findingsRows = @(Get-FindingsRows -Text $FindingsText)
+    $findingsRows = @(Get-FindingsRows -Text $FindingsText -ClosureTargets $ClosureTargets)
     $findingsIds = @{}
     foreach ($row in $findingsRows) { $findingsIds[$row.Id] = $true }
 
@@ -117,14 +142,14 @@ function Test-PhasesLedgerCitations {
         }
     }
 
-    # Rule (b): every row this sub-phase claims (closure: 2.12) must be
-    # disposed of in the document, not merely recorded in the ledger.
+    # Rule (b): every row a closure-target sub-phase claims (closure: <t>)
+    # must be disposed of in the document, not merely recorded in the ledger.
     foreach ($row in $findingsRows) {
-        if (-not $row.NamesClosureAt212) { continue }
+        if (-not $row.NamesClosureTarget) { continue }
         $citedSet = @{}
         foreach ($id in $citedIds) { $citedSet[$id] = $true }
         if (-not $citedSet.ContainsKey($row.Id)) {
-            $failures.Add('rule (b): FINDINGS.md row ' + $row.Id + ' names closure: 2.12 but is never cited in docs/phases.md - an undispositioned deferral') | Out-Null
+            $failures.Add('rule (b): FINDINGS.md row ' + $row.Id + ' names closure: ' + $row.NamesClosureTarget + ' but is never cited in docs/phases.md - an undispositioned deferral') | Out-Null
         }
     }
 
@@ -148,7 +173,7 @@ function Invoke-PhasesLedgerCitationsSelfTest {
 
     # --- Non-empty-input trap: empty phases text must fail even though it
     # trivially contains zero violations of rules (a) and (c). ---
-    $emptyInput = Test-PhasesLedgerCitations -PhasesText '' -FindingsText '| A1-1 | s | managed | api-contract | e | o | CONFIRMS | closure: 2.12 |' -RetiredStems $RetiredStems
+    $emptyInput = Test-PhasesLedgerCitations -PhasesText '' -FindingsText '| A1-1 | s | managed | api-contract | e | o | CONFIRMS | closure: 2.12 |' -RetiredStems $RetiredStems -ClosureTargets $ClosureTargets
     if ($emptyInput.Failures.Count -lt 1) {
         $failures.Add('MUST CATCH, missed: empty phases text passed instead of tripping the non-empty-input assertion') | Out-Null
     }
@@ -156,14 +181,14 @@ function Invoke-PhasesLedgerCitationsSelfTest {
     # --- Rule (a) MUST CATCH: a cited id absent from the ledger. ---
     $ruleAText = 'This sentence cites `A99-1`, a probe row that does not exist.'
     $ruleAFindings = '| A1-1 | script | managed | api-contract | expectation | observed | CONFIRMS | action closure: 2.15 |'
-    $ruleA = Test-PhasesLedgerCitations -PhasesText $ruleAText -FindingsText $ruleAFindings -RetiredStems $RetiredStems
+    $ruleA = Test-PhasesLedgerCitations -PhasesText $ruleAText -FindingsText $ruleAFindings -RetiredStems $RetiredStems -ClosureTargets $ClosureTargets
     if (-not ($ruleA.Failures | Where-Object { $_ -match '^rule \(a\)' })) {
         $failures.Add('MUST CATCH, missed: a cited id absent from FINDINGS.md did not fail rule (a)') | Out-Null
     }
 
     # --- Rule (a) MUST PASS: every cited id resolves. ---
     $ruleAPassText = 'Grounded by `A1-1` and `A1-1` again, plus prose with no other ids.'
-    $ruleAPass = Test-PhasesLedgerCitations -PhasesText $ruleAPassText -FindingsText $ruleAFindings -RetiredStems $RetiredStems
+    $ruleAPass = Test-PhasesLedgerCitations -PhasesText $ruleAPassText -FindingsText $ruleAFindings -RetiredStems $RetiredStems -ClosureTargets $ClosureTargets
     if ($ruleAPass.Failures | Where-Object { $_ -match '^rule \(a\)' }) {
         $failures.Add('MUST PASS, false positive: a fully-resolved citation set failed rule (a)') | Out-Null
     }
@@ -171,16 +196,39 @@ function Invoke-PhasesLedgerCitationsSelfTest {
     # --- Rule (b) MUST CATCH: a closure:2.12 ledger row never cited. ---
     $ruleBFindings = '| A5-3 | script | managed | api-contract | expectation | observed | DEFERRED | still open, closure: 2.12 |'
     $ruleBText = 'This document cites only `A1-1`, for something unrelated, and names the other row nowhere.'
-    $ruleB = Test-PhasesLedgerCitations -PhasesText $ruleBText -FindingsText $ruleBFindings -RetiredStems $RetiredStems
+    $ruleB = Test-PhasesLedgerCitations -PhasesText $ruleBText -FindingsText $ruleBFindings -RetiredStems $RetiredStems -ClosureTargets $ClosureTargets
     if (-not ($ruleB.Failures | Where-Object { $_ -match '^rule \(b\)' })) {
         $failures.Add('MUST CATCH, missed: an uncited closure:2.12 row did not fail rule (b)') | Out-Null
     }
 
     # --- Rule (b) MUST PASS: the closure:2.12 row is cited. ---
     $ruleBPassText = 'This sub-phase measured it, citing `A5-3` directly.'
-    $ruleBPass = Test-PhasesLedgerCitations -PhasesText $ruleBPassText -FindingsText $ruleBFindings -RetiredStems $RetiredStems
+    $ruleBPass = Test-PhasesLedgerCitations -PhasesText $ruleBPassText -FindingsText $ruleBFindings -RetiredStems $RetiredStems -ClosureTargets $ClosureTargets
     if ($ruleBPass.Failures | Where-Object { $_ -match '^rule \(b\)' }) {
         $failures.Add('MUST PASS, false positive: a cited closure:2.12 row failed rule (b)') | Out-Null
+    }
+
+    # --- Rule (b) MUST CATCH: a closure:2.14 ledger row never cited. The
+    # generalization that made the predicate follow the closure target exists
+    # exactly so this row cannot hide behind the 2.12 literal. ---
+    $ruleB214Findings = '| A9-9 | script | uia3-com | app/provider | expectation | observed | DEFERRED | owed on a settling session, closure: 2.14 |'
+    $ruleB214 = Test-PhasesLedgerCitations -PhasesText $ruleBText -FindingsText $ruleB214Findings -RetiredStems $RetiredStems -ClosureTargets $ClosureTargets
+    if (-not ($ruleB214.Failures | Where-Object { $_ -match '^rule \(b\)' -and $_.Contains('closure: 2.14') })) {
+        $failures.Add('MUST CATCH, missed: an uncited closure:2.14 row did not fail rule (b)') | Out-Null
+    }
+
+    # --- Rule (b) MUST PASS: the closure:2.14 row is cited. ---
+    $ruleB214Pass = Test-PhasesLedgerCitations -PhasesText 'This document cites `A9-9` and disposes of it.' -FindingsText $ruleB214Findings -RetiredStems $RetiredStems -ClosureTargets $ClosureTargets
+    if ($ruleB214Pass.Failures | Where-Object { $_ -match '^rule \(b\)' }) {
+        $failures.Add('MUST PASS, false positive: a cited closure:2.14 row failed rule (b)') | Out-Null
+    }
+
+    # --- Rule (b) boundary: a row naming a closure target that is NOT under
+    # test (2.15) stays outside rule (b). ---
+    $ruleBOffFindings = '| A9-8 | script | uia3-com | app/provider | expectation | observed | DEFERRED | rides the integration gate, closure: 2.15 |'
+    $ruleBOff = Test-PhasesLedgerCitations -PhasesText $ruleBText -FindingsText $ruleBOffFindings -RetiredStems $RetiredStems -ClosureTargets $ClosureTargets
+    if ($ruleBOff.Failures | Where-Object { $_ -match '^rule \(b\)' }) {
+        $failures.Add('MUST PASS, false positive: a row naming a non-target closure sub-phase failed rule (b)') | Out-Null
     }
 
     # --- Rule (c): one MUST-CATCH and one MUST-PASS fixture per stem, so the
@@ -198,10 +246,19 @@ function Invoke-PhasesLedgerCitationsSelfTest {
         'where that runner is registered' = 'sub-phase 2.15 now owns registering it'
         'contended re-measure owned by §2.12' = '§2.12 re-measured it contended and recorded the result as a probe row beside it'
         '§2.12 owns the `focused_window`' = 'the focused_window identity question rides §2.14 rather than §2.12'
+        'SNI-equivalent' = 'tray list/click work through refs: the tray surface snapshot allocates refs to the COM-read Button items and click @ref invokes them'
+        'via UIA focus-changed events' = 'a right-click at the item''s bounds raises its context menu, and the popup is addressed by the `menu` surface'
+        'permission-specific suggestion' = 'the listener is not consulted, so its runtime denial is not reached on the shipped path'
+        'when package identity/capability and explicit user permission are available' = 'the listener path is recorded, not consulted: activation succeeded and the access status read Denied'
+        'none installed' = 'the population scan matched only `cursor` - the earlier search''s needle list did not include it'
+        'host edition that carries WinUI/UWP hosts' = 'the question concerns the UWP CoreWindow shape this box presents, and the foreground reading was measured here'
+        'no modern-shell host exists in any environment' = 'no WinUI3/MSIX host exists in any environment measured to date; a UWP CoreWindow host is presented and was evaluated'
+        'owns the by-name/AUMID path once a shell binding is taken' = '§2.14 recorded the decision not to take the by-name/AUMID path, so the Windows side arrives settled'
+        'third attempt also found nothing' = 'the fourth attempt staged a real menu against the corrected host population and evaluated every source'
     }
     foreach ($stem in $RetiredStems) {
         $catchText = 'Some surrounding prose. ' + $stem + ' More surrounding prose.'
-        $catch = Test-PhasesLedgerCitations -PhasesText $catchText -FindingsText $baseFindings -RetiredStems $RetiredStems
+        $catch = Test-PhasesLedgerCitations -PhasesText $catchText -FindingsText $baseFindings -RetiredStems $RetiredStems -ClosureTargets $ClosureTargets
         if (-not ($catch.Failures | Where-Object { $_ -match '^rule \(c\)' -and $_.Contains($stem) })) {
             $failures.Add("MUST CATCH, missed: retired stem '" + $stem + "' did not fail rule (c)") | Out-Null
         }
@@ -211,7 +268,7 @@ function Invoke-PhasesLedgerCitationsSelfTest {
             continue
         }
         $passText = 'Some surrounding prose. ' + $correctedByStem[$stem] + ' More surrounding prose.'
-        $pass = Test-PhasesLedgerCitations -PhasesText $passText -FindingsText $baseFindings -RetiredStems $RetiredStems
+        $pass = Test-PhasesLedgerCitations -PhasesText $passText -FindingsText $baseFindings -RetiredStems $RetiredStems -ClosureTargets $ClosureTargets
         if ($pass.Failures | Where-Object { $_ -match '^rule \(c\)' }) {
             $failures.Add("MUST PASS, false positive: the corrected wording for stem '" + $stem + "' still failed rule (c)") | Out-Null
         }
@@ -224,7 +281,7 @@ function Invoke-PhasesLedgerCitationsSelfTest {
         '| A2-4 | s | managed | api-contract | e | o | DEFERRED | still open, closure: 2.12 |'
     ) -join "`n"
     $cleanPhases = 'This document cites `A1-1` for one fact and `A2-4` for another, and retires no stems.'
-    $clean = Test-PhasesLedgerCitations -PhasesText $cleanPhases -FindingsText $cleanFindings -RetiredStems $RetiredStems
+    $clean = Test-PhasesLedgerCitations -PhasesText $cleanPhases -FindingsText $cleanFindings -RetiredStems $RetiredStems -ClosureTargets $ClosureTargets
     if ($clean.Failures.Count -gt 0) {
         $failures.Add('MUST PASS, false positive: a clean document with no violations failed (' + ($clean.Failures -join '; ') + ')') | Out-Null
     }
@@ -254,7 +311,7 @@ if (-not (Test-Path -LiteralPath $FindingsPath)) {
 $phasesText = [IO.File]::ReadAllText($PhasesPath)
 $findingsText = [IO.File]::ReadAllText($FindingsPath)
 
-$real = Test-PhasesLedgerCitations -PhasesText $phasesText -FindingsText $findingsText -RetiredStems $RetiredStems
+$real = Test-PhasesLedgerCitations -PhasesText $phasesText -FindingsText $findingsText -RetiredStems $RetiredStems -ClosureTargets $ClosureTargets
 foreach ($f in $real.Failures) {
     Write-Host ('FAIL: ' + $f)
 }
@@ -262,5 +319,5 @@ if ($real.Failures.Count -gt 0) {
     Write-Host ('FAIL: ' + $real.Failures.Count + ' citation/ledger failure(s) (cited ' + $real.CitedIdCount + ' id(s), ' + $real.FindingsCount + ' ledger row(s))')
     exit 1
 }
-Write-Host ('OK: every cited id resolves, every closure:2.12 row is cited, and no retired stem reappears (cited ' + $real.CitedIdCount + ' id(s), ' + $real.FindingsCount + ' ledger row(s))')
+Write-Host ('OK: every cited id resolves, every closure row (' + ($ClosureTargets -join ', ') + ') is cited, and no retired stem reappears (cited ' + $real.CitedIdCount + ' id(s), ' + $real.FindingsCount + ' ledger row(s))')
 exit 0
