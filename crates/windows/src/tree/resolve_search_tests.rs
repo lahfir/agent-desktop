@@ -202,6 +202,19 @@ fn a_ref_verifiable_by_any_single_tier_is_not_unverifiable() {
     assert!(!entry_is_unverifiable(&geometry_only));
 }
 
+/// The shape allocation emits for nameless positive-area content once it
+/// keeps the rect that is the entry's only identity: locatable by the
+/// geometry tier rather than failed closed by `entry_is_unverifiable`
+/// before any candidate search runs - the A24-11 stale-rate mechanism.
+#[test]
+fn a_nameless_positive_area_ref_is_locatable_by_the_geometry_tier() {
+    let geometry_only = entry(Some(rect(40.0, 20.0)), Some(0x1234), None, None);
+    assert!(!has_meaningful_identity(&geometry_only));
+    assert!(provisional_geometry_candidate(&geometry_only));
+    assert!(!entry_is_unverifiable(&geometry_only));
+    assert!(entry_is_locatable(&geometry_only));
+}
+
 #[test]
 fn should_stop_collecting_fires_only_past_one_match_with_no_stored_hash() {
     let no_hash = entry(None, None, None, None);
