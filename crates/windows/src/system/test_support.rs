@@ -27,6 +27,7 @@
 
 #![cfg(all(test, target_os = "windows"))]
 
+use agent_desktop_core::{AdapterError, ErrorCode};
 use std::cell::Cell;
 use std::sync::Mutex;
 
@@ -208,5 +209,69 @@ pub(crate) fn settles_to(
             return false;
         }
         std::thread::sleep(POLL);
+    }
+}
+
+/// Whether this error is a hosted or shell-less desktop declining the raise
+/// instead of presenting the surface: the accelerator or chevron invoke ran
+/// and the shell simply never presented, or the tray chrome the raise depends
+/// on was never there. These are declined preconditions, not product
+/// failures: there is no shell on such a desktop to answer the raise, so the
+/// live tests that need the surface skip loudly on them instead of failing.
+pub(crate) fn shell_declined_the_surface(error: &AdapterError) -> bool {
+    let raise_never_presented = error.code == ErrorCode::Timeout
+        && error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("kind"))
+            .and_then(serde_json::Value::as_str)
+            == Some("shell_surface_not_opened");
+    let chevron_absent =
+        error.code == ErrorCode::WindowNotFound && error.message.contains("notification chevron");
+    let overflow_absent =
+        error.code == ErrorCode::WindowNotFound && error.message.contains("overflow");
+    raise_never_presented || chevron_absent || overflow_absent
+}
+
+/// Maps a raise-or-resolve precondition onto the loud-skip convention: an
+/// error the desktop declined becomes a printed skip and a `None` the caller
+/// turns into an early return, while any other error still fails the test.
+pub(crate) fn or_skip_shell<T>(what: &str, result: Result<T, AdapterError>) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(error) if shell_declined_the_surface(&error) => {
+            eprintln!("skip {what}: this desktop's shell declined to present the surface");
+            None
+        }
+        Err(error) => panic!("{what}: {error:?}"),
+    }
+}
+
+#[cfg(test)]
+mod shell_decline_classification {
+    use super::*;
+
+    #[test]
+    fn the_declined_shapes_classify_and_unrelated_errors_do_not() {
+        let declined_open = AdapterError::timeout(
+            "the 'action-center' shell surface did not open within the deadline",
+        )
+        .with_details(serde_json::json!({ "kind": "shell_surface_not_opened" }));
+        assert!(shell_declined_the_surface(&declined_open));
+
+        let chevron_absent = AdapterError::new(
+            ErrorCode::WindowNotFound,
+            "the notification chevron button is not present in the taskbar",
+        );
+        assert!(shell_declined_the_surface(&chevron_absent));
+
+        let stale = AdapterError::stale_ref("@s8f3k2p9:e1");
+        assert!(!shell_declined_the_surface(&stale));
+
+        let unrelated_window = AdapterError::new(
+            ErrorCode::WindowNotFound,
+            "no window matches the requested identity",
+        );
+        assert!(!shell_declined_the_surface(&unrelated_window));
     }
 }

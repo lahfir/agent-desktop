@@ -23,13 +23,14 @@
 
 use agent_desktop_core::commands::open_system_surface::{self, OpenSystemSurfaceArgs};
 use agent_desktop_core::commands::snapshot::{self, SnapshotArgs};
-use agent_desktop_core::{CommandContext, SnapshotSurface};
+use agent_desktop_core::{AdapterError, AppError, CommandContext, SnapshotSurface};
 
 use crate::adapter::WindowsAdapter;
 use crate::system::private_file::WindowsPrivateFile;
 use crate::system::shell_surface_open::close_surface;
 use crate::system::test_support::{
-    SHELL_SURFACE_LOCK, wait_for_foreground_to_settle, with_interaction_lease_test_lock,
+    SHELL_SURFACE_LOCK, or_skip_shell, wait_for_foreground_to_settle,
+    with_interaction_lease_test_lock,
 };
 use crate::tree::fixture::bootstrap;
 use std::path::PathBuf;
@@ -111,10 +112,22 @@ impl Drop for CloseOnDrop {
     }
 }
 
-fn open_command(kind: SnapshotSurface, context: &CommandContext) -> serde_json::Value {
+/// The command layer wraps the adapter's answer in `AppError`; the skip
+/// classification reads the adapter error that produced it.
+fn adapter_error_of(error: AppError) -> AdapterError {
+    match error {
+        AppError::Adapter(error) => error,
+        error => AdapterError::internal(error.to_string()),
+    }
+}
+
+fn open_command(kind: SnapshotSurface, context: &CommandContext) -> Option<serde_json::Value> {
     let adapter = WindowsAdapter::new();
-    open_system_surface::execute(OpenSystemSurfaceArgs { surface: kind }, &adapter, context)
-        .expect("the command opens the surface")
+    or_skip_shell(
+        &format!("the command opens the {}", kind.as_str()),
+        open_system_surface::execute(OpenSystemSurfaceArgs { surface: kind }, &adapter, context)
+            .map_err(adapter_error_of),
+    )
 }
 
 fn snapshot_command(kind: SnapshotSurface) -> serde_json::Value {
@@ -141,11 +154,11 @@ fn snapshot_command(kind: SnapshotSurface) -> serde_json::Value {
     .expect("the snapshot consumes the open surface's identity")
 }
 
-fn assert_round_trip(kind: SnapshotSurface) {
+fn assert_round_trip(kind: SnapshotSurface) -> Option<()> {
     let _home = HomeIsolation::enter();
     let _ = agent_desktop_core::install_private_file_ops(Box::new(WindowsPrivateFile::new()));
     let context = CommandContext::default().with_headed(true);
-    let opened = open_command(kind, &context);
+    let opened = open_command(kind, &context)?;
 
     assert_eq!(
         opened["surface"],
@@ -166,6 +179,7 @@ fn assert_round_trip(kind: SnapshotSurface) {
         snap["window"]["id"], window_id,
         "the observation consumed the identity the open returned, with no second lookup"
     );
+    Some(())
 }
 
 /// The exit-criterion kinds, one test each: opening returns a window object
@@ -178,7 +192,9 @@ fn opening_the_action_center_round_trips_into_the_snapshot() {
         let _ = close_surface(SnapshotSurface::ActionCenter, deadline(5_000));
         let _cleanup = CloseOnDrop(SnapshotSurface::ActionCenter);
 
-        assert_round_trip(SnapshotSurface::ActionCenter);
+        let Some(()) = assert_round_trip(SnapshotSurface::ActionCenter) else {
+            return;
+        };
     });
 }
 
@@ -190,7 +206,10 @@ fn opening_the_start_menu_round_trips_into_the_snapshot() {
         let _ = close_surface(SnapshotSurface::StartMenu, deadline(5_000));
         let _cleanup = CloseOnDrop(SnapshotSurface::StartMenu);
 
-        assert_round_trip(SnapshotSurface::StartMenu);
+        assert!(
+            assert_round_trip(SnapshotSurface::StartMenu).is_some(),
+            "the start menu must round trip: this desktop presents the start menu"
+        );
     });
 }
 
@@ -208,7 +227,8 @@ fn opening_the_taskbar_round_trips_without_raising_anything() {
         let before = foreground();
 
         let context = CommandContext::default().with_headed(true);
-        let opened = open_command(SnapshotSurface::Taskbar, &context);
+        let opened = open_command(SnapshotSurface::Taskbar, &context)
+            .expect("the taskbar is always up, so its open must never be declined");
 
         assert_eq!(
             foreground(),

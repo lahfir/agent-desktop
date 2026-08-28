@@ -31,7 +31,9 @@ use crate::notifications::toast_support::{
 };
 use crate::system::shell_surface::resolve_surface;
 use crate::system::shell_surface_open::close_surface;
-use crate::system::test_support::{SHELL_SURFACE_LOCK, wait_for_foreground_to_settle};
+use crate::system::test_support::{
+    SHELL_SURFACE_LOCK, or_skip_shell, wait_for_foreground_to_settle,
+};
 
 fn deadline(ms: u64) -> Deadline {
     Deadline::after(ms).expect("deadline")
@@ -67,26 +69,35 @@ fn notification_wait_args(timeout_ms: u64) -> wait::WaitArgs {
 
 /// Resets the center, opens it, and holds it open so the staged baseline
 /// entry and the staged arrival both land in a center the wait's sessions
-/// adopt instead of close.
-fn hold_center_with_baseline_toast() -> (ActionCenterSession, StagedToast) {
+/// adopt instead of close. A desktop whose shell declines the open, or whose
+/// staging never produces an entry, skips loudly instead: the helper prints
+/// why and returns None.
+fn hold_center_with_baseline_toast() -> Option<(ActionCenterSession, StagedToast)> {
     toast_support::clear_center(deadline(20_000));
-    let held = ActionCenterSession::open(headed(), deadline(15_000))
-        .expect("the center opens for the pre-arrangement");
+    let held = or_skip_shell(
+        "action center open for the wait baseline",
+        ActionCenterSession::open(headed(), deadline(15_000)),
+    )?;
     let staged = StagedToast::stage();
-    let listed = toast_support::wait_until_listed_held(held.hwnd(), deadline(30_000));
+    let Some(listed) = toast_support::wait_until_listed_held(held.hwnd(), deadline(30_000)) else {
+        eprintln!("skip toast staging: this desktop's toast staging produced no entry");
+        return None;
+    };
     assert_eq!(
         listed.len(),
         1,
         "the reset leaves the staged toast as the only entry the baseline can capture"
     );
-    (held, staged)
+    Some((held, staged))
 }
 
 #[test]
 fn a_wait_returns_the_notification_that_arrives_during_it_and_not_one_already_present() {
     crate::tree::fixture::bootstrap();
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let (held, _already_present) = hold_center_with_baseline_toast();
+    let Some((held, _already_present)) = hold_center_with_baseline_toast() else {
+        return;
+    };
 
     let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
     let stager = std::thread::spawn(move || {

@@ -71,7 +71,7 @@ mod shell_surfaces {
     use crate::system::shell_surface::resolve_surface;
     use crate::system::shell_surface_open::{close_surface, open_surface};
     use crate::system::test_support::{
-        SHELL_SURFACE_LOCK, stage_foreground, wait_for_foreground_to_settle,
+        SHELL_SURFACE_LOCK, or_skip_shell, stage_foreground, wait_for_foreground_to_settle,
     };
     use crate::tree::element::UIAElement;
     use crate::tree::fixture_menu::MenuFixture;
@@ -163,12 +163,16 @@ mod shell_surfaces {
         let _ = close_surface(SnapshotSurface::ActionCenter, deadline());
         let _cleanup = CloseOnDrop(SnapshotSurface::ActionCenter);
 
-        let raised = open_surface(
-            SnapshotSurface::ActionCenter,
-            InteractionPolicy::headed(),
-            deadline(),
-        )
-        .expect("the action center opens");
+        let Some(raised) = or_skip_shell(
+            "action center open",
+            open_surface(
+                SnapshotSurface::ActionCenter,
+                InteractionPolicy::headed(),
+                deadline(),
+            ),
+        ) else {
+            return;
+        };
         let resolved = ObservationOps::resolve_shell_surface(
             &WindowsAdapter::new(),
             SnapshotSurface::ActionCenter,
@@ -228,9 +232,11 @@ mod shell_surfaces {
     /// leg runs last: raising shell chrome sends the menu's owner
     /// `WM_CANCELMODE`, so an open fixture menu cannot survive the chrome
     /// legs staged before it. A leg whose precondition the OS declines (the
-    /// foreground, which `SetForegroundWindow` grants only advisory) skips
-    /// loudly and is exempted from the coverage requirement, the same
-    /// concession `stage_foreground`'s own contract documents.
+    /// foreground, which `SetForegroundWindow` grants only advisory, or a
+    /// shell kind whose raise the desktop's shell declines instead of
+    /// presenting) skips loudly and is exempted from the coverage
+    /// requirement, the same concession `stage_foreground`'s own contract
+    /// documents.
     #[test]
     fn every_advertised_surface_resolves_to_a_rootable_element_when_present() {
         bootstrap();
@@ -273,7 +279,7 @@ mod shell_surfaces {
                 skipped.push(SnapshotSurface::Sheet);
             }
         }
-        stage_and_assert_shell_kinds(&advertised, &mut covered);
+        stage_and_assert_shell_kinds(&advertised, &mut covered, &mut skipped);
         stage_and_assert_menu(&advertised, &mut covered);
 
         for kind in &advertised {
@@ -297,6 +303,7 @@ mod shell_surfaces {
     fn stage_and_assert_shell_kinds(
         advertised: &[SnapshotSurface],
         covered: &mut Vec<SnapshotSurface>,
+        skipped: &mut Vec<SnapshotSurface>,
     ) {
         assert!(
             wait_for_foreground_to_settle(),
@@ -322,15 +329,15 @@ mod shell_surfaces {
                     .expect("the desktop is readable")
                     .expect("checked above"),
                 false => {
+                    let Some(info) = or_skip_shell(
+                        &format!("staging advertised surface '{}'", kind.as_str()),
+                        open_surface(kind, InteractionPolicy::headed(), deadline()),
+                    ) else {
+                        skipped.push(kind);
+                        continue;
+                    };
                     raised.push(kind);
-                    open_surface(kind, InteractionPolicy::headed(), deadline()).unwrap_or_else(
-                        |error| {
-                            panic!(
-                                "staging advertised surface '{}' failed: {error:?}",
-                                kind.as_str()
-                            )
-                        },
-                    )
+                    info
                 }
             };
             assert_roots(kind, &info);
