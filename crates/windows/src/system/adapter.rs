@@ -110,6 +110,23 @@ impl SystemOps for WindowsAdapter {
         ]
     }
 
+    /// The raise half of the shell-surface seam, beside the resolve half the
+    /// observation adapter carries: the kind table in `system::shell_surface`
+    /// owns both the reach mechanics and the focus-steal floor, so this is
+    /// the translation that hands it the caller's policy and the lease's
+    /// budget. A caller whose policy forbids the foreground to move, and a
+    /// build that lacks the requested kind, are both refused there before
+    /// anything is raised; the lease itself is what excludes other desktop
+    /// interactions for the raise's duration.
+    fn open_system_surface(
+        &self,
+        surface: SnapshotSurface,
+        policy: InteractionPolicy,
+        lease: &InteractionLease,
+    ) -> Result<WindowInfo, AdapterError> {
+        crate::system::shell_surface_open::open_surface(surface, policy, lease.deadline())
+    }
+
     /// The focused window is the focused-only filter's first result, composed
     /// from `list_windows` rather than a second native path (mirroring
     /// `crates/macos/src/system/adapter.rs:142-149`). Whatever HWND-shape a

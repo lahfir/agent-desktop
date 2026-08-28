@@ -44,6 +44,7 @@ pub mod move_window;
 pub mod notification_action;
 pub(crate) mod notification_identity;
 pub(crate) mod notification_policy;
+pub mod open_system_surface;
 pub mod permissions;
 pub(crate) mod point_resolve;
 pub(crate) mod pointer_action;

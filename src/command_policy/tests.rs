@@ -16,9 +16,14 @@ fn permission_report_is_collected_only_for_permission_consumers() {
         stop_on_error: false,
         timeout_ms: 1,
     });
+    let open_system_surface =
+        Commands::OpenSystemSurface(crate::cli_args::system::OpenSystemSurfaceArgs {
+            surface: crate::cli_args::Surface::ActionCenter,
+        });
 
     assert!(requires_permission_report(&status));
     assert!(requires_permission_report(&batch));
+    assert!(requires_permission_report(&open_system_surface));
     assert!(!requires_permission_report(&list_displays));
 }
 
