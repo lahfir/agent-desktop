@@ -290,10 +290,7 @@ fn taskbar_resolves_without_raising_and_roots_a_tree() {
         eprintln!("skip taskbar tree: this desktop's taskbar presents an empty UIA tree");
         return;
     }
-    assert!(
-        children > 0,
-        "the taskbar presents a non-empty tree"
-    );
+    assert!(children > 0, "the taskbar presents a non-empty tree");
 }
 
 /// A bounded series of full walks, absorbing the session-varying enumeration

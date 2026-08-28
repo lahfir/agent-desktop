@@ -207,7 +207,9 @@ fn opening_the_start_menu_round_trips_into_the_snapshot() {
         let _cleanup = CloseOnDrop(SnapshotSurface::StartMenu);
 
         if assert_round_trip(SnapshotSurface::StartMenu).is_none() {
-            eprintln!("skip start-menu round trip: this desktop's shell declined to present the surface");
+            eprintln!(
+                "skip start-menu round trip: this desktop's shell declined to present the surface"
+            );
         }
     });
 }
