@@ -33,14 +33,27 @@ const START_HOSTS: &[&str] = &[
     "startmenuexperiencehost",
 ];
 
+/// The notification list's landmark `AutomationId` (A26-3), the root the
+/// notification reader walks. A center carrying at least one notification
+/// presents it; the empty-center state swaps it for [`EMPTY_CENTER_LANDMARKS`].
+pub(crate) const MAIN_LIST_VIEW: &str = "MainListView";
+
+/// The landmarks the empty-center state presents in place of
+/// [`MAIN_LIST_VIEW`] (A26-3): an open center carrying either is legitimately
+/// empty, not a tree this adapter fails to recognize.
+pub(crate) const EMPTY_CENTER_LANDMARKS: &[&str] = &["NoNotificationsTextBlock", "ScrollWrapper"];
+
 /// The Action Center's measured landmark `AutomationId`s, read on this build
 /// in both of its content states: `MainListView` when notifications are
 /// present (A26-3), and the empty-center shape's `NoNotificationsTextBlock`
 /// and `ScrollWrapper` when none are. One landmark list covers both states so
 /// an empty center still resolves to itself rather than to another
 /// `ShellExperienceHost`-hosted surface.
-const ACTION_CENTER_LANDMARKS: &[&str] =
-    &["MainListView", "NoNotificationsTextBlock", "ScrollWrapper"];
+const ACTION_CENTER_LANDMARKS: &[&str] = &[
+    MAIN_LIST_VIEW,
+    EMPTY_CENTER_LANDMARKS[0],
+    EMPTY_CENTER_LANDMARKS[1],
+];
 
 /// The search surface's measured landmark: the Start accelerator's overlay
 /// carries `SearchTextBox` at its root (A26-9), which is also what keeps this

@@ -93,7 +93,7 @@ pub(super) fn kebab(kind: SnapshotSurface) -> String {
     kind.as_str().replace('_', "-")
 }
 
-fn build_number() -> u32 {
+pub(crate) fn build_number() -> u32 {
     #[cfg(target_os = "windows")]
     {
         #[repr(C)]
