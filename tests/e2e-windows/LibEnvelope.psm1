@@ -9,13 +9,18 @@
     (scripts/lib/e2e-windows-contract-scan.psm1's rule05 ScopeFilter names
     this file beside Lib.psm1) and the same rule10 exemption for the one
     staged-binary call `Invoke-AgentDesktopBatch` makes through
-    Invoke-AgentDesktop. Two doors: Assert-EnvelopeCheckOccluder reads a
+    Invoke-AgentDesktop. Doors: Assert-EnvelopeCheckOccluder reads a
     single action envelope's nested `error.details.checks[]` array (R21's
     exact field path - Assert-Envelope's own -Details only compares flat
     key/value pairs, so the occlusion leg needs a door of its own) and
     Invoke-AgentDesktopBatch composes a `batch` call and returns per-entry
     results as plain, non-banned-named fields - never a raw dictionary a
-    caller could be tempted to index into.
+    caller could be tempted to index into. The two shell-surface doors
+    (Invoke-ShellSurfaceOpen, Invoke-ShellSurfaceSnapshot) flatten the
+    open-system-surface / snapshot --surface envelopes the same way - the
+    surface legs' home for envelope reads, since rule05's exemption names
+    this file beside Lib.psm1 and Lib.psm1 is at the cap Invoke-Snapshot
+    cannot grow a --surface parameter past.
 #>
 
 Set-StrictMode -Version 2.0
@@ -148,4 +153,112 @@ function Test-EnvelopeValueEquals {
     return ($Actual -eq $Expected)
 }
 
-Export-ModuleMember -Function @('Assert-EnvelopeCheckOccluder', 'Invoke-AgentDesktopBatch', 'Test-EnvelopeValueEquals')
+function Get-EnvelopeSurfaces {
+    <#
+    .SYNOPSIS
+        Rule05 door for a list-surfaces envelope's data.surfaces array: the
+        scenario asserts on surface kinds and ids without touching envelope
+        fields directly.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)]$Envelope)
+    if ($Envelope['ok'] -ne $true) { throw 'Get-EnvelopeSurfaces: expected ok=true' }
+    $data = $Envelope['data']
+    if (-not $data -or -not $data['surfaces']) { throw 'Get-EnvelopeSurfaces: the envelope carries no surfaces array' }
+    return $data['surfaces']
+}
+
+function Invoke-ShellSurfaceOpen {
+    <#
+    .SYNOPSIS
+        open-system-surface's door: invokes the staged binary through
+        Invoke-AgentDesktop (Lib.psm1's one door) and flattens the envelope
+        into safe, non-banned-named fields - Opened, Surface, WindowId,
+        ErrorCode - so a scenario never touches .ok/.error/.data itself
+        (rule05 keeps that inside this module). WindowId is $null unless
+        the open answered ok with a window identity; ErrorCode is $null
+        unless it answered with an error.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$Surface,
+        [switch]$Headed,
+        [int]$TimeoutSeconds = 30
+    )
+    $callArgs = @()
+    if ($Headed) { $callArgs += '--headed' }
+    $callArgs += @('open-system-surface', '--surface', $Surface)
+    $envelope = Invoke-AgentDesktop -Arguments $callArgs -TimeoutSeconds $TimeoutSeconds
+    $opened = ($envelope['ok'] -eq $true)
+    $windowId = $null
+    $errorCode = $null
+    if ($opened) {
+        $window = $envelope['data']['window']
+        if ($window) { $windowId = [string]$window['id'] }
+    } else {
+        $err = $envelope['error']
+        if ($err) { $errorCode = [string]$err['code'] }
+    }
+    return [pscustomobject]@{
+        Opened    = $opened
+        Surface   = $Surface
+        WindowId  = $windowId
+        ErrorCode = $errorCode
+    }
+}
+
+function Invoke-ShellSurfaceSnapshot {
+    <#
+    .SYNOPSIS
+        `snapshot --surface`'s door - the surface-shape sibling of
+        Lib.psm1's Invoke-Snapshot, which has no --surface parameter and
+        cannot grow one (the 400-line cap): the same safe-names flatten,
+        plus the closed-surface refusal's ErrorCode/Suggestion so a leg can
+        assert the closed state's own error shape. Root is the extracted
+        tree, whose nodes' ref_id/native_id are plain tree data a caller
+        may walk (Get-ShellTreeIdentityMarks) without touching an
+        envelope.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$Surface,
+        [int]$TimeoutSeconds = 20
+    )
+    $envelope = Invoke-AgentDesktop -Arguments @('snapshot', '--surface', $Surface) -TimeoutSeconds $TimeoutSeconds
+    $opened = ($envelope['ok'] -eq $true)
+    $windowId = $null
+    $snapshotId = $null
+    $refCount = $null
+    $complete = $null
+    $root = $null
+    $errorCode = $null
+    $suggestion = $null
+    if ($opened) {
+        $data = $envelope['data']
+        $window = $data['window']
+        if ($window) { $windowId = [string]$window['id'] }
+        $snapshotId = $data['snapshot_id']
+        $refCount = $data['ref_count']
+        $complete = $data['complete']
+        $root = $data['tree']
+    } else {
+        $err = $envelope['error']
+        if ($err) {
+            $errorCode = [string]$err['code']
+            $suggestion = [string]$err['suggestion']
+        }
+    }
+    return [pscustomobject]@{
+        Opened     = $opened
+        Surface    = $Surface
+        WindowId   = $windowId
+        SnapshotId = $snapshotId
+        RefCount   = $refCount
+        Complete   = $complete
+        Root       = $root
+        ErrorCode  = $errorCode
+        Suggestion = $suggestion
+    }
+}
+
+Export-ModuleMember -Function @('Assert-EnvelopeCheckOccluder', 'Invoke-AgentDesktopBatch', 'Test-EnvelopeValueEquals', 'Get-EnvelopeSurfaces', 'Invoke-ShellSurfaceOpen', 'Invoke-ShellSurfaceSnapshot')

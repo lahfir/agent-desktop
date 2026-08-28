@@ -95,7 +95,7 @@ function Invoke-InteractionScenario {
     $refusalLegs = Get-InteractionRefusalLegTable
     Register-Legs -Names (@($headlessLegs | ForEach-Object { "interaction-$($_.Name)" }) + @($refusalLegs | ForEach-Object { $_.Name }) + @(
             'key-down-not-supported', 'key-up-not-supported', 'mouse-down-refused', 'mouse-up-refused',
-            'mouse-move-refused', 'mouse-click-refused', 'mouse-wheel-refused', 'surface-menu-refused',
+            'mouse-move-refused', 'mouse-click-refused', 'mouse-wheel-refused', 'surface-menu-closed-is-window-not-found',
             'headed-double-click', 'headed-triple-click', 'headed-right-click-then-choose', 'headed-hover',
             'headed-drag', 'headed-type', 'headed-press-app',
             'interaction-scroll-to-visibility', 'interaction-focus-refused-headless', 'interaction-focus-headed-oracle'
@@ -160,7 +160,7 @@ function Invoke-InteractionScenario {
 
     Invoke-BareCoordinateRefusalLegs -App $App
     Invoke-HeldInputRefusalLegs
-    Invoke-SurfaceRefusalLeg -App $App
+    Invoke-SurfaceClosedMenuLeg -App $App
     Invoke-HeadedInteractionLegs -App $App
     Invoke-ScrollToVisibilityLeg -App $App
     Invoke-FocusRefusalLeg -App $App
@@ -337,14 +337,18 @@ function Invoke-HeldInputRefusalLegs {
     }
 }
 
-function Invoke-SurfaceRefusalLeg {
+function Invoke-SurfaceClosedMenuLeg {
     param([Parameter(Mandatory = $true)][string]$App)
     Enter-Stage -Lock DesktopLease -Body {
         try {
+            <# The menu surface is advertised and resolvable on this platform,
+               so a closed menu is a not-found answer, not a refusal - the
+               same WINDOW_NOT_FOUND shape the shell kinds return when the
+               surface is absent. #>
             $e = Invoke-AgentDesktop -Arguments @('snapshot', '--app', $App, '--surface', 'menu')
-            Assert-Envelope -Envelope $e -ErrorCode 'PLATFORM_NOT_SUPPORTED' -Details @{ supported_surfaces = @('window', 'focused', 'sheet') }
-            Add-Pass -Leg 'surface-menu-refused'
-        } catch { Add-Fail -Leg 'surface-menu-refused' -Reason $_.Exception.Message }
+            Assert-Envelope -Envelope $e -ErrorCode 'WINDOW_NOT_FOUND'
+            Add-Pass -Leg 'surface-menu-closed-is-window-not-found'
+        } catch { Add-Fail -Leg 'surface-menu-closed-is-window-not-found' -Reason $_.Exception.Message }
     }
 }
 
