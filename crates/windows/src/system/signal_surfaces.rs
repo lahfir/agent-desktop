@@ -73,6 +73,15 @@ fn identified_targets(apps: &[AppInfo]) -> HashMap<ProcessId, SurfaceTarget<'_>>
         .collect()
 }
 
+/// The surface kinds the baseline can emit - the two constructors below are
+/// the only places a `SurfaceSignal` is built in this adapter, so this list
+/// is what "a signal emitted implies the surface advertised" is asserted
+/// against. A new signal constructor must join it, and the advertised set
+/// must contain it, in the same commit.
+#[cfg(test)]
+pub(crate) const SIGNAL_SURFACE_KINDS: &[SnapshotSurface] =
+    &[SnapshotSurface::Menu, SnapshotSurface::Sheet];
+
 fn menu_signal(target: &SurfaceTarget<'_>) -> SurfaceSignal {
     SurfaceSignal {
         kind: SnapshotSurface::Menu,

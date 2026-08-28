@@ -1,5 +1,3 @@
-use std::sync::Mutex;
-
 use super::super::shell_surface_open::{accelerator_probe, close_surface, open_row, open_surface};
 use super::super::test_support::{settles_to, wait_for_foreground_to_settle};
 use super::super::window_enum::{EnumeratedWindow, enumerate_top_level, is_cloaked};
@@ -7,7 +5,7 @@ use super::super::window_ops::passes_filter;
 use super::{SnapshotSurface, SurfaceKindRow, WindowInfo};
 use agent_desktop_core::{Deadline, ErrorCode, InteractionPolicy};
 
-static SHELL_SURFACE_LOCK: Mutex<()> = Mutex::new(());
+use crate::system::test_support::SHELL_SURFACE_LOCK;
 
 fn deadline(ms: u64) -> Deadline {
     Deadline::after(ms).expect("deadline")

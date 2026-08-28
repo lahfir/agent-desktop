@@ -47,6 +47,27 @@ pub(crate) fn unknown_surface_error(kind: SnapshotSurface) -> AdapterError {
     .with_disposition(DeliverySemantics::not_delivered())
 }
 
+/// The caller-facing answer for a shell surface that is simply not up right
+/// now - distinct from a build refusal, which names the build, and from the
+/// application-window "window not found", whose recovery guidance cannot work
+/// for a surface no application owns. The suggestion names the command that
+/// raises the surface, so an agent told the surface is closed also learns how
+/// to open it.
+pub(crate) fn not_open_error(kind: SnapshotSurface) -> AdapterError {
+    AdapterError::new(
+        ErrorCode::WindowNotFound,
+        format!(
+            "The '{}' shell surface is not open on this desktop",
+            kebab(kind)
+        ),
+    )
+    .with_suggestion(format!(
+        "Run 'open-system-surface --surface {}' to raise it, then retry",
+        kebab(kind)
+    ))
+    .with_disposition(DeliverySemantics::not_delivered())
+}
+
 /// The informative refusal for a kind this build does not expose: a bare
 /// "not supported" cannot be told apart from "not implemented", so the detail
 /// names the build and the surface that carries the capability instead.
