@@ -169,12 +169,15 @@ namespace AgentDesktop.Probe.Shell26
         object CreateCacheRequest();
         IUIAutomationCondition CreateTrueCondition();
         void Slot20CreateFalseCondition();
-        void Slot21CreatePropertyCondition();
+        // Slot 21 kept in vtable position; real signature so the menu-arm
+        // probe can build the same ControlType property condition the shipped
+        // detector's `menu_family_condition` builds (Menu/MenuBar/MenuItem).
+        IUIAutomationCondition CreatePropertyCondition(int propertyId, object value);
         void Slot22CreatePropertyConditionEx();
-        void Slot23CreateAndCondition();
+        IUIAutomationCondition CreateAndCondition(IUIAutomationCondition conditionOne, IUIAutomationCondition conditionTwo);
         void Slot24CreateAndConditionFromArray();
         void Slot25CreateAndConditionFromNativeArray();
-        void Slot26CreateOrCondition();
+        IUIAutomationCondition CreateOrCondition(IUIAutomationCondition conditionOne, IUIAutomationCondition conditionTwo);
         void Slot27CreateOrConditionFromArray();
         void Slot28CreateOrConditionFromNativeArray();
         void Slot29CreateNotCondition();
@@ -214,6 +217,7 @@ namespace AgentDesktop.Probe.Shell26
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr hWnd, StringBuilder buf, int max);
         [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
         [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
         [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hWnd);
         [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] public static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
@@ -225,6 +229,31 @@ namespace AgentDesktop.Probe.Shell26
         [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr hObject);
         [DllImport("user32.dll", SetLastError = true)] public static extern bool PostMessageW(IntPtr hWnd, uint msg, IntPtr w, IntPtr l);
         [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int value, int size);
+        [DllImport("user32.dll")] public static extern bool IsHungAppWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+        [DllImport("user32.dll")] public static extern bool GetCursorPos(out UiaPoint pt);
+        [DllImport("user32.dll")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, System.UIntPtr dwExtraInfo);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECTFOUR { public int Left; public int Top; public int Right; public int Bottom; }
+
+        // Field order and layout mirror the shipped detector's GUITHREADINFO
+        // reads (crates/windows/src/system/menu_state.rs::thread_reports_menu_mode).
+        [StructLayout(LayoutKind.Sequential)]
+        public struct GuiThreadInfo { public uint cbSize; public uint flags; public IntPtr hwndActive, hwndFocus, hwndCapture, hwndMenuOwner, hwndMoveSize, hwndCaret; public RECTFOUR rcCaret; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct THREADENTRY32 { public uint dwSize; public uint cntUsage; public uint th32ThreadID; public uint th32OwnerProcessID; public int tpBasePri; public int tpDeltaPri; public uint dwFlags; }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct PROCESSENTRY32W { public uint dwSize; public uint cntUsage; public uint th32ProcessID; public System.UIntPtr th32DefaultHeapID; public uint th32ModuleID; public uint cntThreads; public uint th32ParentProcessID; public int pcPriClassBase; public uint dwFlags; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szExeFile; }
+
+        [DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
+        [DllImport("kernel32.dll")] public static extern bool Thread32First(IntPtr hSnapshot, ref THREADENTRY32 lpte);
+        [DllImport("kernel32.dll")] public static extern bool Thread32Next(IntPtr hSnapshot, ref THREADENTRY32 lpte);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern bool Process32FirstW(IntPtr hSnapshot, ref PROCESSENTRY32W lppe);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern bool Process32NextW(IntPtr hSnapshot, ref PROCESSENTRY32W lppe);
+        [DllImport("user32.dll", SetLastError = true)] public static extern bool GetGUIThreadInfo(uint idThread, ref GuiThreadInfo lpgui);
 
         public const int GwlExStyle = -20;
         public const int WsExToolWindow = 0x00000080;
@@ -233,10 +262,17 @@ namespace AgentDesktop.Probe.Shell26
         public const ushort VkA = 0x41;
         public const ushort VkEscape = 0x1B;
         public const ushort VkControl = 0x11;
+        public const ushort VkMenu = 0x12;
+        public const ushort VkShift = 0x10;
+        public const ushort VkF10 = 0x79;
         public const ushort VkReturn = 0x0D;
         public const uint KeyeventfKeyup = 0x0002;
         public const uint KeyeventfUnicode = 0x0004;
         public const uint ProcessQueryLimitedInformation = 0x1000;
+        public const uint Th32csSnapThread = 0x00000004;
+        public const uint Th32csSnapProcess = 0x00000002;
+        public const uint MouseeventfRightdown = 0x0008;
+        public const uint MouseeventfRightup = 0x0010;
 
         public static string ClassOf(IntPtr h) { StringBuilder b = new StringBuilder(256); GetClassNameW(h, b, 256); return b.ToString(); }
         public static bool TitleEquals(IntPtr h, string wanted)
@@ -461,6 +497,8 @@ namespace AgentDesktop.Probe.Shell26
         public bool BoundsPositive;
         public int OffscreenFlag;
         public bool NamePresent;
+        public string ClassName;
+        public string FrameworkId;
     }
 
     public static class Probe
@@ -556,12 +594,16 @@ namespace AgentDesktop.Probe.Shell26
             r.BoundsPositive = false;
             r.OffscreenFlag = -1;
             r.NamePresent = false;
+            r.ClassName = "<unreadable>";
+            r.FrameworkId = "<unreadable>";
             try { r.ControlTypeId = e.GetCurrentControlType(); } catch (Exception) { r.ControlTypeId = 0; }
             try { r.AutomationIdRaw = e.GetCurrentAutomationId(); } catch (Exception) { r.AutomationIdRaw = ""; }
             try { r.Patterns = t.PatternsOf(e); } catch (Exception) { }
             try { UiaRect rc = e.GetCurrentBoundingRectangle(); r.BoundsPositive = (rc.Right > rc.Left && rc.Bottom > rc.Top); } catch (Exception) { }
             try { r.OffscreenFlag = e.GetCurrentIsOffscreen(); } catch (Exception) { r.OffscreenFlag = -1; }
             try { string nm = e.GetCurrentName(); r.NamePresent = !string.IsNullOrEmpty(nm); } catch (Exception) { r.NamePresent = false; }
+            try { r.ClassName = e.GetCurrentClassName() ?? "<null>"; } catch (Exception) { }
+            try { r.FrameworkId = e.GetCurrentFrameworkId() ?? "<null>"; } catch (Exception) { }
             return r;
         }
 
@@ -1402,6 +1444,460 @@ namespace AgentDesktop.Probe.Shell26
                 Js.P("elapsed_max_ms", Js.Num(s.Max))
             }));
         }
+
+        public static string RunMenuRead(IUIAutomation uia, IdTables t, uint targetPid)
+        {
+            // Source A mirror (menu_state.rs::classic_menu_mode_active): a
+            // TH32CS_SNAPTHREAD walk filtered to the target pid with
+            // GetGUIThreadInfo called per thread, testing
+            // GUI_INMENUMODE|GUI_SYSTEMMENUMODE|GUI_POPUPMENUMODE. Per-thread
+            // failures count as non-firing skips exactly as the shipped code
+            // treats a thread that exited between snapshot and read.
+            const uint GuiInMenuMode = 0x0004;
+            const uint GuiSystemMenuMode = 0x0008;
+            const uint GuiPopupmenuMode = 0x0020;
+            bool classicFired = false;
+            int threadsForTarget = 0;
+            int readsFailed = 0;
+            IntPtr snap = Native.CreateToolhelp32Snapshot(Native.Th32csSnapThread, 0);
+            if (snap == IntPtr.Zero || snap == (IntPtr)(-1)) { throw new InvalidOperationException("thread snapshot failed"); }
+            try
+            {
+                Native.THREADENTRY32 te = new Native.THREADENTRY32();
+                te.dwSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(Native.THREADENTRY32));
+                if (Native.Thread32First(snap, ref te))
+                {
+                    do
+                    {
+                        if (te.th32OwnerProcessID != targetPid) { continue; }
+                        threadsForTarget++;
+                        Native.GuiThreadInfo gti = new Native.GuiThreadInfo();
+                        gti.cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(Native.GuiThreadInfo));
+                        if (!Native.GetGUIThreadInfo(te.th32ThreadID, ref gti)) { readsFailed++; continue; }
+                        if ((gti.flags & (GuiInMenuMode | GuiSystemMenuMode | GuiPopupmenuMode)) != 0) { classicFired = true; }
+                    } while (Native.Thread32Next(snap, ref te));
+                }
+            }
+            finally { Native.CloseHandle(snap); }
+
+            // Source B mirror (menu_state.rs::uia_menu_reachable + probe_candidate):
+            // candidates are THIS pid's root-level windows carrying WS_EX_TOOLWINDOW,
+            // each gated on a pump-liveness check (IsHungAppWindow stands in for the
+            // shipped SendMessageTimeout probe), then resolved through
+            // ElementFromHandle and searched with find_first over
+            // TreeScope::Subtree under an OR of ControlType==Menu/MenuBar/MenuItem -
+            // the exact menu-family condition `menu_family_condition` builds.
+            IUIAutomationCondition condition = MenuFamilyCondition(uia);
+            List<string> candidateRows = new List<string>();
+            List<string> distinctClasses = new List<string>();
+            SortedDictionary<string, bool> classSeen = new SortedDictionary<string, bool>(StringComparer.Ordinal);
+            bool uiaFired = false;
+            int hungSkipped = 0;
+            foreach (IntPtr h in ToolWindowsOfOwner(targetPid))
+            {
+                string cls = Native.ClassOf(h);
+                if (!classSeen.ContainsKey(cls)) { classSeen[cls] = true; distinctClasses.Add(cls); }
+                if (!Native.IsWindow(h)) { continue; }
+                if (Native.IsHungAppWindow(h))
+                {
+                    hungSkipped++;
+                    candidateRows.Add(Js.Obj(new List<string>(new string[]
+                    {
+                        Js.P("class_name", Js.Str(cls.Length > 0 ? cls : "<unreadable>")),
+                        Js.P("hung_skipped", Js.Bool(true)),
+                        Js.P("menu_family_reachable", Js.Bool(false))
+                    })));
+                    continue;
+                }
+                bool reachable = false;
+                try
+                {
+                    IUIAutomationElement el = uia.ElementFromHandle(h);
+                    reachable = (el.FindFirst(Probe.TreeScopeSubtree, condition) != null);
+                }
+                catch (Exception) { reachable = false; }
+                if (reachable) { uiaFired = true; }
+                candidateRows.Add(Js.Obj(new List<string>(new string[]
+                {
+                    Js.P("class_name", Js.Str(cls.Length > 0 ? cls : "<unreadable>")),
+                    Js.P("cloaked_state_word", Js.Str(Probe.CloakWord(Native.CloakState(h)))),
+                    Js.P("nativewindowhandle", Js.Int(h.ToInt64())),
+                    Js.P("hung_skipped", Js.Bool(false)),
+                    Js.P("menu_family_reachable", Js.Bool(reachable))
+                })));
+            }
+
+            List<string> o = new List<string>();
+            o.Add(Js.P("mode", Js.Str("menuread")));
+            o.Add(Js.P("client_stack", Js.Str("uia3-com")));
+            o.Add(Js.P("binding", Js.Str(Program.Coclass)));
+            o.Add(Js.P("classic_source_thread_reads_attempted", Js.Bool(true)));
+            o.Add(Js.P("classic_source_fired", Js.Bool(classicFired)));
+            o.Add(Js.P("classic_source_thread_walk_reached_target", Js.Bool(threadsForTarget > 0)));
+            o.Add(Js.P("classic_source_per_thread_reads_all_succeeded", Js.Bool(readsFailed == 0)));
+            o.Add(Js.P("tool_window_candidates_present", Js.Bool(candidateRows.Count > 0)));
+            o.Add(Js.P("candidate_class_set", Js.StrArr(distinctClasses.ToArray())));
+            o.Add(Js.P("candidates_hung_gated_skipped", Js.Int(hungSkipped)));
+            o.Add(Js.P("uia_source_fired", Js.Bool(uiaFired)));
+
+            // Source C mirror (chromium_dom_menu_reachable): presented non-tool
+            // windows of the pid searched for a Chromium-framework menu family.
+            IUIAutomationCondition chromiumCondition = ChromiumDomMenuCondition(uia);
+            bool chromiumFired = false;
+            int chromiumCandidates = 0;
+            foreach (IntPtr h in PresentedNonToolWindowsOfOwner(targetPid))
+            {
+                chromiumCandidates++;
+                if (Native.IsHungAppWindow(h)) { continue; }
+                bool hit = false;
+                try
+                {
+                    IUIAutomationElement el = uia.ElementFromHandle(h);
+                    hit = (el.FindFirst(Probe.TreeScopeSubtree, chromiumCondition) != null);
+                }
+                catch (Exception) { hit = false; }
+                if (hit) { chromiumFired = true; }
+            }
+            o.Add(Js.P("chromium_source_presented_candidates_present", Js.Bool(chromiumCandidates > 0)));
+            o.Add(Js.P("chromium_source_fired", Js.Bool(chromiumFired)));
+            o.Add(Js.P("candidates", Js.Arr(candidateRows)));
+            return Js.Obj(o);
+        }
+
+        private static List<NodeRec> DirectChildrenOf(List<NodeRec> nodes, int index)
+        {
+            List<NodeRec> kids = new List<NodeRec>();
+            foreach (NodeRec n in nodes)
+            {
+                if (n.Parent == index && n.Index != index) { kids.Add(n); }
+            }
+            return kids;
+        }
+
+        private static string AncestorChain(List<NodeRec> nodes, int index)
+        {
+            List<string> chain = new List<string>();
+            int cur = index;
+            int guard = 0;
+            while (cur >= 0 && guard < 60)
+            {
+                NodeRec n = nodes[cur];
+                chain.Add(Probe.ControlTypeName(n.ControlTypeId) + ":" + n.ClassName + "@" + n.Depth.ToString(CultureInfo.InvariantCulture));
+                cur = n.Parent;
+                guard++;
+            }
+            chain.Reverse();
+            return string.Join(" > ", chain.ToArray());
+        }
+
+        public static string RunMenuSubtree(IUIAutomation uia, IdTables t, string hwndArg)
+        {
+            IntPtr h = Args.ParseHandle(hwndArg);
+            if (h == IntPtr.Zero || !Native.IsWindow(h)) { throw new InvalidOperationException("menusubtree requires a live --hwnd"); }
+            IUIAutomationElement root = null;
+            try { root = uia.ElementFromHandle(h); } catch (Exception) { root = null; }
+            if (root == null) { throw new InvalidOperationException("element unavailable at --hwnd"); }
+            List<NodeRec> nodes = Probe.CollectFlat(uia, root, t, 800, 30);
+            int menus = 0, bars = 0, items = 0;
+            List<string> familyRows = new List<string>();
+            foreach (NodeRec n in nodes)
+            {
+                if (n.ControlTypeId == 50009) { menus++; }
+                else if (n.ControlTypeId == 50010) { bars++; }
+                else if (n.ControlTypeId == 50011) { items++; }
+                if (n.ControlTypeId == 50009 || n.ControlTypeId == 50010 || n.ControlTypeId == 50011)
+                {
+                    List<NodeRec> directKids = DirectChildrenOf(nodes, n.Index);
+                    List<string> kidCts = new List<string>();
+                    foreach (NodeRec k in directKids) { kidCts.Add(Probe.ControlTypeName(k.ControlTypeId)); }
+                    string chain = AncestorChain(nodes, n.Index);
+                    familyRows.Add(Js.Obj(new List<string>(new string[]
+                    {
+                        Js.P("ct", Js.Str(Probe.ControlTypeName(n.ControlTypeId))),
+                        Js.P("aid", Js.Str(Tags.AutomationId(n.AutomationIdRaw))),
+                        Js.P("cls", Js.Str(n.ClassName)),
+                        Js.P("fw", Js.Str(n.FrameworkId)),
+                        Js.P("d", Js.Int(n.Depth)),
+                        Js.P("parent", Js.Int(n.Parent)),
+                        Js.P("pos", Js.Bool(n.BoundsPositive)),
+                        Js.P("off", Js.Int(n.OffscreenFlag)),
+                        Js.P("direct_children_cts", Js.StrArr(kidCts.ToArray())),
+                        Js.P("ancestor_chain", Js.Str(chain))
+                    })));
+                }
+            }
+            SortedDictionary<string, int> childClasses = new SortedDictionary<string, int>(StringComparer.Ordinal);
+            foreach (IntPtr c in Native.ChildrenOf(h))
+            {
+                string cls = Native.ClassOf(c);
+                if (cls.Length == 0) { cls = "<unreadable>"; }
+                if (!childClasses.ContainsKey(cls)) { childClasses[cls] = 0; }
+                childClasses[cls]++;
+            }
+            List<string> childClassRows = new List<string>();
+            foreach (KeyValuePair<string, int> kv in childClasses)
+            {
+                childClassRows.Add(Js.Obj(new List<string>(new string[]
+                {
+                    Js.P("class_name", Js.Str(kv.Key)),
+                    Js.P("instances", Js.Int(kv.Value))
+                })));
+            }
+            int rootCt = 0;
+            try { rootCt = root.GetCurrentControlType(); } catch (Exception) { }
+            List<string> o = new List<string>();
+            o.Add(Js.P("mode", Js.Str("menusubtree")));
+            o.Add(Js.P("client_stack", Js.Str("uia3-com")));
+            o.Add(Js.P("binding", Js.Str(Program.Coclass)));
+            o.Add(Js.P("root_control_type", Js.Str(Probe.ControlTypeName(rootCt))));
+            o.Add(Js.P("subtree_read_nonempty", Js.Bool(nodes.Count > 1)));
+            o.Add(Js.P("menu_element_count", Js.Int(menus)));
+            o.Add(Js.P("menu_bar_element_count", Js.Int(bars)));
+            o.Add(Js.P("menu_item_element_count", Js.Int(items)));
+            o.Add(Js.P("menu_family_nodes", Js.Arr(familyRows)));
+            o.Add(Js.P("child_window_class_inventory", Js.Arr(childClassRows)));
+            return Js.Obj(o);
+        }
+
+        private static IUIAutomationCondition MenuFamilyCondition(IUIAutomation uia)
+        {
+            const int UIAControlTypePropertyId = 30003;
+            IUIAutomationCondition menu = uia.CreatePropertyCondition(UIAControlTypePropertyId, (object)50009);
+            IUIAutomationCondition menuBar = uia.CreatePropertyCondition(UIAControlTypePropertyId, (object)50010);
+            IUIAutomationCondition menuItem = uia.CreatePropertyCondition(UIAControlTypePropertyId, (object)50011);
+            IUIAutomationCondition menuOrBar = uia.CreateOrCondition(menu, menuBar);
+            return uia.CreateOrCondition(menuOrBar, menuItem);
+        }
+
+        // Source C mirror (menu_state.rs::chromium_dom_menu_reachable): the
+        // Chromium-framework gate AND a bar-less menu family, so a Win32 menu
+        // bar under the same visible non-tool candidate pool cannot fire it.
+        private static IUIAutomationCondition ChromiumDomMenuCondition(IUIAutomation uia)
+        {
+            const int UIAControlTypePropertyId = 30003;
+            const int UIAFrameworkIdPropertyId = 30024;
+            IUIAutomationCondition framework = uia.CreatePropertyCondition(UIAFrameworkIdPropertyId, (object)"Chrome");
+            IUIAutomationCondition menu = uia.CreatePropertyCondition(UIAControlTypePropertyId, (object)50009);
+            IUIAutomationCondition menuItem = uia.CreatePropertyCondition(UIAControlTypePropertyId, (object)50011);
+            IUIAutomationCondition menuOrItem = uia.CreateOrCondition(menu, menuItem);
+            return uia.CreateAndCondition(framework, menuOrItem);
+        }
+
+        private static bool CandidateIsPresentedWindow(IntPtr h)
+        {
+            if (!Native.IsWindowVisible(h)) { return false; }
+            if (Native.IsIconic(h)) { return false; }
+            if (Native.CloakState(h) != 0) { return false; }
+            Native.RECTFOUR rc = Win32RectOf(h);
+            return (rc.Right - rc.Left) > 0 && (rc.Bottom - rc.Top) > 0;
+        }
+
+        private static List<IntPtr> PresentedNonToolWindowsOfOwner(uint ownerPid)
+        {
+            List<IntPtr> list = new List<IntPtr>();
+            foreach (IntPtr h in Native.AllTopLevelWindows())
+            {
+                if ((uint)Native.PidOf(h) == ownerPid && !Native.IsToolWindow(h) && CandidateIsPresentedWindow(h))
+                {
+                    list.Add(h);
+                }
+            }
+            return list;
+        }
+
+        private static List<IntPtr> ToolWindowsOfOwner(uint ownerPid)
+        {
+            List<IntPtr> list = new List<IntPtr>();
+            foreach (IntPtr h in Native.AllTopLevelWindows())
+            {
+                if ((uint)Native.PidOf(h) == ownerPid && Native.IsToolWindow(h)) { list.Add(h); }
+            }
+            return list;
+        }
+
+        public static string RunMainWindowOfImage(IUIAutomation uia, IdTables t, string leafNeedle, string topLevelClass)
+        {
+            string wanted = leafNeedle.ToLowerInvariant();
+            IntPtr best = IntPtr.Zero;
+            long bestArea = -1;
+            foreach (IntPtr h in Native.AllTopLevelWindows())
+            {
+                if (Native.ClassOf(h) != topLevelClass) { continue; }
+                int pid = Native.PidOf(h);
+                if (!ImageLeafMatches(pid, wanted)) { continue; }
+                if (!Native.IsWindowVisible(h) || Native.IsToolWindow(h)) { continue; }
+                Native.RECTFOUR rc = Win32RectOf(h);
+                long area = (long)(rc.Right - rc.Left) * (rc.Bottom - rc.Top);
+                if (area > bestArea) { bestArea = area; best = h; }
+            }
+            List<string> o = new List<string>();
+            o.Add(Js.P("found", Js.Bool(best != IntPtr.Zero)));
+            o.Add(Js.P("top_level_class_matched", Js.Str(topLevelClass)));
+            o.Add(Js.P("owner_image_is_needle_leaf", Js.Bool(best != IntPtr.Zero)));
+            o.Add(Js.P("nativewindowhandle", Js.Int(best.ToInt64())));
+            return Js.Obj(o);
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out Native.RECTFOUR rect);
+
+        private static Native.RECTFOUR Win32RectOf(IntPtr h) { Native.RECTFOUR r; GetWindowRect(h, out r); return r; }
+
+        public static bool ImageLeafMatches(int pid, string wantedLowerLeaf)
+        {
+            IntPtr proc = Native.OpenProcess(Native.ProcessQueryLimitedInformation, false, pid);
+            if (proc == IntPtr.Zero) { return false; }
+            try
+            {
+                StringBuilder sb = new StringBuilder(1024);
+                uint size = 1024;
+                if (!Native.QueryFullProcessImageNameW(proc, 0, sb, ref size)) { return false; }
+                string leaf = sb.ToString();
+                int slash = leaf.LastIndexOf('\\');
+                if (slash >= 0) { leaf = leaf.Substring(slash + 1); }
+                leaf = leaf.ToLowerInvariant();
+                if (leaf.EndsWith(".exe")) { leaf = leaf.Substring(0, leaf.Length - 4); }
+                return string.Equals(leaf, wantedLowerLeaf, StringComparison.Ordinal);
+            }
+            finally { Native.CloseHandle(proc); }
+        }
+
+        public static string RunChildOfClass(string parentArg, string className, bool requireOwnerDiffers)
+        {
+            IntPtr parent = Args.ParseHandle(parentArg);
+            if (parent == IntPtr.Zero || !Native.IsWindow(parent)) { throw new InvalidOperationException("childofclass requires a live parent hwnd"); }
+            int parentPid = Native.PidOf(parent);
+            IntPtr found = IntPtr.Zero;
+            int seen = 0;
+            foreach (IntPtr c in Native.ChildrenOf(parent))
+            {
+                seen++;
+                if (Native.ClassOf(c) != className) { continue; }
+                if (requireOwnerDiffers && Native.PidOf(c) == parentPid) { continue; }
+                found = c;
+                break;
+            }
+            List<string> o = new List<string>();
+            o.Add(Js.P("child_found", Js.Bool(found != IntPtr.Zero)));
+            o.Add(Js.P("parent_class_is_live_window", Js.Bool(true)));
+            o.Add(Js.P("children_scanned_no_classes_recorded", Js.Bool(seen > 0)));
+            o.Add(Js.P("required_owner_differs_from_parent", Js.Bool(requireOwnerDiffers)));
+            o.Add(Js.P("nativewindowhandle", Js.Int(found.ToInt64())));
+            return Js.Obj(o);
+        }
+
+        public static string RunOwnerPidOf(string hwndArg)
+        {
+            IntPtr h = Args.ParseHandle(hwndArg);
+            List<string> o = new List<string>();
+            o.Add(Js.P("found", Js.Bool(h != IntPtr.Zero && Native.IsWindow(h))));
+            o.Add(Js.P("pid", Js.Int(h != IntPtr.Zero ? Native.PidOf(h) : 0)));
+            return Js.Obj(o);
+        }
+
+        public static string RunMouseMode(string[] args)
+        {
+            string action = Args.Get(args, "--action", "");
+            List<string> o = new List<string>();
+            o.Add(Js.P("mode", Js.Str("mouse")));
+            if (action == "cursorpos")
+            {
+                UiaPoint pt;
+                Native.GetCursorPos(out pt);
+                o.Add(Js.P("x", Js.Int(pt.X)));
+                o.Add(Js.P("y", Js.Int(pt.Y)));
+            }
+            else if (action == "move")
+            {
+                Native.SetCursorPos(
+                    int.Parse(Args.Get(args, "--x", "0"), CultureInfo.InvariantCulture),
+                    int.Parse(Args.Get(args, "--y", "0"), CultureInfo.InvariantCulture));
+            }
+            else if (action == "rightclick")
+            {
+                Native.SetCursorPos(
+                    int.Parse(Args.Get(args, "--x", "0"), CultureInfo.InvariantCulture),
+                    int.Parse(Args.Get(args, "--y", "0"), CultureInfo.InvariantCulture));
+                System.Threading.Thread.Sleep(60);
+                Native.mouse_event(Native.MouseeventfRightdown, 0, 0, 0, System.UIntPtr.Zero);
+                System.Threading.Thread.Sleep(60);
+                Native.mouse_event(Native.MouseeventfRightup, 0, 0, 0, System.UIntPtr.Zero);
+            }
+            else if (action == "rightclickcenterof")
+            {
+                IntPtr h = Args.ParseHandle(Args.Get(args, "--hwnd", "0"));
+                if (h == IntPtr.Zero || !Native.IsWindow(h)) { throw new InvalidOperationException("rightclickcenterof requires a live --hwnd"); }
+                Native.RECTFOUR rc;
+                GetWindowRect(h, out rc);
+                int cx = (rc.Left + rc.Right) / 2;
+                int cy = (rc.Top + rc.Bottom) / 2;
+                o.Add(Js.P("clicked_within_target_window", Js.Bool(cx >= rc.Left && cx < rc.Right && cy >= rc.Top && cy < rc.Bottom)));
+                Native.SetCursorPos(cx, cy);
+                System.Threading.Thread.Sleep(60);
+                Native.mouse_event(Native.MouseeventfRightdown, 0, 0, 0, System.UIntPtr.Zero);
+                System.Threading.Thread.Sleep(60);
+                Native.mouse_event(Native.MouseeventfRightup, 0, 0, 0, System.UIntPtr.Zero);
+            }
+            else
+            {
+                throw new InvalidOperationException("mouse requires --action of cursorpos|move|rightclick|rightclickcenterof");
+            }
+            return Js.Obj(o);
+        }
+
+        public static string RunImagesScan(string needlesCsv)
+        {
+            string[] needles = needlesCsv.Split(',');
+            Array.Sort(needles, StringComparer.Ordinal);
+            SortedDictionary<string, int> hits = new SortedDictionary<string, int>(StringComparer.Ordinal);
+            foreach (string n in needles) { if (n.Trim().Length > 0) { hits[n.Trim()] = 0; } }
+            IntPtr snap = Native.CreateToolhelp32Snapshot(Native.Th32csSnapProcess, 0);
+            if (snap == IntPtr.Zero || snap == (IntPtr)(-1)) { throw new InvalidOperationException("process snapshot failed"); }
+            int processesSeen = 0;
+            int matchedProcesses = 0;
+            try
+            {
+                Native.PROCESSENTRY32W pe = new Native.PROCESSENTRY32W();
+                pe.dwSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(Native.PROCESSENTRY32W));
+                if (Native.Process32FirstW(snap, ref pe))
+                {
+                    do
+                    {
+                        processesSeen++;
+                        string leaf = (pe.szExeFile ?? "").ToLowerInvariant();
+                        if (leaf.EndsWith(".exe")) { leaf = leaf.Substring(0, leaf.Length - 4); }
+                        if (hits.ContainsKey(leaf))
+                        {
+                            hits[leaf]++;
+                            matchedProcesses++;
+                        }
+                    } while (Native.Process32NextW(snap, ref pe));
+                }
+            }
+            finally { Native.CloseHandle(snap); }
+            List<string> matched = new List<string>();
+            foreach (KeyValuePair<string, int> kv in hits)
+            {
+                if (kv.Value > 0) { matched.Add(kv.Key); }
+            }
+            List<string> hitRows = new List<string>();
+            foreach (KeyValuePair<string, int> kv in hits)
+            {
+                hitRows.Add(Js.Obj(new List<string>(new string[]
+                {
+                    Js.P("needle", Js.Str(kv.Key)),
+                    Js.P("running_process_image_hits", Js.Int(kv.Value))
+                })));
+            }
+            List<string> o = new List<string>();
+            o.Add(Js.P("scan_mode", Js.Str("toolhelp_process_snapshot")));
+            o.Add(Js.P("needles_searched", Js.StrArr(hits.Keys)));
+            o.Add(Js.P("matched_needles", Js.StrArr(matched.ToArray())));
+            o.Add(Js.P("matched_processes_total", Js.Int(matchedProcesses)));
+            o.Add(Js.P("needles_hit_count", Js.Int(matched.Count)));
+            o.Add(Js.P("hits_by_needle", Js.Arr(hitRows)));
+            return Js.Obj(o);
+        }
     }
     public static class Args
     {
@@ -1484,6 +1980,13 @@ namespace AgentDesktop.Probe.Shell26
                     case "closewindow": result = Modes.RunCloseWindow(Current, tables, Args.Get(args, "--hwnd", "0")); break;
                     case "cost": result = Modes.RunCost(Current, tables, int.Parse(Args.Get(args, "--cycles", "7"), CultureInfo.InvariantCulture)); break;
                     case "key": result = RunKey(args); break;
+                    case "menuread": result = Modes.RunMenuRead(Current, tables, uint.Parse(Args.Get(args, "--pid", "0"), CultureInfo.InvariantCulture)); break;
+                    case "menusubtree": result = Modes.RunMenuSubtree(Current, tables, Args.Get(args, "--hwnd", "0")); break;
+                    case "mainwindowofimage": result = Modes.RunMainWindowOfImage(Current, tables, Args.Get(args, "--leaf", ""), Args.Get(args, "--cls", "")); break;
+                    case "childofclass": result = Modes.RunChildOfClass(Args.Get(args, "--parent", "0"), Args.Get(args, "--childcls", ""), Args.Get(args, "--ownerdiffers", "true") == "true"); break;
+                    case "ownerpidof": result = Modes.RunOwnerPidOf(Args.Get(args, "--hwnd", "0")); break;
+                    case "imagesscan": result = Modes.RunImagesScan(Args.Get(args, "--needles", "")); break;
+                    case "mouse": result = Modes.RunMouseMode(args); break;
                     default:
                         Console.Error.WriteLine("unknown mode " + mode);
                         return 2;
@@ -1518,6 +2021,14 @@ namespace AgentDesktop.Probe.Shell26
             else if (seq == "ctrl_o")
             {
                 sent = Native.SendSequence(Native.KeyChord(Native.VkControl, (ushort)0x4F));
+            }
+            else if (seq == "alt")
+            {
+                sent = Native.SendSequence(Native.KeyChord(0, Native.VkMenu));
+            }
+            else if (seq == "shift_f10")
+            {
+                sent = Native.SendSequence(Native.KeyChord(Native.VkShift, Native.VkF10));
             }
             else if (seq == "return")
             {
