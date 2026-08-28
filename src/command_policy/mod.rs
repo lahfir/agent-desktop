@@ -67,6 +67,7 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
         Commands::Launch(_)
         | Commands::CloseApp(_)
         | Commands::FocusWindow(_)
+        | Commands::OpenSystemSurface(_)
         | Commands::ResizeWindow(_)
         | Commands::MoveWindow(_)
         | Commands::Minimize(_)
@@ -206,6 +207,7 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::ListDisplays
         | Commands::ListApps(_)
         | Commands::FocusWindow(_)
+        | Commands::OpenSystemSurface(_)
         | Commands::ResizeWindow(_)
         | Commands::MoveWindow(_)
         | Commands::Minimize(_)

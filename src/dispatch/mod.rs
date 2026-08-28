@@ -82,6 +82,9 @@ pub(crate) fn dispatch(
         Commands::Maximize(args) => app_window::maximize(args, adapter),
         Commands::Restore(args) => app_window::restore(args, adapter),
         Commands::ListSurfaces(args) => app_window::list_surfaces(args, adapter),
+        Commands::OpenSystemSurface(args) => {
+            app_window::open_system_surface(args, adapter, context)
+        }
         Commands::ListNotifications(args) => notifications::list(args, adapter, context),
         Commands::DismissNotification(args) => notifications::dismiss(args, adapter, context),
         Commands::DismissAllNotifications(args) => {

@@ -178,3 +178,7 @@ fn timeout_error(row: &SurfaceKindRow, outcome: &str, kind: &'static str) -> Ada
         .with_details(serde_json::json!({ "kind": kind, "retryable": true }))
         .with_disposition(DeliverySemantics::not_delivered())
 }
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "shell_surface_command_live_tests.rs"]
+mod command_live_tests;
