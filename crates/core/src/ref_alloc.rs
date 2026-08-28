@@ -1,4 +1,5 @@
 use crate::AccessibilityNode;
+use crate::ref_identity::has_meaningful_identity;
 use crate::refs::{RefEntry, RefMap};
 use std::collections::HashSet;
 
@@ -237,7 +238,7 @@ fn allocate_refs_at_path(
             path,
         );
         entry.scope.path_is_absolute = config.scope.root_ref_id.is_some();
-        if !config.options.include_bounds {
+        if !config.options.include_bounds && has_meaningful_identity(&entry) {
             entry.geometry.bounds = None;
         }
         node.ref_id = allocate_observed_ref(refmap, entry)?;
