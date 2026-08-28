@@ -16,6 +16,7 @@ pub(crate) mod close;
 pub(crate) mod com_runtime;
 pub(crate) mod display;
 pub(crate) mod dpi;
+pub(crate) mod frame_identity;
 #[cfg(target_os = "windows")]
 pub(crate) mod gdi_surface;
 pub(crate) mod hresult;
