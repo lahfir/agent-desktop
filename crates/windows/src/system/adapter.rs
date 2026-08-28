@@ -1,9 +1,10 @@
 use agent_desktop_core::{
-    ActionResult, AdapterError, AdapterSession, AppInfo, Deadline, DisplayInfo, ImageBuffer,
-    InteractionLease, InteractionPolicy, KeyCombo, ObservationOps, PermissionReport,
-    ProcessIdentity, ScreenshotTarget, SessionAffinity, SignalBaseline, SignalFilter,
-    SnapshotSurface, SystemOps, WindowFilter, WindowInfo, WindowOp, launch_options::LaunchOptions,
-    process_state::ProcessState,
+    ActionResult, AdapterError, AdapterSession, AppInfo, Deadline, DismissAllNotificationsRequest,
+    DismissNotificationRequest, DisplayInfo, ImageBuffer, InteractionLease, InteractionPolicy,
+    KeyCombo, NotificationActionRequest, NotificationFilter, NotificationInfo, ObservationOps,
+    PermissionReport, ProcessIdentity, ScreenshotTarget, SessionAffinity, SignalBaseline,
+    SignalFilter, SnapshotSurface, SystemOps, WindowFilter, WindowInfo, WindowOp,
+    launch_options::LaunchOptions, process_state::ProcessState,
 };
 
 use crate::adapter::WindowsAdapter;
@@ -141,7 +142,7 @@ impl SystemOps for WindowsAdapter {
     }
 
     /// Process liveness for the shared `ProcessState` contract. Returns the
-    /// raw classification only — core's two-signal gate owns any upgrade to
+    /// raw classification only â€” core's two-signal gate owns any upgrade to
     /// `APP_UNRESPONSIVE` (A21-3, A21-4).
     fn process_state(
         &self,
@@ -265,124 +266,73 @@ impl SystemOps for WindowsAdapter {
     ) -> Result<SignalBaseline, AdapterError> {
         crate::system::signals::capture_signal_baseline_impl(filter, deadline)
     }
+
+    /// Listing carries the same lease-consistency check the macOS adapter
+    /// runs - a headed observation must hold the cross-process lease - and
+    /// then delegates. The focus-steal floor itself is the notifications
+    /// module's: it refuses only when the closed center would have to be
+    /// raised, so an already-present center stays listable headlessly, which
+    /// is the same conditional shape macOS's own listing floor has.
+    fn list_notifications(
+        &self,
+        filter: &NotificationFilter,
+        policy: InteractionPolicy,
+        deadline: Deadline,
+        lease: Option<&InteractionLease>,
+    ) -> Result<Vec<NotificationInfo>, AdapterError> {
+        if policy.allow_focus_steal && lease.is_none() {
+            return Err(AdapterError::internal(
+                "Headed notification observation requires an interaction lease",
+            ));
+        }
+        crate::notifications::list::list_notifications(filter, policy, deadline)
+    }
+
+    /// Every mutation receives the caller's policy beside the lease's
+    /// deadline, so the module's foreground floor answers before the session
+    /// raises anything. The identity travels as-is and is verified against a
+    /// fresh read inside the module, never against the index alone.
+    fn dismiss_notification(
+        &self,
+        request: DismissNotificationRequest<'_>,
+        _lease: &InteractionLease,
+    ) -> Result<NotificationInfo, AdapterError> {
+        crate::notifications::actions::dismiss_notification(
+            request.index,
+            request.app_filter,
+            Some(request.identity),
+            request.policy,
+            _lease.deadline(),
+        )
+    }
+
+    fn dismiss_all_notifications(
+        &self,
+        request: DismissAllNotificationsRequest<'_>,
+        _lease: &InteractionLease,
+    ) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
+        crate::notifications::actions::dismiss_all(
+            request.app_filter,
+            request.policy,
+            _lease.deadline(),
+        )
+    }
+
+    fn notification_action(
+        &self,
+        request: NotificationActionRequest<'_>,
+        _lease: &InteractionLease,
+    ) -> Result<ActionResult, AdapterError> {
+        crate::notifications::actions::notification_action(
+            request.index,
+            Some(request.identity),
+            request.action_name,
+            request.policy,
+            _lease.deadline(),
+        )
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn unknown_accessibility_is_unsupported_so_cli_and_ffi_agree() {
-        use agent_desktop_core::PermissionState;
-
-        const UNRECOGNIZED_UIA_HRESULT: i32 = 0x8000_4005_u32 as i32;
-
-        let adapter = WindowsAdapter::new();
-        assert!(adapter.unknown_accessibility_means_unsupported());
-
-        assert_eq!(
-            crate::system::permissions::map_uia_access(UNRECOGNIZED_UIA_HRESULT),
-            PermissionState::Unknown
-        );
-    }
-
-    #[test]
-    fn open_session_returns_a_live_session_instead_of_not_supported() {
-        let affinity = SessionAffinity {
-            session_id: Some("windows-com-session".into()),
-        };
-
-        let session = WindowsAdapter::new()
-            .open_session(&affinity, Deadline::after(5_000).unwrap())
-            .expect("windows must open an adapter session instead of failing closed");
-
-        session.close().expect("a fresh session must close cleanly");
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn permission_report_through_the_trait_probes_instead_of_defaulting() {
-        use agent_desktop_core::PermissionState;
-
-        let report =
-            SystemOps::permission_report(&WindowsAdapter::new(), Deadline::after(5_000).unwrap())
-                .unwrap();
-
-        assert_eq!(report.automation, PermissionState::NotRequired);
-        assert!(matches!(
-            report.accessibility,
-            PermissionState::Granted | PermissionState::Denied { .. }
-        ));
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn the_activation_path_acquires_a_windows_lease_and_settles() {
-        crate::system::test_support::with_interaction_lease_test_lock(|| {
-            let adapter = WindowsAdapter::new();
-            let lease =
-                SystemOps::acquire_interaction_lease(&adapter, Deadline::after(5_000).unwrap())
-                    .expect("the Windows lease override must not show up as not_supported");
-
-            SystemOps::activate_renderer_accessibility(
-                &adapter,
-                ProcessIdentity::new(std::process::id(), "test"),
-                &lease,
-            )
-            .expect("activation is the settle, which succeeds");
-        });
-    }
-
-    /// The sheet surface specifically, reached through the `SystemOps` trait
-    /// object rather than the inherent method. The full advertised vector is
-    /// asserted by `supported_surfaces_advertises_window_focused_and_sheet`.
-    #[test]
-    fn sheet_is_among_the_surfaces_advertised_through_the_trait() {
-        use agent_desktop_core::{SnapshotSurface, SystemOps as _};
-
-        let surfaces = WindowsAdapter::new().supported_surfaces();
-        assert!(surfaces.contains(&SnapshotSurface::Sheet));
-    }
-
-    /// Pins that `is_blocked_combo` is actually overridden here, reached
-    /// through the trait object exactly as core calls it: the default blocks
-    /// nothing, so an un-wired override would be indistinguishable from
-    /// "nothing is dangerous".
-    #[test]
-    fn is_blocked_combo_is_wired_to_the_windows_dangerous_list_through_the_trait() {
-        use agent_desktop_core::{KeyCombo, Modifier, SystemOps as _};
-
-        let adapter = WindowsAdapter::new();
-        let dangerous = KeyCombo {
-            key: "f4".into(),
-            modifiers: vec![Modifier::Alt],
-        };
-        let harmless = KeyCombo {
-            key: "c".into(),
-            modifiers: vec![Modifier::Ctrl],
-        };
-
-        assert!(adapter.is_blocked_combo(&dangerous));
-        assert!(!adapter.is_blocked_combo(&harmless));
-    }
-
-    /// Pins the `wait_for_menu` override itself: the trait default fails
-    /// closed with `PLATFORM_NOT_SUPPORTED`, so an un-wired override would be
-    /// indistinguishable from the method never having been implemented at
-    /// all. A nonexistent pid still reaches the adapter's own real classified
-    /// error rather than the trait default, which is exactly what
-    /// distinguishes "wired" from "not wired" here.
-    #[test]
-    fn wait_for_menu_reaches_the_windows_override_instead_of_the_not_supported_default() {
-        use agent_desktop_core::{ErrorCode, ProcessIdentity};
-
-        let adapter = WindowsAdapter::new();
-        let process = ProcessIdentity::new(1u32, "windows-proc-v1:0:0");
-
-        let error =
-            SystemOps::wait_for_menu(&adapter, process, true, Deadline::after(1_000).unwrap())
-                .expect_err("a bogus process identity must not report a satisfied wait");
-
-        assert_ne!(error.code, ErrorCode::PlatformNotSupported);
-    }
-}
+#[path = "adapter_tests.rs"]
+mod tests;
