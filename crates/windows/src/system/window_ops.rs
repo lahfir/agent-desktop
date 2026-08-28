@@ -2,6 +2,8 @@ use agent_desktop_core::{
     AdapterError, Deadline, ErrorCode, ProcessId, WindowFilter, WindowInfo, WindowState,
 };
 
+#[cfg(target_os = "windows")]
+use super::frame_identity;
 use super::listing_retry::retry_transient_window_race;
 use super::permissions::ensure_budget;
 use super::process_identity;
@@ -64,33 +66,54 @@ pub(crate) fn window_class_name(_handle: super::window_enum::WindowHandle) -> Op
     None
 }
 
-/// Builds one `WindowInfo` from an enumerated window, corroborating identity
-/// with the process token.
+/// The identity facts one listed window reports: its own process's, or -
+/// when the window is an application frame host frame carrying a live
+/// hosted application (A26-8) - the hosted application's, read lazily per
+/// hosted frame the way `live_window_title` reads a title. The frame keeps
+/// the id, title, bounds and state; only `app` and `pid` descend to
+/// the hosted process, and the descent runs inside this one inventory pass
+/// rather than as a second enumeration.
+#[cfg(target_os = "windows")]
+fn identity_facts(
+    handle: super::window_enum::WindowHandle,
+) -> Option<(ProcessId, Option<String>, String)> {
+    if let Some(pid) = frame_identity::hosted_application_pid(handle) {
+        let token = process_identity::token_for_pid(pid).ok().flatten();
+        let name = process_identity::process_image_name(pid).unwrap_or_default();
+        return Some((pid, token, name));
+    }
+    process_facts(handle)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn identity_facts(
+    handle: super::window_enum::WindowHandle,
+) -> Option<(ProcessId, Option<String>, String)> {
+    process_facts(handle)
+}
+
+/// Builds one `WindowInfo` from an enumerated window: the frame's handle,
+/// geometry and title carrying the identity facts already resolved for it.
 fn window_info_from(
     window: EnumeratedWindow,
     title: &str,
-    app: &str,
+    facts: (ProcessId, Option<String>, String),
     focused: bool,
-) -> Result<WindowInfo, AdapterError> {
-    let (pid, token, _) = process_facts(window.handle).ok_or_else(|| {
-        AdapterError::new(
-            ErrorCode::WindowNotFound,
-            "could not identify the window's owning process",
-        )
-    })?;
-    Ok(WindowInfo {
+) -> WindowInfo {
+    let (pid, process_instance, app) = facts;
+    WindowInfo {
         id: format!("w-{}", window.handle as usize),
         title: title.to_string(),
-        app: app.to_string(),
+        app,
         pid,
-        process_instance: token,
+        process_instance,
         bounds: Some(window.rect),
         state: WindowState {
             is_focused: focused,
             minimized: Some(window.iconic),
             visible: Some(window.visible),
         },
-    })
+    }
 }
 
 /// The live top-level window inventory an agent means, per the A16-1 filter.
@@ -146,7 +169,7 @@ fn list_windows_live_once(
         if !passes_filter(&window) {
             return true;
         }
-        let Some((_pid, _token, app)) = process_facts(window.handle) else {
+        let Some((pid, token, app)) = identity_facts(window.handle) else {
             return true;
         };
         if !app_filter.is_empty() && !app.to_ascii_lowercase().contains(&app_filter) {
@@ -158,13 +181,12 @@ fn list_windows_live_once(
             return true;
         }
         focused_seen |= focused;
-        if let Ok(info) = window_info_from(window, &title, &app, focused) {
-            if let Err(error) = re_verify(&info) {
-                *failure.borrow_mut() = Some(error);
-                return false;
-            }
-            windows.push(info);
+        let info = window_info_from(window, &title, (pid, token, app), focused);
+        if let Err(error) = re_verify(&info) {
+            *failure.borrow_mut() = Some(error);
+            return false;
         }
+        windows.push(info);
         true
     })?;
 
@@ -260,11 +282,11 @@ pub(super) mod enumeration_calls {
         static COUNT: Cell<usize> = const { Cell::new(0) };
     }
 
-    pub(super) fn record() {
+    pub(in crate::system) fn record() {
         COUNT.with(|cell| cell.set(cell.get() + 1));
     }
 
-    pub(super) fn take() -> usize {
+    pub(in crate::system) fn take() -> usize {
         COUNT.with(|cell| {
             let value = cell.get();
             cell.set(0);

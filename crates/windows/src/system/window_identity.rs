@@ -95,8 +95,32 @@ impl<'a> WindowIdentityEvidence<'a> {
     /// the recycled handle would satisfy it. This predicate exists so the
     /// admission check and every point-of-use guard are the same test by
     /// construction rather than by convention.
+    ///
+    /// A hosted application's identity splits the two terms (A26-8): its
+    /// listed pid is the hosted `CoreWindow`'s, while the handle it is
+    /// addressed by belongs to the frame host. The fallback branch below is
+    /// that split's ownership half - the handle counts as owned exactly when
+    /// it is, right now, an application frame hosting that same identity's
+    /// `CoreWindow`, which fails closed when the frame is gone, hosts
+    /// nothing, or hosts a different application. Suspension drops the
+    /// hosted `CoreWindow` while its frame survives, so a suspended
+    /// application's stored identity fails here until the application
+    /// resumes; that is the fail-closed answer, not a false positive.
     pub(crate) fn owns_handle_now(&self) -> Result<bool, AdapterError> {
-        if live_window_owner(self.handle) != Some(self.pid) {
+        if live_window_owner(self.handle) == Some(self.pid) {
+            return process_identity::matches_instance(self.pid, self.process_instance);
+        }
+        self.hosted_frame_owns_handle()
+    }
+
+    /// The hosted-frame branch of the ownership predicate: the live owner is
+    /// a different process than the stored pid, which for a stored hosted
+    /// identity is the frame host owning the frame the identity is addressed
+    /// by. Ownership then means the handle still hosts the stored process -
+    /// read fresh, never assumed - and that the stored pid is still the
+    /// stored generation.
+    fn hosted_frame_owns_handle(&self) -> Result<bool, AdapterError> {
+        if super::frame_identity::hosted_application_pid(self.handle) != Some(self.pid) {
             return Ok(false);
         }
         process_identity::matches_instance(self.pid, self.process_instance)
