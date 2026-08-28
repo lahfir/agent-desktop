@@ -1,0 +1,27 @@
+{
+  "artifact": "leg-outcomes",
+  "redaction_note": "shape-only authored record; no notification text, no tray item names, no window titles, no pids, no machine paths",
+  "legs": [
+    { "id": "1a", "leg": "list real center", "outcome": "success", "real_entry_count": 0 },
+    { "id": "1b", "leg": "staged synthetic toast, listing", "outcome": "success", "listed_entry_count": 1 },
+    { "id": "1c", "leg": "dismiss sole staged entry with expected identity", "outcome": "ok_verified_by_reread", "delivery": "delivered", "count_before": 1, "count_after": 0 },
+    { "id": "1d", "leg": "dismiss after staged entry retention elapsed", "outcome": "notification_not_found_fail_closed", "delivery": "not_delivered_retry_safe" },
+    { "id": "1e", "leg": "notification-action unknown name on action-less toast", "outcome": "action_not_supported_entry_unchanged", "delivery": "not_delivered_retry_safe" },
+    { "id": "1f", "leg": "dismiss-all two staged entries", "outcome": "captured_set_semantics", "delivery": "delivered", "captured": 2, "dismissed_count": 2, "count_after": 0 },
+    { "id": "1g", "leg": "dismiss-all empty center", "outcome": "noop_success_shape", "captured": 0, "dismissed_count": 0, "failures_key_present": false },
+    { "id": "2a", "leg": "snapshot dedicated tray surface", "outcome": "promoted_read_zero_items", "promoted_items_via_surface": 0, "same_toolbar_items_via_taskbar_surface": 3 },
+    { "id": "2b", "leg": "click tray-area ref from taskbar surface", "outcome": "window_not_found_inventory_exclusion", "delivery": "not_delivered" },
+    { "id": "2c", "leg": "snapshot overflow surface", "outcome": "success", "overflow_items": 5 },
+    { "id": "2d", "leg": "open overflow then click overflow ref", "outcome": "raise_accepted_not_raised_then_occlusion", "visibility_poll_ms": 4000, "flyout_seen_visible": false, "hit_tests_attempted": 5, "hit_tests_occluded": 5, "delivery": "not_delivered_retry_safe" },
+    { "id": "3", "leg": "start-menu open, snapshot, search set-value, escape close", "outcome": "round_trip_ok", "set_value_delivery": "delivered_verified", "refs_before_search": 76, "refs_after_search": 32, "post_escape": "window_not_found_with_open_suggestion" },
+    { "id": "4", "leg": "list-surfaces real apps", "outcome": "success", "app1_surface_count": 1, "app2_surface_count": 2 },
+    { "id": "5a", "leg": "UWP-hosted target identity", "outcome": "frame_handle_with_hosted_identity", "commands_agreeing": ["focus-window", "list-windows"], "same_window_id": true, "same_pid": true },
+    { "id": "5b", "leg": "snapshot surface focused on same target", "outcome": "same_frame_handle_hosted_app_named" },
+    { "id": "5c", "leg": "close-app on UWP-hosted image", "outcome": "app_not_found_windowless_in_inventory", "delivery": "not_delivered" },
+    { "id": "6a", "leg": "snapshot Chromium app with bounds", "outcome": "a24_11_shape_present", "ref_count": 19, "nameless_positive_area_elements": 1, "nameless_zero_extent_elements": 1 },
+    { "id": "6b", "leg": "resolve nameless positive-area ref", "outcome": "resolved", "click_half": "skipped_click_semantics_not_verifiable_as_harmless_editor_unreachable" },
+    { "id": "6c", "leg": "a26_13 reattempt classification", "outcome": "no_settled_tree_again", "snapshot_ref_floor": 15, "settle_polls": 12, "poll_interval_s": 5, "finding_row_updated": false },
+    { "id": "7", "leg": "wait notification with mid-wait staged toast", "outcome": "returned_staged_entry", "elapsed_ms": 5800 },
+    { "id": "8", "leg": "quick-settings refusal", "outcome": "platform_not_supported", "detail_names_build": true, "detail_names_action_center": true }
+  ]
+}
