@@ -2,7 +2,7 @@ use agent_desktop_core::{
     AccessibilityNode, ActionOps, AdapterError, AppInfo, ClipboardContent, ClipboardFormat,
     Deadline, DragParams, ElementState, InputOps, InteractionLease, KeyCombo, LiveElement,
     MouseEvent, NativeHandle, ObservationOps, ObservationRequest, ObservationRoot, ProcessIdentity,
-    Rect, RefEntry, SnapshotSurface, TreeOptions, WindowFilter, WindowInfo,
+    Rect, RefEntry, SnapshotSurface, SurfaceInfo, TreeOptions, WindowFilter, WindowInfo,
 };
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -167,6 +167,19 @@ impl ObservationOps for WindowsAdapter {
 
     fn list_apps(&self, deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
         crate::system::app_ops::list_apps_live(deadline)
+    }
+
+    /// The per-process surface inventory. Window-backed surfaces carry the
+    /// same `w-<hwnd>` id `list_windows` emits, so a surface id feeds the
+    /// window observation path unchanged; the menu surface carries the
+    /// located menu's own root handle. Shell surfaces are deliberately absent
+    /// - they are no process's inventory, and are reached by kind instead.
+    fn list_surfaces(
+        &self,
+        process: ProcessIdentity,
+        deadline: Deadline,
+    ) -> Result<Vec<SurfaceInfo>, AdapterError> {
+        crate::tree::surface_inventory::list_surfaces_for_process(process, deadline)
     }
 
     /// App-less shell-surface resolution: the read-only half of the shell

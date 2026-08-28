@@ -13,6 +13,7 @@ pub(crate) mod resolve_match;
 pub(crate) mod resolve_search;
 pub mod roles;
 pub mod states;
+pub(crate) mod surface_inventory;
 pub mod surfaces;
 pub mod wrapper;
 
