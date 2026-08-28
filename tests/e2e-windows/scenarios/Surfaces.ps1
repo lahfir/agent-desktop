@@ -1,28 +1,17 @@
 #Requires -Version 5.1
 
 <#
-    Surfaces.ps1 - U10 approach items 6 and 7: the sheet lifecycle observed
-    independently, the AE6 analog, and menu dispatch enumerated and fired.
+    Surfaces.ps1 - the sheet lifecycle observed independently, the AE6
+    analog, and menu dispatch enumerated and fired.
 
-    One correction, measured live against this fixture and binary and cited
-    in the sub-phase report: the plan's opening clause for this file
-    ("open-sheet -> list-surfaces reports it") assumes `list-surfaces` is
-    implemented on Windows. It is not - `crates/windows/src/adapter.rs`'s
-    `impl ObservationOps for WindowsAdapter` overrides `observe_tree`,
-    `get_tree`, `resolve_element_strict`, `resolve_locator_anchor`,
-    `get_live_*`, `get_element_bounds`, `hit_test`, `list_windows` and
-    `list_apps`, but never `list_surfaces`
-    (`crates/core/src/adapter/observation.rs:104-110`'s default, which
-    returns `Err(AdapterError::not_supported("list_surfaces"))`), so the CLI
-    `list-surfaces` command answers `PLATFORM_NOT_SUPPORTED` unconditionally
-    on this platform - measured live with the fixture's sheet genuinely
-    open. This is not a deferral: no unit in this plan implements the
-    adapter method, and the surface-discovery contract this sub-phase
-    actually ships routes entirely through `wait --event surface-appeared` /
-    `window-opened` instead (`crates/windows/src/system/signal_surfaces.rs`)
-    - the AE6 analog below. The leg asserts the measured refusal envelope,
-    the same discipline `Interaction.ps1`'s `surface-menu-refused` leg
-    already applies to `snapshot --surface menu`.
+    The list-surfaces leg once asserted this platform's refusal (the
+    adapter carried no override and core's default answered
+    PLATFORM_NOT_SUPPORTED); that stopped being true when the Windows
+    adapter grew a real per-process inventory, so the leg now asserts the
+    positive shape it always wanted to prove: the fixture's own window is
+    reported as a `window` surface whose id is the one the rest of this
+    suite addresses the fixture by. The sheet and menu legs keep asserting
+    the classifications through the same inventory.
 #>
 
 Set-StrictMode -Version 2.0
@@ -31,26 +20,33 @@ function Invoke-SurfacesScenario {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][string]$App)
     Register-Legs -Names @(
-        'surfaces-list-surfaces-not-supported', 'surfaces-sheet-lifecycle-independent-observation',
+        'surfaces-list-surfaces-reports-the-fixture-window', 'surfaces-sheet-lifecycle-independent-observation',
         'surfaces-ae6-surface-appeared', 'surfaces-ae6-window-opened-no-title-or-id',
         'surfaces-menu-enumerated-and-fires'
     )
 
-    Invoke-ListSurfacesRefusalLeg -App $App
+    Invoke-ListSurfacesLeg -App $App
     Invoke-SheetLifecycleLeg -App $App
     Invoke-Ae6Legs -App $App
     Invoke-MenuDispatchLeg -App $App
 }
 
-function Invoke-ListSurfacesRefusalLeg {
+function Invoke-ListSurfacesLeg {
     param([Parameter(Mandatory = $true)][string]$App)
     try {
         Enter-Stage -Lock DesktopLease -Body {
+            $mainWindowId = Get-MainFixtureWindowId -App $App
             $envelope = Invoke-AgentDesktop -Arguments @('list-surfaces', '--app', $App)
-            Assert-Envelope -Envelope $envelope -ErrorCode 'PLATFORM_NOT_SUPPORTED'
+            $surfaces = Get-EnvelopeSurfaces -Envelope $envelope
+            $window = @($surfaces | Where-Object { $_['type'] -eq 'window' -and $_['id'] -eq $mainWindowId })
+            if ($window.Count -ne 1) {
+                $types = (@($surfaces | ForEach-Object { $_['type'] }) | Select-Object -Unique) -join ', '
+                $raw = ConvertTo-Json -InputObject $envelope -Depth 6 -Compress
+                throw "list-surfaces reported no 'window' surface for the fixture's own id $mainWindowId (types: $types; envelope: $raw)"
+            }
         }
-        Add-Pass -Leg 'surfaces-list-surfaces-not-supported'
-    } catch { Add-Fail -Leg 'surfaces-list-surfaces-not-supported' -Reason $_.Exception.Message }
+        Add-Pass -Leg 'surfaces-list-surfaces-reports-the-fixture-window'
+    } catch { Add-Fail -Leg 'surfaces-list-surfaces-reports-the-fixture-window' -Reason $_.Exception.Message }
 }
 
 function Invoke-SheetLifecycleLeg {
