@@ -1,8 +1,26 @@
-use agent_desktop_core::{AdapterError, CursorOverlayInstruction, ErrorCode, Point, Rect};
+use agent_desktop_core::{
+    AdapterError, CURSOR_HIGHLIGHT_HOLD_MS, CursorOverlayInstruction, CursorOverlayStyle,
+    CursorPose, ErrorCode, Point, Rect,
+};
 use std::ffi::{CString, c_char};
 
-const CLICK: u8 = 1 << 1;
 const REDUCE_MOTION: u8 = 1 << 2;
+const HIGHLIGHT: u8 = 1 << 3;
+
+#[repr(C)]
+struct NativeCursorStyle {
+    fill: [f64; 3],
+    rim: [f64; 3],
+    accent: [f64; 3],
+    size: f64,
+}
+
+#[repr(C)]
+struct NativeCursorFrame {
+    x: f64,
+    y: f64,
+    ripple: f64,
+}
 
 #[repr(C)]
 struct NativeRenderConfig {
@@ -10,6 +28,8 @@ struct NativeRenderConfig {
     label: *const c_char,
     bubble_x: f64,
     bubble_y: f64,
+    target: [f64; 4],
+    highlight_seconds: f64,
     flags: u8,
 }
 
@@ -17,12 +37,14 @@ unsafe extern "C" {
     fn agent_desktop_cursor_overlay_initial_point(output: *mut f64) -> bool;
     fn agent_desktop_cursor_overlay_screen(x: f64, y: f64, output: *mut f64) -> bool;
     fn agent_desktop_cursor_overlay_run(
-        points: *const f64,
-        point_count: usize,
+        frames: *const NativeCursorFrame,
+        frame_count: usize,
         config: *const NativeRenderConfig,
     ) -> bool;
+    fn agent_desktop_cursor_overlay_style(style: *const NativeCursorStyle);
     fn agent_desktop_cursor_overlay_idle();
     fn agent_desktop_cursor_overlay_hide();
+    fn agent_desktop_cursor_overlay_rest();
     fn agent_desktop_cursor_overlay_show();
     fn agent_desktop_cursor_overlay_stop();
 }
@@ -62,15 +84,19 @@ pub(super) fn screen_at(point: &Point) -> Result<(Rect, u32, bool), AdapterError
 }
 
 pub(super) fn run(
-    points: &[Point],
+    poses: &[CursorPose],
     fps: u32,
     instruction: &CursorOverlayInstruction,
     reduce_motion: bool,
     bubble: &Rect,
 ) -> Result<(), AdapterError> {
-    let native_points = points
+    let frames = poses
         .iter()
-        .flat_map(|point| [point.x, point.y])
+        .map(|pose| NativeCursorFrame {
+            x: pose.point.x,
+            y: pose.point.y,
+            ripple: pose.ripple,
+        })
         .collect::<Vec<_>>();
     let label = instruction
         .label()
@@ -78,11 +104,14 @@ pub(super) fn run(
         .transpose()
         .map_err(|_| AdapterError::internal("Cursor overlay label encoding failed"))?;
     let mut flags = 0;
-    if instruction.is_click() {
-        flags |= CLICK;
-    }
     if reduce_motion {
         flags |= REDUCE_MOTION;
+    }
+    let target = instruction
+        .target()
+        .map(|rect| [rect.x, rect.y, rect.width, rect.height]);
+    if target.is_some() {
+        flags |= HIGHLIGHT;
     }
     let config = NativeRenderConfig {
         frame_seconds: 1.0 / f64::from(fps),
@@ -91,11 +120,11 @@ pub(super) fn run(
             .map_or(std::ptr::null(), |value| value.as_ptr()),
         bubble_x: bubble.x,
         bubble_y: bubble.y,
+        target: target.unwrap_or_default(),
+        highlight_seconds: CURSOR_HIGHLIGHT_HOLD_MS as f64 / 1_000.0,
         flags,
     };
-    if unsafe {
-        agent_desktop_cursor_overlay_run(native_points.as_ptr(), native_points.len() / 2, &config)
-    } {
+    if unsafe { agent_desktop_cursor_overlay_run(frames.as_ptr(), frames.len(), &config) } {
         Ok(())
     } else {
         Err(AdapterError::new(
@@ -105,12 +134,26 @@ pub(super) fn run(
     }
 }
 
+pub(super) fn apply_style(style: &CursorOverlayStyle) {
+    let native = NativeCursorStyle {
+        fill: style.fill_rgb(),
+        rim: style.rim_rgb(),
+        accent: style.accent_rgb(),
+        size: style.size(),
+    };
+    unsafe { agent_desktop_cursor_overlay_style(&native) }
+}
+
 pub(super) fn idle() {
     unsafe { agent_desktop_cursor_overlay_idle() }
 }
 
 pub(super) fn stop() {
     unsafe { agent_desktop_cursor_overlay_stop() }
+}
+
+pub(super) fn rest() {
+    unsafe { agent_desktop_cursor_overlay_rest() }
 }
 
 pub(super) fn hide() {

@@ -29,6 +29,8 @@ pub(crate) struct SessionStartArgs {
         help = "Capture pre/post-action screenshots and refmap copies (requires tracing; sensitive)"
     )]
     pub screenshots: bool,
+    #[arg(long, help = "Show the visual cursor overlay with its default style")]
+    pub cursor: bool,
 }
 
 #[derive(Args, Debug)]

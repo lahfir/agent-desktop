@@ -12,10 +12,24 @@ mod imp {
         deadline: Deadline,
     ) -> Result<DeliveryOutcome, AdapterError> {
         prepare(element, deadline)?;
-        if attribute == "AXValue" {
-            ax_helpers::set_ax_value_coerced(element, value, deadline)?;
+        let uncertain = if attribute == "AXValue" {
+            ax_helpers::set_ax_value_coerced(element, value, deadline).err()
         } else {
-            ax_helpers::set_ax_string_or_err(element, attribute, value, deadline)?;
+            ax_helpers::set_ax_string_or_err(element, attribute, value, deadline).err()
+        };
+        if let Some(error) = uncertain {
+            if error.disposition != agent_desktop_core::DeliverySemantics::uncertain() {
+                return Err(error);
+            }
+            let recovery = Deadline::detached_after(500)?;
+            let observed = crate::tree::copy_value_typed(element, recovery);
+            let verified =
+                chain_verify::dynamic_write_had_effect(attribute, None, value, observed.as_deref());
+            return if verified {
+                Ok(DeliveryOutcome::DeliveredVerified)
+            } else {
+                Err(error)
+            };
         }
         let mut delivery = crate::actions::DeliveryTracker::default();
         delivery.mark_delivered();

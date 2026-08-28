@@ -92,3 +92,20 @@ fn shared_window_selector_prefers_the_only_visible_window() {
 
     assert_eq!(selected.id, "w-2");
 }
+
+#[test]
+fn shared_window_selector_prefers_an_accessible_window() {
+    let accessible = window(Some("generation-a"));
+    let mut inaccessible = accessible.clone();
+    inaccessible.id = "w-2".into();
+    inaccessible.state.accessible = false;
+
+    let selected = select_window(
+        vec![inaccessible, accessible],
+        crate::AdapterError::new(ErrorCode::WindowNotFound, "none"),
+        "multiple",
+    )
+    .unwrap();
+
+    assert_eq!(selected.id, "w-1");
+}

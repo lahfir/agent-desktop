@@ -106,6 +106,7 @@ _Static_assert(offsetof(AdExactWindowInfo, version) == 0, "AdExactWindowInfo.ver
 _Static_assert(offsetof(AdExactWindowInfo, size) == 4, "AdExactWindowInfo.size offset changed");
 _Static_assert(offsetof(AdExactWindowInfo, window) == 8, "AdExactWindowInfo.window offset changed");
 _Static_assert(offsetof(AdExactWindowInfo, process_instance) == 80, "AdExactWindowInfo.process_instance offset changed");
+_Static_assert(offsetof(AdExactWindowInfo, accessible) == 88, "AdExactWindowInfo.accessible offset changed");
 _Static_assert(sizeof(AdExactSurfaceInfo) == AD_EXACT_SURFACE_INFO_SIZE, "AdExactSurfaceInfo ABI size changed");
 _Static_assert(_Alignof(AdExactSurfaceInfo) == 8, "AdExactSurfaceInfo ABI alignment changed");
 _Static_assert(offsetof(AdExactSurfaceInfo, version) == 0, "AdExactSurfaceInfo.version offset changed");

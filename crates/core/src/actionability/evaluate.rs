@@ -110,6 +110,7 @@ pub(super) fn check_with_stability(
                 checks,
                 verified_point,
                 presentation_point,
+                evidence.bounds,
                 pointer_delivery,
             ),
         );
@@ -134,6 +135,7 @@ pub(super) fn check_with_stability(
             checks,
             verified_point,
             presentation_point,
+            evidence.bounds,
             pointer_delivery,
         ),
     )

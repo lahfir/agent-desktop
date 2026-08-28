@@ -52,7 +52,7 @@
  * mismatch means the header and dylib are incompatible and the consumer should
  * refuse to proceed rather than risk undefined behaviour.
  */
-#define AD_ABI_VERSION_MAJOR 3
+#define AD_ABI_VERSION_MAJOR 4
 
 /**
  * Maximum byte length (excluding the NUL terminator) accepted for any
@@ -89,9 +89,9 @@
 
 #define AD_EXACT_SURFACE_INFO_SIZE 40
 
-#define AD_EXACT_WINDOW_INFO_VERSION 1
+#define AD_EXACT_WINDOW_INFO_VERSION 2
 
-#define AD_EXACT_WINDOW_INFO_SIZE 88
+#define AD_EXACT_WINDOW_INFO_SIZE 96
 
 #define AD_FIND_CONTROL_SIZE 24
 
@@ -767,6 +767,10 @@ typedef struct AdExactWindowInfo {
   uint32_t size;
   struct AdWindowInfo window;
   const char *process_instance;
+  /**
+   * False only when observation confirmed no matching accessibility element.
+   */
+  bool accessible;
 } AdExactWindowInfo;
 
 typedef struct AdAppInfo {
@@ -2406,6 +2410,7 @@ _Static_assert(offsetof(AdExactWindowInfo, version) == 0, "AdExactWindowInfo.ver
 _Static_assert(offsetof(AdExactWindowInfo, size) == 4, "AdExactWindowInfo.size offset changed");
 _Static_assert(offsetof(AdExactWindowInfo, window) == 8, "AdExactWindowInfo.window offset changed");
 _Static_assert(offsetof(AdExactWindowInfo, process_instance) == 80, "AdExactWindowInfo.process_instance offset changed");
+_Static_assert(offsetof(AdExactWindowInfo, accessible) == 88, "AdExactWindowInfo.accessible offset changed");
 _Static_assert(sizeof(AdExactSurfaceInfo) == AD_EXACT_SURFACE_INFO_SIZE, "AdExactSurfaceInfo ABI size changed");
 _Static_assert(_Alignof(AdExactSurfaceInfo) == 8, "AdExactSurfaceInfo ABI alignment changed");
 _Static_assert(offsetof(AdExactSurfaceInfo, version) == 0, "AdExactSurfaceInfo.version offset changed");

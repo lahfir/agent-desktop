@@ -20,11 +20,15 @@ pub(crate) fn dispatch(
         )
     })?;
     let (action, control) = match args.action {
-        CursorOverlayAction::Enable(args) => (
-            cursor_overlay::CursorOverlayAction::Enable(args.to_core()?),
-            (!context.cursor_overlay().is_enabled())
-                .then(|| CursorOverlayControl::enable(session_id.to_owned())),
-        ),
+        CursorOverlayAction::Enable(args) => {
+            let config = args.to_core()?;
+            let control =
+                CursorOverlayControl::enable(session_id.to_owned(), config.style().clone());
+            (
+                cursor_overlay::CursorOverlayAction::Enable(config),
+                Some(control),
+            )
+        }
         CursorOverlayAction::Disable => (
             cursor_overlay::CursorOverlayAction::Disable,
             Some(CursorOverlayControl::disable(session_id.to_owned())),

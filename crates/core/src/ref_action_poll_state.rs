@@ -9,6 +9,7 @@ pub(crate) struct RefActionPollState {
     pub(crate) expected_bounds_hash: Option<u64>,
     pub(crate) resolve_attempts: u64,
     pub(crate) preflight_attempts: u64,
+    pub(crate) live_read_incomplete_only: Option<bool>,
 }
 
 impl RefActionPollState {
@@ -17,6 +18,8 @@ impl RefActionPollState {
     }
 
     pub(crate) fn record_preflight_error(&mut self, error: &AdapterError) {
+        self.live_read_incomplete_only =
+            Some(self.live_read_incomplete_only.unwrap_or(true) && is_live_read_incomplete(error));
         if let Some(observed) = crate::ref_action_wait_evidence::observed_bounds_hash(error) {
             self.expected_bounds_hash = Some(observed);
         }
@@ -26,12 +29,17 @@ impl RefActionPollState {
     }
 
     pub(crate) fn record_resolve_error(&mut self, error: &AdapterError) {
+        self.live_read_incomplete_only = Some(false);
         self.last_report = Some(json!({
             "phase": "resolve",
             "code": error.code.as_str(),
             "message": error.message,
             "details": error.details,
         }));
+    }
+
+    pub(crate) fn only_live_read_incomplete(&self) -> bool {
+        self.live_read_incomplete_only == Some(true)
     }
 
     pub(crate) fn attach_transient_ambiguity(&self, result: &mut ActionResult) {
@@ -91,4 +99,11 @@ impl RefActionPollState {
         }
         error
     }
+}
+
+fn is_live_read_incomplete(error: &AdapterError) -> bool {
+    error.details.as_ref().is_some_and(|details| {
+        details.get("kind").and_then(Value::as_str) == Some("live_element_evidence")
+            && details.get("complete").and_then(Value::as_bool) == Some(false)
+    })
 }

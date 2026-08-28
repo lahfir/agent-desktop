@@ -98,6 +98,7 @@ fn focus_state(
             Ok(crate::system::window_ax_state::WindowAxState {
                 focused: None,
                 minimized_by_id: rustc_hash::FxHashMap::default(),
+                accessible_window_ids: rustc_hash::FxHashSet::default(),
             })
         }
         Err(error) => Err(error),
@@ -223,7 +224,8 @@ fn windows_from_records_with_focus(
         }
         focused_seen |= is_focused;
         let minimized = state.minimized_by_id.get(&record.window_number).copied();
-        windows.push(record.into_window_info(is_focused, minimized)?);
+        let accessible = state.accessible_window_ids.contains(&record.window_number);
+        windows.push(record.into_window_info(is_focused, minimized, accessible)?);
     }
 
     Ok(windows)

@@ -182,6 +182,7 @@ fn window_info_from_record(
         bounds: Some(record.bounds),
         state: agent_desktop_core::WindowState {
             is_focused: win.state.is_focused,
+            accessible: win.state.accessible,
             minimized: win.state.minimized,
             visible: Some(record.visible),
         },

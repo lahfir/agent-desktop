@@ -1,3 +1,4 @@
+use super::CursorOverlayStyle;
 use crate::{AdapterError, ErrorCode};
 use serde::{Deserialize, Serialize};
 
@@ -5,7 +6,7 @@ pub const MAX_CURSOR_LABEL_WORDS: usize = 12;
 const MAX_CURSOR_LABEL_BYTES: usize = 512;
 const DEFAULT_CURSOR_LABEL_WORDS: usize = 6;
 
-#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CursorOverlayConfig {
     #[serde(default)]
@@ -14,6 +15,8 @@ pub struct CursorOverlayConfig {
     label: Option<String>,
     #[serde(default = "default_word_limit")]
     max_words: usize,
+    #[serde(default)]
+    style: CursorOverlayStyle,
 }
 
 impl CursorOverlayConfig {
@@ -22,8 +25,18 @@ impl CursorOverlayConfig {
             enabled: true,
             label,
             max_words,
+            style: CursorOverlayStyle::default(),
         }
         .validated()
+    }
+
+    pub fn with_style(mut self, style: CursorOverlayStyle) -> Result<Self, AdapterError> {
+        self.style = style.validated()?;
+        Ok(self)
+    }
+
+    pub const fn style(&self) -> &CursorOverlayStyle {
+        &self.style
     }
 
     pub fn validated(mut self) -> Result<Self, AdapterError> {
@@ -55,6 +68,7 @@ impl CursorOverlayConfig {
             .label
             .take()
             .and_then(|label| limit_words(label.trim(), self.max_words));
+        self.style = std::mem::take(&mut self.style).validated()?;
         Ok(self)
     }
 
@@ -81,6 +95,7 @@ impl Default for CursorOverlayConfig {
             enabled: false,
             label: None,
             max_words: DEFAULT_CURSOR_LABEL_WORDS,
+            style: CursorOverlayStyle::default(),
         }
     }
 }

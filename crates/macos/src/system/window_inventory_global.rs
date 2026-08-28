@@ -49,7 +49,7 @@ fn capture_global_once(
     focused_only: bool,
     deadline: Instant,
 ) -> Result<Vec<WindowInfo>, AdapterError> {
-    capture_global_with(
+    let mut windows = capture_global_with(
         focused_only,
         || crate::system::workspace_apps::window_owner_snapshot_until(deadline),
         |eligible_pids| {
@@ -59,7 +59,14 @@ fn capture_global_once(
             )
         },
         |pid| crate::system::window_ax_state::read_frontmost_until(pid, deadline),
-    )
+    )?;
+    crate::system::window_ax_state::label_accessibility(&mut windows, |pid| {
+        let probe_deadline = Instant::now()
+            .checked_add(std::time::Duration::from_millis(50))
+            .map_or(deadline, |probe| probe.min(deadline));
+        crate::system::window_ax_state::accessible_window_ids_until(pid, probe_deadline)
+    });
+    Ok(windows)
 }
 
 fn capture_global_with<S: OwnerSnapshotView>(
@@ -151,7 +158,7 @@ pub(super) fn assemble_global_windows<S: OwnerSnapshotView>(
             } else {
                 None
             };
-            Some(record.into_window_info(is_focused, minimized))
+            Some(record.into_window_info(is_focused, minimized, true))
         })
         .collect::<Result<Vec<_>, _>>()
 }

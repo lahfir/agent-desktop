@@ -1,11 +1,36 @@
-use crate::{
-    Action, CommandContext, DeliveryDisposition, DeliverySemantics, PlatformAdapter, Point,
-};
+use super::{ActionabilityPreflight, ResolvedRefAction};
+use crate::cursor_overlay::CursorPhase;
+use crate::{Action, CommandContext, DeliveryDisposition, DeliverySemantics, PlatformAdapter};
+
+const DISPATCH_RESERVE_MS: u64 = 100;
+
+pub(super) fn before_dispatch(
+    target: &ResolvedRefAction<'_>,
+    preflight: &ActionabilityPreflight,
+    lease: &crate::InteractionLease,
+) {
+    if lease.deadline().remaining_ms()
+        <= crate::CURSOR_ARRIVAL_TIMEOUT_MS.saturating_add(DISPATCH_RESERVE_MS)
+    {
+        return;
+    }
+    let Some(destination) = preflight.presentation_point.clone() else {
+        return;
+    };
+    crate::cursor_overlay::submit(
+        target.adapter,
+        target.context,
+        destination,
+        None,
+        false,
+        CursorPhase::Travel,
+    );
+}
 
 pub(super) fn after_dispatch(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
-    destination: Option<Point>,
+    preflight: &ActionabilityPreflight,
     action: &Action,
     result: &Result<crate::ActionResult, crate::AdapterError>,
 ) {
@@ -13,14 +38,20 @@ pub(super) fn after_dispatch(
         Ok(result) => result.disposition(),
         Err(error) => error.disposition,
     };
-    if result.is_err() && !confirms_dispatch(disposition) {
+    if !confirms_dispatch(disposition) {
         return;
     }
-    let Some(destination) = destination else {
+    let Some(destination) = preflight.presentation_point.clone() else {
         return;
     };
-    let click = is_click(action) && confirms_dispatch(disposition);
-    crate::cursor_overlay::submit(adapter, context, destination, click);
+    crate::cursor_overlay::submit(
+        adapter,
+        context,
+        destination,
+        preflight.presentation_bounds,
+        is_click(action),
+        CursorPhase::Effect,
+    );
 }
 
 fn confirms_dispatch(disposition: DeliverySemantics) -> bool {

@@ -1,4 +1,6 @@
-use agent_desktop_core::{AdapterError, CursorOverlayControl, ErrorCode};
+use agent_desktop_core::{
+    AdapterError, CURSOR_ARRIVAL_TIMEOUT_MS, CursorOverlayControl, ErrorCode,
+};
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
@@ -9,14 +11,18 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use super::child::{MARKER, PROTOCOL_VERSION, SOCKET_ENV};
+use super::child::{MARKER, SOCKET_ENV};
 
 const MAX_INSTRUCTION_BYTES: usize = 4 * 1024;
 
 pub(crate) fn update(control: &CursorOverlayControl) -> Result<(), AdapterError> {
     control.validate()?;
     let socket = super::endpoint::path(control.session_id())?;
-    if send(&socket, control).is_ok() || control.is_disable() || control.is_transient() {
+    if send(&socket, control).is_ok() {
+        return Ok(());
+    }
+    retire_legacy(control);
+    if control.is_disable() || (control.is_transient() && !control.is_travel()) {
         return Ok(());
     }
     let lock_path = super::endpoint::lock_path()?;
@@ -60,7 +66,7 @@ fn spawn(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterErr
         ));
     }
     let mut child = Command::new(executable)
-        .env(MARKER, PROTOCOL_VERSION)
+        .env(MARKER, super::endpoint::PROTOCOL_VERSION)
         .env(SOCKET_ENV, socket)
         .process_group(0)
         .stdin(Stdio::piped())
@@ -79,7 +85,7 @@ fn spawn(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterErr
             .with_platform_detail(error.to_string())
     })?;
     drop(stdin);
-    let deadline = Instant::now() + Duration::from_millis(500);
+    let deadline = Instant::now() + Duration::from_millis(CURSOR_ARRIVAL_TIMEOUT_MS);
     while Instant::now() < deadline {
         if UnixStream::connect(socket).is_ok() {
             return Ok(());
@@ -89,6 +95,14 @@ fn spawn(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterErr
     Err(AdapterError::internal(
         "macOS cursor overlay did not become ready",
     ))
+}
+
+fn retire_legacy(control: &CursorOverlayControl) {
+    let Ok(socket) = super::endpoint::legacy_path(control.session_id()) else {
+        return;
+    };
+    let disable = CursorOverlayControl::disable(control.session_id().to_owned());
+    let _ = send(&socket, &disable);
 }
 
 fn send(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterError> {
@@ -110,7 +124,8 @@ fn send(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterErro
         AdapterError::internal("Could not send the cursor overlay control")
             .with_platform_detail(error.to_string())
     })?;
-    if !control.is_hide() && !control.is_disable() {
+    let travels = control.is_travel();
+    if !travels && !control.is_hide() && !control.is_disable() {
         return Ok(());
     }
     stream
@@ -119,15 +134,25 @@ fn send(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterErro
             AdapterError::internal("Could not finish the cursor overlay control")
                 .with_platform_detail(error.to_string())
         })?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(4)))
-        .map_err(|error| {
-            AdapterError::internal("Could not bound the cursor overlay acknowledgement")
-                .with_platform_detail(error.to_string())
-        })?;
-    let mut acknowledgement = [0_u8; 1];
-    stream.read_exact(&mut acknowledgement).map_err(|error| {
-        AdapterError::internal("macOS cursor overlay did not acknowledge the control")
+    let budget = if travels {
+        Duration::from_millis(CURSOR_ARRIVAL_TIMEOUT_MS)
+    } else {
+        Duration::from_secs(4)
+    };
+    stream.set_read_timeout(Some(budget)).map_err(|error| {
+        AdapterError::internal("Could not bound the cursor overlay acknowledgement")
             .with_platform_detail(error.to_string())
-    })
+    })?;
+    let mut acknowledgement = [0_u8; 1];
+    match stream.read_exact(&mut acknowledgement) {
+        Ok(()) => Ok(()),
+        Err(error) if travels => {
+            tracing::debug!(%error, "cursor overlay arrival was not acknowledged in time");
+            Ok(())
+        }
+        Err(error) => Err(AdapterError::internal(
+            "macOS cursor overlay did not acknowledge the control",
+        )
+        .with_platform_detail(error.to_string())),
+    }
 }

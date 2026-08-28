@@ -1,4 +1,4 @@
-use super::CursorOverlayInstruction;
+use super::{CursorOverlayInstruction, CursorOverlayStyle, CursorPhase};
 use crate::{AdapterError, ErrorCode, context::validate_session_id};
 use serde::{Deserialize, Serialize};
 
@@ -10,10 +10,14 @@ pub enum CursorOverlayControl {
     Enable {
         session_id: String,
         label: String,
+        #[serde(default)]
+        style: CursorOverlayStyle,
     },
     Present {
         session_id: String,
         instruction: CursorOverlayInstruction,
+        #[serde(default)]
+        style: CursorOverlayStyle,
     },
     Hide {
         session_id: String,
@@ -27,17 +31,34 @@ pub enum CursorOverlayControl {
 }
 
 impl CursorOverlayControl {
-    pub fn enable(session_id: String) -> Self {
+    pub fn enable(session_id: String, style: CursorOverlayStyle) -> Self {
         Self::Enable {
             session_id,
             label: CURSOR_OVERLAY_GREETING.into(),
+            style,
+        }
+    }
+
+    pub fn style(&self) -> Option<&CursorOverlayStyle> {
+        match self {
+            Self::Enable { style, .. } | Self::Present { style, .. } => Some(style),
+            _ => None,
         }
     }
 
     pub fn present(session_id: String, instruction: CursorOverlayInstruction) -> Self {
+        Self::present_with_style(session_id, instruction, CursorOverlayStyle::default())
+    }
+
+    pub fn present_with_style(
+        session_id: String,
+        instruction: CursorOverlayInstruction,
+        style: CursorOverlayStyle,
+    ) -> Self {
         Self::Present {
             session_id,
             instruction,
+            style,
         }
     }
 
@@ -91,6 +112,14 @@ impl CursorOverlayControl {
 
     pub const fn is_transient(&self) -> bool {
         matches!(self, Self::Hide { .. } | Self::Show { .. })
+    }
+
+    /// A travel control moves the cursor and carries no click effect. Every
+    /// platform renderer must acknowledge it once the cursor lands, because the
+    /// action waits for that acknowledgement before it dispatches.
+    pub fn is_travel(&self) -> bool {
+        self.instruction()
+            .is_some_and(|instruction| instruction.phase() == CursorPhase::Travel)
     }
 
     pub const fn is_hide(&self) -> bool {

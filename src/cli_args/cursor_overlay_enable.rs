@@ -13,16 +13,20 @@ pub(crate) struct CursorOverlayEnableArgs {
         help = "Limit the cursor overlay label to 1-12 words (default 6)"
     )]
     pub max_words: Option<usize>,
+    #[command(flatten)]
+    pub style: super::cursor_overlay_style::CursorOverlayStyleArgs,
 }
 
 impl CursorOverlayEnableArgs {
     pub(crate) fn to_core(
         &self,
     ) -> Result<agent_desktop_core::CursorOverlayConfig, agent_desktop_core::AppError> {
-        use agent_desktop_core::CursorOverlayConfig;
-
-        CursorOverlayConfig::enabled(self.label.clone(), self.max_words.unwrap_or(6))
-            .map_err(Into::into)
+        agent_desktop_core::CursorOverlayConfig::enabled(
+            self.label.clone(),
+            self.max_words.unwrap_or(6),
+        )
+        .and_then(|config| config.with_style(self.style.to_core()))
+        .map_err(Into::into)
     }
 }
 

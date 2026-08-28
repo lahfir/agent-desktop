@@ -102,7 +102,7 @@ pub(crate) fn require_receives_events(
         Ok(HitTestResult::InterceptedBy { role, name, bounds }) => occluded(role, name, bounds),
     };
     let report =
-        ActionabilityReport::from_checks(vec![check], None, None, PointerDelivery::Physical);
+        ActionabilityReport::from_checks(vec![check], None, None, None, PointerDelivery::Physical);
     Err(AdapterError::new(
         ErrorCode::ActionFailed,
         format!("Target is not actionable: {}", report.failure_reasons()),

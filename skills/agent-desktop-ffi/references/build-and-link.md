@@ -241,7 +241,7 @@ lib = ctypes.CDLL("./target/release-ffi/libagent_desktop_ffi.dylib")
 # ABI handshake
 lib.ad_init.restype = c_int32
 lib.ad_init.argtypes = [ctypes.c_uint32]
-AD_ABI_VERSION_MAJOR = 3  # sync with header macro
+AD_ABI_VERSION_MAJOR = 4  # sync with header macro
 rc = lib.ad_init(AD_ABI_VERSION_MAJOR)
 assert rc == 0, f"ABI mismatch: rc={rc}"
 

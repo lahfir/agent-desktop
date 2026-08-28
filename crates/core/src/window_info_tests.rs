@@ -12,6 +12,7 @@ fn legacy_window_json_defaults_optional_state() {
     .expect("legacy window");
 
     assert!(window.state.is_focused);
+    assert!(window.state.accessible);
     assert_eq!(window.state.minimized, None);
     assert_eq!(window.state.visible, None);
 }
@@ -27,6 +28,7 @@ fn optional_window_state_serializes_flat() {
         bounds: None,
         state: WindowState {
             is_focused: false,
+            accessible: true,
             minimized: Some(true),
             visible: Some(false),
         },
@@ -34,6 +36,7 @@ fn optional_window_state_serializes_flat() {
     let value = serde_json::to_value(window).expect("window json");
 
     assert_eq!(value["is_focused"], false);
+    assert_eq!(value["accessible"], true);
     assert_eq!(value["minimized"], true);
     assert_eq!(value["visible"], false);
     assert!(value.get("state").is_none());

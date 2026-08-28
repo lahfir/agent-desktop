@@ -1,5 +1,5 @@
-use super::CursorOverlayConfig;
-use crate::{AdapterError, ErrorCode, Point};
+use super::{CursorOverlayConfig, CursorPhase};
+use crate::{AdapterError, ErrorCode, Point, Rect};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
@@ -9,6 +9,10 @@ pub struct CursorOverlayInstruction {
     #[serde(skip_serializing_if = "Option::is_none")]
     label: Option<String>,
     click: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target: Option<Rect>,
+    #[serde(default)]
+    phase: CursorPhase,
 }
 
 impl CursorOverlayInstruction {
@@ -28,7 +32,28 @@ impl CursorOverlayInstruction {
             destination,
             label: config.label().map(str::to_owned),
             click,
+            target: None,
+            phase: CursorPhase::Travel,
         })
+    }
+
+    pub const fn with_phase(mut self, phase: CursorPhase) -> Self {
+        self.phase = phase;
+        self
+    }
+
+    pub const fn phase(&self) -> CursorPhase {
+        self.phase
+    }
+
+    pub fn with_target(mut self, target: Option<Rect>) -> Self {
+        self.target =
+            target.filter(|rect| rect.validate().is_ok() && rect.width > 0.0 && rect.height > 0.0);
+        self
+    }
+
+    pub const fn target(&self) -> Option<&Rect> {
+        self.target.as_ref()
     }
 
     pub fn validate(&self) -> Result<(), AdapterError> {

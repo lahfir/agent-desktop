@@ -129,7 +129,7 @@ plus its explicit `snapshot_id`, to `ad_execute_by_ref` to drive the pipeline
   actions default to `headless`. Pass `AD_POLICY_KIND_HEADED` (2) to opt in to
   cursor-based fallbacks.
 
-- **Generation-safe direct APIs.** ABI-v3 legacy `AdRefEntry` and
+- **Generation-safe direct APIs.** Legacy `AdRefEntry` and
   `AdWindowInfo` layouts remain available for binary compatibility, but they do
   not carry process-generation evidence and direct targeting functions fail
   closed. Use `AdExactRefEntry`, `AdExactWindowInfo`,

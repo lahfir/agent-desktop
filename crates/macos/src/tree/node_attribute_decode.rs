@@ -48,9 +48,7 @@ mod imp {
         }
         let value = match index {
             3 => scalar_text(item),
-            4..=12 => item
-                .downcast::<CFBoolean>()
-                .map(|value| bool::from(value).to_string()),
+            4..=12 => boolean_text(item),
             _ => None,
         }?;
         Some(crate::tree::bounded_string::BoundedString::from_owned(
@@ -66,6 +64,15 @@ mod imp {
         number_text(&number)
     }
 
+    fn boolean_text(item: &CFType) -> Option<String> {
+        if let Some(value) = item.downcast::<CFBoolean>() {
+            return Some(bool::from(value).to_string());
+        }
+        item.downcast::<CFNumber>()?
+            .to_i64()
+            .map(|value| (value != 0).to_string())
+    }
+
     pub(crate) fn number_text(number: &CFNumber) -> Option<String> {
         let number_ref = number.as_concrete_TypeRef();
         if unsafe { CFNumberIsFloatType(number_ref) } == 0 {
@@ -77,6 +84,10 @@ mod imp {
         } else {
             number.to_f64().map(|value| value.to_string())
         }
+    }
+
+    pub(crate) fn is_number(item: &CFType) -> bool {
+        item.downcast::<CFNumber>().is_some()
     }
 
     pub(crate) fn point(item: &CFType) -> Option<CGPoint> {
@@ -105,7 +116,7 @@ mod imp {
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) use imp::{is_null, number_text, point, size, slot_error, text};
+pub(crate) use imp::{is_null, is_number, number_text, point, size, slot_error, text};
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
@@ -120,12 +131,12 @@ mod tests {
         unsafe { CFType::wrap_under_get_rule(number.as_CFTypeRef()) }
     }
 
-    fn decode_number(number: &CFNumber) -> String {
+    fn decode_number_at(index: usize, number: &CFNumber) -> String {
         let item = number_item(number);
         let mut usage = crate::tree::observation_usage::ObservationUsage::new(
             agent_desktop_core::ObservationBudget::default(),
         );
-        text(3, &item, &mut usage)
+        text(index, &item, &mut usage)
             .expect("CFNumber must decode")
             .value
     }
@@ -154,8 +165,8 @@ mod tests {
 
     #[test]
     fn fractional_numbers_keep_shortest_round_trip_text() {
-        let first = decode_number(&CFNumber::from(1.001_f64));
-        let second = decode_number(&CFNumber::from(1.002_f64));
+        let first = decode_number_at(3, &CFNumber::from(1.001_f64));
+        let second = decode_number_at(3, &CFNumber::from(1.002_f64));
 
         assert_eq!(first, "1.001");
         assert_eq!(second, "1.002");
@@ -165,8 +176,26 @@ mod tests {
     #[test]
     fn large_integers_remain_exact() {
         assert_eq!(
-            decode_number(&CFNumber::from(i64::MAX)),
+            decode_number_at(3, &CFNumber::from(i64::MAX)),
             i64::MAX.to_string()
         );
+    }
+
+    #[test]
+    fn catalyst_numeric_booleans_decode_as_state_values() {
+        assert_eq!(decode_number_at(4, &CFNumber::from(0_i32)), "false");
+        assert_eq!(decode_number_at(4, &CFNumber::from(1_i32)), "true");
+    }
+
+    #[test]
+    fn numeric_label_values_are_not_mistaken_for_text() {
+        let number = CFNumber::from(0_f32);
+        let item = number_item(&number);
+        let mut usage = crate::tree::observation_usage::ObservationUsage::new(
+            agent_desktop_core::ObservationBudget::default(),
+        );
+
+        assert!(is_number(&item));
+        assert!(text(15, &item, &mut usage).is_none());
     }
 }

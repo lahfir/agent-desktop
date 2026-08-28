@@ -245,7 +245,13 @@ After `right-click @ref`, inspect the open menu or the target effect. If macOS r
 
 ### Agent cursor overlay
 
-macOS keeps one click-through AppKit child and cursor window alive for the enabled session. Enable shows “Hey, let's play with this computer!” and eases away only the card. Later actions start from the cursor's previous destination, use the same minimum-jerk swing, briefly switch the arrow to a hand for click feedback, and ease updated intent text in and out of the solid white, 1.5px near-black card. Only disable or session end removes the cursor; headed actions temporarily hide it while the real cursor is in use. The overlay never activates, moves the OS pointer, or changes command delivery, follows Reduce Motion, and fails soft if its child cannot start.
+macOS keeps one click-through AppKit child per enabled session, with separate borderless windows for the cursor, the card, the ripple, and the element outline.
+
+- The cursor is a filled dart with a contrasting rim, drawn from the session style.
+- Effect windows sit one level below the cursor window, so the cursor always stays on top.
+- The child acknowledges arrival over its session socket; the action dispatches only after that.
+- The element outline and the card animate on Core Animation, so neither blocks the render loop.
+- Reduce Motion is honoured. The overlay never activates an app, moves the OS pointer, or changes command delivery, and it fails soft if its child cannot start.
 
 ### App Identification
 
