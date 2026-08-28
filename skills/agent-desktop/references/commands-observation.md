@@ -29,7 +29,7 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 | `--max-depth` | 10 | Maximum tree traversal depth |
 | `--include-bounds` | false | Include `{x, y, width, height}` for each element |
 | `--compact` | false | Omit empty structural nodes |
-| `--surface` | window | Target surface: `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert` |
+| `--surface` | window | Target surface: `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert`. Windows additionally serves the shell kinds `taskbar`, `system-tray`, `system-tray-overflow`, `start-menu`, `action-center` |
 | `--skeleton` | false | Clamp traversal to depth 3 and add `children_count` to truncated containers |
 | `--root <REF>` | | Drill down from a ref discovered in a previous snapshot. Cannot be combined with `--surface` |
 | `--snapshot <snapshot_id>` | embedded in qualified root | Required only when `--root` is a legacy bare ref |
@@ -115,23 +115,23 @@ agent-desktop snapshot --root @e3 --snapshot <snapshot_id> -i
 
 **Tips:**
 - Always use `-i` to keep output compact for LLM context windows
-- Use `--surface menu` to capture open context menus or dropdown menus (**macOS only** — see the platform note below)
+- Use `--surface menu` to capture open context menus or dropdown menus (macOS and Windows)
 - Use `--surface sheet` for modal dialogs (both platforms)
 
 **Surfaces are platform-specific, and the honest list is in `status`.** Run
 `agent-desktop status` and read `supported_surfaces` before requesting one:
 macOS serves `window`, `focused`, `menu`, `menubar`, `sheet`, `popover` and
-`alert`, while Windows currently serves `window`, `focused` and `sheet`. A
-surface the adapter does not serve returns `PLATFORM_NOT_SUPPORTED` with the
-supported list in `details`, so the failure is honest — but it is cheaper to
-read `status` first than to discover it from an error.
+`alert`, while Windows serves `window`, `focused`, `sheet`, `menu`, and the
+shell kinds `taskbar`, `system-tray`, `system-tray-overflow`, `start-menu`
+and `action-center`. A surface the adapter does not serve returns
+`PLATFORM_NOT_SUPPORTED` with the supported list in `details`, so the failure
+is honest — but it is cheaper to read `status` first than to discover it from
+an error.
 
-One asymmetry is worth naming because an agent hits it naturally: on Windows,
-`wait --event surface-appeared` **can** report `"surface": "menu"` — the signal
-path detects an open menu — while `snapshot --surface menu` refuses it. The
-event is telling you a menu opened; it is not an invitation to snapshot that
-menu as a surface on Windows. Snapshot the owning window instead, or use
-`wait --menu` / `wait --menu-closed` to synchronise on menu state.
+The shell kinds are OS chrome no application owns: `snapshot --surface
+<kind>` resolves an already-present shell surface with no `--app`, and a
+closed one returns `WINDOW_NOT_FOUND` with a suggestion naming
+`open-system-surface` as the way to raise it — see that command below.
 - Use `--compact` with `-i` for maximum token efficiency
 - Combine `--max-depth 5` to limit deep trees (e.g., Xcode)
 - Use exact `find` first when you know the target role or name; otherwise use `--skeleton` for a high-level map, then `--root` to drill into specific regions
@@ -304,10 +304,45 @@ Returns an array of `{ id, bounds: { x, y, width, height }, is_primary, scale }`
 
 ## list-surfaces
 
-List available accessibility surfaces for an application.
+List the surfaces an application presents right now.
 
 ```bash
 agent-desktop list-surfaces --app "Finder"
 ```
 
-Returns the available surfaces (window, menu, menubar, sheet, popover, alert) for snapshotting. Use this to discover what surfaces are currently available before targeting a specific one with `snapshot --surface`.
+Returns the surfaces available for `snapshot --surface`. On macOS these are
+the app-owned overlay surfaces (window, menu, menubar, sheet, popover,
+alert). On Windows the inventory is per-process: every top-level window as
+`window`, the foreground one also `focused`, a modal window as `sheet`, and
+an open menu as one `menu` surface carrying `item_count`. Shell surfaces
+belong to the OS rather than to any process and never appear here — use
+`snapshot --surface <kind>` for those.
+
+## open-system-surface
+
+Raise a shell surface and get the identity of the window it actually
+presents — the same `w-<id>` shape `list-windows` emits, so the round trip
+into `snapshot` needs no second lookup.
+
+```bash
+agent-desktop --headed open-system-surface --surface action-center
+agent-desktop --headed open-system-surface --surface start-menu
+```
+
+| Flag | Description |
+|------|-------------|
+| `--surface` | Shell surface to open. Windows: `start-menu`, `taskbar`, `system-tray`, `system-tray-overflow`, `action-center` |
+
+The command takes the foreground, so it enforces the same floor as every
+chrome-raising command: a strict-headless call is refused with
+`POLICY_DENIED` before anything is raised — pass global `--headed`. An
+already-present surface is returned without being raised again.
+
+A kind the running OS does not expose returns `PLATFORM_NOT_SUPPORTED` with
+a `platform_detail` naming the build and the surface that carries the
+capability instead — `quick-settings` on pre-Windows-11 builds points at
+`action-center`, whose pane holds the quick actions there. `start-menu`
+resolves to whatever the OS accelerator actually raises, which on
+pre-Windows-11 builds is a search-hosted overlay. The macOS kinds
+(`spotlight`, `dock`, `menu-bar-extras`) are not implemented yet and return
+`PLATFORM_NOT_SUPPORTED`.

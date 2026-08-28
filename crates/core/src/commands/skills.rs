@@ -123,7 +123,7 @@ const SKILLS: &[Skill] = &[
     Skill {
         canonical: "agent-desktop-windows",
         aliases: &["windows", "agent-desktop-windows"],
-        summary: "Windows platform guide. Capability table (what works, what returns PLATFORM_NOT_SUPPORTED), UIPI/elevation boundaries, Chromium/Electron settle behavior, troubleshooting.",
+        summary: "Windows platform guide. Capability table (what works, what returns PLATFORM_NOT_SUPPORTED), shell surfaces and Action Center notifications, UIPI/elevation boundaries, Chromium/Electron settle behavior, troubleshooting.",
         main: SKILL_WINDOWS_MAIN,
         refs: SKILL_WINDOWS_REFS,
     },

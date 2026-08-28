@@ -60,13 +60,18 @@ re-resolves from a new handle/new client. Retrying the same read cannot fix
 it. Practically: after launching a WPF application, prefer `wait --event
 window-opened` or a short `wait` before the first snapshot.
 
-## Unnamed Web Content Is Unresolved Through the Semantic Tier Today
+## Unnamed Web Content Resolves When Its Bounds Are Its Only Identity
 
 Content elements inside web documents that expose **no accessible name**
-currently fail strict ref resolution: against real web content staged in a
-notes app, positive-area unnamed checkboxes produced a 0.75 stale rate across
-eight interleaved reads, and a semantic click surfaced as `TIMEOUT` wrapping
-the underlying `STALE_REF` (A24-11). Named content elements resolve normally.
-When a target must be an unnamed element, fall back to headed coordinate input
-from a parent's bounds, or use a CDP client (`launch --cdp`) for the web
-contents while keeping agent-desktop for native surfaces.
+resolve through strict ref resolution when their rectangle is positive-area:
+allocation keeps the bounds of an entry that has no other identity to be
+resolved by, and the geometry tier admits a single candidate whose stored
+hash and role match (A24-11 measured the pre-fix shape — a 0.75 stale rate
+across eight interleaved reads against real, threshold-clearing content —
+which is what the fix removes). Named content elements resolve normally.
+Two cases still fall back to headed coordinate input from a parent's bounds,
+or a CDP client (`launch --cdp`): an unnamed element whose rectangle is
+zero-area (offscreen or virtualized content collapses to shared zero-extent
+bounds that are structurally non-unique, A17-7), and an unnamed element whose
+geometry matches two or more live candidates — that one refuses with
+`AMBIGUOUS_TARGET` rather than guess.
