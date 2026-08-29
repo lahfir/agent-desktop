@@ -6,7 +6,7 @@ use agent_desktop_core::{
 
 use super::permissions::ensure_budget;
 use super::shell_surface::{
-    SurfaceDismiss, SurfaceKindRow, SurfaceRaise, kebab, refusal_error, row_for,
+    SurfaceDismiss, SurfaceFamily, SurfaceKindRow, SurfaceRaise, kebab, refusal_error, row_for,
 };
 #[cfg(all(test, target_os = "windows"))]
 pub(in crate::system) use super::shell_surface_raise::accelerator_probe;
@@ -62,8 +62,18 @@ pub(super) fn open_row(
     {
         return Ok(existing);
     }
+    let pre_raise_children = match &row.family {
+        SurfaceFamily::Immersive {
+            expected_class,
+            host_images,
+            ..
+        } => {
+            super::shell_surface_immersive::witness_immersive_children(expected_class, host_images)?
+        }
+        SurfaceFamily::Win32Class(_) => Vec::new(),
+    };
     raise_row(row, deadline)?;
-    poll_until_observed(row, deadline)
+    poll_until_observed(row, deadline, &pre_raise_children)
 }
 
 /// The open is never reported from the fact that the accelerator was sent or
@@ -72,10 +82,14 @@ pub(super) fn open_row(
 /// interval that grows the way the launch observer's does rather than
 /// sleeping a fixed guess. The resolve alone is not enough: it matches the
 /// overflow's window while the surface is still hidden, so the presented
-/// read rides alongside it.
+/// read rides alongside it. A raise that presents a same-class, same-host
+/// surface matching none of the kind's landmarks resolves as the named
+/// foreign-shape refusal instead of burning the deadline - the raise
+/// presented something, and it is not the measured shape.
 fn poll_until_observed(
     row: &SurfaceKindRow,
     deadline: Deadline,
+    pre_raise_children: &[isize],
 ) -> Result<WindowInfo, AdapterError> {
     let mut interval = std::time::Duration::from_millis(50);
     loop {
@@ -91,6 +105,26 @@ fn poll_until_observed(
             && surface_presented(row, deadline)?
         {
             return Ok(observed);
+        }
+        if let SurfaceFamily::Immersive {
+            expected_class,
+            host_images,
+            landmarks,
+            ..
+        } = &row.family
+        {
+            let client = crate::tree::automation::automation_client()?;
+            if super::shell_surface_immersive::raise_presented_foreign_shape(
+                &client,
+                pre_raise_children,
+                expected_class,
+                host_images,
+                landmarks,
+            )? {
+                return Err(super::shell_surface_immersive::foreign_shape_error(
+                    landmarks,
+                ));
+            }
         }
         let remaining = deadline.remaining();
         std::thread::sleep(interval.min(remaining));

@@ -1,4 +1,4 @@
-//! The immersive family's resolver: the half of the shell-surface seam the
+﻿//! The immersive family's resolver: the half of the shell-surface seam the
 //! Win32 top-level walk cannot reach (A26-1). The resolver walks the UIA
 //! root's children and matches the first child whose class, hosting shell
 //! process, landmark and cloak state name the kind's surface; the landmark
@@ -16,19 +16,26 @@ use super::window_enum::WindowHandle;
 /// kind's surface. The landmark is what keeps two kinds hosted by the same
 /// shell process from resolving each other's surface: on this build the Start
 /// overlay and the Action Center are both `ShellExperienceHost` children of
-/// the root, so neither the class nor the host image alone is an identity.
-/// A child whose own attributes fail to read is skipped: the root's
-/// population changes under the read, and one raced child must not fail the
-/// walk for every other caller. A landmark search that could not run is the
-/// exception and surfaces instead: resolving "no surface" from a search
-/// fault is the answer a close path would skip a dismissal on.
+/// the root, so neither the class nor the host image alone is an identity,
+/// and a sibling kind's live surface must simply not match - a read may run
+/// while the sibling is up, so absence is the correct answer for it. A child
+/// whose own attributes fail to read is skipped: the root's population
+/// changes under the read, and one raced child must not fail the walk for
+/// every other caller. A landmark search that could not run is the exception
+/// and surfaces instead: resolving "no surface" from a search fault is the
+/// answer a close path would skip a dismissal on.
+///
+/// The open path needs one more distinction the read cannot make - whether a
+/// raise presented a surface whose tree matches no landmark at all - and it
+/// carries its own pre-raise witness to attribute the child to its raise
+/// ([`super::shell_surface_open::poll_until_observed`] and
+/// [`foreign_shape_error`]).
 pub(super) fn resolve_immersive(
     expected_class: &str,
     host_images: &[&str],
     landmarks: &[&str],
 ) -> Result<Option<WindowInfo>, AdapterError> {
     use uiautomation::types::TreeScope;
-
     let narrow = super::listing_retry::narrow_to_permitted_codes;
     let client = crate::tree::automation::automation_client().map_err(narrow)?;
     let root = client.get_root_element().map_err(|error| {
@@ -102,6 +109,167 @@ fn immersive_candidate(
         return Ok(None);
     }
     Ok(Some(window_info_from_surface(child, handle, pid, image)))
+}
+
+/// Whether a presented surface of this kind's class and host, raised by the
+/// caller and absent from the pre-raise witness, matches none of the kind's
+/// landmarks - the raise presented a shape this build's measurements do not
+/// cover, and the caller resolves that as a named refusal rather than as
+/// absence, so a caller is told the shape did not match instead of that no
+/// surface exists. A child already in the witness is a sibling kind's live
+/// surface or a dismissed one's lingering window: it belongs to no raise and
+/// never answers this question.
+pub(super) fn raise_presented_foreign_shape(
+    client: &uiautomation::UIAutomation,
+    pre_raise_children: &[isize],
+    expected_class: &str,
+    host_images: &[&str],
+    landmarks: &[&str],
+) -> Result<bool, AdapterError> {
+    use uiautomation::types::TreeScope;
+
+    let narrow = super::listing_retry::narrow_to_permitted_codes;
+    let root = client.get_root_element().map_err(|error| {
+        narrow(crate::tree::automation::uia_error(
+            &error,
+            "read the UIA desktop root",
+        ))
+    })?;
+    let condition = client.create_true_condition().map_err(|error| {
+        narrow(crate::tree::automation::uia_error(
+            &error,
+            "build the desktop children condition",
+        ))
+    })?;
+    let children = root
+        .find_all(TreeScope::Children, &condition)
+        .map_err(|error| {
+            narrow(crate::tree::automation::uia_error(
+                &error,
+                "read the UIA desktop root's children",
+            ))
+        })?;
+    for child in children {
+        let Some(classname) = child.get_classname().ok() else {
+            continue;
+        };
+        if classname.ne(expected_class) {
+            continue;
+        }
+        let handle: isize = match child.get_native_window_handle().ok() {
+            Some(handle) => handle.into(),
+            None => continue,
+        };
+        if handle == 0 || pre_raise_children.contains(&handle) {
+            continue;
+        }
+        if super::window_enum::is_cloaked(handle as WindowHandle) {
+            continue;
+        }
+        let pid = match child.get_process_id() {
+            Ok(pid) => pid,
+            Err(_) => continue,
+        };
+        let Some(image) = super::process_identity::process_image_name(pid.into()) else {
+            continue;
+        };
+        let image_stem = image.strip_suffix(".exe").unwrap_or(&image);
+        if !host_images
+            .iter()
+            .any(|host| host.eq_ignore_ascii_case(image_stem))
+        {
+            continue;
+        }
+        if !carries_landmark(client, &child, landmarks)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// The handles of the root children a raise of this kind could present
+/// through - the expected class hosted by the kind's shell hosts and not
+/// cloaked - captured before the raise so the poll can attribute a new
+/// foreign-shape child to it rather than to a sibling kind's live surface.
+pub(super) fn witness_immersive_children(
+    expected_class: &str,
+    host_images: &[&str],
+) -> Result<Vec<isize>, AdapterError> {
+    let narrow = super::listing_retry::narrow_to_permitted_codes;
+    let client = crate::tree::automation::automation_client().map_err(narrow)?;
+    let root = client.get_root_element().map_err(|error| {
+        narrow(crate::tree::automation::uia_error(
+            &error,
+            "read the UIA desktop root",
+        ))
+    })?;
+    let condition = client.create_true_condition().map_err(|error| {
+        narrow(crate::tree::automation::uia_error(
+            &error,
+            "build the desktop children condition",
+        ))
+    })?;
+    let children = root
+        .find_all(uiautomation::types::TreeScope::Children, &condition)
+        .map_err(|error| {
+            narrow(crate::tree::automation::uia_error(
+                &error,
+                "read the UIA desktop root's children",
+            ))
+        })?;
+    let mut handles = Vec::new();
+    for child in children {
+        let Some(classname) = child.get_classname().ok() else {
+            continue;
+        };
+        if classname.ne(expected_class) {
+            continue;
+        }
+        let handle: isize = match child.get_native_window_handle().ok() {
+            Some(handle) => handle.into(),
+            None => continue,
+        };
+        if handle == 0 || super::window_enum::is_cloaked(handle as WindowHandle) {
+            continue;
+        }
+        let Some(pid) = child.get_process_id().ok() else {
+            continue;
+        };
+        let Some(image) = super::process_identity::process_image_name(pid.into()) else {
+            continue;
+        };
+        let image_stem = image.strip_suffix(".exe").unwrap_or(&image);
+        if host_images
+            .iter()
+            .any(|host| host.eq_ignore_ascii_case(image_stem))
+        {
+            handles.push(handle);
+        }
+    }
+    Ok(handles)
+}
+
+/// The named refusal for a raise that presented a surface whose tree matches
+/// none of the kind's landmarks: the shell answered, the shape is not the
+/// measured one, and "no surface found" would send a caller to open a
+/// surface that is already on screen. The detail names the build and the
+/// landmarks the shape was matched against, per the error table's
+/// opened-but-foreign-shape row.
+pub(super) fn foreign_shape_error(landmarks: &[&str]) -> AdapterError {
+    use agent_desktop_core::{DeliverySemantics, ErrorCode};
+
+    AdapterError::new(
+        ErrorCode::PlatformNotSupported,
+        "the shell presented a surface of this kind whose tree does not match \
+         the landmarks this build's adapter measures",
+    )
+    .with_platform_detail(format!(
+        "this Windows build presents a different surface shape; the landmarks \
+         matched were: {}",
+        landmarks.join(", ")
+    ))
+    .with_details(serde_json::json!({ "kind": "shell_surface_foreign_shape" }))
+    .with_disposition(DeliverySemantics::not_delivered())
 }
 
 /// Whether the candidate's subtree carries one of the kind's landmark
