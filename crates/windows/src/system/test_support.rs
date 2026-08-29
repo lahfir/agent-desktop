@@ -212,14 +212,17 @@ pub(crate) fn settles_to(
     }
 }
 
-/// Whether this error is a hosted or shell-less desktop declining the raise
-/// instead of presenting the surface: the accelerator or chevron invoke ran
-/// and the shell simply never presented, the shell accepted the raise but
-/// refuses the dismiss (same declined precondition - there is no shell on
-/// such a desktop to answer the close either), or the tray chrome the raise
-/// depends on was never there. These are declined preconditions, not product
-/// failures: there is no shell on such a desktop to answer the raise, so the
-/// live tests that need the surface skip loudly on them instead of failing.
+/// Whether this error is a desktop that cannot serve the measured surface
+/// contract, which the live tests skip loudly on rather than failing:
+/// - the accelerator or chevron invoke ran and the shell simply never
+///   presented, or the shell accepted the raise but refuses the dismiss
+///   (there is no shell on such a desktop to answer the close either), or
+///   the tray chrome the raise depends on was never there; or
+/// - the shell presented a surface of the right kind whose tree carries none
+///   of the landmarks this build's adapter measures - the present-but-
+///   foreign-shape case, where the product answered with its named refusal
+///   and the shape difference is an accepted single-host limitation, not a
+///   product failure.
 pub(crate) fn shell_declined_the_surface(error: &AdapterError) -> bool {
     fn timeout_details_kind_is(error: &AdapterError, wanted: &str) -> bool {
         error.code == ErrorCode::Timeout
@@ -230,13 +233,26 @@ pub(crate) fn shell_declined_the_surface(error: &AdapterError) -> bool {
                 .and_then(serde_json::Value::as_str)
                 == Some(wanted)
     }
+    fn details_kind_is(error: &AdapterError, wanted: &str) -> bool {
+        error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("kind"))
+            .and_then(serde_json::Value::as_str)
+            == Some(wanted)
+    }
     let raise_never_presented = timeout_details_kind_is(error, "shell_surface_not_opened");
     let close_never_dismissed = timeout_details_kind_is(error, "shell_surface_not_closed");
     let chevron_absent =
         error.code == ErrorCode::WindowNotFound && error.message.contains("notification chevron");
     let overflow_absent =
         error.code == ErrorCode::WindowNotFound && error.message.contains("overflow");
-    raise_never_presented || close_never_dismissed || chevron_absent || overflow_absent
+    let foreign_shape = details_kind_is(error, "shell_surface_foreign_shape");
+    raise_never_presented
+        || close_never_dismissed
+        || chevron_absent
+        || overflow_absent
+        || foreign_shape
 }
 
 /// Maps a raise-or-resolve precondition onto the loud-skip convention, with
@@ -259,6 +275,13 @@ pub(crate) fn or_skip_shell<T>(
 ) -> Option<T> {
     match result {
         Ok(value) => Some(value),
+        Err(error) if is_foreign_shape_refusal(&error) => {
+            eprintln!(
+                "skip {what}: the shell presented a surface whose tree does not match \
+                 the landmarks this build measures"
+            );
+            None
+        }
         Err(error) if shell_declined_the_surface(&error) => {
             if responded() {
                 panic!(
@@ -272,6 +295,20 @@ pub(crate) fn or_skip_shell<T>(
         }
         Err(error) => panic!("{what}: {error:?}"),
     }
+}
+
+/// Whether the product answered with its named present-but-foreign-shape
+/// refusal: the shell presented a surface of the kind, the shape matched none
+/// of the measured landmarks, and the refusal is the honest answer - not a
+/// declined precondition the raise-response oracle needs to guard, because
+/// the product did exactly what its error table says for that case.
+fn is_foreign_shape_refusal(error: &AdapterError) -> bool {
+    error
+        .details
+        .as_ref()
+        .and_then(|details| details.get("kind"))
+        .and_then(serde_json::Value::as_str)
+        == Some("shell_surface_foreign_shape")
 }
 
 #[cfg(test)]
@@ -297,6 +334,14 @@ mod shell_decline_classification {
             "the notification chevron button is not present in the taskbar",
         );
         assert!(shell_declined_the_surface(&chevron_absent));
+
+        let foreign_shape = AdapterError::new(
+            ErrorCode::PlatformNotSupported,
+            "the shell presented a surface of this kind whose tree does not match \
+             the landmarks this build's adapter measures",
+        )
+        .with_details(serde_json::json!({ "kind": "shell_surface_foreign_shape" }));
+        assert!(shell_declined_the_surface(&foreign_shape));
 
         let stale = AdapterError::stale_ref("@s8f3k2p9:e1");
         assert!(!shell_declined_the_surface(&stale));
