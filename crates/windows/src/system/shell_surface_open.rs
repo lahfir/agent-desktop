@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+﻿#![allow(dead_code)]
 
 use agent_desktop_core::{
     AdapterError, Deadline, DeliverySemantics, InteractionPolicy, SnapshotSurface, WindowInfo,
@@ -63,12 +63,8 @@ pub(super) fn open_row(
         return Ok(existing);
     }
     let pre_raise_children = match &row.family {
-        SurfaceFamily::Immersive {
-            expected_class,
-            host_images,
-            ..
-        } => {
-            super::shell_surface_immersive::witness_immersive_children(expected_class, host_images)?
+        SurfaceFamily::Immersive { .. } => {
+            super::shell_surface_immersive::witness_immersive_children()?
         }
         SurfaceFamily::Win32Class(_) => Vec::new(),
     };
@@ -106,19 +102,11 @@ fn poll_until_observed(
         {
             return Ok(observed);
         }
-        if let SurfaceFamily::Immersive {
-            expected_class,
-            host_images,
-            landmarks,
-            ..
-        } = &row.family
-        {
+        if let SurfaceFamily::Immersive { landmarks, .. } = &row.family {
             let client = crate::tree::automation::automation_client()?;
             if super::shell_surface_immersive::raise_presented_foreign_shape(
                 &client,
                 pre_raise_children,
-                expected_class,
-                host_images,
                 landmarks,
             )? {
                 return Err(super::shell_surface_immersive::foreign_shape_error(

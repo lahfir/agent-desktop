@@ -122,8 +122,6 @@ fn immersive_candidate(
 pub(super) fn raise_presented_foreign_shape(
     client: &uiautomation::UIAutomation,
     pre_raise_children: &[isize],
-    expected_class: &str,
-    host_images: &[&str],
     landmarks: &[&str],
 ) -> Result<bool, AdapterError> {
     use uiautomation::types::TreeScope;
@@ -153,7 +151,7 @@ pub(super) fn raise_presented_foreign_shape(
         let Some(classname) = child.get_classname().ok() else {
             continue;
         };
-        if classname.ne(expected_class) {
+        if classname.ne(SHELL_CORE_WINDOW_CLASS) {
             continue;
         }
         let handle: isize = match child.get_native_window_handle().ok() {
@@ -174,7 +172,7 @@ pub(super) fn raise_presented_foreign_shape(
             continue;
         };
         let image_stem = image.strip_suffix(".exe").unwrap_or(&image);
-        if !host_images
+        if !SHELL_DIAGNOSTIC_HOST_IMAGES
             .iter()
             .any(|host| host.eq_ignore_ascii_case(image_stem))
         {
@@ -187,14 +185,13 @@ pub(super) fn raise_presented_foreign_shape(
     Ok(false)
 }
 
-/// The handles of the root children a raise of this kind could present
-/// through - the expected class hosted by the kind's shell hosts and not
-/// cloaked - captured before the raise so the poll can attribute a new
-/// foreign-shape child to it rather than to a sibling kind's live surface.
-pub(super) fn witness_immersive_children(
-    expected_class: &str,
-    host_images: &[&str],
-) -> Result<Vec<isize>, AdapterError> {
+/// The handles of the root children a raise could present through - the
+/// CoreWindow class owned by any shell host image and not cloaked - captured
+/// before the raise so the poll can attribute a new foreign-shape child to
+/// it rather than to a sibling kind's live surface. The host set is the
+/// broad diagnostic one: newer shells route these surfaces through host
+/// images this build's rows never named.
+pub(super) fn witness_immersive_children() -> Result<Vec<isize>, AdapterError> {
     let narrow = super::listing_retry::narrow_to_permitted_codes;
     let client = crate::tree::automation::automation_client().map_err(narrow)?;
     let root = client.get_root_element().map_err(|error| {
@@ -222,7 +219,7 @@ pub(super) fn witness_immersive_children(
         let Some(classname) = child.get_classname().ok() else {
             continue;
         };
-        if classname.ne(expected_class) {
+        if classname.ne(SHELL_CORE_WINDOW_CLASS) {
             continue;
         }
         let handle: isize = match child.get_native_window_handle().ok() {
@@ -239,7 +236,7 @@ pub(super) fn witness_immersive_children(
             continue;
         };
         let image_stem = image.strip_suffix(".exe").unwrap_or(&image);
-        if host_images
+        if SHELL_DIAGNOSTIC_HOST_IMAGES
             .iter()
             .any(|host| host.eq_ignore_ascii_case(image_stem))
         {
@@ -248,6 +245,20 @@ pub(super) fn witness_immersive_children(
     }
     Ok(handles)
 }
+
+/// The shell host images the corpus measured presenting CoreWindow surfaces,
+/// plus the newer hosts the foreign-shape diagnosis must also see: a
+/// diagnosis that only knew `shellexperiencehost` would miss a surface the
+/// newer shell routed through a different host image entirely.
+const SHELL_DIAGNOSTIC_HOST_IMAGES: &[&str] = &[
+    "shellexperiencehost",
+    "searchhost",
+    "searchui",
+    "searchapp",
+    "startmenuexperiencehost",
+    "shellhost",
+];
+const SHELL_CORE_WINDOW_CLASS: &str = "Windows.UI.Core.CoreWindow";
 
 /// The named refusal for a raise that presented a surface whose tree matches
 /// none of the kind's landmarks: the shell answered, the shape is not the
