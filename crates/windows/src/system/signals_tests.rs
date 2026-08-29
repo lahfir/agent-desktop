@@ -288,14 +288,22 @@ mod windows_only {
     /// `fixture_window::on_screen_stage` for the whole span - both captures
     /// plus the forced focus change between them - the same DESKTOP/
     /// FOREGROUND-state guard `window_ops_tests.rs`'s focused-filter test and
-    /// `wait_event_live_tests.rs`'s no-transition negative test take. Without
-    /// it, this test's own deliberate focus change is exactly the kind of
+    /// `wait_event_live_tests.rs`'s no-transition negative test take. The
+    /// fixture and shell lock families are held first, in the crate-wide
+    /// order: this test's own deliberate focus change is exactly the kind of
     /// real, unguarded foreground move that can leak into a sibling's
-    /// two-captures-no-event assertion running concurrently.
+    /// two-captures-no-event assertion running concurrently, and a sibling's
+    /// raise or staged window can leak into this one's baseline the same way.
     #[test]
     fn a_fixture_transition_still_produces_window_opened_and_focus_changed_through_the_composed_capture()
      {
         bootstrap();
+        let _fixture_scope = crate::system::test_support::FIXTURE_APP_NAME_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _shell = crate::system::test_support::SHELL_SURFACE_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let _stage = fixture_window::on_screen_stage();
 
         let parking = HostedFixture::spawn().expect("the parking fixture starts");

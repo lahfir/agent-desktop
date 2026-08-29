@@ -75,11 +75,14 @@ Requires Windows 10 1809+ / Windows Server 2019+ (x64 or ARM64).
 
 ## Shell Surfaces
 
-`open-system-surface --surface <kind>` raises a shell surface and returns the
-same `w-<hwnd>` window identity every window command consumes, so the round
-trip into `snapshot --window-id` (or a fresh `snapshot --surface <kind>`)
-needs no second lookup. Windows kinds: `start-menu`, `taskbar`,
-`system-tray`, `system-tray-overflow`, `action-center`.
+`open-system-surface --surface <kind>` raises a shell surface and answers with
+the identity of the window the surface actually presents: the same `w-<hwnd>`
+identity the observation stack roots, so `snapshot --surface <kind>` consumes
+it with no second lookup. Windows kinds: `start-menu`, `taskbar`,
+`system-tray`, `system-tray-overflow`, `action-center`. `snapshot --window-id`
+refuses that handle with `WINDOW_NOT_FOUND` by design — the window inventory
+deliberately excludes shell windows — so the shell round trip routes through
+`snapshot --surface <kind>`, not through `--window-id`.
 
 - **The command takes the foreground.** Under strict headless it is refused
   with `POLICY_DENIED` before anything is raised; pass global `--headed`. An
@@ -97,12 +100,19 @@ needs no second lookup. Windows kinds: `start-menu`, `taskbar`,
   a `SearchTextBox`, not a tile grid (A26-9) — drive it as the search surface
   it is.
 - **The tray path is the generic command surface** — no Windows-specific tray
-  commands exist. `snapshot --surface system-tray` (or `system-tray-overflow`,
-  raised first with `open-system-surface`) lists each tray item as an ordinary
-  `button` ref; `click @ref` acts on it. A right-click on a tray item raises
-  its context menu, addressable with `snapshot --surface menu --app <owner>`
-  — which needs the owning process to have an addressable window, so a menu
-  raised by a windowless background agent is not reachable that way.
+  commands exist. The tray surfaces list: `snapshot --surface taskbar` refs
+  the notification area's tray `button`s, and `snapshot --surface
+  system-tray-overflow` (raised first with `open-system-surface`) refs its
+  five items. Clicking a tray item by ref is **not delivered on this build**
+  — no route completed, and three mechanisms were measured: the dedicated
+  `system-tray` surface's promoted read returned zero items while the taskbar
+  surface refs the same toolbar's buttons; the overflow raise is accepted and
+  the flyout is never presented, so every overflow ref fails actionability at
+  the occlusion check; and a click on a tray ref taken from the taskbar
+  surface refuses `WINDOW_NOT_FOUND`, because the tray window is deliberately
+  outside the agent window inventory. Expect a tray-item `click @ref` to fail
+  until the repair lands — the repair is scoped, and the platform phases
+  document (`docs/phases.md`) owns it.
 
 ## Notifications
 

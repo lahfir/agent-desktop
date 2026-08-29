@@ -17,6 +17,7 @@ use agent_desktop_core::{
 
 use crate::notifications::actions;
 use crate::notifications::list::list_infos;
+use crate::system::shell_surface_kinds::MAIN_LIST_VIEW;
 use crate::system::shell_surface_open::close_surface;
 
 pub(crate) const TOAST_TITLE: &str = "agent-desktop-probe-notification";
@@ -27,6 +28,10 @@ pub(crate) const TOAST_BODY_SECOND: &str = "agent-desktop-probe-notification-bod
 const TOAST_AUMID: &str =
     "{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe";
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
+
+/// How long the reader is given to catch up to a toast the independent walk
+/// already sees, before the gap is judged a reader regression.
+const READER_SETTLE_MS: u64 = 3_000;
 
 fn stage_toast(title: &str, body: &str) -> Result<(), String> {
     let script = format!(
@@ -109,6 +114,14 @@ impl Drop for CloseCenterOnDrop {
 /// after the shell accepts it, so the wait is on the value itself rather than
 /// on a fixed sleep.
 ///
+/// The wait is judged by two observers. The product reader answers the
+/// caller's question - the listing that carried the toast; the independent
+/// walk ([`independent_walk_sees_toast`]) answers whether the held center
+/// carries the toast at all, read straight off the tree. When the walk sees
+/// the toast and the reader still does not report it across a short bounded
+/// re-poll, the reader is regressed and this panics: a reader regression
+/// must fail a test, never expire into a loud skip.
+///
 /// This variant polls inside a center the caller holds open, because the
 /// measured staging behaviour on this host is that a toast joins the center
 /// only while the center is open and leaves it at the next close: a poll that
@@ -119,18 +132,104 @@ pub(crate) fn wait_until_listed_held(
 ) -> Option<Vec<NotificationInfo>> {
     let filter = NotificationFilter::default();
     loop {
-        match list_infos(&filter, hwnd, deadline) {
-            Ok(listed) if listed.iter().any(|info| info.title == TOAST_TITLE) => {
+        if let Ok(listed) = list_infos(&filter, hwnd, deadline) {
+            if listed.iter().any(|info| info.title == TOAST_TITLE) {
                 return Some(listed);
             }
-            Ok(_) => {}
-            Err(_) => {}
+        }
+        if independent_walk_sees_toast(hwnd, deadline) {
+            if let Some(listed) = product_reader_catches_up(hwnd) {
+                return Some(listed);
+            }
+            panic!(
+                "the product reader misses an entry the independent walk observes: the \
+                 held center carries the staged toast but the listing never reports it"
+            );
         }
         if deadline.is_expired() {
             return None;
         }
         std::thread::sleep(POLL_INTERVAL);
     }
+}
+
+/// A short bounded re-poll of the product reader alone. The independent walk
+/// has already seen the staged toast, so the only question left is whether
+/// the reader catches up to the tree inside this window - the toast may have
+/// landed between the reader's last poll and the walk - or is proven to miss
+/// an entry the desktop carries. Its budget is detached from the caller's:
+/// the reader's honesty is not the wait's remaining latency.
+fn product_reader_catches_up(hwnd: isize) -> Option<Vec<NotificationInfo>> {
+    let filter = NotificationFilter::default();
+    let deadline = Deadline::detached_after(READER_SETTLE_MS).expect("re-poll deadline");
+    loop {
+        if let Ok(listed) = list_infos(&filter, hwnd, deadline) {
+            if listed.iter().any(|info| info.title == TOAST_TITLE) {
+                return Some(listed);
+            }
+        }
+        if deadline.is_expired() {
+            return None;
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
+}
+
+/// The independent observation the staging wait is judged against: a raw UIA
+/// walk of the held center's hwnd that locates the notification list by its
+/// measured `MainListView` structure, enumerates its `ListItem` descendants
+/// by control type, and matches the staged toast by a descendant's raw
+/// `Name` - the title is the fixed synthetic literal this suite owns, so an
+/// exact match is safe in tests. Nothing is read through the product reader,
+/// so a reader regression cannot hide behind the oracle that watches it.
+///
+/// Every read failure reads as "not seen": the oracle speaks only when the
+/// tree it can actually observe carries the toast, never from a search that
+/// could not run.
+fn independent_walk_sees_toast(hwnd: isize, deadline: Deadline) -> bool {
+    use uiautomation::types::{ControlType, TreeScope, UIProperty};
+    use uiautomation::variants::Variant;
+
+    let Ok(root) = crate::tree::automation::root_from_hwnd(hwnd, deadline) else {
+        return false;
+    };
+    let Ok(client) = crate::tree::automation::automation_client() else {
+        return false;
+    };
+    let list_condition = match client.create_property_condition(
+        UIProperty::AutomationId,
+        Variant::from(MAIN_LIST_VIEW),
+        None,
+    ) {
+        Ok(condition) => condition,
+        Err(_) => return false,
+    };
+    let Ok(list) = root.0.find_first(TreeScope::Descendants, &list_condition) else {
+        return false;
+    };
+    let items_condition = match client.create_property_condition(
+        UIProperty::ControlType,
+        Variant::from(ControlType::ListItem as i32),
+        None,
+    ) {
+        Ok(condition) => condition,
+        Err(_) => return false,
+    };
+    let Ok(items) = list.find_all(TreeScope::Descendants, &items_condition) else {
+        return false;
+    };
+    let title_condition = match client.create_property_condition(
+        UIProperty::Name,
+        Variant::from(TOAST_TITLE),
+        None,
+    ) {
+        Ok(condition) => condition,
+        Err(_) => return false,
+    };
+    items.iter().any(|item| {
+        item.find_first(TreeScope::Descendants, &title_condition)
+            .is_ok()
+    })
 }
 
 /// The same wait, until the held center carries `count` entries.

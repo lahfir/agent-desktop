@@ -142,7 +142,7 @@ impl SystemOps for WindowsAdapter {
     }
 
     /// Process liveness for the shared `ProcessState` contract. Returns the
-    /// raw classification only â€” core's two-signal gate owns any upgrade to
+    /// raw classification only — core's two-signal gate owns any upgrade to
     /// `APP_UNRESPONSIVE` (A21-3, A21-4).
     fn process_state(
         &self,

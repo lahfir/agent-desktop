@@ -41,6 +41,14 @@ fn require_foreground_policy(policy: InteractionPolicy) -> Result<(), AdapterErr
     ))
 }
 
+/// A resolved identity is only an open when the surface is actually
+/// presented: the overflow's window class survives dismissal (A26-6), so its
+/// resolver answers while hidden, and returning that hidden identity would
+/// report an open the user cannot see - the raise the kind carries would
+/// never fire. The taskbar family is always visible and the immersive
+/// family's liveness already encodes presented (root membership AND an
+/// uncloaked read, A26-2), so their resolved answer passes the presented
+/// gate unchanged.
 pub(super) fn open_row(
     row: &SurfaceKindRow,
     deadline: Deadline,
@@ -49,17 +57,22 @@ pub(super) fn open_row(
     if !row.exists_on_build {
         return Err(refusal_error(row));
     }
-    if let Some(existing) = super::shell_surface::resolve_row(row, deadline)? {
+    if let Some(existing) = super::shell_surface::resolve_row(row, deadline)?
+        && surface_presented(row, deadline)?
+    {
         return Ok(existing);
     }
     raise_row(row, deadline)?;
     poll_until_observed(row, deadline)
 }
 
-/// The open is never reported from the fact that the accelerator was sent -
-/// the shell can simply decline - so every open ends in an observed resolve
-/// or a `TIMEOUT`, polled at a bounded interval that grows the way the launch
-/// observer's does rather than sleeping a fixed guess.
+/// The open is never reported from the fact that the accelerator was sent or
+/// the chevron invoked - the shell can simply decline - so every open ends in
+/// an observed, presented resolve or a `TIMEOUT`, polled at a bounded
+/// interval that grows the way the launch observer's does rather than
+/// sleeping a fixed guess. The resolve alone is not enough: it matches the
+/// overflow's window while the surface is still hidden, so the presented
+/// read rides alongside it.
 fn poll_until_observed(
     row: &SurfaceKindRow,
     deadline: Deadline,
@@ -74,7 +87,9 @@ fn poll_until_observed(
             ));
         }
         ensure_budget(deadline)?;
-        if let Some(observed) = super::shell_surface::resolve_row(row, deadline)? {
+        if let Some(observed) = super::shell_surface::resolve_row(row, deadline)?
+            && surface_presented(row, deadline)?
+        {
             return Ok(observed);
         }
         let remaining = deadline.remaining();

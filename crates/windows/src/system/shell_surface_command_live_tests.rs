@@ -27,6 +27,7 @@ use agent_desktop_core::{AdapterError, AppError, CommandContext, SnapshotSurface
 
 use crate::adapter::WindowsAdapter;
 use crate::system::private_file::WindowsPrivateFile;
+use crate::system::raise_oracle::{responded_since, witness_desktop};
 use crate::system::shell_surface_open::close_surface;
 use crate::system::test_support::{
     SHELL_SURFACE_LOCK, or_skip_shell, wait_for_foreground_to_settle,
@@ -122,11 +123,13 @@ fn adapter_error_of(error: AppError) -> AdapterError {
 }
 
 fn open_command(kind: SnapshotSurface, context: &CommandContext) -> Option<serde_json::Value> {
+    let witness = witness_desktop();
     let adapter = WindowsAdapter::new();
     or_skip_shell(
         &format!("the command opens the {}", kind.as_str()),
         open_system_surface::execute(OpenSystemSurfaceArgs { surface: kind }, &adapter, context)
             .map_err(adapter_error_of),
+        || responded_since(&witness),
     )
 }
 

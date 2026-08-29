@@ -46,6 +46,7 @@ mod live {
     use agent_desktop_core::{Deadline, InteractionPolicy, SnapshotSurface};
 
     use crate::notifications::list::list_notifications;
+    use crate::system::raise_oracle::{responded_since, witness_desktop};
     use crate::system::shell_surface::resolve_surface;
     use crate::system::shell_surface_open::{close_surface, open_surface};
     use crate::system::test_support::{SHELL_SURFACE_LOCK, or_skip_shell};
@@ -69,9 +70,11 @@ mod live {
         crate::tree::fixture::bootstrap();
         let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let _ = close_surface(SnapshotSurface::ActionCenter, deadline(8_000));
+        let witness = witness_desktop();
         let Some(_surface) = or_skip_shell(
             "action center open for the pre-arrangement",
             open_surface(SnapshotSurface::ActionCenter, headed(), deadline(15_000)),
+            || responded_since(&witness),
         ) else {
             return;
         };
@@ -92,10 +95,11 @@ mod live {
         crate::tree::fixture::bootstrap();
         let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let _ = close_surface(SnapshotSurface::ActionCenter, deadline(8_000));
-
+        let witness = witness_desktop();
         let Some(_listed) = or_skip_shell(
             "the closed-then-raised center's listing",
             list_notifications(&Default::default(), headed(), deadline(20_000)),
+            || responded_since(&witness),
         ) else {
             return;
         };

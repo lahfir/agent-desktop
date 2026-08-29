@@ -77,7 +77,6 @@ pub(super) fn dismiss_survived_error(index: usize) -> AdapterError {
     .with_suggestion(
         "Retry the dismissal: the shell can accept an invoke without acting on it"
     )
-    .with_details(serde_json::json!({ "retryable": true }))
     .with_disposition(DeliverySemantics::delivered_unverified())
 }
 

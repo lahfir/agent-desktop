@@ -301,23 +301,12 @@ pub(super) fn probe_candidate_element(
 #[cfg(target_os = "windows")]
 fn probe_step(error: &uiautomation::Error, context: &str) -> Result<bool, AdapterError> {
     let failure = crate::tree::automation::failure_of(error);
-    if failure.is_exhaustion() || is_vanished(failure) {
+    if failure.is_absence() {
         return Ok(false);
     }
     Err(narrow_to_permitted_codes(
         crate::tree::automation::uia_failure_error(failure, context),
     ))
-}
-
-#[cfg(target_os = "windows")]
-fn is_vanished(failure: crate::tree::automation::UiaFailure) -> bool {
-    use crate::tree::automation::{ERR_NOTFOUND, UiaFailure};
-
-    matches!(
-        failure,
-        UiaFailure::Hresult(super::hresult::UIA_E_ELEMENTNOTAVAILABLE)
-            | UiaFailure::Sentinel(ERR_NOTFOUND)
-    )
 }
 
 #[cfg(test)]

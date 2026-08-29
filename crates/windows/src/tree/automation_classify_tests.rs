@@ -216,3 +216,23 @@ fn a_root_failure_that_is_not_a_missing_window_keeps_its_own_retry_stamp() {
     assert!(!settled.is_explicitly_retryable());
     assert!(!settled.permits_retry_by_default());
 }
+
+/// Exactly three failures answer "no match" for an optional-result read -
+/// exhaustion and the vanished family - and every transport or terminal
+/// fault must surface, because reading it as absence reports a confident
+/// negative the caller cannot distinguish from a genuine empty region.
+/// Flattening this predicate to blanket-absence is the invert that fails
+/// here.
+#[test]
+fn exhaustion_and_the_vanished_family_are_absence_and_anything_else_is_a_fault() {
+    use crate::system::hresult::UIA_E_TIMEOUT;
+
+    assert!(UiaFailure::Sentinel(ERR_NONE).is_absence());
+    assert!(UiaFailure::Sentinel(ERR_NOTFOUND).is_absence());
+    assert!(UiaFailure::Hresult(UIA_E_ELEMENTNOTAVAILABLE).is_absence());
+
+    assert!(!UiaFailure::Sentinel(ERR_TIMEOUT).is_absence());
+    assert!(!UiaFailure::Hresult(UIA_E_TIMEOUT).is_absence());
+    assert!(!UiaFailure::Sentinel(ERR_INVALID_OBJECT).is_absence());
+    assert!(!UiaFailure::Sentinel(ERR_NULL_PTR).is_absence());
+}

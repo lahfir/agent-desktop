@@ -68,6 +68,7 @@ mod shell_surfaces {
     use super::super::super::fixture_modal::ModalFixture;
     use super::super::super::walker_fake::deadline;
     use crate::adapter::WindowsAdapter;
+    use crate::system::raise_oracle::{responded_since, witness_desktop};
     use crate::system::shell_surface::resolve_surface;
     use crate::system::shell_surface_open::{close_surface, open_surface};
     use crate::system::test_support::{
@@ -163,6 +164,7 @@ mod shell_surfaces {
         let _stage = fixture_window::on_screen_stage();
         let _ = close_surface(SnapshotSurface::ActionCenter, deadline());
         let _cleanup = CloseOnDrop(SnapshotSurface::ActionCenter);
+        let witness = witness_desktop();
 
         let Some(raised) = or_skip_shell(
             "action center open",
@@ -171,6 +173,7 @@ mod shell_surfaces {
                 InteractionPolicy::headed(),
                 deadline(),
             ),
+            || responded_since(&witness),
         ) else {
             return;
         };
@@ -330,9 +333,11 @@ mod shell_surfaces {
                     .expect("the desktop is readable")
                     .expect("checked above"),
                 false => {
+                    let witness = witness_desktop();
                     let Some(info) = or_skip_shell(
                         &format!("staging advertised surface '{}'", kind.as_str()),
                         open_surface(kind, InteractionPolicy::headed(), deadline()),
+                        || responded_since(&witness),
                     ) else {
                         skipped.push(kind);
                         continue;
@@ -377,23 +382,5 @@ mod shell_surfaces {
 
         menu.dismiss_context_menu();
         assert!(menu.wait_for_menu_state(false, STATE_TIMEOUT));
-    }
-
-    /// Emitted implies advertised: every kind the signal baseline can
-    /// construct is in `supported_surfaces()`, so `wait --event
-    /// surface-appeared` can never legitimately report a surface that
-    /// `snapshot --surface` refuses.
-    #[test]
-    fn every_signal_emittable_surface_kind_is_advertised() {
-        use crate::system::signal_surfaces::SIGNAL_SURFACE_KINDS;
-
-        let advertised = WindowsAdapter::new().supported_surfaces();
-        for kind in SIGNAL_SURFACE_KINDS {
-            assert!(
-                advertised.contains(kind),
-                "the signal path can emit '{}' but the adapter does not advertise it",
-                kind.as_str()
-            );
-        }
     }
 }

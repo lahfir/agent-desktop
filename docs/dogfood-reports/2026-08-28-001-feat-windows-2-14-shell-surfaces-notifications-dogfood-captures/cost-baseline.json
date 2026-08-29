@@ -17,7 +17,14 @@
     { "operation": "snapshot_surface_system_tray", "min_ms": 156.6, "median_ms": 180.3, "max_ms": 230.1 },
     { "operation": "list_notifications_headed_center_empty", "min_ms": 1243.5, "median_ms": 1254.2, "max_ms": 1308.4 },
     { "operation": "open_action_center_plus_close_cycle", "min_ms": 1233.9, "median_ms": 1331.6, "max_ms": 1354.3 },
-    { "operation": "snapshot_surface_action_center_open", "min_ms": 368.8, "median_ms": 412.7, "max_ms": 466.3 }
-  ],
-  "verified_mutation_round_trip_note": "a prompt single-entry dismiss that re-reads to verify measured about 3800 ms end to end; two cross-process round trips dominated by the settle poll, not by spawn or tree reads"
+    { "operation": "snapshot_surface_action_center_open", "min_ms": 368.8, "median_ms": 412.7, "max_ms": 466.3 },
+    {
+      "operation": "verified_mutation_dismiss_round_trip",
+      "warmup_discarded": true,
+      "runs": 7,
+      "min_ms": 4368.2,
+      "median_ms": 4417.2,
+      "max_ms": 4631.4
+    }
+  ]
 }

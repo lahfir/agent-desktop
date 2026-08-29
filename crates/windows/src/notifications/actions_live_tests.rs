@@ -11,6 +11,7 @@ use crate::notifications::session::ActionCenterSession;
 use crate::notifications::toast_support::{
     self, StagedToast, TOAST_BODY, TOAST_BODY_SECOND, TOAST_TITLE, TOAST_TITLE_SECOND,
 };
+use crate::system::raise_oracle::{responded_since, witness_desktop};
 use crate::system::shell_surface::resolve_surface;
 use crate::system::shell_surface_open::close_surface;
 use crate::system::test_support::{
@@ -67,9 +68,11 @@ fn listed_infos(hwnd: isize) -> Vec<NotificationInfo> {
 fn stage_exactly_one_toast_into_held_center()
 -> Option<(ActionCenterSession, StagedToast, NotificationInfo)> {
     toast_support::clear_center(deadline(20_000));
+    let witness = witness_desktop();
     let held = or_skip_shell(
         "action center open for toast staging",
         ActionCenterSession::open(headed(), deadline(15_000)),
+        || responded_since(&witness),
     )?;
     let staged = StagedToast::stage();
     let Some(listed) = toast_support::wait_until_listed_held(held.hwnd(), deadline(30_000)) else {
@@ -330,9 +333,11 @@ fn a_headed_list_through_the_trait_adopts_the_open_center_without_closing_it() {
     crate::tree::fixture::bootstrap();
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     toast_support::clear_center(deadline(20_000));
+    let witness = witness_desktop();
     let Some(held) = or_skip_shell(
         "action center open for the pre-arrangement",
         ActionCenterSession::open(headed(), deadline(15_000)),
+        || responded_since(&witness),
     ) else {
         return;
     };
