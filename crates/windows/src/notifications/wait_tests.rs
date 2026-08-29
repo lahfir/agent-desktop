@@ -166,11 +166,29 @@ fn a_wait_that_times_out_reports_timeout_and_leaves_the_center_closed() {
             &WindowsAdapter::new(),
             &CommandContext::default().with_headed(true),
         )
-    })
-    .expect_err("no notification arrives during the wait");
+    });
+    let error = match error {
+        Err(error) => error,
+        Ok(_) => panic!("no notification arrives during the wait"),
+    };
     let AppError::Adapter(error) = error else {
         panic!("the wait reports a structured adapter error");
     };
+
+    if error.code == ErrorCode::PlatformNotSupported
+        && error
+            .details
+            .as_ref()
+            .and_then(|d| d.get("kind"))
+            .and_then(serde_json::Value::as_str)
+            == Some("shell_surface_foreign_shape")
+    {
+        eprintln!(
+            "skip wait timeout: this desktop's Action Center shape is not the measured \
+             one, so the wait's first poll refuses instead of polling to its deadline"
+        );
+        return;
+    }
 
     assert_eq!(error.code, ErrorCode::Timeout);
     assert_eq!(
