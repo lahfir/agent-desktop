@@ -9,10 +9,13 @@ use super::ensure_budget;
 /// snapshot per pid that calling [`super::menu_is_open`] in a loop would
 /// take. The snapshot enumerates every thread on the desktop regardless of
 /// which pid is asked about, so a multi-pid caller pays for that walk once.
-/// Each pid still gets its own [`super::uia_menu_reachable`] probe when the
-/// shared classic read did not already resolve it true, and every per-pid
-/// result is identical to what calling [`super::menu_is_open`] on that pid
-/// alone would have produced.
+/// Each pid then gets the same per-pid composition [`super::menu_is_open`]
+/// applies, in the same short-circuit order: the source-B tool-window probe
+/// only when the shared classic read did not already resolve the pid true,
+/// and the source-C Chromium probe only when source B did not fire either -
+/// so every per-pid result is identical to what calling
+/// [`super::menu_is_open`] on that pid alone would have produced, Chromium
+/// DOM menus included.
 #[cfg(target_os = "windows")]
 pub(crate) fn menus_open_for(
     pids: &[ProcessId],
@@ -29,8 +32,13 @@ pub(crate) fn menus_open_for(
             continue;
         }
         ensure_budget(deadline)?;
-        let reachable = super::uia_menu_reachable(pid, deadline)?;
-        results.insert(pid, reachable);
+        if super::uia_menu_reachable(pid, deadline)? {
+            results.insert(pid, true);
+            continue;
+        }
+        ensure_budget(deadline)?;
+        let chromium = super::chromium_dom_menu_reachable(pid, deadline)?;
+        results.insert(pid, chromium);
     }
     Ok(results)
 }

@@ -9,9 +9,9 @@ description: >
   Use when an AI agent needs to observe, interact with, or automate desktop applications
   (click buttons, fill forms, navigate menus, read UI state, toggle checkboxes, scroll,
   drag, type text, take screenshots, manage windows, use clipboard, manage notifications).
-  Covers 59 command names (55 operational; four held-input names fail closed until
+  Covers 60 command names (56 operational; four held-input names fail closed until
   daemon ownership exists) across observation, interaction, keyboard/mouse, app
-  lifecycle, notifications (macOS), clipboard, wait, session lifecycle, and a
+  lifecycle, notifications, clipboard, wait, session lifecycle, and a
   `skills` command that bundles docs straight from the binary.
   Triggers on: "click button", "fill form", "open app", "read UI", "automate desktop",
   "accessibility tree", "snapshot app", "type into field", "navigate menu", "toggle checkbox",
@@ -135,7 +135,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 
 `TIMEOUT` errors carry a `details` object whose `kind` field selects the schema. `kind: "wait_timeout"` includes `predicate`, `timeout_ms`, and `last_observed` or `last_error`, plus `ref`/`title`/`text_chars` depending on the wait mode. `kind: "chain_deadline"` includes `value_before`, `value_at_timeout`, `target`, and `mutated` (increment waits) or `wanted_expanded`/`observed_expanded` (disclosure waits). `mutated: true` — or an unknown `observed_expanded` state — means re-read the element before retrying; `mutated: false` means the state did not change and retrying directly is safe.
 
-## Command Quick Reference (59 names, 55 operational)
+## Command Quick Reference (60 names, 56 operational)
 
 ### Observation
 ```
@@ -149,7 +149,7 @@ agent-desktop find --root @s8f3k2p9:e3 --role button        # Search one region 
 agent-desktop find --app "App" --surface menubar --name "Save" --first  # Search a menu
 agent-desktop get @e1 --snapshot <snapshot_id> --property text       # Read element property
 agent-desktop is @e1 --snapshot <snapshot_id> --property enabled     # Check element state
-agent-desktop list-surfaces --app "App"                     # Available surfaces (macOS only; Windows returns PLATFORM_NOT_SUPPORTED)
+agent-desktop list-surfaces --app "App"                     # Surfaces the app presents right now (per-process inventory on Windows)
 ```
 
 ### Interaction
@@ -202,6 +202,7 @@ agent-desktop move-window --app "App" --x 0 --y 0
 agent-desktop minimize --app "App"
 agent-desktop maximize --app "App"
 agent-desktop restore --app "App"
+agent-desktop --headed open-system-surface --surface action-center  # Windows: raise a shell surface, get the window it presents
 ```
 
 Use `--window-id <id>` from `list-windows` instead of `--app` when an app has multiple windows.
@@ -217,9 +218,10 @@ agent-desktop --headed dismiss-all-notifications --app "Slack"  # Dismiss all fr
 agent-desktop --headed notification-action 1 "Reply" --expected-app Slack --expected-title "Deploy complete"
 ```
 
+macOS drives Notification Center; Windows drives the Action Center.
 Every notification mutation requires global `--headed`; single-notification
 mutations also require an app or title fingerprint from the same listing.
-Headless listing works only while Notification Center is already open.
+Headless listing works only while the notification surface is already open.
 
 ### Clipboard
 ```

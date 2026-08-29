@@ -41,7 +41,7 @@
 
 - **Native Rust CLI**: Fast, single binary, no runtime dependencies
 - **C-ABI cdylib** (`libagent_desktop_ffi`): Load once from Python / Swift / Go / Ruby / Node / C instead of forking the CLI per call
-- **58 command names, 54 operational commands**: Observation, interaction, keyboard, mouse, notifications, clipboard, window management, session lifecycle, trace read/export, plus a bundled `skills` doc loader. The four held-input names are reserved for a stateful daemon and fail closed in the stateless CLI.
+- **60 command names, 56 operational commands**: Observation, interaction, keyboard, mouse, notifications, shell surfaces, clipboard, window management, session lifecycle, trace read/export, plus a bundled `skills` doc loader. The four held-input names are reserved for a stateful daemon and fail closed in the stateless CLI.
 - **Progressive skeleton traversal**: 78–96% token reduction on dense apps via shallow overview + targeted drill-down
 - **Snapshot & refs**: AI-optimized workflow using compact snapshot IDs and qualified element references (`@s8f3k2p9:e1`, `@s8f3k2p9:e2`)
 - **Headless-by-default interactions**: Ref actions use accessibility APIs and block silent focus, cursor, keyboard, or pasteboard side effects
@@ -307,9 +307,10 @@ agent-desktop move-window --window-id w-4521 --x 100 --y 100
 agent-desktop minimize --window-id w-4521
 agent-desktop maximize --window-id w-4521
 agent-desktop restore --window-id w-4521
+agent-desktop --headed open-system-surface --surface action-center  # raise a shell surface (Windows), returns the window it presents
 ```
 
-### Notifications *(macOS only)*
+### Notifications *(macOS, Windows)*
 
 ```bash
 agent-desktop --headed list-notifications              # open Notification Center if needed, then list
@@ -323,8 +324,10 @@ agent-desktop --headed notification-action 1 "Reply" --expected-app "Slack" --ex
 
 Single-notification mutations require an app or title fingerprint from the
 same listing. Every mutation requires `--headed` because it opens and focuses
-Notification Center. Headless listing can only observe an already-open center;
-headed listing may open it and restore the prior frontmost app afterward.
+the system notification surface. Headless listing can only observe an
+already-open center; headed listing may open it and restore the prior
+frontmost app afterward. On Windows these commands drive the Action Center
+over UI Automation under the same foreground floor.
 
 ### Clipboard
 
@@ -396,7 +399,7 @@ agent-desktop snapshot [OPTIONS]
 | `--skeleton` | off | Shallow 3-level overview; truncated containers show `children_count` and get refs as drill targets |
 | `--root <REF>` | - | Start traversal from this ref; merges into existing refmap with scoped invalidation |
 | `--snapshot <snapshot_id>` | latest | Snapshot ID to use when resolving `--root` |
-| `--surface <TYPE>` | window | `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert` |
+| `--surface <TYPE>` | window | `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert`; Windows also serves the shell kinds `taskbar`, `system-tray`, `system-tray-overflow`, `start-menu`, `action-center` |
 
 ## JSON Output
 
@@ -438,9 +441,10 @@ snapshot → act → STALE_REF or AMBIGUOUS_TARGET? → wait/snapshot again → 
 | Screenshot | **Yes** | **Yes** | Planned |
 | Clipboard | **Yes** | **Yes** | Planned |
 | App & window management | **Yes** | Yes\*\* | Planned |
-| Notifications | **Yes** | Planned | Planned |
+| Notifications | **Yes** | **Yes** | Planned |
+| Shell surfaces (`open-system-surface`) | Planned | **Yes** | Planned |
 
-\* `list-surfaces` returns `PLATFORM_NOT_SUPPORTED` on Windows; window and focused-surface observation is fully available.
+\* On Windows, `list-surfaces` inventories each process's `window` / `focused` / `sheet` / `menu` surfaces, and `snapshot --surface` additionally resolves the shell kinds (`taskbar`, `system-tray`, `system-tray-overflow`, `start-menu`, `action-center`) with no `--app`; `quick-settings` refuses on pre-Windows-11 builds with the surface that carries the capability named instead.
 \*\* `launch` on Windows resolves an absolute path or a bare name found under System32 or the Windows directory — it cannot resolve display names such as "Google Chrome".
 
 ## Development

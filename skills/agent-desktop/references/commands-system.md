@@ -213,6 +213,15 @@ otherwise hang the command with no timeout able to interrupt it.
 
 ## Notifications
 
+macOS drives Notification Center; Windows drives the Action Center over UI
+Automation. The command shapes and JSON fields are identical; the platform
+differences are noted inline.
+
+Output is not redacted at the command layer: notification titles and bodies
+are returned verbatim (and the notification-area surface publishes the
+shell's names of installed background agents). Treat output you route onward
+as sensitive.
+
 If Notification Center fails to close after a successful list or dismiss operation, the command still returns its completed result; the close failure is logged internally and is never surfaced as an error, so a cleanup hiccup never discards a completed action.
 
 ### list-notifications
@@ -221,7 +230,12 @@ agent-desktop --headed list-notifications
 agent-desktop --headed list-notifications --app "Slack"
 agent-desktop --headed list-notifications --text "deploy" --limit 5
 ```
-Lists notifications in Notification Center. Headless mode can observe it only when it is already open; `--headed` may open it and restore the prior frontmost app afterward. Returns array of `{ index, app_name, title, body, actions }`.
+Lists notifications in Notification Center (macOS) or the Action Center
+(Windows). Headless mode can observe it only when it is already open — an
+open surface is adopted and left as found; when it is closed, a
+strict-headless call is refused with `POLICY_DENIED` before the surface is
+raised, and `--headed` may open it and restore the prior frontmost app
+afterward. Returns array of `{ index, app_name, title, body, actions }`.
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -252,12 +266,16 @@ Dismisses all notifications, optionally filtered by app. Requires `--headed` bec
 
 Returns `{ "dismissed_count": N, "failures": [...], "failed_count": N }`.
 
+On Windows the clear is judged against the identity set captured before it:
+only captured entries still present afterwards are failures, so entries
+arriving while the clear runs are new arrivals, not failures.
+
 ### notification-action
 ```bash
 agent-desktop --headed notification-action 1 "Reply" --expected-app Slack
 agent-desktop --headed notification-action 2 "Mark as Read" --expected-app Slack --expected-title "#general"
 ```
-Clicks a named action button on a notification by its 1-based index. Requires `--headed` and at least one listing fingerprint.
+Clicks a named action button on a notification by its 1-based index. Requires `--headed` and at least one listing fingerprint. An action name the entry does not offer fails with `ACTION_NOT_SUPPORTED` and leaves the notification unchanged.
 
 `--expected-app` and `--expected-title` pin the call to the notification
 you observed in `list-notifications`. Notification Center reorders
@@ -281,6 +299,13 @@ agent-desktop wait --notification --text "build passed" --timeout 15000
 Blocks until a new notification appears (detects index-diff from a baseline captured at wait start). Supports `--app` and `--text` filters. Transient Notification Center errors (timeouts, element-not-found) are retried within the `--timeout` budget for both the baseline capture and polling; permanent errors (for example `PERM_DENIED`) fail immediately. Timeout errors include a `last_error` detail with the most recent transient failure.
 
 Like listing, a headless wait can observe only an already-open Notification Center; use global `--headed` when the command may open and later restore it.
+
+On Windows the wait holds no long-lived session: each poll opens and closes
+the Action Center through its own one-call session, adopting a center that
+is already present and restoring the entry state afterwards. A toast joins
+the center only while it is open, so toasts posted while the center sits
+closed between polls never land — hold the center open yourself if you are
+staging arrivals.
 
 ## Clipboard
 

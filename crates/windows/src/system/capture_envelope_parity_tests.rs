@@ -1,3 +1,10 @@
+//! Clipboard envelope parity drives `clipboard_set` and `clipboard_clear`
+//! through the real adapter, and both commands take the real cross-process
+//! interaction lease, so the body holds
+//! `test_support::with_interaction_lease_test_lock` for its whole run - the
+//! same serialization the interaction-lease suite mandates for anything that
+//! reaches the real lease. It takes no other cross-module test lock, so the
+//! crate-wide lock order (fixture, shell, lease) is preserved trivially.
 use crate::adapter::WindowsAdapter;
 use crate::input::clipboard::{clear, get_clipboard_content, set_content};
 use crate::system::png_codec::encode_bgra_to_png;
@@ -206,88 +213,90 @@ fn screenshot_path_and_inline_data_shapes_match_core_serialization() {
 
 #[test]
 fn clipboard_get_set_clear_data_shapes_match_core_serialization() {
-    with_restored_clipboard(|| {
-        install_windows_private_file();
-        let adapter = WindowsAdapter::new();
-        let _home = HomeIsolation::enter();
+    crate::system::test_support::with_interaction_lease_test_lock(|| {
+        with_restored_clipboard(|| {
+            install_windows_private_file();
+            let adapter = WindowsAdapter::new();
+            let _home = HomeIsolation::enter();
 
-        clear(deadline()).expect("clear before found:false");
-        let missing = clipboard_get::execute(
-            ClipboardGetArgs {
-                format: Some(ClipboardFormat::Image),
-                out: None,
-            },
-            &adapter,
-            &CommandContext::default(),
-        )
-        .expect("empty clipboard is structured absence");
-        assert_eq!(keys_of(&missing), ["found", "type"]);
-        assert_eq!(missing["type"], "image");
-        assert_eq!(missing["found"], false);
+            clear(deadline()).expect("clear before found:false");
+            let missing = clipboard_get::execute(
+                ClipboardGetArgs {
+                    format: Some(ClipboardFormat::Image),
+                    out: None,
+                },
+                &adapter,
+                &CommandContext::default(),
+            )
+            .expect("empty clipboard is structured absence");
+            assert_eq!(keys_of(&missing), ["found", "type"]);
+            assert_eq!(missing["type"], "image");
+            assert_eq!(missing["found"], false);
 
-        let set = clipboard_set::execute(
-            ClipboardSetArgs {
-                text: Some("envelope-parity-marker".into()),
-                image: None,
-                file_urls: vec![],
-            },
-            &adapter,
-        )
-        .expect("clipboard-set");
-        assert_eq!(keys_of(&set), ["ok", "type"]);
-        assert_eq!(set["ok"], true);
-        assert_eq!(set["type"], "text");
+            let set = clipboard_set::execute(
+                ClipboardSetArgs {
+                    text: Some("envelope-parity-marker".into()),
+                    image: None,
+                    file_urls: vec![],
+                },
+                &adapter,
+            )
+            .expect("clipboard-set");
+            assert_eq!(keys_of(&set), ["ok", "type"]);
+            assert_eq!(set["ok"], true);
+            assert_eq!(set["type"], "text");
 
-        let got = clipboard_get::execute(
-            ClipboardGetArgs {
-                format: Some(ClipboardFormat::Text),
-                out: None,
-            },
-            &adapter,
-            &CommandContext::default(),
-        )
-        .expect("clipboard-get text");
-        assert_eq!(keys_of(&got), ["text", "type"]);
-        assert_eq!(got["type"], "text");
-        assert_eq!(got["text"], "envelope-parity-marker");
+            let got = clipboard_get::execute(
+                ClipboardGetArgs {
+                    format: Some(ClipboardFormat::Text),
+                    out: None,
+                },
+                &adapter,
+                &CommandContext::default(),
+            )
+            .expect("clipboard-get text");
+            assert_eq!(keys_of(&got), ["text", "type"]);
+            assert_eq!(got["type"], "text");
+            assert_eq!(got["text"], "envelope-parity-marker");
 
-        let png = sample_png();
-        let (width, height) = parse_png_dimensions(&png).expect("dims");
-        set_content(
-            &ClipboardContent::Image(ImageBuffer {
-                data: png,
-                format: ImageFormat::Png,
-                width,
-                height,
-                scale_factor: 1.0,
-            }),
-            deadline(),
-        )
-        .expect("seed image");
-        let image = clipboard_get::execute(
-            ClipboardGetArgs {
-                format: Some(ClipboardFormat::Image),
-                out: None,
-            },
-            &adapter,
-            &CommandContext::default(),
-        )
-        .expect("clipboard-get image");
-        assert_eq!(keys_of(&image), ["height", "path", "type", "width"]);
-        assert_eq!(image["type"], "image");
-        assert_eq!(image["width"], width);
-        assert_eq!(image["height"], height);
-        let written = PathBuf::from(image["path"].as_str().expect("path string"));
-        assert!(written.is_file());
-        let bytes = WindowsPrivateFile::new()
-            .read_private_bounded(&written, 1024 * 1024)
-            .expect("TokenOwner-owned private image must be readable");
-        assert!(!bytes.is_empty());
-        let _ = std::fs::remove_file(&written);
+            let png = sample_png();
+            let (width, height) = parse_png_dimensions(&png).expect("dims");
+            set_content(
+                &ClipboardContent::Image(ImageBuffer {
+                    data: png,
+                    format: ImageFormat::Png,
+                    width,
+                    height,
+                    scale_factor: 1.0,
+                }),
+                deadline(),
+            )
+            .expect("seed image");
+            let image = clipboard_get::execute(
+                ClipboardGetArgs {
+                    format: Some(ClipboardFormat::Image),
+                    out: None,
+                },
+                &adapter,
+                &CommandContext::default(),
+            )
+            .expect("clipboard-get image");
+            assert_eq!(keys_of(&image), ["height", "path", "type", "width"]);
+            assert_eq!(image["type"], "image");
+            assert_eq!(image["width"], width);
+            assert_eq!(image["height"], height);
+            let written = PathBuf::from(image["path"].as_str().expect("path string"));
+            assert!(written.is_file());
+            let bytes = WindowsPrivateFile::new()
+                .read_private_bounded(&written, 1024 * 1024)
+                .expect("TokenOwner-owned private image must be readable");
+            assert!(!bytes.is_empty());
+            let _ = std::fs::remove_file(&written);
 
-        let cleared = clipboard_clear::execute(&adapter).expect("clipboard-clear");
-        assert_eq!(keys_of(&cleared), ["cleared"]);
-        assert_eq!(cleared["cleared"], true);
+            let cleared = clipboard_clear::execute(&adapter).expect("clipboard-clear");
+            assert_eq!(keys_of(&cleared), ["cleared"]);
+            assert_eq!(cleared["cleared"], true);
+        });
     });
 }
 

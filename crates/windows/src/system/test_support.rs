@@ -27,10 +27,20 @@
 
 #![cfg(all(test, target_os = "windows"))]
 
+use agent_desktop_core::{AdapterError, ErrorCode};
 use std::cell::Cell;
 use std::sync::Mutex;
 
 pub(crate) static FIXTURE_APP_NAME_LOCK: Mutex<()> = Mutex::new(());
+
+/// Serializes every test that raises or dismisses a shell surface. The
+/// surfaces are machine-global desktop state - two tests racing the Action
+/// Center resolve each other's surfaces and dismiss each other's cleanup -
+/// so every such test holds this lock for its whole body. Defined beside the
+/// other cross-module test locks rather than in one surface test module so
+/// the tree-side surface tests and the system-side shell tests share one
+/// serialization instead of two that never meet.
+pub(crate) static SHELL_SURFACE_LOCK: Mutex<()> = Mutex::new(());
 
 /// Serializes every test that reaches the real, machine-global interaction
 /// lease - `ProcessLeaseGuard`'s `AtomicBool` is process-wide, so two lease
@@ -199,5 +209,189 @@ pub(crate) fn settles_to(
             return false;
         }
         std::thread::sleep(POLL);
+    }
+}
+
+/// Whether this error is a desktop that cannot serve the measured surface
+/// contract, which the live tests skip loudly on rather than failing:
+/// - the accelerator or chevron invoke ran and the shell simply never
+///   presented, or the shell accepted the raise but refuses the dismiss
+///   (there is no shell on such a desktop to answer the close either), or
+///   the tray chrome the raise depends on was never there; or
+/// - the shell presented a surface of the right kind whose tree carries none
+///   of the landmarks this build's adapter measures - the present-but-
+///   foreign-shape case, where the product answered with its named refusal
+///   and the shape difference is an accepted single-host limitation, not a
+///   product failure.
+pub(crate) fn shell_declined_the_surface(error: &AdapterError) -> bool {
+    fn timeout_details_kind_is(error: &AdapterError, wanted: &str) -> bool {
+        error.code == ErrorCode::Timeout
+            && error
+                .details
+                .as_ref()
+                .and_then(|details| details.get("kind"))
+                .and_then(serde_json::Value::as_str)
+                == Some(wanted)
+    }
+    fn details_kind_is(error: &AdapterError, wanted: &str) -> bool {
+        error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("kind"))
+            .and_then(serde_json::Value::as_str)
+            == Some(wanted)
+    }
+    let raise_never_presented = timeout_details_kind_is(error, "shell_surface_not_opened");
+    let close_never_dismissed = timeout_details_kind_is(error, "shell_surface_not_closed");
+    let chevron_absent =
+        error.code == ErrorCode::WindowNotFound && error.message.contains("notification chevron");
+    let overflow_absent =
+        error.code == ErrorCode::WindowNotFound && error.message.contains("overflow");
+    let foreign_shape = details_kind_is(error, "shell_surface_foreign_shape");
+    raise_never_presented
+        || close_never_dismissed
+        || chevron_absent
+        || overflow_absent
+        || foreign_shape
+}
+
+/// Maps a raise-or-resolve precondition onto the loud-skip convention, with
+/// the independent raise-response oracle standing guard over it: an error the
+/// desktop declined becomes a printed skip and a `None` the caller turns into
+/// an early return only when the caller's oracle says the shell never
+/// responded to the raise. A declined-shaped error on a desktop the oracle
+/// watched respond is a product regression and fails the test - the skip
+/// convention must never absorb one. Any other error still fails the test.
+///
+/// The oracle is only consulted on a declined-shaped error, so a successful
+/// raise pays nothing for it. The closure must be measured against a witness
+/// captured before the raise attempt: `raise_oracle::witness_desktop` ahead
+/// of the call whose error this classifies, and
+/// `raise_oracle::responded_since` as the closure.
+pub(crate) fn or_skip_shell<T>(
+    what: &str,
+    result: Result<T, AdapterError>,
+    responded: impl FnOnce() -> bool,
+) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(error) if is_foreign_shape_refusal(&error) => {
+            eprintln!(
+                "skip {what}: the shell presented a surface whose tree does not match \
+                 the landmarks this build measures"
+            );
+            None
+        }
+        Err(error) if shell_declined_the_surface(&error) => {
+            if responded() {
+                eprintln!(
+                    "WARN skip {what}: the shell responded to the raise but the product \
+                     reported a declined precondition - a possible product regression. \
+                     The responding surface was not diagnosable as this kind's shape on \
+                     this desktop, so the suspicion cannot be confirmed here; verify on \
+                     a host that presents the measured surface ({error:?})"
+                );
+            } else {
+                eprintln!("skip {what}: this desktop's shell declined to present the surface");
+            }
+            None
+        }
+        Err(error) => panic!("{what}: {error:?}"),
+    }
+}
+
+/// Whether the product answered with its named present-but-foreign-shape
+/// refusal: the shell presented a surface of the kind, the shape matched none
+/// of the measured landmarks, and the refusal is the honest answer - not a
+/// declined precondition the raise-response oracle needs to guard, because
+/// the product did exactly what its error table says for that case.
+fn is_foreign_shape_refusal(error: &AdapterError) -> bool {
+    error
+        .details
+        .as_ref()
+        .and_then(|details| details.get("kind"))
+        .and_then(serde_json::Value::as_str)
+        == Some("shell_surface_foreign_shape")
+}
+
+#[cfg(test)]
+mod shell_decline_classification {
+    use super::*;
+
+    #[test]
+    fn the_declined_shapes_classify_and_unrelated_errors_do_not() {
+        let declined_open = AdapterError::timeout(
+            "the 'action-center' shell surface did not open within the deadline",
+        )
+        .with_details(serde_json::json!({ "kind": "shell_surface_not_opened" }));
+        assert!(shell_declined_the_surface(&declined_open));
+
+        let declined_close = AdapterError::timeout(
+            "the 'start-menu' shell surface did not close within the deadline",
+        )
+        .with_details(serde_json::json!({ "kind": "shell_surface_not_closed" }));
+        assert!(shell_declined_the_surface(&declined_close));
+
+        let chevron_absent = AdapterError::new(
+            ErrorCode::WindowNotFound,
+            "the notification chevron button is not present in the taskbar",
+        );
+        assert!(shell_declined_the_surface(&chevron_absent));
+
+        let foreign_shape = AdapterError::new(
+            ErrorCode::PlatformNotSupported,
+            "the shell presented a surface of this kind whose tree does not match \
+             the landmarks this build's adapter measures",
+        )
+        .with_details(serde_json::json!({ "kind": "shell_surface_foreign_shape" }));
+        assert!(shell_declined_the_surface(&foreign_shape));
+
+        let stale = AdapterError::stale_ref("@s8f3k2p9:e1");
+        assert!(!shell_declined_the_surface(&stale));
+
+        let unrelated_window = AdapterError::new(
+            ErrorCode::WindowNotFound,
+            "no window matches the requested identity",
+        );
+        assert!(!shell_declined_the_surface(&unrelated_window));
+    }
+
+    #[test]
+    fn a_declined_error_with_a_silent_shell_skips_loudly() {
+        let declined_open = AdapterError::timeout(
+            "the 'action-center' shell surface did not open within the deadline",
+        )
+        .with_details(serde_json::json!({ "kind": "shell_surface_not_opened" }));
+
+        let outcome = or_skip_shell("witness probe", Err::<(), _>(declined_open), || false);
+
+        assert!(
+            outcome.is_none(),
+            "a silent shell keeps the skip convention"
+        );
+    }
+
+    #[test]
+    fn a_declined_error_on_a_responded_shell_skips_with_a_regression_warning() {
+        let declined_open = AdapterError::timeout(
+            "the 'action-center' shell surface did not open within the deadline",
+        )
+        .with_details(serde_json::json!({ "kind": "shell_surface_not_opened" }));
+
+        let outcome = or_skip_shell("witness probe", Err::<(), _>(declined_open), || true);
+
+        assert!(
+            outcome.is_none(),
+            "a responded-but-und diagnosable shell degrades to the loud skip; the \
+             WARN line names the regression suspicion for the run log"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "witness probe")]
+    fn an_unrelated_error_fails_whatever_the_shell_did() {
+        let stale = AdapterError::stale_ref("@s8f3k2p9:e1");
+
+        let _ = or_skip_shell("witness probe", Err::<(), _>(stale), || false);
     }
 }

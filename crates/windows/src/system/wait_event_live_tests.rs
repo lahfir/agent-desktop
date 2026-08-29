@@ -334,6 +334,12 @@ fn focus_changed_fires_when_the_fixtures_window_is_focused_mid_wait() {
 #[test]
 fn two_captures_with_no_transition_on_a_steady_fixture_produce_no_event_of_any_kind() {
     bootstrap();
+    let _fixture_scope = crate::system::test_support::FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _shell = crate::system::test_support::SHELL_SURFACE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let _stage = crate::tree::fixture_window::on_screen_stage();
     let fixture = HostedFixture::spawn().expect("a fixture host starts");
     crate::system::test_support::stage_foreground(fixture.handle());

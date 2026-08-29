@@ -11,15 +11,19 @@ use super::listing_retry::narrow_to_permitted_codes;
 #[cfg(all(test, target_os = "windows"))]
 use crate::system::thread_walk::{thread_snapshot_calls, thread_snapshot_closes};
 
-/// Whether a menu is open right now for `pid`, composed from the two sources
-/// A23-1 and A23-11 measured as covering every stack the corpus could stage:
-/// classic `GetGUIThreadInfo` menu-mode flags, read per thread of the target
-/// pid rather than the foreground thread, and a root-level UI Automation
-/// child of the pid that is a tool window with a Menu/MenuBar/MenuItem
-/// element reachable at or under it. Bare Menu-family reachability alone is
-/// constant-true at idle on both stacks (A23-1, A23-2) and is never used by
-/// itself - both sources here are compound predicates that round-trip false
-/// across a real open and close.
+/// Whether a menu is open right now for `pid`, composed from three sources
+/// measured as covering the stacks the corpus could stage: the classic
+/// `GetGUIThreadInfo` menu-mode flags read per thread of the target pid
+/// (A23-1), a tool window of the pid with a Menu/MenuBar/MenuItem element
+/// reachable at or under it (A23-11), and - measured on a real Chromium host
+/// (A26-12) whose context menu is a DOM menu inside the app's own window,
+/// invisible to both of the other sources - a visible non-tool window of the
+/// pid with a Chromium-framework menu-family element reachable under it.
+/// Bare Menu-family reachability alone is constant-true at idle on both
+/// stacks (A23-1, A23-2) and is never used by itself - every source here is a
+/// compound predicate that round-trips false across a real open and close,
+/// and the framework gate keeps a Win32 menu bar from firing the Chromium arm
+/// at rest.
 pub(crate) fn menu_is_open(pid: ProcessId, deadline: Deadline) -> Result<bool, AdapterError> {
     ensure_budget(deadline)?;
     ensure_process_exists(pid)?;
@@ -28,12 +32,28 @@ pub(crate) fn menu_is_open(pid: ProcessId, deadline: Deadline) -> Result<bool, A
         return Ok(true);
     }
     ensure_budget(deadline)?;
-    uia_menu_reachable(pid, deadline)
+    if uia_menu_reachable(pid, deadline)? {
+        return Ok(true);
+    }
+    ensure_budget(deadline)?;
+    chromium_dom_menu_reachable(pid, deadline)
 }
 
 #[path = "menu_state_multi.rs"]
 mod multi;
 pub(crate) use multi::menus_open_for;
+
+#[path = "menu_state_locate.rs"]
+mod locate;
+pub(crate) use locate::{MenuLocation, locate_menu};
+
+#[cfg(target_os = "windows")]
+#[path = "menu_state_chromium.rs"]
+mod chromium;
+
+#[cfg(not(target_os = "windows"))]
+#[path = "menu_state_chromium.rs"]
+mod chromium;
 
 #[cfg(target_os = "windows")]
 fn process_not_found_error(pid: ProcessId) -> AdapterError {
@@ -136,7 +156,9 @@ fn thread_reports_menu_mode(thread_id: u32) -> bool {
 /// This is the compound predicate A23-11 measured round-tripping
 /// false-to-true-to-false on both classic Win32 and WPF context menus; a WPF
 /// menu bar dropdown is also covered, a classic menu-bar dropdown is not
-/// (A23-1 covers that stack fully on its own).
+/// (A23-1 covers that stack fully on its own). A Chromium DOM menu surfaces
+/// under no tool window at all - it lives inside the application's own
+/// non-tool window - and is the third source's pool ([`chromium`]).
 #[cfg(target_os = "windows")]
 fn uia_menu_reachable(pid: ProcessId, deadline: Deadline) -> Result<bool, AdapterError> {
     ensure_budget(deadline)?;
@@ -162,6 +184,16 @@ fn uia_menu_reachable(_pid: ProcessId, deadline: Deadline) -> Result<bool, Adapt
     ensure_budget(deadline)?;
     Ok(false)
 }
+
+/// Source C (A26-12): the Chromium/Electron DOM-menu arm, module
+/// [`self::chromium`]. Neither of the other two sources can see a Chromium
+/// context menu - it is a DOM menu inside the application's own non-tool
+/// window, so no classic flag fires and no tool window carries it.
+#[cfg(target_os = "windows")]
+use chromium::chromium_dom_menu_reachable;
+
+#[cfg(not(target_os = "windows"))]
+use chromium::chromium_dom_menu_reachable;
 
 #[cfg(target_os = "windows")]
 fn tool_window_candidates(pid: ProcessId) -> Result<Vec<isize>, AdapterError> {
@@ -219,29 +251,45 @@ fn menu_family_condition(
 /// predicate's callers cannot rescue - `wait_for_menu` makes one call with no
 /// retry of its own, so an in-flight block has no backstop at any layer.
 #[cfg(target_os = "windows")]
-fn probe_candidate(
+pub(super) fn probe_candidate(
     client: &uiautomation::UIAutomation,
     condition: &uiautomation::core::UICondition,
     handle: isize,
 ) -> Result<bool, AdapterError> {
+    probe_candidate_element(client, condition, handle).map(|found| found.is_some())
+}
+
+/// [`probe_candidate`] with the found element kept instead of dropped. The
+/// probe already located the menu-family element on its positive answer; the
+/// `Menu` surface arm needs exactly that element to root the observation at,
+/// so the discard was the only difference between the two callers.
+#[cfg(target_os = "windows")]
+pub(super) fn probe_candidate_element(
+    client: &uiautomation::UIAutomation,
+    condition: &uiautomation::core::UICondition,
+    handle: isize,
+) -> Result<Option<uiautomation::UIElement>, AdapterError> {
     use uiautomation::types::{Handle, TreeScope};
 
     if !crate::tree::automation::window_exists(handle) {
-        return Ok(false);
+        return Ok(None);
     }
     if !window_is_responsive(handle as *mut core::ffi::c_void) {
         return Err(unresponsive_menu_probe_error());
     }
     let element = match client.element_from_handle(Handle::from(handle)) {
         Ok(element) => element,
-        Err(error) => return probe_step(&error, "resolve a candidate menu window"),
+        Err(error) => {
+            return probe_step(&error, "resolve a candidate menu window").map(|_| None);
+        }
     };
     match element.find_first(TreeScope::Subtree, condition) {
-        Ok(_) => Ok(true),
+        Ok(found) => Ok(Some(found)),
         Err(error) => probe_step(
             &error,
             "search a candidate window for a reachable menu element",
-        ),
+        )
+        .map(|_| None),
     }
 }
 
@@ -253,7 +301,7 @@ fn probe_candidate(
 #[cfg(target_os = "windows")]
 fn probe_step(error: &uiautomation::Error, context: &str) -> Result<bool, AdapterError> {
     let failure = crate::tree::automation::failure_of(error);
-    if failure.is_exhaustion() || is_vanished(failure) {
+    if failure.is_absence() {
         return Ok(false);
     }
     Err(narrow_to_permitted_codes(
@@ -261,17 +309,10 @@ fn probe_step(error: &uiautomation::Error, context: &str) -> Result<bool, Adapte
     ))
 }
 
-#[cfg(target_os = "windows")]
-fn is_vanished(failure: crate::tree::automation::UiaFailure) -> bool {
-    use crate::tree::automation::{ERR_NOTFOUND, UiaFailure};
-
-    matches!(
-        failure,
-        UiaFailure::Hresult(super::hresult::UIA_E_ELEMENTNOTAVAILABLE)
-            | UiaFailure::Sentinel(ERR_NOTFOUND)
-    )
-}
-
 #[cfg(test)]
 #[path = "menu_state_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "menu_state_chromium_tests.rs"]
+mod chromium_tests;

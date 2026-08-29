@@ -2,7 +2,7 @@ use agent_desktop_core::{
     AccessibilityNode, ActionOps, AdapterError, AppInfo, ClipboardContent, ClipboardFormat,
     Deadline, DragParams, ElementState, InputOps, InteractionLease, KeyCombo, LiveElement,
     MouseEvent, NativeHandle, ObservationOps, ObservationRequest, ObservationRoot, ProcessIdentity,
-    Rect, RefEntry, TreeOptions, WindowFilter, WindowInfo,
+    Rect, RefEntry, SnapshotSurface, SurfaceInfo, TreeOptions, WindowFilter, WindowInfo,
 };
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -168,6 +168,34 @@ impl ObservationOps for WindowsAdapter {
     fn list_apps(&self, deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
         crate::system::app_ops::list_apps_live(deadline)
     }
+
+    /// The per-process surface inventory. Window-backed surfaces carry the
+    /// same `w-<hwnd>` id `list_windows` emits, so a surface id feeds the
+    /// window observation path unchanged; the menu surface carries the
+    /// located menu's own root handle. Shell surfaces are deliberately absent
+    /// - they are no process's inventory, and are reached by kind instead.
+    fn list_surfaces(
+        &self,
+        process: ProcessIdentity,
+        deadline: Deadline,
+    ) -> Result<Vec<SurfaceInfo>, AdapterError> {
+        crate::tree::surface_inventory::list_surfaces_for_process(process, deadline)
+    }
+
+    /// App-less shell-surface resolution: the read-only half of the shell
+    /// surface seam. The shell-surface resolver in `system::shell_surface`
+    /// owns the reach mechanics and answers `None` for a surface that is not
+    /// presented; this is the translation that turns that absence into the
+    /// answer a `snapshot --surface` caller can act on, while a build refusal
+    /// passes through unchanged.
+    fn resolve_shell_surface(
+        &self,
+        surface: SnapshotSurface,
+        deadline: Deadline,
+    ) -> Result<WindowInfo, AdapterError> {
+        crate::system::shell_surface::resolve_surface(surface, deadline)?
+            .ok_or_else(|| crate::system::shell_surface::not_open_error(surface))
+    }
 }
 impl ActionOps for WindowsAdapter {
     fn execute_action(
@@ -261,12 +289,15 @@ mod tests {
     }
 
     /// The surfaces gate: the adapter advertises exactly the surfaces it can
-    /// observe - a named window, the focused window, and a Chromium modal
-    /// classified as a sheet. Core validates the requested surface against this
-    /// list before the adapter is ever called, so this advertisement is what
-    /// makes `snapshot` end to end possible.
+    /// observe - a named window, the focused window, a Chromium modal
+    /// classified as a sheet, an open application menu, and the shell kinds
+    /// the kind table resolves on this build. Core validates the requested
+    /// surface against this list before the adapter is ever called, so this
+    /// advertisement is what makes `snapshot` end to end possible, and it is
+    /// the "advertised" side of the advertise/resolve/emit equality the live
+    /// tests pin.
     #[test]
-    fn supported_surfaces_advertises_window_focused_and_sheet() {
+    fn supported_surfaces_advertises_window_focused_sheet_menu_and_shell_kinds() {
         let adapter = WindowsAdapter::new();
         assert_eq!(
             adapter.supported_surfaces(),
@@ -274,6 +305,12 @@ mod tests {
                 SnapshotSurface::Window,
                 SnapshotSurface::Focused,
                 SnapshotSurface::Sheet,
+                SnapshotSurface::Menu,
+                SnapshotSurface::StartMenu,
+                SnapshotSurface::Taskbar,
+                SnapshotSurface::SystemTray,
+                SnapshotSurface::SystemTrayOverflow,
+                SnapshotSurface::ActionCenter,
             ]
         );
     }

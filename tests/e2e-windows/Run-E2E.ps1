@@ -48,6 +48,13 @@ $scenariosDir = Join-Path $PSScriptRoot 'scenarios'
 . (Join-Path $scenariosDir 'Acceptance.ps1')
 . (Join-Path $scenariosDir 'Reliability.ps1')
 . (Join-Path $scenariosDir 'Surfaces.ps1')
+<#
+    ShellSurfaces.ps1 registers explicitly like every scenario - the
+    harness does not auto-discover, so an unregistered file is a silently
+    skipped test. It takes no -App: the shell surfaces belong to the
+    shell, not to the fixture.
+#>
+. (Join-Path $scenariosDir 'ShellSurfaces.ps1')
 . (Join-Path $scenariosDir 'TracePerformance.ps1')
 . (Join-Path $scenariosDir 'Chromium.ps1')
 . (Join-Path $scenariosDir 'SplitIntegrity.ps1')
@@ -75,6 +82,7 @@ function Invoke-ScenarioSequence {
         @{ Name = 'Acceptance'; Body = { Invoke-AcceptanceScenario -App $App } }
         @{ Name = 'Reliability'; Body = { Invoke-ReliabilityScenario -App $App } }
         @{ Name = 'Surfaces'; Body = { Invoke-SurfacesScenario -App $App } }
+        @{ Name = 'ShellSurfaces'; Body = { Invoke-ShellSurfacesScenario } }
         @{ Name = 'TracePerformance'; Body = { Invoke-TracePerformanceScenario -App $App } }
         @{ Name = 'Chromium'; Body = { Invoke-ChromiumScenario } }
         @{ Name = 'SplitIntegrity'; Body = { Invoke-SplitIntegrityScenario -App $App } }

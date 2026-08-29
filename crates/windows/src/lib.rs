@@ -3,6 +3,7 @@
 mod actions;
 mod adapter;
 mod input;
+mod notifications;
 mod system;
 pub mod tree;
 

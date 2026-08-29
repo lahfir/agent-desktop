@@ -1,9 +1,9 @@
 #Requires -Version 5.1
 <#
-.SYNOPSIS
+    .SYNOPSIS
     R21's redaction gate: Test-CaptureRedaction (probes/windows/common.ps1)
     plus Test-CaptureCliRedaction (scripts/lib/capture-redaction-cli.psm1)
-    over every committed capture and the dogfood report body.
+    over every committed capture and every tracked dogfood report body.
 
 .DESCRIPTION
     Two self-tests run before the real scan, and the real scan never
@@ -12,10 +12,13 @@
     will re-read before it reaches a public repository:
 
       1. The CLI-envelope fixtures under
-         scripts/fixtures/capture-redaction/{must-catch,must-pass}/ prove
-         Test-CaptureCliRedaction's per-field rules (name, value,
-         description, title, path[], occluder.name, pid) independently of
-         this machine's identity.
+          scripts/fixtures/capture-redaction/{must-catch,must-pass}/ prove
+          Test-CaptureCliRedaction's per-field rules (name, value,
+          description, title, app_name, body, attribution, path[],
+          actions[], occluder.name, pid) independently of
+          this machine's identity - each MUST-CATCH fixture keyed to one
+          serialized NotificationInfo field or array walk, invert-verifiable
+          one rule at a time.
       2. Test-CaptureRedaction's own machine-identity rules (user name,
          profile path) are proven against fixtures generated at run time
          from this process's live USERNAME/USERPROFILE and deleted
@@ -40,8 +43,14 @@
     can close the blind spot without also being the PR that silently
     redacts 21 files nobody asked this group to touch. Every other capture
     directory in the tree, including one added anywhere after this script
-    was written, is scanned and gated for real. The dogfood report body is
-    scanned separately, when present.
+    was written, is scanned and gated for real. Every tracked dogfood
+    report body under docs/dogfood-reports/ is scanned separately
+    (finding #7): before this fix exactly one hardcoded report body was
+    scanned, so any report written after it - the highest-leakage report
+    included - was gated by nothing while the report claimed it passes
+    this gate. The scan set derives from `git ls-files`, so an untracked
+    scratch file never gate-fails, and the "not written yet" skip
+    survives only for the empty-tracked-set case.
 
     Coverage limitation (finding #9): every check here is a JSON-field-
     shaped or machine-identity-shaped pattern match. A dogfood report's
@@ -223,7 +232,25 @@ if ($failed -ne 0) {
 Write-Host 'OK: capture-redaction gate self-test passed (CLI-envelope fixtures, machine-identity fixtures, derived-scan-set reachability).'
 
 # --- the real scan ---
-$reportPath = Join-Path $repoRoot 'docs\dogfood-reports\2026-08-16-001-feat-windows-2-12-fixture-e2e-harness-dogfood.md'
+
+<#
+    Every tracked dogfood report body, never one hardcoded report (finding
+    #7): the scan set derives from `git ls-files docs/dogfood-reports/`
+    filtered to the directory's own .md files, so a report added later is
+    gated by the same commit that writes it, an untracked scratch report
+    never gate-fails a machine that is not its author's, and the captures
+    subdirectories' JSON stays with the capture scan above.
+#>
+function Get-DogfoodReportBodyRelativePaths {
+    param([Parameter(Mandatory = $true)][string]$RepoRoot)
+    Push-Location $RepoRoot
+    try {
+        $raw = git ls-files -- 'docs/dogfood-reports/' 2>$null
+    } finally {
+        Pop-Location
+    }
+    return , @($raw | Where-Object { $_ -imatch '^docs/dogfood-reports/[^/]+\.md$' } | Sort-Object)
+}
 
 function Test-FileRedaction {
     param([Parameter(Mandatory = $true)][string]$FullPath)
@@ -282,11 +309,15 @@ if ($Path) {
         Write-Host "WARN: $allowlistedSkipped pre-existing capture file(s) skipped via the named allowlist in this script - not accepted, pending redaction by the owning corpus (finding #8)."
     }
 }
-if (Test-Path -LiteralPath $reportPath) {
-    $scanned++
-    [void](Test-FileRedaction -FullPath $reportPath)
-} elseif (-not $Path) {
-    Write-Host "SKIP: dogfood report not written yet: $reportPath"
+$reportsScanned = 0
+foreach ($rel in (Get-DogfoodReportBodyRelativePaths -RepoRoot $repoRoot)) {
+    $full = Join-Path $repoRoot ($rel -replace '/', '\')
+    if (-not (Test-Path -LiteralPath $full)) { continue }
+    $reportsScanned++
+    [void](Test-FileRedaction -FullPath $full)
+}
+if ($reportsScanned -eq 0) {
+    Write-Host 'SKIP: dogfood report not written yet: docs/dogfood-reports/ has no tracked report body'
 }
 
 <#
@@ -307,6 +338,6 @@ if ($failed -ne 0) {
     Write-Host 'FAIL: the capture redaction gate found residue.'
     exit 1
 }
-Write-Host "OK: $scanned file(s) carry no unredacted machine-identity or CLI-envelope content ($allowlistedSkipped pre-existing file(s) allowlisted, not scanned - see `$script:PreexistingUnredactedAllowlist)."
+Write-Host "OK: $scanned file(s) + $reportsScanned dogfood report body(ies) carry no unredacted machine-identity or CLI-envelope content ($allowlistedSkipped pre-existing file(s) allowlisted, not scanned - see `$script:PreexistingUnredactedAllowlist)."
 Write-Host 'NOTE: this gate matches JSON-field and machine-identity shapes only - it does not read prose for an embedded real name (finding #9); report authors remain responsible for that review.'
 exit 0

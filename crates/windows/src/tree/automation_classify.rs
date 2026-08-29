@@ -62,6 +62,24 @@ impl UiaFailure {
     pub fn is_exhaustion(self) -> bool {
         matches!(self, UiaFailure::Sentinel(ERR_NONE))
     }
+
+    /// Whether this failure answers "no match" rather than "the search could
+    /// not run", for a read whose result is optional.
+    ///
+    /// `find_first` reports an empty region as exhaustion, and a subtree that
+    /// raced away between discovery and the search reports the
+    /// element-not-available family - both are absence semantics, the same
+    /// answer a genuinely empty region gives, never a fault. Every other
+    /// failure means the search itself could not run: mapping it to absence
+    /// would dress a transient transport fault up as a confident negative,
+    /// so such a failure must surface instead.
+    pub fn is_absence(self) -> bool {
+        self.is_exhaustion()
+            || matches!(
+                self,
+                UiaFailure::Hresult(UIA_E_ELEMENTNOTAVAILABLE) | UiaFailure::Sentinel(ERR_NOTFOUND)
+            )
+    }
 }
 
 /// Builds a structured adapter error from a UI Automation failure.
