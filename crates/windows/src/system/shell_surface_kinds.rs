@@ -210,3 +210,7 @@ const KINDS: &[SurfaceKindRow] = &[
 pub(crate) fn row_for(kind: SnapshotSurface) -> Option<&'static SurfaceKindRow> {
     KINDS.iter().find(|row| row.kind == kind)
 }
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "shell_surface_kinds_tests.rs"]
+mod tests;

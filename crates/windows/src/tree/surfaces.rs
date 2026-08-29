@@ -146,3 +146,7 @@ pub(crate) fn window_is_modal_sheet(_root: &UIAElement, _chromium: bool) -> bool
 #[cfg(test)]
 #[path = "surfaces_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "surfaces_advertising_tests.rs"]
+mod advertising_tests;

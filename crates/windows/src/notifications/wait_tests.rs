@@ -16,6 +16,11 @@
 //! it, which is exactly what lets a staged arrival survive the polls; a
 //! center the wait raised itself would be closed between polls and would
 //! evict the entry the wait is for.
+//!
+//! Every leg holds `FIXTURE_APP_NAME_LOCK` before `SHELL_SURFACE_LOCK`, the
+//! crate-wide ordering: the legs raise shell chrome and read the settled
+//! foreground, so the two families whose holders stage the desktop under a
+//! live test must serialize against this one too.
 
 use std::time::{Duration, Instant};
 
@@ -29,10 +34,12 @@ use crate::adapter::WindowsAdapter;
 use crate::notifications::toast_support::{
     self, CloseCenterOnDrop, StagedToast, TOAST_BODY_SECOND, TOAST_TITLE_SECOND,
 };
+use crate::system::raise_oracle::{responded_since, witness_desktop};
 use crate::system::shell_surface::resolve_surface;
 use crate::system::shell_surface_open::close_surface;
 use crate::system::test_support::{
-    SHELL_SURFACE_LOCK, or_skip_shell, wait_for_foreground_to_settle,
+    FIXTURE_APP_NAME_LOCK, SHELL_SURFACE_LOCK, or_skip_shell, wait_for_foreground_to_settle,
+    with_interaction_lease_test_lock,
 };
 
 fn deadline(ms: u64) -> Deadline {
@@ -74,9 +81,11 @@ fn notification_wait_args(timeout_ms: u64) -> wait::WaitArgs {
 /// why and returns None.
 fn hold_center_with_baseline_toast() -> Option<(ActionCenterSession, StagedToast)> {
     toast_support::clear_center(deadline(20_000));
+    let witness = witness_desktop();
     let held = or_skip_shell(
         "action center open for the wait baseline",
         ActionCenterSession::open(headed(), deadline(15_000)),
+        || responded_since(&witness),
     )?;
     let staged = StagedToast::stage();
     let Some(listed) = toast_support::wait_until_listed_held(held.hwnd(), deadline(30_000)) else {
@@ -94,6 +103,9 @@ fn hold_center_with_baseline_toast() -> Option<(ActionCenterSession, StagedToast
 #[test]
 fn a_wait_returns_the_notification_that_arrives_during_it_and_not_one_already_present() {
     crate::tree::fixture::bootstrap();
+    let _fixture_scope = FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let Some((held, _already_present)) = hold_center_with_baseline_toast() else {
         return;
@@ -107,12 +119,14 @@ fn a_wait_returns_the_notification_that_arrives_during_it_and_not_one_already_pr
     });
 
     let started = Instant::now();
-    let matched = wait::execute(
-        notification_wait_args(20_000),
-        &WindowsAdapter::new(),
-        &CommandContext::default().with_headed(true),
-    )
-    .expect("the wait returns when the staged toast arrives");
+    let matched = with_interaction_lease_test_lock(|| {
+        wait::execute(
+            notification_wait_args(20_000),
+            &WindowsAdapter::new(),
+            &CommandContext::default().with_headed(true),
+        )
+        .expect("the wait returns when the staged toast arrives")
+    });
     let elapsed = started.elapsed();
 
     assert_eq!(matched["condition"], "notification");
@@ -135,6 +149,9 @@ fn a_wait_returns_the_notification_that_arrives_during_it_and_not_one_already_pr
 #[test]
 fn a_wait_that_times_out_reports_timeout_and_leaves_the_center_closed() {
     crate::tree::fixture::bootstrap();
+    let _fixture_scope = FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _cleanup = CloseCenterOnDrop;
     let _ = close_surface(SnapshotSurface::ActionCenter, deadline(8_000));
@@ -143,11 +160,13 @@ fn a_wait_that_times_out_reports_timeout_and_leaves_the_center_closed() {
         "the desktop's foreground must settle before the wait is staged"
     );
 
-    let error = wait::execute(
-        notification_wait_args(4_000),
-        &WindowsAdapter::new(),
-        &CommandContext::default().with_headed(true),
-    )
+    let error = with_interaction_lease_test_lock(|| {
+        wait::execute(
+            notification_wait_args(4_000),
+            &WindowsAdapter::new(),
+            &CommandContext::default().with_headed(true),
+        )
+    })
     .expect_err("no notification arrives during the wait");
     let AppError::Adapter(error) = error else {
         panic!("the wait reports a structured adapter error");
@@ -172,6 +191,9 @@ fn a_wait_that_times_out_reports_timeout_and_leaves_the_center_closed() {
 #[test]
 fn a_strict_headless_wait_refuses_at_policy_on_the_first_poll() {
     crate::tree::fixture::bootstrap();
+    let _fixture_scope = FIXTURE_APP_NAME_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _cleanup = CloseCenterOnDrop;
     let _ = close_surface(SnapshotSurface::ActionCenter, deadline(8_000));

@@ -1,10 +1,11 @@
-use super::super::shell_surface_open::{accelerator_probe, close_surface, open_row, open_surface};
+use super::super::shell_surface_open::{accelerator_probe, close_surface, open_surface};
 use super::super::test_support::{settles_to, wait_for_foreground_to_settle};
 use super::super::window_enum::{EnumeratedWindow, enumerate_top_level, is_cloaked};
 use super::super::window_ops::passes_filter;
-use super::{SnapshotSurface, SurfaceKindRow, WindowInfo};
+use super::{SnapshotSurface, WindowInfo};
 use agent_desktop_core::{Deadline, ErrorCode, InteractionPolicy};
 
+use crate::system::raise_oracle::{responded_since, witness_desktop};
 use crate::system::test_support::{SHELL_SURFACE_LOCK, or_skip_shell};
 
 fn deadline(ms: u64) -> Deadline {
@@ -125,57 +126,17 @@ fn strict_headless_open_refuses_before_raising() {
 }
 
 #[test]
-fn quick_settings_refusal_names_build_and_capability_holder() {
-    bootstrap();
-    let error = open_surface(SnapshotSurface::QuickSettings, headed(), deadline(5_000))
-        .expect_err("quick-settings is absent on this build");
-
-    assert_eq!(error.code, ErrorCode::PlatformNotSupported);
-    let build = super::build_number();
-    assert!(build > 0, "the build number must be read, not guessed");
-    let detail = error.platform_detail.expect("the refusal carries a detail");
-    assert!(
-        detail.contains(&build.to_string()),
-        "the detail must name the build: {detail}"
-    );
-    assert!(
-        detail.contains("action-center"),
-        "the detail must name the surface carrying the capability: {detail}"
-    );
-}
-
-#[test]
-fn kind_pointed_at_an_absent_class_times_out() {
-    bootstrap();
-    let row = SurfaceKindRow {
-        kind: SnapshotSurface::Desktop,
-        family: super::SurfaceFamily::Win32Class(&["NoAgentDesktopShellSurfaceClass"]),
-        raise: super::SurfaceRaise::AlreadyRaised,
-        dismiss: super::SurfaceDismiss::None,
-        exists_on_build: true,
-        capability_holder: None,
-    };
-
-    let error = open_row(&row, deadline(1_500)).expect_err("no window has the class");
-
-    assert_eq!(error.code, ErrorCode::Timeout);
-    assert_ne!(
-        error.code,
-        ErrorCode::PlatformNotSupported,
-        "did not open is a different answer than absent on this build"
-    );
-}
-
-#[test]
 fn already_open_surface_returns_without_additional_raise() {
     bootstrap();
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     dismiss_first(SnapshotSurface::ActionCenter);
     accelerator_probe::take_all();
+    let witness = witness_desktop();
 
     let Some(first) = or_skip_shell(
         "action center first open",
         open_surface(SnapshotSurface::ActionCenter, headed(), deadline(10_000)),
+        || responded_since(&witness),
     ) else {
         return;
     };
@@ -200,10 +161,12 @@ fn action_center_opens_roots_and_closes_cloaked() {
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     dismiss_first(SnapshotSurface::ActionCenter);
     let _cleanup = CloseOnDrop(SnapshotSurface::ActionCenter);
+    let witness = witness_desktop();
 
     let Some(info) = or_skip_shell(
         "action center open",
         open_surface(SnapshotSurface::ActionCenter, headed(), deadline(10_000)),
+        || responded_since(&witness),
     ) else {
         return;
     };
@@ -231,10 +194,12 @@ fn start_menu_opens_and_identity_roots_a_tree() {
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     dismiss_first(SnapshotSurface::StartMenu);
     let _cleanup = CloseOnDrop(SnapshotSurface::StartMenu);
+    let witness = witness_desktop();
 
     let Some(info) = or_skip_shell(
         "the start accelerator raises its surface",
         open_surface(SnapshotSurface::StartMenu, headed(), deadline(10_000)),
+        || responded_since(&witness),
     ) else {
         return;
     };
@@ -327,10 +292,12 @@ fn immersive_surface_absent_from_enumeration_but_yielded_by_uia_root() {
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     dismiss_first(SnapshotSurface::ActionCenter);
     let _cleanup = CloseOnDrop(SnapshotSurface::ActionCenter);
+    let witness = witness_desktop();
 
     let Some(info) = or_skip_shell(
         "action center open",
         open_surface(SnapshotSurface::ActionCenter, headed(), deadline(10_000)),
+        || responded_since(&witness),
     ) else {
         return;
     };
@@ -352,6 +319,7 @@ fn overflow_opens_via_chevron_and_closes_via_escape() {
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     dismiss_first(SnapshotSurface::SystemTrayOverflow);
     let _cleanup = CloseOnDrop(SnapshotSurface::SystemTrayOverflow);
+    let witness = witness_desktop();
 
     let Some(info) = or_skip_shell(
         "system tray overflow open",
@@ -360,15 +328,37 @@ fn overflow_opens_via_chevron_and_closes_via_escape() {
             headed(),
             deadline(10_000),
         ),
+        || responded_since(&witness),
     ) else {
         return;
     };
     let handle = handle_of(&info);
     crate::tree::automation::root_from_hwnd(handle, deadline(5_000))
         .expect("the overflow toolbar roots through the observation stack");
+    assert!(
+        overflow_window_visible(handle),
+        "the open must return a PRESENTED surface: the overflow's window class resolves \
+         while hidden (A26-6), so the identity the open reports can only come from the \
+         chevron raise having actually presented it - the observable effect the raise \
+         exists for"
+    );
 
     close_surface(SnapshotSurface::SystemTrayOverflow, deadline(8_000))
         .expect("Esc dismisses the overflow");
+}
+
+/// Whether the overflow's top-level window (the ancestor the class chain
+/// walks past) is visible right now - the same `IsWindowVisible` read the
+/// close path's presented gate uses, taken against the open's answer.
+fn overflow_window_visible(handle: isize) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, IsWindowVisible};
+
+    let top = unsafe { GetAncestor(handle as *mut core::ffi::c_void, GA_ROOT) };
+    if top.is_null() {
+        return false;
+    }
+    let visible = unsafe { IsWindowVisible(top) };
+    visible != 0
 }
 
 #[test]

@@ -54,11 +54,13 @@ entries) — the read scales with content (A26-10).
 | `list-notifications --headed` (center empty; raise + read + close per invocation) | 1243.5 | 1254.2 | 1308.4 |
 | `open-system-surface --surface action-center --headed` + close (one full cycle) | 1233.9 | 1331.6 | 1354.3 |
 | `snapshot --surface action-center` (center open) | 368.8 | 412.7 | 466.3 |
+| `dismiss-notification` verified round trip (center held open; one staged synthetic toast via the plan's AUMID route, fixed synthetic literals; the timed invocation is the prompt dismiss + its verification re-read, spawn included) | 4368.2 | 4417.2 | 4631.4 |
 
 The verified-mutation round trip is the number most worth having: a prompt
-`dismiss-notification` that re-reads to verify measured ~3.8 s end-to-end in the
-legs above — the two-cross-process-round-trip floor KTD6 predicted, dominated by
-the settle-poll, not by spawn or UIA reads.
+`dismiss-notification` that re-reads to verify measured 4368.2 / 4417.2 /
+4631.4 ms (min / median / max, last row of the table above, taken as its own
+corpus through the release binary) — the two-cross-process-round-trip floor
+KTD6 predicted, dominated by the settle-poll, not by spawn or UIA reads.
 
 ## Findings and dispositions
 

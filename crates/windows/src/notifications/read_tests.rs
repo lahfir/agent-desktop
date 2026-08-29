@@ -53,12 +53,93 @@ fn the_refusal_names_the_build_and_the_missing_landmark() {
 }
 
 #[cfg(target_os = "windows")]
+mod classification {
+    use super::super::{classify_find, classify_find_all, gate_landmarks};
+    use crate::system::hresult::{UIA_E_ELEMENTNOTAVAILABLE, UIA_E_TIMEOUT};
+    use crate::tree::automation::{ERR_NOTFOUND, ERR_TIMEOUT};
+    use agent_desktop_core::ErrorCode;
+    use uiautomation::Error;
+
+    fn hresult_error(code: i32) -> Error {
+        Error::from(windows::core::HRESULT(code))
+    }
+
+    /// Exhaustion is what a real `find_first` on a region with no match
+    /// reports, so the not-found answer must stay `None` - the same answer
+    /// the old blanket mapping gave, minus the faults it also swallowed.
+    #[test]
+    fn a_genuinely_not_found_search_is_absence_not_a_fault() {
+        let exhausted = Error::from(windows::core::Error::empty());
+        assert!(
+            classify_find(Err(exhausted), "probe")
+                .expect("exhaustion is absence")
+                .is_none()
+        );
+        assert!(
+            classify_find(Err(Error::new(ERR_NOTFOUND, "test")), "probe")
+                .expect("a raced-away subtree is absence")
+                .is_none()
+        );
+        assert!(
+            classify_find(Err(hresult_error(UIA_E_ELEMENTNOTAVAILABLE)), "probe")
+                .expect("a vanished element is absence")
+                .is_none()
+        );
+        assert!(
+            classify_find_all(Err(Error::new(ERR_NOTFOUND, "test")), "probe")
+                .expect("absence for the multi-match search too")
+                .is_empty()
+        );
+    }
+
+    /// The transient faults the old `Err(_) => Ok(None)` mapping swallowed:
+    /// each must surface with its own code, never read as a confident
+    /// "the center does not carry it".
+    #[test]
+    fn a_transient_search_failure_is_an_honest_error_not_a_confident_negative() {
+        for error in [
+            Error::new(ERR_TIMEOUT, "test"),
+            hresult_error(UIA_E_TIMEOUT),
+        ] {
+            let surfaced = match classify_find(Err(error), "probe") {
+                Err(surfaced) => surfaced,
+                Ok(_) => panic!("a transient fault must surface, never read as absence"),
+            };
+            assert_eq!(surfaced.code, ErrorCode::Timeout);
+        }
+        let emptied = match classify_find_all(Err(Error::new(ERR_TIMEOUT, "test")), "probe") {
+            Err(surfaced) => surfaced,
+            Ok(_) => panic!("a transient fault must surface, never read as an empty match set"),
+        };
+        assert_eq!(emptied.code, ErrorCode::Timeout);
+    }
+
+    /// The landmark gate's distinction: absence (what a missing landmark
+    /// reports) flows into the gate and is refused as an unrecognized tree -
+    /// PLATFORM_NOT_SUPPORTED, never an empty listing - while a transient
+    /// fault never reaches the gate at all because the search surfaces
+    /// first. Reverting the search classification to blanket-absence fails
+    /// `a_transient_search_failure_is_an_honest_error_not_a_confident_negative`.
+    #[test]
+    fn an_absent_landmark_reaches_the_gate_which_refuses_rather_than_lists_empty() {
+        let absent = classify_find(Err(Error::new(ERR_NOTFOUND, "test")), "probe")
+            .expect("a missing landmark is absence");
+        assert!(absent.is_none());
+
+        let shape = gate_landmarks(absent.is_some(), false)
+            .expect_err("a center with no landmarks must be refused");
+        assert_eq!(shape.code, ErrorCode::PlatformNotSupported);
+    }
+}
+
+#[cfg(target_os = "windows")]
 mod live {
     use agent_desktop_core::{Deadline, InteractionPolicy};
 
     use super::super::{find_by_id, read_entries};
     use crate::notifications::session::ActionCenterSession;
     use crate::notifications::toast_support;
+    use crate::system::raise_oracle::{responded_since, witness_desktop};
     use crate::system::shell_surface_kinds::{EMPTY_CENTER_LANDMARKS, MAIN_LIST_VIEW};
     use crate::system::test_support::{SHELL_SURFACE_LOCK, or_skip_shell};
     use crate::tree::element::UIAElement;
@@ -108,9 +189,11 @@ mod live {
         crate::tree::fixture::bootstrap();
         let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         toast_support::clear_center(deadline(20_000));
+        let witness = witness_desktop();
         let Some(session) = or_skip_shell(
             "action center open for the reader count check",
             ActionCenterSession::open(headed(), deadline(15_000)),
+            || responded_since(&witness),
         ) else {
             return;
         };
@@ -144,10 +227,11 @@ mod live {
         crate::tree::fixture::bootstrap();
         let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         toast_support::clear_center(deadline(20_000));
-
+        let witness = witness_desktop();
         let Some(session) = or_skip_shell(
             "action center open for the empty-center read",
             ActionCenterSession::open(headed(), deadline(15_000)),
+            || responded_since(&witness),
         ) else {
             return;
         };

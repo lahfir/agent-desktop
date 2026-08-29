@@ -8,7 +8,7 @@ use crate::tree::element::UIAElement;
 use super::list::list_entries;
 use super::session::{ActionCenterSession, close_session};
 use super::verify::{
-    action_changed_state, dismiss_survived_error, entry_gone, read_settling_without,
+    action_changed_state, dismiss_survived_error, entry_gone, read_settling_without, same_identity,
     survivor_failures,
 };
 
@@ -19,6 +19,10 @@ mod tests;
 #[cfg(all(test, target_os = "windows"))]
 #[path = "actions_live_tests.rs"]
 mod live_tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "actions_gate_tests.rs"]
+mod gate_tests;
 
 /// Removes exactly the identified notification and proves the removal by
 /// re-reading the surface.
@@ -112,7 +116,10 @@ fn dismiss_impl(
         &NotificationFilter::default(),
         deadline,
     )?;
-    if !entry_gone(&info, &current) && current.len() == 1 {
+    if !entry_gone(&info, &current)
+        && current.len() == 1
+        && clear_all_still_the_sole_target(hwnd, &info, deadline)?
+    {
         let root = crate::tree::automation::root_from_hwnd(hwnd, deadline)?;
         if let Some(clear) = super::read::find_clear_all_button(&root)? {
             invoke_element(&clear)?;
@@ -129,6 +136,27 @@ fn dismiss_impl(
         return Err(dismiss_survived_error(index));
     }
     Ok(info)
+}
+
+/// The clear-all substitute re-verifies, immediately before it fires, that
+/// the center still holds exactly one entry and that it is still the target.
+///
+/// An entry arriving between the settle read and the invoke would be cleared
+/// too if the substitute fired on the stale read, and the substitute exists
+/// only as a faithful stand-in for the target's own dismiss control - never
+/// as a way to clear more than the one identified notification. A re-read
+/// that answers anything other than exactly-one-matching aborts the
+/// substitute; the caller's survival check then reports the honest
+/// `ACTION_FAILED`. A re-read that cannot run surfaces as an error, for the
+/// same reason.
+#[cfg(target_os = "windows")]
+fn clear_all_still_the_sole_target(
+    hwnd: isize,
+    target: &NotificationInfo,
+    deadline: Deadline,
+) -> Result<bool, AdapterError> {
+    let current = super::list::list_infos(&NotificationFilter::default(), hwnd, deadline)?;
+    Ok(current.len() == 1 && same_identity(target, &current[0]))
 }
 
 fn dismiss_all_impl(

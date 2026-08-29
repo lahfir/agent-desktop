@@ -6,6 +6,20 @@
 //! test in this crate can bypass; test builds record into thread-local fakes
 //! instead - one for posted events, one for the live key-state read the
 //! release guard's abort sweep depends on.
+//!
+//! One deliberate exception posts outside this seam: the shell-surface chord
+//! path (`system/shell_surface_raise.rs`) calls `SendInput` and
+//! `GetAsyncKeyState` directly. This seam's stubs are what keep unit tests
+//! from emitting real input, and the shell-surface live tests ARE the
+//! verification - their assertions read real desktop state (a raised surface,
+//! a dismissed one), which a recorded fake cannot produce. Routing the shell
+//! chords through this seam would make every such leg skip or fail on the
+//! stub, and adding a test-only "emit for real" mode here would drag
+//! `cfg(test)` hooks into the shipped raise path. The duplicate is the
+//! exception's own seam, held to the same contract: its `SendInput` returns
+//! are never delivery evidence either (A9-3) - the chord is posted and the
+//! outcome is verified by observation alone - and its release guard applies
+//! the same live-key-state discipline as the shared seam's abort sweep.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct KeyboardInputEvent {

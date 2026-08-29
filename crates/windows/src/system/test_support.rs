@@ -239,13 +239,34 @@ pub(crate) fn shell_declined_the_surface(error: &AdapterError) -> bool {
     raise_never_presented || close_never_dismissed || chevron_absent || overflow_absent
 }
 
-/// Maps a raise-or-resolve precondition onto the loud-skip convention: an
-/// error the desktop declined becomes a printed skip and a `None` the caller
-/// turns into an early return, while any other error still fails the test.
-pub(crate) fn or_skip_shell<T>(what: &str, result: Result<T, AdapterError>) -> Option<T> {
+/// Maps a raise-or-resolve precondition onto the loud-skip convention, with
+/// the independent raise-response oracle standing guard over it: an error the
+/// desktop declined becomes a printed skip and a `None` the caller turns into
+/// an early return only when the caller's oracle says the shell never
+/// responded to the raise. A declined-shaped error on a desktop the oracle
+/// watched respond is a product regression and fails the test - the skip
+/// convention must never absorb one. Any other error still fails the test.
+///
+/// The oracle is only consulted on a declined-shaped error, so a successful
+/// raise pays nothing for it. The closure must be measured against a witness
+/// captured before the raise attempt: `raise_oracle::witness_desktop` ahead
+/// of the call whose error this classifies, and
+/// `raise_oracle::responded_since` as the closure.
+pub(crate) fn or_skip_shell<T>(
+    what: &str,
+    result: Result<T, AdapterError>,
+    responded: impl FnOnce() -> bool,
+) -> Option<T> {
     match result {
         Ok(value) => Some(value),
         Err(error) if shell_declined_the_surface(&error) => {
+            if responded() {
+                panic!(
+                    "{what}: the shell responded to the raise but the product reported a \
+                     declined precondition ({error:?}) - a product regression, not a \
+                     declined desktop"
+                );
+            }
             eprintln!("skip {what}: this desktop's shell declined to present the surface");
             None
         }
@@ -285,5 +306,39 @@ mod shell_decline_classification {
             "no window matches the requested identity",
         );
         assert!(!shell_declined_the_surface(&unrelated_window));
+    }
+
+    #[test]
+    fn a_declined_error_with_a_silent_shell_skips_loudly() {
+        let declined_open = AdapterError::timeout(
+            "the 'action-center' shell surface did not open within the deadline",
+        )
+        .with_details(serde_json::json!({ "kind": "shell_surface_not_opened" }));
+
+        let outcome = or_skip_shell("witness probe", Err::<(), _>(declined_open), || false);
+
+        assert!(
+            outcome.is_none(),
+            "a silent shell keeps the skip convention"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "product regression")]
+    fn a_declined_error_on_a_responded_shell_is_a_regression_not_a_skip() {
+        let declined_open = AdapterError::timeout(
+            "the 'action-center' shell surface did not open within the deadline",
+        )
+        .with_details(serde_json::json!({ "kind": "shell_surface_not_opened" }));
+
+        let _ = or_skip_shell("witness probe", Err::<(), _>(declined_open), || true);
+    }
+
+    #[test]
+    #[should_panic(expected = "witness probe")]
+    fn an_unrelated_error_fails_whatever_the_shell_did() {
+        let stale = AdapterError::stale_ref("@s8f3k2p9:e1");
+
+        let _ = or_skip_shell("witness probe", Err::<(), _>(stale), || false);
     }
 }

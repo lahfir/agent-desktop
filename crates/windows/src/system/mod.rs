@@ -35,10 +35,14 @@ pub(crate) mod png_codec;
 pub(crate) mod private_file;
 pub(crate) mod process_identity;
 pub(crate) mod process_state;
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) mod raise_oracle;
 #[cfg(target_os = "windows")]
 pub(crate) mod screenshot;
 pub(crate) mod session;
 pub(crate) mod shell_surface;
+#[cfg(target_os = "windows")]
+pub(crate) mod shell_surface_immersive;
 pub(crate) mod shell_surface_kinds;
 pub(crate) mod shell_surface_open;
 pub(crate) mod shell_surface_raise;

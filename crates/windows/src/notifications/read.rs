@@ -237,9 +237,15 @@ fn children(element: &UIAElement) -> Result<Vec<UIAElement>, AdapterError> {
 
 /// Locates one element by its `AutomationId`. Elements here are addressed by
 /// `AutomationId`, never by localized name - this host's shell text is
-/// localized (es-ES) while these ids are framework-stable (A26-3). A probe
-/// that fails to match reads as absence, the same answer a raced-away subtree
-/// gives, never as an error for the whole read.
+/// localized (es-ES) while these ids are framework-stable (A26-3).
+///
+/// A probe whose search answers "no match" - exhaustion, or a subtree that
+/// raced away between discovery and the read - reads as absence, the same
+/// answer a genuinely empty region gives. Any other failure means the
+/// search itself could not run, and surfaces as an error for the whole read:
+/// reading a transient transport fault as absence would flow into the
+/// landmark gate's "unrecognized tree" refusal and dress the fault up as a
+/// shape this adapter does not recognize.
 #[cfg(target_os = "windows")]
 pub(super) fn find_by_id(
     element: &UIAElement,
@@ -255,9 +261,46 @@ pub(super) fn find_by_id(
         .map_err(|error| {
             crate::tree::automation::uia_error(&error, "build an AutomationId condition")
         })?;
-    match element.0.find_first(scope, &condition) {
-        Ok(found) => Ok(Some(UIAElement::from(found))),
-        Err(_) => Ok(None),
+    classify_find(
+        element.0.find_first(scope, &condition),
+        "search for an element by AutomationId",
+    )
+}
+
+/// The one decision every optional-result search in this module shares: a
+/// found element is `Some`, an absence-family failure is `None`, and any
+/// other failure surfaces through this file's error mapping.
+#[cfg(target_os = "windows")]
+fn classify_find(
+    found: Result<uiautomation::UIElement, uiautomation::Error>,
+    context: &'static str,
+) -> Result<Option<UIAElement>, AdapterError> {
+    match found {
+        Ok(element) => Ok(Some(UIAElement::from(element))),
+        Err(error) => {
+            if crate::tree::automation::failure_of(&error).is_absence() {
+                return Ok(None);
+            }
+            Err(crate::tree::automation::uia_error(&error, context))
+        }
+    }
+}
+
+/// [`classify_find`] for the multi-match search: an absence-family failure
+/// is "no matches", anything else is an honest error.
+#[cfg(target_os = "windows")]
+fn classify_find_all(
+    found: Result<Vec<uiautomation::UIElement>, uiautomation::Error>,
+    context: &'static str,
+) -> Result<Vec<UIAElement>, AdapterError> {
+    match found {
+        Ok(elements) => Ok(elements.into_iter().map(UIAElement::from).collect()),
+        Err(error) => {
+            if crate::tree::automation::failure_of(&error).is_absence() {
+                return Ok(Vec::new());
+            }
+            Err(crate::tree::automation::uia_error(&error, context))
+        }
     }
 }
 
@@ -276,10 +319,10 @@ fn find_all_by_id(
         .map_err(|error| {
             crate::tree::automation::uia_error(&error, "build an AutomationId condition")
         })?;
-    match element.0.find_all(scope, &condition) {
-        Ok(found) => Ok(found.into_iter().map(UIAElement::from).collect()),
-        Err(_) => Ok(Vec::new()),
-    }
+    classify_find_all(
+        element.0.find_all(scope, &condition),
+        "search for elements by AutomationId",
+    )
 }
 
 #[cfg(target_os = "windows")]
