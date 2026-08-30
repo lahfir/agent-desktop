@@ -1395,7 +1395,7 @@ System tray interaction is built from scratch here.
 
 ### 2.15 — Hardening & Integration Review
 
-**Goal:** Prove the assembled `feat/windows-adapter` branch is production-grade as a whole, then merge it.
+**Goal:** Prove the assembled `feat/windows-adapter` branch is production-grade as a whole. The promotion to `main` moves to §2.16, the last sub-phase.
 
 **Scope:**
 - Full-branch multi-agent review — the whole assembled branch, not only this sub-phase's own diff
@@ -1446,7 +1446,7 @@ System tray interaction is built from scratch here.
 
 **Key APIs:** none — verification and merge only
 
-**Depends on:** 2.0 through 2.14, including 2.12.1 — all of them merged; no Windows sub-phase may lag past this gate's **review**. The one exception is §2.16, which is sequenced deliberately: its work depends on the response-shape decision this gate takes, so it lands between this gate's review and its promotion, and the promotion is what closes Phase 2 once §2.16 has merged.
+**Depends on:** 2.0 through 2.14, including 2.12.1 — all of them merged. §2.16 follows this gate rather than preceding it, because its work consumes the response-shape decision taken here.
 
 **Exit criteria:** every item in the Cross-cutting sub-phase DoD holds for the whole branch; both cross-platform contract decisions above are settled in this document rather than left to the next platform to inherit; no call site on any platform passes `AdapterError::stale_ref` anything but a ref id, pinned by a test; the self-hosted interactive Windows runner is registered, its trigger policy re-ratified, and the full live gate is green in both headless and headed tiers on it; multi-monitor `list_displays` verification and per-display capture, genuine RDP/locked/Session-0 capture session-degradation (closing 2.0's `A10-2`), and live modern-capture pixel success (if not already discharged hosted) are each provisioned and measured or explicitly ratified as out of reach within this phase; `main` gains Windows support in one commit.
 
@@ -1456,7 +1456,7 @@ System tray interaction is built from scratch here.
 
 **Goal:** Make `cursor-overlay` render on Windows, so the command's answer is true and not merely honest.
 
-**Sequencing:** runs **after §2.15's review and before §2.15's promotion**. §2.15 proves the assembled branch is production-grade *and then merges it*; that merge is the last act of Phase 2, so it happens once this sub-phase has shipped. Nothing else in §2.15 moves.
+**Sequencing:** the last sub-phase. It follows §2.15 because it implements against the response-shape decision §2.15 takes, and Phase 2 promotes to `main` when this merges.
 
 **Scope:** Phase 2 otherwise leaves the overlay in a state no other capability is left in — it renders on macOS and silently does nothing on Windows. `update_cursor_overlay` has a macOS override (`crates/macos/src/system/adapter.rs`) and no Windows one, so the adapter returns core's default; both call sites then discard that answer — `src/dispatch/cursor_overlay.rs` logs a `tracing::warn!` and falls through to success, and `crates/core/src/cursor_overlay/submit.rs` does the same. `cursor-overlay enable` therefore returns `ok: true` on Windows and draws nothing.
 
@@ -1470,7 +1470,7 @@ System tray interaction is built from scratch here.
 
 **Depends on:** 2.15's response-shape decision (this sub-phase consumes it), and 2.9/2.8 for the window and input primitives the renderer sits beside.
 
-**Exit criteria:** `cursor-overlay enable` on Windows draws the overlay and the response reports rendering true through §2.15's field; the overlay's cursor reaches its destination before the action dispatches, measured on Windows the way #145 measured it on macOS; the overlay never takes the foreground, asserted by observation of the foreground window across an overlaid action; `cursor-overlay disable` and session teardown leave no residual window, timer or thread, verified by independent observation; the per-platform contract is stated in `skills/agent-desktop-windows/` and the README; and the dogfood gate in its strict form, with every finding carrying exactly one of *fixed here*, *owned elsewhere* or *accepted*.
+**Exit criteria:** `cursor-overlay enable` on Windows draws the overlay and the response reports rendering true through §2.15's field; the overlay's cursor reaches its destination before the action dispatches, measured on Windows the way #145 measured it on macOS; the overlay never takes the foreground, asserted by observation of the foreground window across an overlaid action; `cursor-overlay disable` and session teardown leave no residual window, timer or thread, verified by independent observation; the per-platform contract is stated in `skills/agent-desktop-windows/` and the README; the dogfood gate in its strict form, with every finding carrying exactly one of *fixed here*, *owned elsewhere* or *accepted*; and the Phase 2 promotion itself — `feat/windows-adapter` merged to `main` as one release-noted `feat!`, which is what closes the phase.
 
 **Est. PR size:** ~1.5k LOC
 
@@ -2762,4 +2762,4 @@ All Phase 2/3 pins above were recorded at 2026-04 research time; re-verify again
 | R11 | Skeleton traversal cross-platform | Low | High | Core is already platform-agnostic (`crates/core/src/snapshot_ref.rs`); Windows needs ~50 LOC glue (raw-view walk + `IsControlElement` filter + `FindAll(TreeScope_Children, TrueCondition)` + fresh `UICacheRequest` per drill-down). Research Topic 4 confirmed `ElementFromHandle(hwnd)` is headless-safe. |
 | R12 | RDP / session-isolation blocks Windows dev and CI | Medium | High | UIA requires an interactive session — an RDP disconnect can drop the console session to a non-interactive state. Document the `tscon` console-reattach workaround for the self-hosted runner registered at sub-phase 2.15 (the owner declined registration at 2.12 on a public-repository security ground); mirrors the macOS exclusive-desktop gate (`AGENT_DESKTOP_E2E_EXCLUSIVE=1` + `interaction_lock.py`) that already serializes native e2e runs, and the new Windows `DesktopLease` sub-phase 2.12 ships in its place for the local exclusive run until a runner exists. |
 | R13 | UIA event handler MTA lifecycle leaks | Medium | Medium | `RemoveAutomationEventHandler` races the final in-flight callback dispatch on the MTA worker thread if torn down naively. Use the post-remove-barrier pattern (`Arc<Handler>` outlives the final callback) documented in the Windows Engineering Invariants — apply it from the first sub-phase that registers a handler (`watch`, once P2-O11 lands), not retrofitted after a leak is observed. The barrier is not where the cost is: 2.0 measured removal under 296 in-flight events at 72 ms, but removal on an *idle* stream after window open/close churn while handlers were registered at 86 s — 63 ms without that churn, superlinear, and not avoided by making callbacks cheap. Bound and budget handler removal, and avoid holding handlers across window open/close churn. |
-| R14 | Merge-train discipline: integration branch drifts from `main` | Medium | Medium | Seventeen sub-phases landing serially into `feat/windows-adapter` (then `feat/linux-adapter`) is a long-lived branch by construction. Mitigate with a rebase cadence (rebase onto `main` at the start of each sub-phase, not just before the final merge) and treat each sub-phase's own review as a checkpoint rather than deferring all review to the 2.15/3.15 hardening pass. |
+| R14 | Merge-train discipline: integration branch drifts from `main` | Medium | Medium | Nineteen sub-phases landing serially into `feat/windows-adapter` (then `feat/linux-adapter`) is a long-lived branch by construction. Mitigate with a rebase cadence (rebase onto `main` at the start of each sub-phase, not just before the final merge) and treat each sub-phase's own review as a checkpoint rather than deferring all review to the 2.15/3.15 hardening pass. |
