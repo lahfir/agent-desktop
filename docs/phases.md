@@ -51,11 +51,10 @@ Most recent shipments against this roadmap:
 | 1 | Foundation + macOS MVP | **Completed** (v0.1.0 – v0.1.14) | macOS |
 | 1.5 | FFI Distribution (C-ABI cdylib) | **Completed** (v0.1.13; C-ABI surface completed v0.4.1) | macOS, Windows, Linux |
 | 1.6 | Playwright-grade Foundation Contract | **Completed** (PR #93) | macOS (contract in core) |
-| 2 | Windows Adapter | **In progress** — sub-phases 2.0–2.15; all Windows scope lands here | macOS, Windows |
+| 2 | Windows Adapter | **In progress** — sub-phases 2.0–2.16; all Windows scope lands here | macOS, Windows |
 | 3 | Linux Adapter | Planned — sub-phases 3.0–3.15 | macOS, Windows, Linux |
 | 4 | MCP Server Mode | Planned | All |
 | 5 | Production Readiness | Planned | All |
-| 6 | Cursor Overlay | Planned — **runs immediately after Phase 2**, not after Phase 5; numbered 6 because the `2.x` namespace belongs to Phase 2's sub-phases and renumbering Phases 3-5 would falsify 196 references across `CLAUDE.md`, `AGENTS.md` and shipped plan documents | macOS, Windows (Linux joins after Phase 3) |
 
 Future platform phases are additive against the Phase 1 + 1.5 + 1.6 contracts: typed command args, `CommandPolicy`, `PermissionReport`, snapshot-scoped refs, session-scoped latest snapshot pointers, `ActionRequest`, headed/headless interaction policy, JSONL reliability tracing, the capability-supertrait `PlatformAdapter` boundary (`ActionOps` / `InputOps` / `ObservationOps` / `SystemOps`), default-on auto-wait, and the occlusion gate. Core can still gain explicitly planned additive trait methods, but Windows/Linux implement — never fork — command semantics, and never duplicate transport dispatch. Phase 2 and Phase 3 ship as dependency-ordered sub-phases against a per-platform integration branch; see [Platform Delivery Model](#platform-delivery-model--sub-phases-and-integration-branches).
 
@@ -1400,7 +1399,7 @@ System tray interaction is built from scratch here.
 
 **Scope:**
 - Full-branch multi-agent review — the whole assembled branch, not only this sub-phase's own diff
-- **Make `cursor-overlay` tell its caller the truth on Windows.** Today `cursor-overlay enable` returns `ok: true` and renders nothing: `update_cursor_overlay` has no Windows override, and both call sites discard the adapter's answer — `src/dispatch/cursor_overlay.rs` logs a `tracing::warn!` and falls through to success, and `crates/core/src/cursor_overlay/submit.rs` does the same. A Windows-only adapter override returning `not_supported()` therefore changes nothing observable; §2.13 deliberately did not add one. **This gate owns only the honesty half — making the command report what the adapter answered. Rendering the overlay on Windows is Phase 6's, which implements against whatever response shape this gate defines.** The candidate fix is to carry the adapter's answer into the response as a machine-readable field (a `rendered: false` on the success envelope) so the tool reports reality in the channel its caller actually reads — with the caveat that this changes a cross-platform command's response shape, which is a contract decision this gate is allowed to make. Two accepted risks inherited from §2.13's npm work are decided alongside, not rediscovered: (1) the install path's checksum verification is same-origin (`checksums.txt` comes from the same release as the tarball) and no consumer verifies the Sigstore provenance the release produces — surfacing `gh attestation verify` to manual-download users was the cheap half; (2) `optionalDependencies` per-platform packages were rejected on scope rather than merit, leaving `npm install --ignore-scripts` a permanent loud failure on every platform. Measured at 2.13's dogfood on npm 12.0.1 (node 24.18): that release's new install-scripts allowlist blocks the postinstall even with `--allow-scripts=agent-desktop` passed, so the wrapper's loud binary-not-found failure is increasingly the first thing a Windows user sees; the wrapper already names the cause, but this gate should weigh publishing the allowScripts configuration in the README before Phase 2 closes
+- **Make `cursor-overlay` tell its caller the truth on Windows.** Today `cursor-overlay enable` returns `ok: true` and renders nothing: `update_cursor_overlay` has no Windows override, and both call sites discard the adapter's answer — `src/dispatch/cursor_overlay.rs` logs a `tracing::warn!` and falls through to success, and `crates/core/src/cursor_overlay/submit.rs` does the same. A Windows-only adapter override returning `not_supported()` therefore changes nothing observable; §2.13 deliberately did not add one. **This gate owns only the honesty half — making the command report what the adapter answered. Rendering the overlay on Windows is §2.16's, which implements against whatever response shape this gate defines.** The candidate fix is to carry the adapter's answer into the response as a machine-readable field (a `rendered: false` on the success envelope) so the tool reports reality in the channel its caller actually reads — with the caveat that this changes a cross-platform command's response shape, which is a contract decision this gate is allowed to make. Two accepted risks inherited from §2.13's npm work are decided alongside, not rediscovered: (1) the install path's checksum verification is same-origin (`checksums.txt` comes from the same release as the tarball) and no consumer verifies the Sigstore provenance the release produces — surfacing `gh attestation verify` to manual-download users was the cheap half; (2) `optionalDependencies` per-platform packages were rejected on scope rather than merit, leaving `npm install --ignore-scripts` a permanent loud failure on every platform. Measured at 2.13's dogfood on npm 12.0.1 (node 24.18): that release's new install-scripts allowlist blocks the postinstall even with `--allow-scripts=agent-desktop` passed, so the wrapper's loud binary-not-found failure is increasingly the first thing a Windows user sees; the wrapper already names the cause, but this gate should weigh publishing the allowScripts configuration in the README before Phase 2 closes
 - **Repair the tray click path: the dedicated tray surface's promoted read diverges from the taskbar descent, and the overflow raise never surfaces the flyout.** Three dogfood measurements, one session. `snapshot --surface system-tray` roots at the promoted `ToolbarWindow32` by its HWND and read **zero** children, while `snapshot --surface taskbar` in the same session allocated refs to the same toolbar's three `Button`s (stable machine-local `AutomationId`s, `Invoke`, positive-area bounds) — an HWND-rooted-walk versus tree-descent divergence of the same family A26-5 recorded across client stacks. `open-system-surface --surface system-tray-overflow`'s `ChevronInvoke` raise is accepted and does not raise: an independent Win32 visibility poll never saw the overflow flyout visible in 4 s after the raise (the raise is an invoke, and the shell can accept an invoke without acting — the shape the notification `DismissButton` clear-all substitute exists for, A26-3), so all five overflow refs fail actionability at the occlusion check (5/5 hit-tests occluded by whatever fronts the hidden flyout) and the surface that lists five items cannot be clicked. And a tray click taken from a taskbar-surface ref refuses `WINDOW_NOT_FOUND` because `Shell_TrayWnd` is deliberately outside the agent-visible inventory (KTD1) — so no route delivered a tray click. What closes it: a tray read whose promoted enumeration matches the taskbar descent, an overflow raise that verifies visibility after the invoke (or physically clicks the chevron's bounds under `--headed`), and a stated contract for which surface's refs are click-legal. **Evidence:** dogfood 2026-08-28 legs 2; A26-5, A26-7, A26-3
 - **Decide whether a shell surface's returned handle is rootable, or the `--surface` round trip is the contract.** `open-system-surface` returns `w-<hwnd>` identities, and `snapshot --window-id` refuses them `WINDOW_NOT_FOUND` — measured live at the dogfood for the promoted tray toolbar's handle — because the window inventory deliberately excludes shell windows (KTD1's correct behaviour); the shell round trip routes through `snapshot --surface <kind>` while the exit criteria's "an identity `snapshot --window` consumes" reads only through that path. What closes it: either `snapshot --window-id` roots shell handles through the shell-surface resolver, or the contract states that shell identities are surface-kind-scoped and the identity wording is corrected beside it. **Evidence:** dogfood 2026-08-28 leg 2; KTD1
 - **Extend `trace_sanitize`'s field list to the full notification envelope.** `SENSITIVE_KEYS` (`crates/core/src/trace_sanitize.rs`) covers `title` but not `body`, `app_name`, `attribution` or `actions` — the remaining serialized `NotificationInfo` field names — so any future trace site emitting an entry payload would reach on-disk trace segments and the FFI log callback unsanitized. Measured at the dogfood: no adapter's notification path emits payload-bearing trace events today (a traced Windows `list-notifications` and `dismiss-notification` carried only meta/start/end segments, with the staged content's literals absent from the trace file), so this is a gap in the safety net rather than a live leak — the cheapest time to close it. What closes it: the four field names in `SENSITIVE_KEYS` plus an invert-verified test per field, one core edit shared by both adapters and the FFI log layer. **Evidence:** dogfood 2026-08-28 findings; §2.14's plan risk on `trace_sanitize`
@@ -1447,11 +1446,34 @@ System tray interaction is built from scratch here.
 
 **Key APIs:** none — verification and merge only
 
-**Depends on:** 2.0 through 2.14, including 2.12.1 — all of them merged; no Windows sub-phase may lag past this gate
+**Depends on:** 2.0 through 2.14, including 2.12.1 — all of them merged; no Windows sub-phase may lag past this gate's **review**. The one exception is §2.16, which is sequenced deliberately: its work depends on the response-shape decision this gate takes, so it lands between this gate's review and its promotion, and the promotion is what closes Phase 2 once §2.16 has merged.
 
 **Exit criteria:** every item in the Cross-cutting sub-phase DoD holds for the whole branch; both cross-platform contract decisions above are settled in this document rather than left to the next platform to inherit; no call site on any platform passes `AdapterError::stale_ref` anything but a ref id, pinned by a test; the self-hosted interactive Windows runner is registered, its trigger policy re-ratified, and the full live gate is green in both headless and headed tiers on it; multi-monitor `list_displays` verification and per-display capture, genuine RDP/locked/Session-0 capture session-degradation (closing 2.0's `A10-2`), and live modern-capture pixel success (if not already discharged hosted) are each provisioned and measured or explicitly ratified as out of reach within this phase; `main` gains Windows support in one commit.
 
 **Est. PR size:** ~500 LOC on top of a large verification effort. Two code changes are certain to land here: the error-payload promotion (core constructors plus both adapters and a core test) and the fourteen `stale_ref` call sites, which are small but spread across core and macOS. Either contract decision above may add a normalization change on one adapter. Everything else is review, live e2e, perf baseline, audits and the merge.
+
+### 2.16 — Cursor Overlay
+
+**Goal:** Make `cursor-overlay` render on Windows, so the command's answer is true and not merely honest.
+
+**Sequencing:** runs **after §2.15's review and before §2.15's promotion**. §2.15 proves the assembled branch is production-grade *and then merges it*; that merge is the last act of Phase 2, so it happens once this sub-phase has shipped. Nothing else in §2.15 moves.
+
+**Scope:** Phase 2 otherwise leaves the overlay in a state no other capability is left in — it renders on macOS and silently does nothing on Windows. `update_cursor_overlay` has a macOS override (`crates/macos/src/system/adapter.rs`) and no Windows one, so the adapter returns core's default; both call sites then discard that answer — `src/dispatch/cursor_overlay.rs` logs a `tracing::warn!` and falls through to success, and `crates/core/src/cursor_overlay/submit.rs` does the same. `cursor-overlay enable` therefore returns `ok: true` on Windows and draws nothing.
+
+- **§2.15 owns the honesty half; this sub-phase owns the rendering half.** §2.15 carries the adapter's answer into the response as a machine-readable field — a response-shape decision the integration gate is allowed to take. This sub-phase implements against whatever field that gate defined and does not invent a second one.
+- **The Windows renderer.** The macOS implementation is the reference for behaviour, not necessarily for mechanism. A layered click-through window is the likely Windows shape, and whether it can satisfy arrival-before-dispatch without stealing focus is the first thing to measure rather than assume — the overlay must never take the foreground from the target it is drawing over.
+- **Behavioural parity with what #145 shipped.** `crates/core/src/cursor_overlay/` is thirteen modules covering pose, motion, hand path, timing, layout, style and phase, rebuilt with a 3D click flourish, human-shaped motion, session-global style and arrival-before-dispatch sequencing. Windows matches the observable behaviour; it does not fork the contract.
+- **Cleanup and session scoping.** `session start --cursor` and `cursor-overlay disable` must leave no residual window, timer or thread on either adapter, verified by observation after teardown rather than by the disable call returning `ok`.
+- **What the overlay may draw over.** §2.14 measured the Windows shell surfaces as `WS_EX_TOOLWINDOW` chrome deliberately outside the agent window inventory (§2.14 KTD1). Whether the overlay draws over them is a question this sub-phase answers and records, not one it assumes either way.
+
+**Key APIs:** layered window (`WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`) with `UpdateLayeredWindow`, or a per-monitor DPI-aware GDI+/Direct2D surface — chosen by measurement against the arrival-before-dispatch and no-focus-steal constraints, not in advance.
+
+**Depends on:** 2.15's response-shape decision (this sub-phase consumes it), and 2.9/2.8 for the window and input primitives the renderer sits beside.
+
+**Exit criteria:** `cursor-overlay enable` on Windows draws the overlay and the response reports rendering true through §2.15's field; the overlay's cursor reaches its destination before the action dispatches, measured on Windows the way #145 measured it on macOS; the overlay never takes the foreground, asserted by observation of the foreground window across an overlaid action; `cursor-overlay disable` and session teardown leave no residual window, timer or thread, verified by independent observation; the per-platform contract is stated in `skills/agent-desktop-windows/` and the README; and the dogfood gate in its strict form, with every finding carrying exactly one of *fixed here*, *owned elsewhere* or *accepted*.
+
+**Est. PR size:** ~1.5k LOC
+
 
 ### Minimum OS Requirements
 
@@ -2613,44 +2635,6 @@ Skill maintenance rules:
   - Complete CLI reference for all commands including `session list` and `session kill`
   - Comprehensive troubleshooting guide covering all platforms
   - Per-platform setup guides linked from main README
-
----
-
-## Phase 6 — Cursor Overlay
-
-**Status: Planned. Runs immediately after Phase 2 closes at §2.15 — the number is append-only, not a sequence position.**
-
-Phase 2 leaves the overlay in a state no other capability is left in: it renders on macOS and silently does nothing on Windows. `update_cursor_overlay` has a macOS override (`crates/macos/src/system/adapter.rs`) and no Windows one, so the adapter returns core's default; both call sites then discard that answer — `src/dispatch/cursor_overlay.rs` logs a `tracing::warn!` and falls through to success, and `crates/core/src/cursor_overlay/submit.rs` does the same. `cursor-overlay enable` therefore returns `ok: true` on Windows and draws nothing.
-
-§2.15 owns exactly one half of that: making the command **tell the truth**, by carrying the adapter's answer into the response as a machine-readable field. That is a response-shape decision the integration gate is allowed to take, and it is deliberately not a rendering decision. This phase owns the other half — **making the answer `true`**.
-
-The overlay is no longer a small surface. `crates/core/src/cursor_overlay/` is thirteen modules covering pose, motion, hand path, timing, layout, style and phase, rebuilt in #145 with a 3D click flourish, human-shaped motion, session-global style, and arrival-before-dispatch sequencing. A second platform implementation is real work with a real contract, which is why it is a phase rather than a bullet.
-
-### Objectives
-
-| ID | Objective | Metric |
-|----|-----------|--------|
-| P6-O1 | Windows renders the overlay | `cursor-overlay enable` on Windows draws the overlay and the response reports rendering as true; the same session-global style, motion and click flourish macOS produces |
-| P6-O2 | The per-platform contract is stated, not implied | One documented answer to what `cursor-overlay` promises per adapter, in `skills/` and the README, with the field §2.15 added carrying it in the envelope |
-| P6-O3 | Arrival-before-dispatch holds on both adapters | The overlay's cursor reaches its destination before the action dispatches, measured on Windows the way #145 measured it on macOS, so the overlay never lies about causality |
-| P6-O4 | Overlay state is session-scoped and cleaned up | `session start --cursor` and `cursor-overlay disable` leave no residual window, timer or thread on either adapter, verified by observation after teardown |
-| P6-O5 | Linux inherits the same contract | The overlay's platform seam is implemented or explicitly refused on Linux once Phase 3 lands, with no third response shape |
-| P6-O6 | Dogfood | The overlay is driven against real software on both adapters and the report carries findings with dispositions, per the cross-cutting sub-phase DoD |
-
-### Scope
-
-- **The Windows renderer.** The macOS implementation is the reference for behaviour, not necessarily for mechanism — a layered click-through window is the likely Windows shape, and whether it can satisfy P6-O3's arrival-before-dispatch without stealing focus is the first thing to measure rather than assume.
-- **The cross-platform contract.** Phase 2 ships a command whose observable behaviour differs by platform. This phase settles what it promises everywhere, on the same identical-JSON-is-a-product-promise standard §2.15 applies to `offscreen`, the role/state split and `press --app`.
-- **Cleanup and session scoping.** An overlay that outlives its session is a visible artifact on a user's desktop; P6-O4 is verified by observation after teardown, not by the disable call returning `ok`.
-
-### Depends on
-
-Phase 2 complete through §2.15, including the response-shape decision §2.15 takes — this phase implements against whatever field that gate defines rather than inventing a second one. P6-O5 additionally depends on Phase 3.
-
-### Non-goals
-
-- Re-litigating §2.15's response-shape decision. If that gate chose a field name and semantics, this phase consumes them.
-- Overlay work on any surface Phase 2 measured as unreachable. The Windows shell surfaces the overlay might be asked to draw over are `WS_EX_TOOLWINDOW` chrome outside the agent window inventory (§2.14 KTD1); whether the overlay draws over them at all is a question this phase answers, not one it assumes.
 
 ---
 
