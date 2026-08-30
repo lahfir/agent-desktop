@@ -154,7 +154,7 @@ Applications with no user interface at all are excluded.
 agent-desktop list-windows
 agent-desktop list-windows --app "Finder"
 ```
-Lists all visible windows, optionally filtered by app. Returns array of `{ id, title, app_name, pid, bounds, is_focused }`. Focus is detected through the platform's frontmost/focused-window APIs, not window stacking order.
+Lists all visible windows, optionally filtered by app. Returns array of `{ id, title, app_name, pid, bounds, is_focused, accessible }`. Focus is detected through the platform's frontmost/focused-window APIs, not window stacking order. `accessible` is false only when the platform confirmed that semantic accessibility commands cannot reach the window; transient probe failures and omitted legacy values preserve the default true value.
 
 The inventory comes from the window server, which knows more windows than the
 accessibility layer exposes. Targeting one an application never published
@@ -519,19 +519,46 @@ Sessions are on-disk containers under `<state root>/sessions/<id>/` with a `sess
 ### cursor-overlay enable / disable
 
 ```bash
-agent-desktop --session <id> cursor-overlay enable --label "Opening menu" --max-words 6
-agent-desktop --session <id> cursor-overlay disable
+agent-desktop session start --cursor                 # session + default cursor in one command
+agent-desktop --session <id> cursor-overlay enable --label "Opening menu" --accent "#FF3B7B"
+export AGENT_DESKTOP_SESSION=<id>
+agent-desktop cursor-overlay disable
 ```
 
-The setting is stored in the selected session manifest and inherited by all eligible headless commands, including batch entries scoped to that session. Enabling immediately presents the persistent cursor with “Hey, let's play with this computer!” The current description remains visible; when its value changes, the old card eases out and the new text eases in. Only `cursor-overlay disable` or session end removes the cursor and card. Action and batch-entry schemas do not accept cursor-enable flags. Headed actions temporarily hide the overlay while the real pointer is used. macOS renders the overlay natively; other platforms use the adapter's presentation no-op.
+No flags gives the default look: white body, near-black rim, blue ripple, blue element outline.
+
+Style is stored in the session manifest and inherited by every eligible headless command, batch entries included. Action and batch-entry schemas take no cursor flags. Run `enable` again to restyle; it applies at once.
+
+| Flag | Meaning | Default |
+|---|---|---|
+| `--label TEXT` | Intent text beside the cursor | none |
+| `--max-words N` | Label word limit, 1 to 12 | 6 |
+| `--fill HEX` | Cursor body colour | `#FFFFFF` |
+| `--rim HEX` | Cursor outline colour | `#111318` |
+| `--accent HEX` | Ripple and element outline colour | `#4299FF` |
+| `--size N` | Cursor size multiplier, 0.5 to 4.0 | 1.0 |
+| `--no-ripple` | No ripple on click | ripple on |
+| `--no-highlight` | No element outline on click | outline on |
+
+Behaviour:
+
+- Travel is a human path, 90 to 320 ms. The cursor never rotates or resizes.
+- The action waits for the cursor to land, capped at 900 ms. A slow renderer never blocks it.
+- A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
+- The card shows the label. With no label there is no card.
+- Idle for 6 s it fades out; the next command restores it.
+- `disable` removes it and stops the renderer. Ending the session is not needed.
+- Headed actions hide it while the real pointer is in use.
+- macOS renders it natively; other platforms use the adapter's presentation no-op.
 
 ### session start
 ```bash
 agent-desktop session start
 agent-desktop session start --name "nightly-run"
 agent-desktop session start --no-trace          # Namespace only — no automatic JSONL
+agent-desktop session start --cursor            # Also show the default cursor overlay
 ```
-Creates the session directory, pre-creates `trace/` (when tracing is on), writes `session.json` (`trace: on` unless `--no-trace`), and prints `{ "session_id", "name", "trace", "created_at" }`. Pass that ID through global `--session` or `AGENT_DESKTOP_SESSION` on later commands.
+Creates the session directory, pre-creates `trace/` (when tracing is on), writes `session.json` (`trace: on` unless `--no-trace`), and prints `{ "session_id", "name", "trace", "created_at" }`. `--cursor` adds `cursor_overlay` to that response and shows the overlay. Pass that ID through global `--session` or `AGENT_DESKTOP_SESSION` on later commands.
 
 ### session end
 ```bash

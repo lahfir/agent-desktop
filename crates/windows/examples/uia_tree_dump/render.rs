@@ -333,6 +333,7 @@ fn walk_verdict(root: &UIAElement, deadline: Deadline) -> Value {
         bounds: None,
         state: WindowState {
             is_focused: false,
+            accessible: true,
             minimized: None,
             visible: Some(true),
         },

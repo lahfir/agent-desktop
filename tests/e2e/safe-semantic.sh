@@ -67,16 +67,24 @@ agent_exec() {
 }
 
 capture_frontmost() {
-    local output
+    local output guard_args=(frontmost)
+    if [ "$#" -eq 1 ]; then
+        guard_args=(non-fixture-frontmost "$1")
+    fi
     output="$(agent_exec 0 list-windows 2>/dev/null)" || return 1
-    printf '%s' "$output" | python3 "$safety_guard" frontmost 2>/dev/null
+    printf '%s' "$output" | python3 "$safety_guard" "${guard_args[@]}" 2>/dev/null
+}
+
+wait_frontmost() {
+    for _ in 1 2 3; do
+        capture_frontmost "$@" >/dev/null && return 0
+        sleep 0.1
+    done
+    return 1
 }
 
 fixture_is_not_frontmost() {
-    local output
-    output="$(agent_exec 0 list-windows 2>/dev/null)" || return 1
-    printf '%s' "$output" | python3 "$safety_guard" non-fixture-frontmost "$fixture_pid" \
-        >/dev/null 2>&1
+    wait_frontmost "$fixture_pid"
 }
 
 capture_fixture_identity() {
@@ -305,7 +313,7 @@ chmod 500 "$fixture_executable" || blocked "fixture executable cannot be frozen"
 [ -z "$(pgrep -x "$app" 2>/dev/null || true)" ] || \
     blocked "an unowned fixture process is already running"
 
-capture_frontmost >/dev/null || blocked "frontmost identity is missing or ambiguous"
+wait_frontmost || blocked "frontmost identity is missing or ambiguous"
 
 AGENT_DESKTOP_FIXTURE_NO_ACTIVATE=1 "$fixture_executable" \
     >"$suite_root/fixture.stdout" 2>"$suite_root/fixture.stderr" &
@@ -381,7 +389,7 @@ pass "check, uncheck, idempotence, and toggle are semantic"
 
 safety_checkpoint || fail "final mutation checkpoint failed"
 close_owned_fixture || fail "could not close the exact spawned fixture PID"
-capture_frontmost >/dev/null || fail "final frontmost identity is missing or ambiguous"
+wait_frontmost || fail "final frontmost identity is missing or ambiguous"
 verify_immutable_binary "$bin" "$bin_sha" || fail "immutable binary copy changed"
 verify_source_binary || fail "reviewed binary changed during the suite"
 pass "owned fixture never became frontmost while unrelated user focus remained unconstrained"

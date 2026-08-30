@@ -24,6 +24,13 @@ fn ad_init_succeeds_with_current_major() {
 }
 
 #[test]
+fn ad_init_rejects_previous_major() {
+    unsafe {
+        assert_eq!(ad_init(3), AdResult::ErrInvalidArgs);
+    }
+}
+
+#[test]
 fn ad_init_rejects_future_major_and_sets_last_error() {
     unsafe {
         let rc = ad_init(agent_desktop_ffi::AD_ABI_VERSION_MAJOR + 1);

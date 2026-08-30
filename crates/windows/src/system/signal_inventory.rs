@@ -217,6 +217,7 @@ fn assembly_phase(
             bounds: Some(entry.window.rect),
             state: WindowState {
                 is_focused: focused,
+                accessible: true,
                 minimized: Some(entry.window.iconic),
                 visible: Some(entry.window.visible),
             },

@@ -210,6 +210,7 @@ fn window_info_from_chain_window(handle: WindowHandle) -> Option<WindowInfo> {
         bounds: Some(super::window_enum::window_rect(handle)),
         state: agent_desktop_core::WindowState {
             is_focused: super::window_ops::is_foreground_window(handle),
+            accessible: true,
             minimized: Some(unsafe { IsIconic(handle) } != 0),
             visible: Some(unsafe { IsWindowVisible(handle) } != 0),
         },

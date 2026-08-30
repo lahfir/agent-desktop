@@ -74,8 +74,9 @@ mod imp {
         max_elements: usize,
         deadline: std::time::Instant,
     ) -> ChildRead {
-        super::super::child_source::read_first_nonempty(
+        super::super::child_source::read_resilient(
             crate::tree::element::child_attributes(role),
+            deadline,
             |attribute| read_attribute_children(element, attribute, max_elements, deadline),
         )
     }
@@ -86,8 +87,9 @@ mod imp {
         index: usize,
         deadline: std::time::Instant,
     ) -> ChildRead {
-        super::super::child_source::read_first_nonempty(
+        super::super::child_source::read_resilient(
             crate::tree::element::child_attributes(role),
+            deadline,
             |attribute| read_attribute_child_at(element, attribute, index, deadline),
         )
     }

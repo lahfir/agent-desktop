@@ -36,10 +36,14 @@ pub(crate) fn ad_exact_window_to_core(
             "process_instance is empty",
         ));
     }
-    decode_window(&exact.window, process_instance)
+    decode_window(&exact.window, process_instance, exact.accessible)
 }
 
-fn decode_window(w: &AdWindowInfo, process_instance: String) -> Result<WindowInfo, AdapterError> {
+fn decode_window(
+    w: &AdWindowInfo,
+    process_instance: String,
+    accessible: bool,
+) -> Result<WindowInfo, AdapterError> {
     if w.pid == 0 {
         return Err(AdapterError::new(
             agent_desktop_core::ErrorCode::InvalidArgs,
@@ -70,6 +74,7 @@ fn decode_window(w: &AdWindowInfo, process_instance: String) -> Result<WindowInf
         bounds,
         state: agent_desktop_core::WindowState {
             is_focused: w.is_focused,
+            accessible,
             minimized: None,
             visible: None,
         },
@@ -132,6 +137,18 @@ mod tests {
         assert!(error.message.contains("version or size"));
     }
 
+    #[test]
+    fn exact_window_preserves_accessibility() {
+        let id = CString::new("w-1").unwrap();
+        let title = CString::new("Main").unwrap();
+        let mut exact = window(id.as_ptr(), title.as_ptr(), std::ptr::null());
+        exact.accessible = false;
+
+        let decoded = ad_exact_window_to_core(&exact).unwrap();
+
+        assert!(!decoded.state.accessible);
+    }
+
     fn window(
         id: *const std::os::raw::c_char,
         title: *const std::os::raw::c_char,
@@ -155,6 +172,7 @@ mod tests {
                 is_focused: false,
             },
             process_instance: c"7:100".as_ptr(),
+            accessible: true,
         }
     }
 }

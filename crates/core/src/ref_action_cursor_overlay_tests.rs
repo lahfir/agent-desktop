@@ -7,13 +7,22 @@ use std::sync::Mutex;
 
 struct CursorAdapter {
     presented: Mutex<Vec<CursorOverlayControl>>,
+    events: Mutex<Vec<CursorEvent>>,
     fail_presentation: bool,
+}
+
+#[derive(Debug, PartialEq)]
+enum CursorEvent {
+    Travel,
+    Dispatch,
+    Effect,
 }
 
 impl CursorAdapter {
     fn new(fail_presentation: bool) -> Self {
         Self {
             presented: Mutex::new(Vec::new()),
+            events: Mutex::new(Vec::new()),
             fail_presentation,
         }
     }
@@ -28,7 +37,11 @@ impl ObservationOps for CursorAdapter {
         Ok(NativeHandle::null())
     }
 
-    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
+    crate::adapter::complete_live_observation!(
+        "textfield",
+        "Run",
+        [capability::CLICK, capability::SET_VALUE]
+    );
 }
 
 impl ActionOps for CursorAdapter {
@@ -38,6 +51,7 @@ impl ActionOps for CursorAdapter {
         _request: ActionRequest,
         _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
+        self.events.lock().unwrap().push(CursorEvent::Dispatch);
         Ok(ActionResult::delivered_unverified("click"))
     }
 }
@@ -52,6 +66,11 @@ impl SystemOps for CursorAdapter {
         if self.fail_presentation {
             return Err(AdapterError::internal("renderer unavailable"));
         }
+        self.events.lock().unwrap().push(if control.is_travel() {
+            CursorEvent::Travel
+        } else {
+            CursorEvent::Effect
+        });
         self.presented.lock().unwrap().push(control.clone());
         Ok(())
     }
@@ -70,7 +89,7 @@ fn entry() -> RefEntry {
             process_instance: Some("test-instance".into()),
         },
         identity: crate::RefEntryIdentity {
-            role: "button".into(),
+            role: "textfield".into(),
             name: Some("Run".into()),
             value: None,
             description: None,
@@ -82,7 +101,7 @@ fn entry() -> RefEntry {
         },
         capabilities: crate::RefCapabilities {
             states: vec![],
-            available_actions: vec![capability::CLICK.into()],
+            available_actions: vec![capability::CLICK.into(), capability::SET_VALUE.into()],
         },
         source: crate::RefSource {
             source_app: Some("Fixture".into()),
@@ -106,7 +125,7 @@ fn enabled_context() -> CommandContext {
 }
 
 #[test]
-fn enabled_cursor_presents_verified_center_after_dispatch() {
+fn enabled_cursor_moves_before_dispatch_then_clicks_after_it() {
     let adapter = CursorAdapter::new(false);
 
     execute_entry_with_context(
@@ -118,13 +137,46 @@ fn enabled_cursor_presents_verified_center_after_dispatch() {
     .expect("click succeeds");
 
     let presented = adapter.presented.lock().unwrap();
-    assert_eq!(presented.len(), 1);
-    assert_eq!(
-        presented[0].instruction().unwrap().destination(),
-        &crate::Point { x: 11.0, y: 11.0 }
+    let center = crate::Point { x: 11.0, y: 11.0 };
+    assert_eq!(presented.len(), 2);
+    let travel = presented[0].instruction().expect("travel instruction");
+    let click = presented[1].instruction().expect("click instruction");
+
+    assert_eq!(travel.destination(), &center);
+    assert!(
+        !travel.is_click(),
+        "the cursor sets off before the action runs"
     );
-    assert!(presented[0].instruction().unwrap().is_click());
+    assert!(travel.target().is_none());
+    assert_eq!(click.destination(), &center);
+    assert!(
+        click.is_click(),
+        "the click effect lands after dispatch confirms"
+    );
+    assert_eq!(click.target().map(|rect| rect.width), Some(20.0));
     assert_eq!(presented[0].label(), Some("Opening menu"));
+    assert_eq!(
+        *adapter.events.lock().unwrap(),
+        [
+            CursorEvent::Travel,
+            CursorEvent::Dispatch,
+            CursorEvent::Effect
+        ]
+    );
+}
+
+#[test]
+fn short_action_budget_skips_optional_travel_before_dispatch() {
+    let adapter = CursorAdapter::new(false);
+    let request = ActionRequest::headless(Action::Click).with_timeout_ms(Some(1_000));
+
+    execute_entry_with_context(&adapter, &entry(), request, &enabled_context())
+        .expect("click succeeds without optional travel");
+
+    assert_eq!(
+        *adapter.events.lock().unwrap(),
+        [CursorEvent::Dispatch, CursorEvent::Effect]
+    );
 }
 
 #[test]
@@ -158,4 +210,25 @@ fn renderer_failure_does_not_change_successful_action() {
     .expect("presentation failure stays fail-soft");
 
     assert_eq!(result.action, "click");
+}
+
+#[test]
+fn a_value_write_outlines_the_element_without_a_click_ripple() {
+    let adapter = CursorAdapter::new(false);
+
+    execute_entry_with_context(
+        &adapter,
+        &entry(),
+        ActionRequest::headless(Action::SetValue("Paris".into())),
+        &enabled_context(),
+    )
+    .expect("set-value succeeds");
+
+    let presented = adapter.presented.lock().unwrap();
+    assert_eq!(presented.len(), 2, "travel then effect, same as a click");
+    let effect = presented[1].instruction().expect("effect instruction");
+
+    assert!(!effect.is_click(), "a value write must not ripple");
+    assert!(effect.target().is_some(), "but it must outline the element");
+    assert_eq!(effect.phase(), crate::CursorPhase::Effect);
 }

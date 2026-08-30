@@ -1,7 +1,9 @@
 note "Sheet surface discovery and interaction"
 "$bin" focus-window --app "$app" >/dev/null 2>&1
 require_value sheet_before sheet-status
+require_target open_sheet button open-sheet
 act_target "$open_sheet" scroll-to >/dev/null 2>&1
+require_target open_sheet button open-sheet
 act_target "$open_sheet" click >/dev/null 2>&1
 sleep 0.6
 surface_list="$("$bin" list-surfaces --app "$app" 2>&1)"

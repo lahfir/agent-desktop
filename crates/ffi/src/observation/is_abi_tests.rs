@@ -79,6 +79,7 @@ fn window() -> AdExactWindowInfo {
             is_focused: false,
         },
         process_instance: c"42:100".as_ptr(),
+        accessible: true,
     }
 }
 

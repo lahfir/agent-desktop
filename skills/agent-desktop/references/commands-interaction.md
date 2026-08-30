@@ -90,7 +90,7 @@ When the actionability preflight blocks an action, the error envelope carries th
 
 **`receives_events` fails open.** An inconclusive hit test never blocks the action: when the probe cannot be completed or the evidence cannot be corroborated, the check reports `unknown` and the action proceeds to dispatch, which judges the outcome. A `receives_events` check that did not fail is therefore not proof that nothing covered the target — only that nothing could be confirmed to. Inconclusive results are more common on Windows, where an element hosted by a composited surface (Chromium web content in particular) commonly hit-tests to its host rather than to a distinct child node, and where an occluder styled click-through or disabled cannot be corroborated.
 
-Every ref-resolving action accepts `--timeout-ms` (default `5000`), but it budgets different things. For the dispatch actions (`click`, `double-click`, `triple-click`, `right-click`, `clear`, `focus`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll-to`, `type`, `set-value`, `select`, `scroll`) it is the actionability-wait budget: they poll roughly every 100ms until the target becomes actionable, then fail with `TIMEOUT` once the budget is exhausted — unless the block is a terminal check (`supported_action`/`policy`/`editable`), which fails fast on the first attempt with `ACTION_NOT_SUPPORTED`/`POLICY_DENIED` rather than waiting out the budget. For `hover` and `drag`, the same budget covers ref resolution, live visibility/bounds, stability, and `receives_events`. Transient misses, app-unresponsive reads, and occlusion are polled until recovery or `TIMEOUT`; terminal errors are returned immediately with their original code.
+Every ref-resolving action accepts `--timeout-ms` (default `5000`), but it budgets different things. For the dispatch actions (`click`, `double-click`, `triple-click`, `right-click`, `clear`, `focus`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll-to`, `type`, `set-value`, `select`, `scroll`) it is the actionability-wait budget: they poll roughly every 100ms until the target becomes actionable, then fail with `TIMEOUT` once the budget is exhausted — unless the block is a terminal check (`supported_action`/`policy`/`editable`), which fails fast on the first attempt with `ACTION_NOT_SUPPORTED`/`POLICY_DENIED` rather than waiting out the budget. For `hover` and `drag`, the same budget covers ref resolution, live visibility/bounds, stability, and `receives_events`. Transient misses, app-unresponsive reads, and occlusion are polled until recovery or `TIMEOUT`; terminal errors are returned immediately with their original code. If every poll completed traversal but one or more required native live reads failed, the command instead returns `ACTION_FAILED` with `details.kind: "live_read_incomplete"` and `retryable: false`; re-snapshot and use a fresh ref rather than treating incomplete evidence as an ordinary timeout.
 
 **Implicit scroll-into-view.** Standard ref actions whose `Action` declares a scroll precondition attempt a platform scroll-into-view before dispatch. The pointer resolver for `hover` and `drag` independently makes one scroll attempt when a ref endpoint is not visibly bounded, then re-resolves and fails closed if it is still not visible. Use the standalone `scroll-to` command when you need an explicit, verifiable scroll result.
 
@@ -329,7 +329,14 @@ Synthesizes a scroll-wheel event at absolute coordinates and requires `--headed`
 
 ### Agent cursor presentation
 
-When enabled once with `cursor-overlay` for the selected session, the presentation-only cursor remains alive between eligible headless ref actions and moves from its previous destination. Interaction commands do not accept per-command cursor flags. Headed actions temporarily hide the overlay and use the real OS cursor; raw pointer commands keep their existing headed-only behavior.
+Enable it once per session with `session start --cursor` or `cursor-overlay enable`. Interaction commands take no cursor flags.
+
+- The cursor stays alive between eligible headless ref actions and travels from its previous destination.
+- The action waits for it to land before it dispatches, capped at 900 ms.
+- A click plays a ripple and flashes an accent outline around the element.
+- Headed actions hide the overlay and use the real OS cursor. Raw pointer commands keep their headed-only behavior.
+
+See `commands-system.md` for the style flags.
 
 | Goal | Preferred | Alternative |
 |------|-----------|-------------|

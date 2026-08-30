@@ -69,6 +69,7 @@ fn shell_window() -> WindowInfo {
         }),
         state: crate::WindowState {
             is_focused: true,
+            accessible: true,
             minimized: Some(false),
             visible: Some(true),
         },

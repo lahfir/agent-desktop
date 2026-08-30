@@ -1,15 +1,8 @@
 use super::*;
 
-/// ABI 2 shipped the expanded result/ref layouts. Replacing the three-argument
-/// `ad_dismiss_notification` with the identity-required five-argument contract
-/// breaks callers compiled against ABI 2, so this branch must advertise ABI 3.
 #[test]
-fn abi_major_covers_the_checked_dismiss_signature() {
-    let major = std::hint::black_box(AD_ABI_VERSION_MAJOR);
-    assert!(
-        major >= 3,
-        "identity-required ad_dismiss_notification is incompatible with ABI 2"
-    );
+fn abi_major_covers_the_exact_window_layout() {
+    assert_eq!(AD_ABI_VERSION_MAJOR, 4);
 }
 
 #[test]

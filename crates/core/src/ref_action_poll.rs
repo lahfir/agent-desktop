@@ -133,6 +133,9 @@ fn is_permanent_actionability_error(code: &ErrorCode) -> bool {
 }
 
 fn timeout(state: &RefActionPollState, deadline: Deadline) -> AdapterError {
+    if state.only_live_read_incomplete() {
+        return live_read_incomplete(state, deadline);
+    }
     let mut details = json!({
         "kind": "actionability_timeout",
         "timeout_ms": deadline.timeout_ms(),
@@ -151,6 +154,37 @@ fn timeout(state: &RefActionPollState, deadline: Deadline) -> AdapterError {
     AdapterError::timeout("Target did not become actionable within the wait budget")
         .with_details(details)
         .with_disposition(crate::DeliverySemantics::not_delivered())
+}
+
+fn live_read_incomplete(state: &RefActionPollState, deadline: Deadline) -> AdapterError {
+    let report = state
+        .last_report
+        .as_ref()
+        .and_then(|last| last.get("report"));
+    let stats = report.and_then(|report| report.get("query_stats"));
+    AdapterError::new(
+        ErrorCode::ActionFailed,
+        "Live reads were incomplete before actionability could be determined",
+    )
+    .with_suggestion(
+        "Re-snapshot the window and act on a fresh ref, or fall back to --headed coordinate input from the ref bounds.",
+    )
+    .with_details(json!({
+        "kind": "live_read_incomplete",
+        "retryable": false,
+        "timeout_ms": deadline.timeout_ms(),
+        "elapsed_ms": deadline.elapsed().as_millis(),
+        "native_read_failures": stats
+            .and_then(|stats| stats.pointer("/reads/native_read_failures"))
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0),
+        "nodes_visited": stats
+            .and_then(|stats| stats.pointer("/traversal/nodes_visited"))
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0),
+        "last_report": state.last_report,
+    }))
+    .with_disposition(crate::DeliverySemantics::not_delivered())
 }
 
 #[cfg(test)]
@@ -189,6 +223,34 @@ mod tests {
         assert_eq!(
             error.details.expect("timeout details")["transient_ambiguity"],
             true
+        );
+    }
+
+    #[test]
+    fn incomplete_live_reads_report_the_tool_limitation() {
+        let mut state = RefActionPollState::default();
+        state.record_preflight_error(
+            &AdapterError::new(ErrorCode::AppUnresponsive, "incomplete").with_details(json!({
+                "kind": "live_element_evidence",
+                "complete": false,
+                "query_stats": {
+                    "reads": { "native_read_failures": 2 },
+                    "traversal": { "nodes_visited": 1 },
+                },
+            })),
+        );
+
+        let error = timeout(&state, Deadline::after(1).expect("deadline"));
+        assert_eq!(error.code, ErrorCode::ActionFailed);
+        let details = error.details.expect("structured details");
+        assert_eq!(details["kind"], "live_read_incomplete");
+        assert_eq!(details["native_read_failures"], 2);
+        assert_eq!(details["nodes_visited"], 1);
+        assert!(
+            !error
+                .suggestion
+                .expect("recovery suggestion")
+                .contains("busy or unresponsive")
         );
     }
 }

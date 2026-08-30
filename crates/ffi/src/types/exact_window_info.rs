@@ -2,8 +2,8 @@ use std::os::raw::c_char;
 
 use crate::types::AdWindowInfo;
 
-pub const AD_EXACT_WINDOW_INFO_VERSION: u32 = 1;
-pub const AD_EXACT_WINDOW_INFO_SIZE: usize = 88;
+pub const AD_EXACT_WINDOW_INFO_VERSION: u32 = 2;
+pub const AD_EXACT_WINDOW_INFO_SIZE: usize = 96;
 
 /// Additive generation-pinned window identity for operations that target a
 /// previously observed live window.
@@ -13,6 +13,8 @@ pub struct AdExactWindowInfo {
     pub size: u32,
     pub window: AdWindowInfo,
     pub process_instance: *const c_char,
+    /// False only when observation confirmed no matching accessibility element.
+    pub accessible: bool,
 }
 
 const _: () = assert!(std::mem::size_of::<AdExactWindowInfo>() == AD_EXACT_WINDOW_INFO_SIZE);

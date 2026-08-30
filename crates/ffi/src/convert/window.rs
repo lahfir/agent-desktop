@@ -35,6 +35,7 @@ pub(crate) fn exact_window_info_to_c(w: &WindowInfo) -> AdExactWindowInfo {
         size: crate::types::exact_window_info::AD_EXACT_WINDOW_INFO_SIZE as u32,
         window: window_info_to_c(w),
         process_instance: opt_string_to_c(w.process_instance.as_deref()),
+        accessible: w.state.accessible,
     }
 }
 
@@ -117,6 +118,7 @@ mod tests {
             }),
             state: agent_desktop_core::WindowState {
                 is_focused: true,
+                accessible: true,
                 minimized: None,
                 visible: None,
             },
@@ -181,6 +183,7 @@ mod tests {
             unsafe { c_to_string(exact.process_instance) }.as_deref(),
             Some("9:123")
         );
+        assert!(exact.accessible);
         unsafe { free_exact_window_info_fields(&mut exact) };
         assert!(exact.process_instance.is_null());
     }

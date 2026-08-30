@@ -68,6 +68,7 @@ fn live_window_info(
         bounds: Some(window.rect),
         state: WindowState {
             is_focused: focused,
+            accessible: true,
             minimized: Some(window.iconic),
             visible: Some(window.visible),
         },

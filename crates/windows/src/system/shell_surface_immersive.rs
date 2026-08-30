@@ -360,6 +360,7 @@ fn window_info_from_surface(
         bounds: Some(super::window_enum::window_rect(hwnd)),
         state: agent_desktop_core::WindowState {
             is_focused: super::window_ops::is_foreground_window(hwnd),
+            accessible: true,
             minimized: Some(unsafe { IsIconic(hwnd) } != 0),
             visible: Some(unsafe { IsWindowVisible(hwnd) } != 0),
         },

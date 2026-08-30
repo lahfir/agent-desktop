@@ -120,7 +120,7 @@ Every GitHub Release ships a prebuilt C-ABI cdylib (`libagent_desktop_ffi`) for 
 ```python
 import ctypes
 lib = ctypes.CDLL("./lib/libagent_desktop_ffi.dylib")
-lib.ad_init(3)  # verify ABI major (AD_ABI_VERSION_MAJOR) before any call
+lib.ad_init(4)  # verify ABI major (AD_ABI_VERSION_MAJOR) before any call
 adapter = lib.ad_adapter_create()
 # observe -> act: ad_snapshot -> parse a qualified ref -> ad_execute_by_ref ...
 lib.ad_adapter_destroy(adapter)
@@ -195,16 +195,47 @@ agent-desktop session gc
 
 ### Agent cursor overlay (macOS)
 
-Enable the presentation-only cursor once for a session. Every eligible headless action in that session inherits the setting; action and batch entries do not take cursor-enable flags.
+A presentation-only cursor that shows what the agent is about to do. Off by default.
 
 ```bash
-agent-desktop --session <session_id> cursor-overlay enable \
-  --label "Opening profile menu" --max-words 6
-agent-desktop --session <session_id> click @s8f3k2p9:e9
-agent-desktop --session <session_id> cursor-overlay disable
+session_id=$(agent-desktop session start --cursor | jq -r '.data.session_id')
+export AGENT_DESKTOP_SESSION="$session_id"
+agent-desktop snapshot --app Finder -i
+agent-desktop click <qualified-ref-from-snapshot>
+agent-desktop cursor-overlay disable
 ```
 
-Enabling immediately shows the persistent cursor with “Hey, let's play with this computer!” The current card remains visible until its description changes; the old card then eases out and the new text eases in. Actions reuse the cursor's last position for the same eased, swinging glide and briefly switch to a hand pointer for click feedback. The solid white card has a 1.5px near-black border and stays at the cursor's bottom-right. The overlay never moves or intercepts the OS pointer and remains until `cursor-overlay disable` or session end. Headed actions temporarily hide it while the real cursor is in use. macOS renders the overlay natively; Windows and Linux inherit the platform adapter's presentation no-op and need only add their native renderer to support the same session contract.
+`session start --cursor` turns it on with the default look. `cursor-overlay enable` does the same for a session that already exists.
+
+**Style is session-global.** Set it once; every later command uses it. Never pass it per action.
+
+```bash
+agent-desktop --session "$session_id" cursor-overlay enable --label "Opening the menu"
+export AGENT_DESKTOP_SESSION="$session_id"
+```
+
+| Flag | Meaning | Default |
+|---|---|---|
+| `--label TEXT` | Intent text beside the cursor | none |
+| `--max-words N` | Label word limit, 1–12 | 6 |
+| `--fill HEX` | Cursor body | `#FFFFFF` |
+| `--rim HEX` | Cursor outline | `#111318` |
+| `--accent HEX` | Ripple and element outline | `#4299FF` |
+| `--size N` | Size multiplier, 0.5–4.0 | 1.0 |
+| `--no-ripple` | No ripple on click | ripple on |
+| `--no-highlight` | No element outline on click | outline on |
+
+**Behaviour**
+
+- The cursor travels a human path in 90–320 ms. It never rotates or resizes.
+- The action waits for it to land, so a window never closes before the cursor arrives. The wait is capped at 900 ms and never blocks an action.
+- A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
+- Idle for 6 s, it fades out. The next command brings it back.
+- `cursor-overlay disable` removes it now. You do not have to end the session.
+- Headed actions hide it. It never moves or intercepts the OS pointer.
+- Overhead is about 150–300 ms per action, all of it the visible travel.
+
+macOS renders it natively. Windows and Linux inherit the adapter's no-op and need only their own renderer against the same core contract.
 
 ## Driving Chromium apps (CDP)
 
@@ -369,12 +400,13 @@ agent-desktop --session run-a batch '[
 ### System
 
 ```bash
-agent-desktop session start [--name LABEL] [--no-trace]  # create session; pass returned ID explicitly
+agent-desktop session start [--name LABEL] [--no-trace] [--cursor]  # create session; pass returned ID explicitly
 agent-desktop session end [id]
 agent-desktop session list
 agent-desktop session gc [--older-than SECS] [--ended]
-agent-desktop --session <id> cursor-overlay enable [--label TEXT] [--max-words N]
-agent-desktop --session <id> cursor-overlay disable
+agent-desktop --session <id> cursor-overlay enable [--label TEXT] [--max-words N] [--fill HEX] [--rim HEX] [--accent HEX] [--size N] [--no-ripple] [--no-highlight]
+export AGENT_DESKTOP_SESSION=<id>
+agent-desktop cursor-overlay disable
 agent-desktop status                     # platform, permissions, session_id, tracing, latest snapshot
 agent-desktop permissions                # check accessibility/screen-recording/automation
 agent-desktop permissions --request      # request in the bounded isolated helper

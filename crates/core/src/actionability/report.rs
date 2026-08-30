@@ -1,5 +1,5 @@
 use super::{PointerDelivery, check::ActionabilityCheck, status::ActionabilityStatus};
-use crate::{ErrorCode, Point};
+use crate::{ErrorCode, Point, Rect};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -11,6 +11,8 @@ pub(crate) struct ActionabilityReport {
     #[serde(skip)]
     pub(crate) presentation_point: Option<Point>,
     #[serde(skip)]
+    pub(crate) presentation_bounds: Option<Rect>,
+    #[serde(skip)]
     pub(crate) pointer_delivery: PointerDelivery,
 }
 
@@ -19,6 +21,7 @@ impl ActionabilityReport {
         checks: Vec<ActionabilityCheck>,
         verified_point: Option<Point>,
         presentation_point: Option<Point>,
+        presentation_bounds: Option<Rect>,
         pointer_delivery: PointerDelivery,
     ) -> Self {
         let actionable = checks.iter().all(|check| !is_blocking(check));
@@ -27,6 +30,7 @@ impl ActionabilityReport {
             checks,
             verified_point,
             presentation_point,
+            presentation_bounds,
             pointer_delivery,
         }
     }
@@ -96,6 +100,7 @@ mod tests {
                 failed("enabled", None),
                 failed("supported_action", Some(ErrorCode::PolicyDenied)),
             ],
+            None,
             None,
             None,
             PointerDelivery::NotApplicable,

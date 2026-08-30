@@ -25,6 +25,7 @@ pub(crate) struct ResolvedRefAction<'a> {
 pub(crate) struct ActionabilityPreflight {
     pub(crate) verified_point: Option<crate::Point>,
     pub(crate) presentation_point: Option<crate::Point>,
+    pub(crate) presentation_bounds: Option<crate::Rect>,
     pub(crate) pointer_delivery: actionability::PointerDelivery,
 }
 
@@ -102,7 +103,7 @@ pub(crate) fn dispatch_resolved(
         request.policy = crate::InteractionPolicy::headless();
     }
     request = request
-        .with_verified_point(preflight.verified_point)
+        .with_verified_point(preflight.verified_point.clone())
         .with_expected_process(expected_process.clone());
     let final_target = ResolvedRefAction::new(target, &handle);
     final_target.context.trace_lazy(
@@ -112,13 +113,14 @@ pub(crate) fn dispatch_resolved(
     let action_name = request.action.name();
     let raises_surface = request.action.may_raise_surface();
     let presentation_action = request.action.clone();
+    presentation::before_dispatch(&final_target, &preflight, lease);
     let dispatch_result = final_target
         .adapter
         .execute_action(final_target.handle, request, lease);
     presentation::after_dispatch(
         final_target.adapter,
         final_target.context,
-        preflight.presentation_point,
+        &preflight,
         &presentation_action,
         &dispatch_result,
     );

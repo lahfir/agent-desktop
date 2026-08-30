@@ -142,6 +142,7 @@ fn build_report(
             checks,
             verified_point,
             presentation_point,
+            evidence.bounds,
             pointer_delivery,
         ));
     }
@@ -163,6 +164,7 @@ fn build_report(
         checks,
         verified_point,
         presentation_point,
+        evidence.bounds,
         pointer_delivery,
     ))
 }
