@@ -188,6 +188,49 @@ fn diff_surfaces(baseline: &SignalBaseline, current: &SignalBaseline, events: &m
     }
 }
 
+/// Grows `seen` with any entry from `current` not already present, keyed by
+/// the same identity `diff_signals` uses. Nothing already in `seen` is ever
+/// removed: this is the running union a disappearance-class wait diffs
+/// against, so an entity that both appeared and disappeared within one wait
+/// is still detected even though it never appears in the wait's original
+/// fixed baseline.
+pub(crate) fn merge_signal_baseline(
+    seen: &SignalBaseline,
+    current: &SignalBaseline,
+) -> SignalBaseline {
+    let seen_window_ids: HashSet<WindowIdentity<'_>> =
+        seen.windows.iter().filter_map(window_identity).collect();
+    let mut windows = seen.windows.clone();
+    for win in &current.windows {
+        if window_identity(win).is_some_and(|identity| !seen_window_ids.contains(&identity)) {
+            windows.push(win.clone());
+        }
+    }
+
+    let seen_app_ids: HashSet<_> = seen.apps.iter().filter_map(app_identity).collect();
+    let mut apps = seen.apps.clone();
+    for app in &current.apps {
+        if app_identity(app).is_some_and(|identity| !seen_app_ids.contains(&identity)) {
+            apps.push(app.clone());
+        }
+    }
+
+    let seen_surface_ids: HashSet<_> = seen.surfaces.iter().map(surface_identity).collect();
+    let mut surfaces = seen.surfaces.clone();
+    for surface in &current.surfaces {
+        if !seen_surface_ids.contains(&surface_identity(surface)) {
+            surfaces.push(surface.clone());
+        }
+    }
+
+    SignalBaseline {
+        windows,
+        apps,
+        surfaces,
+        completeness: current.completeness,
+    }
+}
+
 #[cfg(test)]
 #[path = "signals_tests.rs"]
 mod tests;
