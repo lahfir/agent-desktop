@@ -226,9 +226,25 @@ function Get-CaptureCliRedactionViolationsFromText {
         here as the redaction rule itself rather than only a display
         convenience.
     #>
-    $pidPattern = '"(?<field>pid|processid|parentprocessid|ownerprocessid|sessionprocessid)"\s*:\s*"?-?\d+"?'
+    $pidFields = 'pid|processid|parentprocessid|ownerprocessid|sessionprocessid'
+    $pidPattern = '"(?<field>' + $pidFields + ')"\s*:\s*"?-?\d+"?'
     foreach ($m in [regex]::Matches($Text, $pidPattern, $regexOptions)) {
         [void]$violations.Add("$Source`: field '$($m.Groups['field'].Value)' holds a literal pid")
+    }
+
+    <#
+        A pid does not only appear as a JSON key. A probe that serializes a
+        node as one compact line writes it as `pid=<digits>` inside a string
+        value, where the key-and-colon pattern above cannot see it - the shape
+        four committed 01-tree-dump captures already carry, which is why they
+        sit in the pre-existing allowlist. Without this second pass a brand new
+        capture written the same way would ship a live pid and the gate would
+        report it clean. The redacted placeholder `pid=<pid>` carries no digits
+        and is deliberately not matched.
+    #>
+    $embeddedPidPattern = '\b(?<field>' + $pidFields + ')\s*[=:]\s*-?\d+'
+    foreach ($m in [regex]::Matches($Text, $embeddedPidPattern, $regexOptions)) {
+        [void]$violations.Add("$Source`: '$($m.Groups['field'].Value)' holds a literal pid inside a value")
     }
 
     <#

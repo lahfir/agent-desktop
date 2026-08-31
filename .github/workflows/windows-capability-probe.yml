@@ -27,7 +27,6 @@ on:
       - 'probes/windows/27-elevation-required.cs'
       - 'probes/windows/28-chromium-exposure.ps1'
       - 'probes/windows/28-tray-read-diagnosis.ps1'
-      - 'probes/windows/28-tray-reproduction.ps1'
       - 'probes/windows/FINDINGS.md'
       - 'probes/windows/13-ledger-check.ps1'
       - 'probes/windows/13-ledger-content.ps1'

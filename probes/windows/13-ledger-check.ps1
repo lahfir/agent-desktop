@@ -151,6 +151,18 @@ try {
         [void]$areaCoverage.Add([pscustomobject]@{ Area = $areaId; Rows = $count })
         if ($count -lt 1) { [void]$failures.Add('section 2.0 evidence area ' + $areaId + ' has no ledger row') }
     }
+    # $RequiredAreaIds is hand-maintained, so an area whose id is never added
+    # to it gets no row-deletion protection at all - the coverage loop above
+    # only iterates ids it already knows. That omission has happened once
+    # already (A27-3: areas 14-26 carried zero enforced coverage for twelve
+    # sub-phases). Every heading the parse actually found must therefore be
+    # accounted for, so a new area cannot enter the ledger unpoliced.
+    $headingAreaIds = @($rows | Where-Object { $_.Area -match '^[0-9]+$' } | ForEach-Object { $_.Area } | Sort-Object -Unique)
+    foreach ($seen in $headingAreaIds) {
+        if ($RequiredAreaIds -notcontains $seen) {
+            [void]$failures.Add('evidence area ' + $seen + ' carries rows but is absent from $RequiredAreaIds, so its rows are never checked for deletion')
+        }
+    }
     $sessionRowCount = @($rows | Where-Object { $_.Area -eq 'R6' }).Count
     if ($sessionRowCount -lt 1) { [void]$failures.Add('no R6 session-evidence rows found') }
 
