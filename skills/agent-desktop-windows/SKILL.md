@@ -119,19 +119,16 @@ deliberately excludes shell windows — so the shell round trip routes through
   a `SearchTextBox`, not a tile grid (A26-9) — drive it as the search surface
   it is.
 - **The tray path is the generic command surface** — no Windows-specific tray
-  commands exist. The tray surfaces list: `snapshot --surface taskbar` refs
-  the notification area's tray `button`s, and `snapshot --surface
+  commands exist. The tray surfaces list: `snapshot --surface system-tray`
+  returns the promoted notification-area items (it reads whatever the shell
+  currently promotes, which may be zero items on a machine with no tray icons —
+  that is a correct empty answer, not a failure), `snapshot --surface taskbar`
+  refs the notification area's tray `button`s, and `snapshot --surface
   system-tray-overflow` (raised first with `open-system-surface`) refs its
-  five items. Clicking a tray item by ref is **not delivered on this build**
-  — no route completed, and three mechanisms were measured: the dedicated
-  `system-tray` surface's promoted read returned zero items while the taskbar
-  surface refs the same toolbar's buttons; the overflow raise is accepted and
-  the flyout is never presented, so every overflow ref fails actionability at
-  the occlusion check; and a click on a tray ref taken from the taskbar
-  surface refuses `WINDOW_NOT_FOUND`, because the tray window is deliberately
-  outside the agent window inventory. Expect a tray-item `click @ref` to fail
-  until the repair lands — the repair is scoped, and the platform phases
-  document (`docs/phases.md`) owns it.
+  items. Clicking a tray item by ref is delivered, and the envelope reports
+  `delivery: delivered_unverified` with `retry: unsafe` — a synthesized click
+  cannot confirm what the owning application chose to do with it, so plan for
+  an unverified delivery rather than a confirmed effect.
 
 ## Notifications
 

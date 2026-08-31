@@ -201,6 +201,10 @@ impl CaptureSurface {
         }
         gdi_balance::acquire();
         let previous = unsafe { SelectObject(dc_pair.memory_dc, bitmap) };
+        if previous.is_null() {
+            gdi_balance::release();
+            return Err(win32_last_error("SelectObject failed for window capture"));
+        }
         Ok(Self {
             dc_pair,
             bitmap,
