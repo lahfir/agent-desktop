@@ -186,12 +186,15 @@ fn live_fixture_set_value_round_trips_when_value_pattern_exists() {
     ensure_test_apartment();
     let fixture = LocalFixture::create().expect("fixture");
     let edit = find_content_edit(fixture.handle());
-    if edit.is_null() {
-        return;
-    }
+    assert!(
+        !edit.is_null(),
+        "fixture must contain an edit control with content marker"
+    );
     let handle = match control_handle(edit) {
         Ok(handle) => handle,
-        Err(_) => return,
+        Err(error) => {
+            panic!("control_handle must resolve the fixture edit control: {error}")
+        }
     };
     let payload = "zzlivevaluezz";
     let result = execute_action_impl(
