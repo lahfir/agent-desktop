@@ -25,6 +25,7 @@ on:
       - 'probes/windows/27-contract-decisions.ps1'
       - 'probes/windows/27-elevation-required.ps1'
       - 'probes/windows/27-elevation-required.cs'
+      - 'probes/windows/28-chromium-exposure.ps1'
       - 'probes/windows/28-tray-reproduction.ps1'
       - 'probes/windows/FINDINGS.md'
       - 'probes/windows/13-ledger-check.ps1'
@@ -192,6 +193,11 @@ jobs:
         shell: powershell
         run: |
           .\probes\windows\27-elevation-required.ps1 -Label ci
+
+      - name: Run the chromium-exposure probe
+        shell: powershell
+        run: |
+          .\probes\windows\28-chromium-exposure.ps1 -Label ci
 
       # Runs after the area probes so the ledger it audits reflects every
       # capture this job just wrote. Registered here rather than the main CI
