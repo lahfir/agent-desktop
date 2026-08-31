@@ -59,7 +59,7 @@ Three problems, in the order they bite.
 | R11 | Every Windows command accepts the same `--app` identifier set as every other Windows command. |
 | R12 | `APP_NOT_FOUND` and `AMBIGUOUS_TARGET` from `--app` resolution carry a suggestion naming a recovery the command can actually perform. |
 | R13 | A `wait --event` catches a disappearance-class event for an entity that both appeared and disappeared inside the wait. |
-| R14 | An `--app`-scoped wait for an appearance-class event honours its timeout rather than refusing `APP_NOT_FOUND` before the loop starts. |
+| R14 | An `--app`-scoped wait resolves its target on terms that fit the event class: an appearance-class wait honours its timeout rather than refusing `APP_NOT_FOUND` before the loop starts, and a disappearance-class wait treats an unresolvable target as its answer rather than an error. |
 | R15 | `app-terminated` is not reported for a process that is provably still alive. |
 | R16 | `offscreen` carries one documented meaning across adapters, with the per-adapter fidelity difference and its mechanism stated rather than left to be discovered. |
 | R17 | The toggle control's role and state carry one documented meaning across adapters. |
@@ -251,7 +251,7 @@ sequenceDiagram
 
 - **The implementer's host is the box these measurements were taken on** — a VMware VM running Windows Server 2019 Datacenter 1809, build 17763, one 1639x732 display at 96 DPI, one interactive console session. Every ratification in KTD16 is scoped to that host and names it. On a different host, the ratifications are re-decided rather than inherited.
 - **CI on a PR into `feat/windows-adapter` runs `ci.yml` in full**, including the macOS `test` job that owns `clippy -D warnings`, the `cargo tree` isolation check and the 15MB cap. This is how the macOS half of U3 and U8 is verified; it is compile, lint and unit tests, not live behaviour, and KTD17 and KTD20 record what that does not cover.
-- **The user is the owner for three decisions this plan takes on their behalf and flags rather than defers:** KTD12's macOS GA behaviour change, KTD16's six ratifications, and KTD17's ratification that macOS stays without the three shell-surface kinds. Each is stated with its reason and is reversible at review.
+- **The user is the owner for three decisions this plan takes on their behalf and flags rather than defers:** KTD12's macOS GA behaviour change, KTD16's **four** rig ratifications, and KTD17's ratification that macOS stays without the three shell-surface kinds. Each is stated with its reason and is reversible at review. KTD16's other two rig outcomes — the 740 measurement and the A26-13 attempt — are measurements rather than ratifications, so there is nothing there to reverse.
 
 ---
 
@@ -286,9 +286,9 @@ Each unit carries a **landing target** per KTD2: `2.15.0` (which merges first), 
   4. `scripts/check-capture-redaction.ps1` passes over `probes/windows/captures/27-contract-decisions/`, and a deliberately poisoned capture carrying a control name fails it. (Invert-verified.)
   5. A grep of §2.15's text for `Merge .feat/windows-adapter`, "`main` gains Windows", and "and the merge" returns nothing.
   6. A grep of §2.15's exit criteria for each capability named in its scope returns a hit for every one. Encoded as a check in `scripts/check-e2e-windows-contract.ps1`'s doc-rules module so it cannot silently rot.
-  8. `docs/phases.md`'s `offscreen` text carries one meaning sentence, both adapters' sources, and the no-propagation ban — asserted by the doc-rules check that already reads that section.
-  7b. At `2.15.0`, `13-ledger-check.ps1` lists every row naming 2.15 and each carries either a disposition or an `owned by U<n>` annotation. At the gate PR the interim state is no longer accepted: a row naming 2.15 that is neither closed nor re-assigned to a different sub-phase fails the check. **Both halves are asserted** — a check that only ever ran at `2.15.0` would pass on annotations forever.
-  7. The class-(b) envelope list in `docs/phases.md` carries no UIPI activation entry and names `INVALID_ARGS` for the protected-process refusal, and the same three rows appear in this plan's Error and Disposition Mapping. **The two are asserted against each other**, so a later edit to one without the other fails.
+  7. `docs/phases.md`'s `offscreen` text carries one meaning sentence, both adapters' sources, and the no-propagation ban — asserted by the doc-rules check that already reads that section.
+  8. At `2.15.0`, `13-ledger-check.ps1` lists every row naming 2.15 and each carries either a disposition or an `owned by U<n>` annotation. At the gate PR the interim state is no longer accepted: a row naming 2.15 that is neither closed nor re-assigned to a different sub-phase fails the check. **Both halves are asserted** — a check that only ever ran at `2.15.0` would pass on annotations forever.
+  9. The class-(b) envelope list in `docs/phases.md` carries no UIPI activation entry and names `INVALID_ARGS` for the protected-process refusal, and the same three rows appear in this plan's Error and Disposition Mapping. **The two are asserted against each other**, so a later edit to one without the other fails.
 - **Verification:** the ledger check, the citation check and the redaction gate are green; §2.16's scope names `data.rendered`; §2.15's own text carries KTD17's ratification with its blocker named; Phase 5's scope names the untaken macOS perf baseline; no §2.15 text claims the merge.
 
 ### U2. `cursor-overlay` reports whether it rendered
@@ -583,7 +583,7 @@ Every requirement maps to at least one test that fails if the requirement is vio
 | R13 | U6 scenarios 1-3, 5 | U6 |
 | R14 | U6 scenarios 6-7 | U6 |
 | R15 | U6 scenarios 8-9 | U6 |
-| R16 | U1 scenario 8 — the contract sentence and both fidelities are in `docs/phases.md`, and A14-8's no-propagation ban is restated as binding on both adapters | U1 |
+| R16 | U1 scenario 7 — the contract sentence and both fidelities are in `docs/phases.md`, and A14-8's no-propagation ban is restated as binding on both adapters | U1 |
 | R17 | U8 scenarios 1-2, 5 | U8 |
 | R18 | U8 scenarios 3-4 | U8 |
 | R19 | `scripts/check-phases-ledger-citations.ps1` plus U1 scenario 6 — a ratification with no `docs/phases.md` text fails the enumeration check | U1 |
@@ -601,8 +601,8 @@ Every requirement maps to at least one test that fails if the requirement is vio
 | R31 | U15's disposition rule — a report with no findings fails the gate | U15 |
 | R32 | U5 scenario 5 — the suggestion is absent today | U5, U1 |
 | R33 | U13 scenario 3b — the ratification cannot ship without its number | U13 |
-| R34 | U1 scenario 7 — the plan's table and `docs/phases.md` are asserted against each other | U1 |
-| R35 | U1 scenario 7b — an undisposed row naming 2.15 fails the ledger check | U1 |
+| R34 | U1 scenario 9 — the plan's table and `docs/phases.md` are asserted against each other | U1 |
+| R35 | U1 scenario 8 — an undisposed row naming 2.15 fails the ledger check at the gate | U1 |
 
 **Gates that must be green before the gate PR merges:**
 
@@ -665,7 +665,7 @@ Every requirement maps to at least one test that fails if the requirement is vio
 |---|---|---|---|
 | The tray divergence does not reproduce on the release binary, and the dogfood's observation was stack- or session-specific | medium | low | KTD6 pre-commits both branches; Branch B still ships R10's click-legality contract, so the unit closes either way |
 | U3's macOS half breaks something no unit test covers, and no macOS host exists to catch it | medium | high | the promotion moves a constructor without changing what it constructs, pinned by a core test asserting both call paths produce the same payload; CI's macOS lane carries compile, clippy and unit tests; KTD20 records the untaken perf baseline as a known gap against Phase 5 |
-| The superset blocked-combo change blocks a combo a macOS user relies on | low | medium | the list is three entries and the change is scoped to modifier supersets of them; U8 scenario 7 pins that `cmd+w` still delivers; it ships with a release note and is named in the plan as the one GA behaviour change |
+| The superset blocked-combo change blocks a combo a macOS user relies on | low | medium | the list is three entries and the change is scoped to modifier supersets of them; U8 scenario 4 pins that `cmd+w` still delivers; it ships with a release note and is named in the plan as the one GA behaviour change |
 | The registered runner claims the queued run before the intended one | high if unmitigated | medium | U10 flushes the queue **before** registering; `cancel-in-progress: false` makes this deterministic rather than racy |
 | The `.exe`-tolerant predicate creates a new ambiguity on a host running both `foo` and `foo.exe` | low | low | `AMBIGUOUS_TARGET` is the correct answer and U7 scenario 5 pins it, with the candidates' pids in the suggestion |
 | The `app-terminated` liveness confirmation suppresses a real termination | low | high | KTD9 fails open by construction — only a proof of life suppresses; U6 scenario 9 pins that a `not_supported` `process_state` still emits |
@@ -679,7 +679,7 @@ Every requirement maps to at least one test that fails if the requirement is vio
 
 ## Open Questions
 
-None. All twenty "Settle" and "Decide here" bullets in §2.15's scope are answered as a numbered Key Technical Decision above, with its evidence, its rejected alternatives and its landing target. Three of those answers are the user's to reverse and are flagged rather than buried — KTD12's macOS GA behaviour change, KTD16's six rig ratifications, and KTD17's ratification that macOS stays without the three shell-surface kinds.
+None. All twenty "Settle" and "Decide here" bullets in §2.15's scope are answered as a numbered Key Technical Decision above, with its evidence, its rejected alternatives and its landing target. Three of those answers are the user's to reverse and are flagged rather than buried — KTD12's macOS GA behaviour change, KTD16's four rig ratifications, and KTD17's ratification that macOS keeps the trait default for the three shell-surface kinds.
 
 ---
 
