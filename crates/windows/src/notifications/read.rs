@@ -152,17 +152,21 @@ fn walk(
         .with_details(serde_json::json!({ "complete": false })));
     }
     if depth > MAX_WALK_DEPTH {
-        return Ok(());
+        return Err(AdapterError::new(
+            ErrorCode::AppUnresponsive,
+            "Notification traversal reached its bounded depth limit",
+        )
+        .with_details(serde_json::json!({ "complete": false })));
     }
     for child in children(element)? {
         crate::system::permissions::ensure_budget(deadline)?;
-        match control_type(&child) {
-            Some(ControlType::ListItem) => {
+        match control_type(&child)? {
+            ControlType::ListItem => {
                 if let Some(entry) = entry_of(&child, group)? {
                     entries.push(entry);
                 }
             }
-            Some(ControlType::Group | ControlType::HeaderItem) => {
+            ControlType::Group | ControlType::HeaderItem => {
                 let header = direct_child_title(&child)?;
                 let inherited = header
                     .filter(|title| !title.is_empty())
@@ -182,19 +186,26 @@ fn entry_of(item: &UIAElement, group: Option<&str>) -> Result<Option<ListEntry>,
     use uiautomation::types::TreeScope;
 
     let title = match find_by_id(item, TreeScope::Descendants, TITLE)? {
-        Some(element) => name_of(&element),
+        Some(element) => name_of(&element)?,
         None => return Ok(None),
     };
     if title.is_empty() {
         return Ok(None);
     }
     let body = match find_by_id(item, TreeScope::Descendants, CONTENT)? {
-        Some(element) if !name_of(&element).is_empty() => Some(name_of(&element)),
-        _ => None,
+        Some(element) => {
+            let content = name_of(&element)?;
+            if content.is_empty() {
+                None
+            } else {
+                Some(content)
+            }
+        }
+        None => None,
     };
     let mut actions = Vec::new();
     for verb in find_all_by_id(item, TreeScope::Descendants, VERB_BUTTON)? {
-        let name = name_of(&verb);
+        let name = name_of(&verb)?;
         if !name.is_empty() {
             actions.push(name);
         }
@@ -202,7 +213,7 @@ fn entry_of(item: &UIAElement, group: Option<&str>) -> Result<Option<ListEntry>,
     let app_name = match group {
         Some(name) => String::from(name),
         None => match find_by_id(item, TreeScope::Descendants, ATTRIBUTION)? {
-            Some(element) => name_of(&element),
+            Some(element) => name_of(&element)?,
             None => String::new(),
         },
     };
@@ -329,7 +340,9 @@ fn find_all_by_id(
 fn direct_child_title(element: &UIAElement) -> Result<Option<String>, AdapterError> {
     use uiautomation::types::TreeScope;
 
-    Ok(find_by_id(element, TreeScope::Children, TITLE)?.map(|title| name_of(&title)))
+    find_by_id(element, TreeScope::Children, TITLE)?
+        .map(|title| name_of(&title))
+        .transpose()
 }
 
 #[cfg(target_os = "windows")]
@@ -359,12 +372,29 @@ pub(super) fn find_clear_all_button(root: &UIAElement) -> Result<Option<UIAEleme
     )
 }
 
+/// Reads an element's `Name`.
+///
+/// This is a property read on an element the caller already holds, not a
+/// search: unlike [`find_by_id`], there is no "absence" this call can report,
+/// because a failure here always means the read itself could not complete,
+/// most often because a virtualized list recycled the element between
+/// discovery and this call. Swallowing it into an empty string would make a
+/// real notification's title look blank rather than unreadable, so every
+/// failure surfaces as an error instead.
 #[cfg(target_os = "windows")]
-pub(super) fn name_of(element: &UIAElement) -> String {
-    element.0.get_name().unwrap_or_default()
+pub(super) fn name_of(element: &UIAElement) -> Result<String, AdapterError> {
+    element
+        .0
+        .get_name()
+        .map_err(|error| crate::tree::automation::uia_error(&error, "read an element's name"))
 }
 
+/// [`name_of`]'s counterpart for `ControlType`: the same read-not-search
+/// reasoning applies, so a failure surfaces rather than reading as "not a
+/// recognized control".
 #[cfg(target_os = "windows")]
-fn control_type(element: &UIAElement) -> Option<uiautomation::types::ControlType> {
-    element.0.get_control_type().ok()
+fn control_type(element: &UIAElement) -> Result<uiautomation::types::ControlType, AdapterError> {
+    element.0.get_control_type().map_err(|error| {
+        crate::tree::automation::uia_error(&error, "read an element's control type")
+    })
 }

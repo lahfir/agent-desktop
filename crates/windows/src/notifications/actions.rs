@@ -299,7 +299,7 @@ fn invoke_notification_action(
 ) -> Result<(), AdapterError> {
     let wanted = action_name.to_lowercase();
     for verb in super::read::find_verb_buttons(entry)? {
-        if super::read::name_of(&verb).to_lowercase() == wanted {
+        if super::read::name_of(&verb)?.to_lowercase() == wanted {
             return invoke_element(&verb);
         }
     }
