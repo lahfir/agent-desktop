@@ -119,6 +119,10 @@ fn representative_cases() -> Vec<(Vec<(TreeProperty, PropertyOutcome)>, &'static
             vec![number(TreeProperty::LegacyState, 0x0000_0800)],
             "button",
         ),
+        (
+            vec![number(TreeProperty::LegacyState, 0x0000_0008)],
+            "button",
+        ),
     ]
 }
 
@@ -213,18 +217,26 @@ fn toggle_state_on_non_toggleable_role_emits_no_checked() {
     assert!(!states.contains(&state::PRESSED.to_string()));
 }
 
-/// `pressed` has no reachable source: `push_toggle_state`'s dead arm for
-/// `role == "button"` was removed because `roles.rs` reclassifies any
-/// toggle-available `Button` to `switch` before states resolve, so a
-/// `button` role reaching this producer has never advertised
-/// `ToggleAvailable` and never carries a `ToggleState` to read. See
-/// `resolve_states`'s doc comment for the full reasoning. This is the
-/// regression test for that guarantee across both toggle values the pattern
-/// defines. Its input is deliberately unreachable in production; see
-/// [`toggle_state_on_a_switch_role_emits_checked_and_indeterminate`] for the
-/// reachable shape - do not "fix" this test by feeding it a real role.
+/// A `button` role with the `STATE_SYSTEM_PRESSED` bit set emits the
+/// `pressed` state. This covers toolbar toggle buttons exposed through the
+/// legacy MSAA interface.
 #[test]
-fn pressed_is_unproduced_for_a_button_role_at_any_toggle_state() {
+fn pressed_state_system_bit_on_button_role_emits_pressed() {
+    const STATE_SYSTEM_PRESSED: i32 = 0x0000_0008;
+    let states = resolved(
+        vec![number(TreeProperty::LegacyState, STATE_SYSTEM_PRESSED)],
+        "button",
+    );
+
+    assert!(states.contains(&state::PRESSED.to_string()));
+}
+
+/// Toggle-available buttons are reclassified to `switch` by `roles.rs`, so a
+/// `button` role never carries a `ToggleState`. This verifies that the
+/// reclassification guards against misidentifying toggle buttons as pressed
+/// buttons when only a toggle value is present.
+#[test]
+fn button_role_with_toggle_state_but_no_pressed_bit_emits_no_pressed() {
     for toggle in [1, 2] {
         let states = resolved(
             vec![

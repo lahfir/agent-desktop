@@ -1,4 +1,4 @@
-use super::is_blocked;
+use super::{canonical_parts, is_blocked};
 use agent_desktop_core::{KeyCombo, Modifier};
 
 fn combo(modifiers: Vec<Modifier>, key: &str) -> KeyCombo {
@@ -60,4 +60,63 @@ fn benign_combos_are_not_blocked() {
     )));
     assert!(!is_blocked(&combo(vec![Modifier::Ctrl], "s")));
     assert!(!is_blocked(&combo(vec![], "return")));
+}
+
+/// Adding a modifier to a dangerous shortcut generally yields another
+/// dangerous shortcut: `cmd+shift+q` force-quits like `cmd+q`, and
+/// `cmd+shift+ctrl+q` is even more dangerous.
+#[test]
+fn a_modifier_superset_of_a_blocked_combo_does_not_evade_the_block() {
+    assert!(
+        is_blocked(&combo(vec![Modifier::Meta, Modifier::Shift], "q")),
+        "cmd+shift+q force-quits"
+    );
+    assert!(
+        is_blocked(&combo(
+            vec![Modifier::Meta, Modifier::Shift, Modifier::Ctrl],
+            "q"
+        )),
+        "cmd+shift+ctrl+q is a superset of cmd+q"
+    );
+}
+
+/// The superset rule keys on the key as well as the modifiers, so an
+/// unrelated shortcut that merely shares a modifier stays allowed.
+#[test]
+fn a_superset_of_the_modifiers_alone_is_not_blocked() {
+    assert!(
+        !is_blocked(&combo(vec![Modifier::Meta, Modifier::Shift], "w")),
+        "cmd+shift+w is not a blocked shortcut"
+    );
+    assert!(
+        !is_blocked(&combo(vec![Modifier::Meta], "w")),
+        "cmd+w is not a blocked shortcut"
+    );
+}
+
+/// Verify every one of the five blocked entries is still refused. This
+/// enumerates rather than spot-checks to guarantee monotonicity: nothing
+/// blocked today can become unblocked by the rule change.
+#[test]
+fn all_five_blocked_entries_are_still_refused() {
+    assert!(
+        is_blocked(&combo(vec![Modifier::Meta], "q")),
+        "cmd+q must be blocked"
+    );
+    assert!(
+        is_blocked(&combo(vec![Modifier::Meta, Modifier::Shift], "q")),
+        "cmd+shift+q must be blocked"
+    );
+    assert!(
+        is_blocked(&combo(vec![Modifier::Meta, Modifier::Alt], "esc")),
+        "cmd+alt+esc must be blocked"
+    );
+    assert!(
+        is_blocked(&combo(vec![Modifier::Ctrl, Modifier::Meta], "q")),
+        "ctrl+cmd+q must be blocked"
+    );
+    assert!(
+        is_blocked(&combo(vec![Modifier::Meta, Modifier::Shift], "delete")),
+        "cmd+shift+delete must be blocked"
+    );
 }
