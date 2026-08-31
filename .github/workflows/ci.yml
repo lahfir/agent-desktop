@@ -133,6 +133,9 @@ jobs:
       - name: Enforce no delivery-plan references in source
         run: scripts/check-no-phase-references.sh
 
+      - name: Enforce the stale_ref constructors take only ref ids
+        run: scripts/check-stale-ref-constructor-misuse.sh
+
       - name: Clippy
         run: cargo clippy --locked -p agent-desktop-core -p agent-desktop-macos -p agent-desktop -p agent-desktop-ffi --all-targets -- -D warnings
 
