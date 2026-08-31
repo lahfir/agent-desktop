@@ -1,5 +1,6 @@
 use agent_desktop_core::{
     AdapterError, Deadline, ErrorCode, ProcessId, WindowFilter, WindowInfo, WindowState,
+    app_name_matches,
 };
 
 #[cfg(target_os = "windows")]
@@ -155,7 +156,7 @@ fn list_windows_live_once(
 
     let mut windows = Vec::new();
     let mut focused_seen = false;
-    let app_filter = filter.app.as_deref().unwrap_or("").to_ascii_lowercase();
+    let app_filter = filter.app.as_deref();
     let failure = std::cell::RefCell::new(None);
     let mut seen = 0usize;
 
@@ -173,8 +174,10 @@ fn list_windows_live_once(
         let Some((pid, token, app)) = identity_facts(window.handle) else {
             return true;
         };
-        if !app_filter.is_empty() && !app.to_ascii_lowercase().contains(&app_filter) {
-            return true;
+        if let Some(filter_name) = app_filter {
+            if !app_name_matches(&app, filter_name) {
+                return true;
+            }
         }
         let title = super::window_identity::live_window_title(window.handle).unwrap_or_default();
         let focused = !focused_seen && is_foreground_window(window.handle);
