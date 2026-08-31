@@ -56,14 +56,11 @@ pub(crate) fn surface_root(
         }
         (ObservationRoot::Window(window), SnapshotSurface::StartMenu)
         | (ObservationRoot::Window(window), SnapshotSurface::Taskbar)
+        | (ObservationRoot::Window(window), SnapshotSurface::SystemTray)
+        | (ObservationRoot::Window(window), SnapshotSurface::SystemTrayOverflow)
         | (ObservationRoot::Window(window), SnapshotSurface::ActionCenter) => {
             let handle = window_hwnd(&window.id)?;
             root_from_hwnd(handle, deadline)
-        }
-        (ObservationRoot::Window(window), SnapshotSurface::SystemTray)
-        | (ObservationRoot::Window(window), SnapshotSurface::SystemTrayOverflow) => {
-            let handle = window_hwnd(&window.id)?;
-            tray_surface_root(handle, deadline)
         }
         (ObservationRoot::Element { handle, .. }, _) => {
             super::element::uia_element(handle).cloned().map_err(|_| {
@@ -144,58 +141,6 @@ pub(crate) fn window_is_modal_sheet(root: &UIAElement, _chromium: bool) -> bool 
 #[cfg(not(target_os = "windows"))]
 pub(crate) fn window_is_modal_sheet(_root: &UIAElement, _chromium: bool) -> bool {
     false
-}
-
-#[cfg(target_os = "windows")]
-fn tray_surface_root(handle: isize, deadline: Deadline) -> Result<UIAElement, AdapterError> {
-    if let Some(parent) = parent_window_handle(handle) {
-        if let Ok(parent_root) = root_from_hwnd(parent, deadline) {
-            if let Some(element) = find_descendant_by_hwnd(&parent_root, handle) {
-                return Ok(element);
-            }
-        }
-    }
-    root_from_hwnd(handle, deadline)
-}
-
-#[cfg(not(target_os = "windows"))]
-fn tray_surface_root(handle: isize, deadline: Deadline) -> Result<UIAElement, AdapterError> {
-    root_from_hwnd(handle, deadline)
-}
-
-#[cfg(target_os = "windows")]
-fn parent_window_handle(hwnd: isize) -> Option<isize> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor};
-
-    if hwnd == 0 {
-        return None;
-    }
-    let root = unsafe { GetAncestor(hwnd as *mut std::ffi::c_void, GA_ROOT) };
-    if root.is_null() {
-        None
-    } else {
-        let parent = root as isize;
-        (parent != hwnd).then_some(parent)
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn find_descendant_by_hwnd(parent: &UIAElement, target: isize) -> Option<UIAElement> {
-    use uiautomation::types::TreeScope;
-
-    let client = crate::tree::automation::automation_client().ok()?;
-    let condition = client.create_true_condition().ok()?;
-    let descendants = parent.0.find_all(TreeScope::Descendants, &condition).ok()?;
-    for child in descendants {
-        let handle: isize = match child.get_native_window_handle().ok() {
-            Some(handle) => handle.into(),
-            None => continue,
-        };
-        if handle == target {
-            return Some(UIAElement::from(child));
-        }
-    }
-    None
 }
 
 #[cfg(test)]
