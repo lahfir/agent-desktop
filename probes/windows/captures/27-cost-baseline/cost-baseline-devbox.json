@@ -1,0 +1,39 @@
+{
+    "probe":  "27-cost-baseline",
+    "methodology":  "min-of-seven with the warm-up discarded, reported as min with median and max beside it",
+    "label":  "devbox",
+    "binary_present":  true,
+    "snapshot_self":  null,
+    "list_apps":  {
+                      "runs_total":  7,
+                      "warmup_discarded":  1,
+                      "min_ms":  37.5223,
+                      "median_ms":  40.5832,
+                      "max_ms":  65.7032,
+                      "exit_code_of_last_run":  0
+                  },
+    "list_windows":  {
+                         "runs_total":  7,
+                         "warmup_discarded":  1,
+                         "min_ms":  61.1491,
+                         "median_ms":  65.0437,
+                         "max_ms":  106.4404,
+                         "exit_code_of_last_run":  0
+                     },
+    "status":  {
+                   "runs_total":  7,
+                   "warmup_discarded":  1,
+                   "min_ms":  63.6524,
+                   "median_ms":  93.6106,
+                   "max_ms":  123.402,
+                   "exit_code_of_last_run":  0
+               },
+    "list_displays":  {
+                          "runs_total":  7,
+                          "warmup_discarded":  1,
+                          "min_ms":  33.1312,
+                          "median_ms":  33.9909,
+                          "max_ms":  38.1799,
+                          "exit_code_of_last_run":  0
+                      }
+}

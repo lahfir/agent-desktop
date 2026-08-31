@@ -361,3 +361,12 @@ mod deadline_tests;
 
 #[path = "wait_event_lifecycle_tests.rs"]
 mod lifecycle_tests;
+
+#[path = "wait_event_seen_set_tests.rs"]
+mod seen_set_tests;
+
+#[path = "wait_event_scope_tests.rs"]
+mod scope_tests;
+
+#[path = "wait_event_liveness_tests.rs"]
+mod liveness_tests;
