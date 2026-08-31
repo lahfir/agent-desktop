@@ -77,6 +77,9 @@ Three problems, in the order they bite.
 | R29 | `docs/phases.md`, `skills/agent-desktop-windows/` and the README agree with what shipped, including the npm install-path guidance §2.13 left half-done. |
 | R30 | The whole assembled branch — not this sub-phase's diff — gets a multi-agent review before merge. |
 | R31 | The gate dogfoods its own surface against real software and every finding takes exactly one of the three dispositions. |
+| R32 | A shell surface's returned identity has one stated scope, and a caller who passes it to a window-rooted snapshot is told where to go instead. |
+| R33 | `wait --notification`'s per-poll cost is decided and its measured value is documented as the poll floor. |
+| R34 | The Windows-only lifecycle envelope set is recorded with the entry §2.12 disproved removed and the protected-process pair corrected. |
 
 ### Key Decisions
 
@@ -162,6 +165,12 @@ Three problems, in the order they bite.
 
 - **KTD20. The performance vehicle is the probe corpus cost methodology, and the macOS baseline is explicitly not taken.** `scripts/perf-baseline-compare.sh` is structurally macOS-bound — it opens the `.app` fixture bundle — so the Windows vehicle is min-of-seven with the warm-up discarded, reported as min with median and max beside it (A15-13, applied in A18-7). **The macOS side of this gate's changes gets no perf baseline, and that is stated rather than skipped:** KTD4's resolver promotion and KTD12's blocked-combo change both touch macOS, the first on the resolution hot path, and no macOS host exists for this line (KTD17). What ships instead is the constraint that made it acceptable — the promotion moves a constructor without changing what it constructs, pinned by the core test in U3, and the blocked-combo change is a matcher on a five-entry list, not a hot path. U1 records the untaken baseline as a known gap against Phase 5.
 
+- **KTD21. A shell surface's identity is surface-kind-scoped, and the corrections are to the wording and to one error's suggestion.** `open-system-surface` returns a `w-<hwnd>` identity and `snapshot --window-id` refuses it `WINDOW_NOT_FOUND` — measured live at §2.14's dogfood against the promoted tray toolbar's handle — because the window inventory deliberately excludes shell windows, which is §2.14 KTD1's correct behaviour rather than a defect. **Ratified: shell identities are surface-kind-scoped and reached through `snapshot --surface <kind>`.** Rooting them through the shell resolver would let `snapshot --window-id` accept a handle `list-windows` never returns and `focus-window`, `move-window`, `resize-window` and `close-app` would then each have to special-case — the same objection §2.14's KTD5 raised against putting a synthetic shell entry in `list_windows`. **Two things are fixed rather than only ratified.** §2.14's exit-criterion clause implying a shell identity is consumable by a window-rooted snapshot is corrected — §2.15 quotes it as "an identity `snapshot --window` consumes", and planning could not locate that string verbatim in §2.14, so the implementer identifies the real clause before editing it. And `snapshot --window-id` given a handle that resolves to a known shell class returns its `WINDOW_NOT_FOUND` with a suggestion naming `--surface <kind>`, so the identity is a dead end that says where to go. **Rejected: not returning the identity at all.** It is useful for correlating an `open-system-surface` call with a later snapshot in a trace, and removing it would break that for no gain. **What this costs:** an agent holds an identity it can log but not root, and the tool says so at the point of failure instead of in a document.
+
+- **KTD22. `wait --notification` keeps per-poll open/close, and the measured cost becomes the documented poll floor.** The condition §2.14's wait decision pre-committed has fired: §2.14's cost baseline measured `list-notifications --headed` at min 1243.5 ms, median 1254.2 ms, taken through the release binary against an empty center, so every poll pays a full raise-read-close cycle. **Ratified: per-poll open/close stays.** A held-open watch session would keep the Action Center visible on the user's desktop for the whole duration of the wait — a visible artifact the agent's caller did not ask for and cannot see coming — and would need its own teardown-on-abort path for a surface the shell can close underneath it at any moment, which is a second failure mode traded for latency on a command that is inherently slow. Each poll running in its own one-call session is also exactly what macOS does, so this is the shape that already agrees across adapters. **What ships instead is the number:** `skills/agent-desktop-windows/` states the measured per-poll cost beside `wait --notification`, so a caller sizing a timeout knows a 5-second wait buys roughly four polls rather than discovering it. **Rejected: the held-open session.** **Rejected: widening the poll interval to hide the cost.** It makes the wait less responsive without making it cheaper. **What this costs:** a notification that appears and is dismissed inside one poll interval is missed, which the documented floor now makes predictable rather than surprising.
+
+- **KTD23. The class-(b) Windows-only lifecycle envelope set is recorded as-is, with one entry deleted and one corrected.** §2.15 asks only whether any of these pairs should be renamed. None should — each already reads true against the envelope contract. **The set:** a windowless graceful-close escalation returns `ACTION_FAILED` / `not_delivered`; a `CreateProcessW` invalid name returns `INVALID_ARGS` / `not_delivered`. **The UIPI activation entry is deleted**, because §2.12 measured live that `focus-window` against a strictly-higher-integrity target succeeds rather than exhausting a budget into `PERM_DENIED` (KTD15). **The protected-process close refusal is corrected in place**: it is shared across platforms and ships as `INVALID_ARGS` / `not_delivered` through `crates/core/src/commands/close_app.rs`'s `invalid_input_with_suggestion`, not `PERM_DENIED` (dogfood J2). U1 writes the corrected set into `docs/phases.md` and this plan's Error and Disposition Mapping carries the same rows, so the two cannot drift.
+
 ### Error and Disposition Mapping
 
 | Condition | Code | Disposition | Notes |
@@ -178,6 +187,10 @@ Three problems, in the order they bite.
 | `focus-window` against a strictly-higher-integrity target | none — `ok: true` when the shell grants foreground | delivered | ratified attempt-and-verify (KTD15) |
 | `launch <image>` with args while an instance is running | proceeds to launch | delivered | args suppress the attach path (KTD13.8) |
 | `launch <image>` attach with several matching rows | `AMBIGUOUS_TARGET` | not delivered, retry unsafe | ratified (KTD13.8) |
+| Windowless graceful-close escalation | `ACTION_FAILED` | not delivered, retry safe | class-(b) Windows-only, recorded unchanged (KTD23) |
+| `CreateProcessW` invalid name | `INVALID_ARGS` | not delivered, retry unsafe | class-(b) Windows-only, recorded unchanged (KTD23) |
+| Protected-process close refusal | `INVALID_ARGS` | not delivered, retry unsafe | shared across platforms, **not** `PERM_DENIED`; corrects the class-(b) list (KTD23) |
+| `snapshot --window-id` given a shell-surface handle | `WINDOW_NOT_FOUND` | not delivered, retry unsafe | suggestion names `--surface <kind>` (KTD21) |
 
 ### High-Level Technical Design
 
@@ -245,7 +258,7 @@ Each unit carries a **landing target** per KTD2: *gate PR*, or one of the five n
 
 - **Landing target:** gate PR. **Lands first** — every later unit and every KTD below reads from the corrected text.
 - **Goal:** commit the measurements planning took as a new `probes/windows/` evidence area, then correct every `docs/phases.md` claim they disproved, in place, and write every decision this plan takes into the document so a Phase 3 or Phase 5 planner reads them as fact.
-- **Requirements:** R1, R2, R19, R23, R25.
+- **Requirements:** R1, R2, R19, R23, R25, R32, R33, R34.
 - **Dependencies:** none.
 - **Files:** `probes/windows/27-contract-decisions.ps1` (new), `probes/windows/27-contract-decisions.cs` (new, binds the corpus's existing `08-uia3-com.cs` shim), `probes/windows/captures/27-contract-decisions/` (new), `probes/windows/FINDINGS.md`, `docs/phases.md`, `.github/workflows/windows-capability-probe.yml`, `probes/windows/13-ledger-check.ps1`.
 - **Approach:**
@@ -256,6 +269,7 @@ Each unit carries a **landing target** per KTD2: *gate PR*, or one of the five n
   5. **The exit criteria are rewritten to enumerate** (R2): the tray outcome, `data.rendered`, the resolver constructor pair, the fifteen `stale_ref` sites, `body`/`actions` sanitization, the `--app` predicate collapse, the wait seen-set, the `app-terminated` confirmation, `offscreen`, `pressed`, the blocked-combo rule, each ratified divergence, the Linux-target exclusion, the hunk-index decision, the runner, both live tiers, each rig measurement or ratification, the perf baseline and the audits. "**both** cross-platform contract decisions" is replaced by the enumerated list.
   6. **Ten measured-false claims corrected in place**, each citing its area-27 row or the file and line that disproved it: C3 (fourteen → fifteen `stale_ref` sites, plus the Windows site and the third ref-id caller, with drifted lines corrected), C4 (four sanitization fields → two, with the token-matching mechanism and the non-existent `attribution` named), C5 (8 → 25 Linux-target errors, and the exclusion decision), C6/C7/C8/C9 (`matches_identifier` does reach `list_apps_scoped`; `process_from_baseline`'s real path; four predicate sites over two semantics; the Windows-only substring predicate as the real cause), C10 (macOS `type_text.rs` path), C11 (no walk-versus-descent divergence), C12 (the overflow raise already verifies visibility), C14 (`mark_deadline_elapsed` does not re-derive `retryable`), C16 (the dead-process retry is a stamp, not the resolver loop), C17 (the mutation pairing sets are not identical), C18 (§2.9's activation was never meant to fail closed — corrects §2.9's scope, §2.12's scope and §2.15's class-(b) envelope list), C19 (the fork-PR approval instruction is moot), C20 (hunk counts in §2.15 and in `FINDINGS.md:557`), C21 (740 is not blocked on absent infrastructure), C22 (the windowless close blocker is `resolve_app`, not the close path), and the role half of the toggle divergence (macOS maps `AXSwitch` → `switch`, so only the state token diverged).
   7. **Decision writes.** Each of KTD10, KTD11, KTD12, KTD13's nine ratifications, KTD14, KTD15, KTD16's six rig outcomes, KTD19 and KTD20's untaken macOS baseline is written into `docs/phases.md` as settled contract text — not as a plan reference. `data.rendered` is written into **§2.16's scope by name** so its implementer consumes a named field. KTD17's three macOS `open-system-surface` kinds are written into **Phase 5's scope** with the reason, and P2-O14 is corrected to read true.
+  8. **Three more decision writes, each answering a scope bullet that would otherwise have no owner.** KTD21's shell-identity scope, with the §2.14 exit-criterion clause corrected — §2.15 quotes it as "an identity `snapshot --window` consumes" and planning could not locate that string verbatim in §2.14, so the real clause is identified before it is edited. KTD22's ratified per-poll notification cost with its measured number. KTD23's class-(b) Windows-only lifecycle envelope set, with the UIPI activation entry **deleted** (§2.12 measured the opposite) and the protected-process pair corrected to `INVALID_ARGS`/`not_delivered`.
 - **Patterns to follow:** §2.14's U2 (`docs/plans/2026-08-26-001-...-plan.md`) for correction-in-place style; `probes/windows/FINDINGS.md`'s existing area tables for row shape; §2.14's redaction discipline for what a capture may contain.
 - **Test scenarios:**
   1. `probes/windows/13-ledger-check.ps1` exits 0 with zero failures after the edits, and its summary names area 27.
@@ -264,6 +278,7 @@ Each unit carries a **landing target** per KTD2: *gate PR*, or one of the five n
   4. `scripts/check-capture-redaction.ps1` passes over `probes/windows/captures/27-contract-decisions/`, and a deliberately poisoned capture carrying a control name fails it. (Invert-verified.)
   5. A grep of §2.15's text for `Merge .feat/windows-adapter`, "`main` gains Windows", and "and the merge" returns nothing.
   6. A grep of §2.15's exit criteria for each capability named in its scope returns a hit for every one. Encoded as a check in `scripts/check-e2e-windows-contract.ps1`'s doc-rules module so it cannot silently rot.
+  7. The class-(b) envelope list in `docs/phases.md` carries no UIPI activation entry and names `INVALID_ARGS` for the protected-process refusal, and the same three rows appear in this plan's Error and Disposition Mapping. **The two are asserted against each other**, so a later edit to one without the other fails.
 - **Verification:** the ledger check, the citation check and the redaction gate are green; §2.16's scope names `data.rendered`; Phase 5's scope names the three macOS surface kinds; no §2.15 text claims the merge.
 
 ### U2. `cursor-overlay` reports whether it rendered
@@ -332,7 +347,7 @@ Each unit carries a **landing target** per KTD2: *gate PR*, or one of the five n
 
 - **Landing target:** satellite **2.15.2**.
 - **Goal:** establish what actually happens on the shipped release binary before designing a fix, then close the tray path or state its limits (KTD6).
-- **Requirements:** R9, R10.
+- **Requirements:** R9, R10, R32.
 - **Dependencies:** U1.
 - **Files:** `probes/windows/27-contract-decisions.ps1` (the reproduction leg and its row), `probes/windows/FINDINGS.md`, then — branch-dependent — `crates/windows/src/system/shell_surface.rs`, `crates/windows/src/system/shell_surface_kinds.rs`, `crates/windows/src/system/shell_surface_open.rs`, `crates/windows/src/tree/surfaces.rs`, `skills/agent-desktop-windows/`.
 - **Approach:**
@@ -340,13 +355,15 @@ Each unit carries a **landing target** per KTD2: *gate PR*, or one of the five n
   2. **Reproduce the overflow leg the same way.** `open-system-surface --surface system-tray-overflow`, then an independent Win32 visibility poll of the flyout, then an actionability preflight on one of the five refs. `shell_surface_open.rs`'s `poll_until_observed` already gates the open on `surface_presented`; if it reports presented while the independent poll does not, the reproduction has isolated `surface_presented`'s predicate as the defect.
   3. **Branch A — the divergence reproduces.** The fix is designed against what the reproduction shows and lands here, with the ledger row naming the mechanism. The `surface_presented` predicate is examined in the same pass.
   4. **Branch B — it does not reproduce.** The dogfood observation is recorded as stack- or session-specific with the reproduction beside it, and this satellite carries only R10's click-legality contract.
-  5. **R10 either way.** The contract states which surface's refs are click-legal: a ref taken from `snapshot --surface taskbar` targets a window deliberately outside the agent window inventory (§2.14 KTD1), which is why a click through it refuses `WINDOW_NOT_FOUND`; refs taken from a `--surface` snapshot are actioned through that same surface. The wording lands in `skills/agent-desktop-windows/` and in `docs/phases.md`.
+  5. **KTD21's one code change, independent of the branch.** `snapshot --window-id` given a handle whose window class is a known shell class returns its `WINDOW_NOT_FOUND` with a suggestion naming `--surface <kind>`. The identity stays returned by `open-system-surface` for trace correlation; it simply stops being a silent dead end.
+  6. **R10 either way.** The contract states which surface's refs are click-legal: a ref taken from `snapshot --surface taskbar` targets a window deliberately outside the agent window inventory (§2.14 KTD1), which is why a click through it refuses `WINDOW_NOT_FOUND`; refs taken from a `--surface` snapshot are actioned through that same surface. The wording lands in `skills/agent-desktop-windows/` and in `docs/phases.md`.
 - **Execution note:** this unit's diff size is unknown until step 1 runs. That is deliberate — see KTD6 and the LOC budget's range.
 - **Test scenarios:**
   1. An E2E scenario asserts `snapshot --surface system-tray` and `snapshot --surface taskbar` agree about the promoted toolbar's item count in one session. Fails today if Branch A holds; passes trivially if Branch B holds, and the ledger row says which.
   2. An E2E scenario asserts that after `open-system-surface --surface system-tray-overflow` reports success, an independent Win32 visibility poll sees the flyout. **This is the honest form of the assertion** — it fails if `surface_presented` is weaker than reality.
   3. A ref taken from a `--surface system-tray` snapshot passes the actionability preflight (not occluded) and clicks, verified by observation of the item's own state rather than by the command's `ok`.
   4. A ref taken from `--surface taskbar` and clicked returns the documented refusal with a suggestion naming the surface-scoped route.
+  5. `snapshot --window-id <handle returned by open-system-surface>` returns `WINDOW_NOT_FOUND` **with a non-empty suggestion naming `--surface`**. Fails today, where the suggestion is absent.
 - **Verification:** the reproduction row is committed before any adapter file is touched; the E2E scenarios run on U10's runner.
 
 ### U6. Wait-event semantics: seen-set, `--app` scoping, and the `app-terminated` liveness confirmation
@@ -499,16 +516,17 @@ Each unit carries a **landing target** per KTD2: *gate PR*, or one of the five n
 
 - **Landing target:** gate PR.
 - **Goal:** the shipped documentation agrees with what shipped, including the npm install-path guidance §2.13 left half-done (R29).
-- **Requirements:** R29.
+- **Requirements:** R29, R33.
 - **Dependencies:** every code unit.
 - **Files:** `skills/agent-desktop-windows/`, `skills/agent-desktop/`, `README.md`, `docs/phases.md`.
 - **Approach:**
-  1. **The capability table and per-command reference** gain: `data.rendered` on `cursor-overlay`; the `--app` identifier forms Windows accepts; the ratified `type` and `press --app` policy floors, including the non-interactive-caller reach limit; the click-legality contract U5 settles; the measured host coverage of the menu detector; the absence of the `--cdp` nudge on Windows, with the instruction to ask for `--cdp` against an Electron target rather than walk the tree.
+  1. **The capability table and per-command reference** gain: `data.rendered` on `cursor-overlay`; the `--app` identifier forms Windows accepts; the ratified `type` and `press --app` policy floors, including the non-interactive-caller reach limit; the click-legality contract U5 settles; the measured host coverage of the menu detector; the absence of the `--cdp` nudge on Windows, with the instruction to ask for `--cdp` against an Electron target rather than walk the tree. **And `wait --notification`'s measured per-poll cost** — min 1243.5 ms, median 1254.2 ms — stated beside the command so a caller sizing a timeout knows what a poll costs (KTD22).
   2. **The two accepted npm risks from §2.13 are closed as documentation.** The README states that `checksums.txt` verification is same-origin and shows `gh attestation verify` for a manually downloaded artifact; and it publishes the `allowScripts` configuration, since npm 12.0.1's install-scripts allowlist blocks the postinstall even with `--allow-scripts=agent-desktop` passed, making the wrapper's loud binary-not-found failure the first thing a Windows user sees. The `optionalDependencies` per-platform-package alternative stays rejected, and U1 records that it was rejected on scope rather than merit.
 - **Test scenarios:**
   1. `windows_capability_claims_tests.rs` passes — every claim in the capability table matches an implemented adapter method.
   2. `scripts/check-e2e-windows-contract.ps1` passes.
   3. A doc-rules check asserts the README's install section names both `gh attestation verify` and the `allowScripts` configuration.
+  3b. `windows_capability_claims_tests.rs` (or the skill-doc check) asserts the `wait --notification` entry carries a numeric per-poll cost, so the ratification cannot ship without the number that justifies it.
   4. `scripts/check-no-phase-references.sh` passes over `skills/**`.
 - **Verification:** all four green; a reader of `skills/agent-desktop-windows/` can predict every behaviour this gate settled.
 
@@ -573,6 +591,9 @@ Every requirement maps to at least one test that fails if the requirement is vio
 | R29 | U13 scenarios 1-4 | U13 |
 | R30 | U14's disposition rule — a finding reading "recorded" fails review | U14 |
 | R31 | U15's disposition rule — a report with no findings fails the gate | U15 |
+| R32 | U5 scenario 5 — the suggestion is absent today | U5, U1 |
+| R33 | U13 scenario 3b — the ratification cannot ship without its number | U13 |
+| R34 | U1 scenario 7 — the plan's table and `docs/phases.md` are asserted against each other | U1 |
 
 **Gates that must be green before the gate PR merges:**
 
