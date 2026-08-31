@@ -98,9 +98,43 @@ fn the_vocabulary_instantiates_no_pattern_and_keys_on_no_display_string() {
 #[cfg(target_os = "windows")]
 mod windows_only {
     use super::*;
-    use crate::tree::automation::root_from_hwnd;
+    use crate::tree::automation::{automation_client, root_from_hwnd};
     use crate::tree::fixture::HostedFixture;
     use crate::tree::walker_fake::deadline;
+
+    /// A live fixture with no scrollable ancestor climbs to the true root and
+    /// reports `Ok(None)` - the confident "no viewport" answer a completed
+    /// climb gives. This is a regression guard on the healthy path only: it
+    /// pins that routing `parent_step`'s fault arm to `Err(BudgetExpired)`
+    /// did not also turn a completed climb into an error. It does not
+    /// exercise the fault arm itself: measured directly, `walker.get_parent`
+    /// against both a killed `HostedFixture` process and a destroyed-but-
+    /// still-live menu-popup element both answer the same exhaustion pair
+    /// (`code() == 0`, `result() == None`) a completed climb gives, so no
+    /// deterministic live trigger for a genuine parent-read fault was found
+    /// with this crate's fixture machinery.
+    #[test]
+    fn a_completed_climb_with_no_scrollable_ancestor_reports_ok_none() {
+        crate::tree::fixture::ensure_test_apartment();
+        let fixture = HostedFixture::spawn().expect("the fixture host starts");
+        let root =
+            root_from_hwnd(fixture.handle(), deadline()).expect("the fixture window resolves");
+        let client = automation_client().expect("a UIA client");
+        let walker = client
+            .get_raw_view_walker()
+            .expect("the raw view walker is available");
+        let child = walker
+            .get_first_child(&root.0)
+            .map(crate::tree::element::UIAElement::from)
+            .expect("the fixture exposes at least one child");
+
+        let outcome = nearest_scroll_viewport(&child, &walker, deadline())
+            .expect("a live climb to the true root must not fault");
+        assert!(
+            outcome.is_none(),
+            "the fixture has no scrollable ancestor, so a completed climb must report Ok(None)"
+        );
+    }
 
     /// The live half of the discriminator check. A walk whose classification is
     /// inverted reports this cross-process window incomplete, so an inverted

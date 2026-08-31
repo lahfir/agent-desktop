@@ -22,11 +22,22 @@ fn withheld(outcome: PropertyOutcome) -> PropertyOutcome {
     }
 }
 
+/// A `Known` value read as a boolean, accepting the two shapes a provider may
+/// answer a documented-`VT_BOOL` property with: `VT_BOOL` itself (`Flag`), or
+/// the `VT_I4` divergence `is_secure`'s doc comment names (`Number`, nonzero
+/// meaning true). `None` for any other `Known` shape, which is not this
+/// provider's divergence and must not be guessed at.
+fn known_as_bool(value: &PropertyValue) -> Option<bool> {
+    match value {
+        PropertyValue::Flag(value) => Some(*value),
+        PropertyValue::Number(value) => Some(*value != 0),
+        _ => None,
+    }
+}
+
 fn withholds_content(outcome: &PropertyOutcome) -> bool {
     match outcome {
-        PropertyOutcome::Known(PropertyValue::Flag(secure)) => *secure,
-        PropertyOutcome::Known(PropertyValue::Number(secure)) => *secure != 0,
-        PropertyOutcome::Known(_) => true,
+        PropertyOutcome::Known(value) => known_as_bool(value).unwrap_or(true),
         PropertyOutcome::Unknown => true,
         PropertyOutcome::Absent => false,
     }
@@ -128,11 +139,20 @@ impl ElementProperties {
     /// `true` first, and this is the single accessor that consults it, so a
     /// caller cannot read a gated property without the gate. A property with
     /// no gate reads straight through.
+    ///
+    /// The value itself is read through [`known_as_bool`], the same
+    /// documented-`VT_BOOL`-or-divergent-`VT_I4` acceptance `gate_open` uses:
+    /// every property this crate reads with `gated_flag` - the `…Available`
+    /// gates themselves included, which reach this accessor ungated - is
+    /// documented `VT_BOOL`, so the same provider divergence applies here too.
     pub fn gated_flag(&self, property: TreeProperty) -> Option<bool> {
         if !self.gate_open(property) {
             return None;
         }
-        self.get(property).flag()
+        match self.get(property) {
+            PropertyOutcome::Known(value) => known_as_bool(&value),
+            PropertyOutcome::Unknown | PropertyOutcome::Absent => None,
+        }
     }
 
     pub fn gated_number(&self, property: TreeProperty) -> Option<i32> {
@@ -147,9 +167,22 @@ impl ElementProperties {
         self.gated_flag(property) == Some(true)
     }
 
+    /// A15-7 measured the divergence on the *state* property; the same
+    /// divergence reaches the *gate* property one hop earlier, undetected
+    /// until code review: a provider can answer a documented-`VT_BOOL`
+    /// `…Available` property as `VT_I4(1)`, and reading only `flag()` reads
+    /// that answer as gate-CLOSED, silently dropping the element's role
+    /// refinement, its advertised action, and its gated state. This mirrors
+    /// `withholds_content`'s predicate rather than duplicating a second one: a
+    /// `Known(true)` flag or a non-zero `Known` number opens the gate; an
+    /// unread gate (`Unknown` or `Absent`) does not - "the read never
+    /// happened" must never be read as "the gate is open".
     fn gate_open(&self, property: TreeProperty) -> bool {
         match property.gate() {
-            Some(gate) => self.get(gate).flag() == Some(true),
+            Some(gate) => match self.get(gate) {
+                PropertyOutcome::Known(value) => known_as_bool(&value).unwrap_or(false),
+                PropertyOutcome::Unknown | PropertyOutcome::Absent => false,
+            },
             None => true,
         }
     }
@@ -200,3 +233,7 @@ impl ElementProperties {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "element_properties_tests.rs"]
+mod tests;
