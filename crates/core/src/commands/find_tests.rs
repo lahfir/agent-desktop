@@ -295,6 +295,25 @@ fn find_args_scoped_to_window(window_id: &str) -> FindArgs {
     }
 }
 
+/// The names a `find` response matched, and nothing else from the envelope.
+///
+/// A failure message built from the whole response would carry the snapshot id
+/// and the session-derived fields alongside the one thing the assertion is
+/// about. Test output is not a safe place for those to travel, and a reader
+/// debugging a scope failure wants the names that leaked, not a JSON tree.
+fn matched_names(response: &Value) -> Vec<String> {
+    response["matches"]
+        .as_array()
+        .expect("matches must be an array")
+        .iter()
+        .map(|entry| {
+            entry["name"]
+                .as_str()
+                .map_or_else(|| "<unnamed>".to_owned(), str::to_owned)
+        })
+        .collect()
+}
+
 #[test]
 fn find_scopes_matches_to_requested_window_id() {
     let _guard = HomeGuard::new();
@@ -303,24 +322,19 @@ fn find_scopes_matches_to_requested_window_id() {
 
     let from_window_two = execute(find_args_scoped_to_window("w-2"), &adapter, &context)
         .expect("find scoped to w-2 should succeed");
-    let hits = from_window_two["matches"]
-        .as_array()
-        .expect("matches must be an array");
+    let hits = matched_names(&from_window_two);
     assert_eq!(
-        hits.len(),
-        1,
-        "window w-2's tree owns the only match, got: {from_window_two}"
+        hits,
+        vec!["OnlyInWindowTwo".to_owned()],
+        "window w-2's tree owns the only match"
     );
-    assert_eq!(hits[0]["name"], "OnlyInWindowTwo");
 
     let from_window_one = execute(find_args_scoped_to_window("w-1"), &adapter, &context)
         .expect("find scoped to w-1 should succeed");
-    let misses = from_window_one["matches"]
-        .as_array()
-        .expect("matches must be an array");
+    let misses = matched_names(&from_window_one);
     assert!(
         misses.is_empty(),
         "window w-1 must not surface window w-2's element \
-         (window_id must not be ignored or swapped with app), got: {from_window_one}"
+         (window_id must not be ignored or swapped with app), leaked: {misses:?}"
     );
 }
