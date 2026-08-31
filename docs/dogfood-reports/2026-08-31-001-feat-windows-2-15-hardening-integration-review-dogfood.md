@@ -71,13 +71,16 @@ and recycles the elements after it; a handle captured before the loop can name a
 different notification by the time its turn comes. Each captured target is now re-read
 from the live surface on its own turn and matched by app, title and body, and an invoke
 error is recorded against the captured index instead of discarded. The settle read stays
-the proof of what left. Tests:
+the proof of what left. **Only one of the two halves is pinned, and the report says which.**
+The failure-reporting half is covered by
 `a_filtered_dismiss_all_that_removes_its_target_leaves_another_apps_entry_unreported`,
-`a_recorded_invoke_error_names_its_own_reason_instead_of_the_generic_survivor_message`,
-`an_invoke_error_recorded_for_an_entry_that_still_left_is_never_reported`. **No live test
-backs this**, and that is stated rather than papered over: three consecutive runs of one
-untouched live notification test failed three different ways on this host, so a live
-two-application test here would assert nothing.
+`a_recorded_invoke_error_names_its_own_reason_instead_of_the_generic_survivor_message` and
+`an_invoke_error_recorded_for_an_entry_that_still_left_is_never_reported`, all three
+invert-verified. The fresh-identity re-read itself has **no test**: it needs a live,
+virtualized Action Center list holding two applications' entries, and this host's live
+Action Center read is not reproducible — three consecutive runs of one untouched live
+notification test failed three different ways. A test written against it would assert
+nothing, so none was written.
 
 **D3 — a permanent refusal was masked by a transient gap.**
 *Fixed here.* `terminal_code()` returned the first blocking check's code, so a check that
@@ -110,7 +113,11 @@ when that resolution specifically says the process is absent. Test:
 *Fixed here.* `SelectObject` returns NULL on failure and neither capture path checked it.
 An unselected bitmap means `PrintWindow` and `BitBlt` paint into the DC's default
 monochrome bitmap, so a blank or corrupt capture is returned as a success. Both sites now
-surface the Win32 error.
+surface the Win32 error. **Unpinned, and the reason is that the seam cannot reach it**:
+the capture tests' failure injection fires *after* a successful selection, so it cannot
+force `SelectObject` to fail. Building new injection scaffolding to reach one branch was
+refused as over-engineering. The neighbouring `restore_selected_bitmap` failure *is*
+pinned (R7), reached by calling it directly with an invalid prior selection.
 
 **D7 — a value-write gate test returned early instead of failing.**
 *Fixed here.* The test returned when its fixture lookup failed, reporting success without
