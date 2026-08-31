@@ -251,6 +251,32 @@ fn mutation_revalidation_rejects_missing_generation() {
 }
 
 #[test]
+fn ambiguous_instance_suggestion_names_pids_instead_of_a_ref_retry() {
+    let adapter = InventoryAdapter {
+        apps: vec![
+            app_with_pid(42, Some("generation-a")),
+            app_with_pid(43, Some("generation-b")),
+        ],
+        windows: Vec::new(),
+    };
+
+    let error = resolve_app(Some("Example"), &adapter, Deadline::standard().unwrap()).unwrap_err();
+
+    assert_eq!(error.code(), "AMBIGUOUS_TARGET");
+    let suggestion = error
+        .suggestion()
+        .expect("ambiguous target has a suggestion");
+    assert!(
+        !suggestion.contains("ref"),
+        "no command reached through resolve_app takes a ref to disambiguate: {suggestion}"
+    );
+    assert!(
+        suggestion.contains("42") && suggestion.contains("43"),
+        "suggestion must name the candidate pids the caller cannot select among: {suggestion}"
+    );
+}
+
+#[test]
 fn app_not_found_carries_a_suggestion_naming_the_accepted_forms() {
     let adapter = InventoryAdapter {
         apps: Vec::new(),
