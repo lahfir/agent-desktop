@@ -55,7 +55,13 @@ placeholder whose automation element genuinely has no children. Adding the missi
 `button` refs carrying the stable GUID `AutomationId`s this corpus already recorded, and
 a click on one is delivered. Recorded as A28-4, A28-5 and A28-7. An earlier three-
 mechanism explanation was superseded: it was one cause, and the other two arms were
-consequences of resolving the placeholder. Test: `shell_surface_kinds_tests`.
+consequences of resolving the placeholder. Test:
+`the_system_tray_chain_descends_through_the_pager_that_owns_the_icons`, which pins
+the measured chain and fails when the hop is removed. **It was added after an audit of
+this report found the fix unpinned**: the file this row originally named contains a
+build-refusal test and an absent-class test, and neither would have noticed the hop
+disappearing. No live assertion can stand in for it, because a machine whose tray is
+legitimately empty reads zero either way.
 `delivered_unverified` is the correct disposition for the click and not a defect — a
 synthesized click cannot confirm what a vendor's tray icon did with it.
 
