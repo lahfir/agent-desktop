@@ -665,9 +665,9 @@ Every requirement maps to at least one test that fails if the requirement is vio
 | U13 docs, skills, README | gate | 240 |
 | U14 full-branch review | gate | 0 |
 | U15 dogfood | gate | 300 (report + captures) |
-| **Gate PR total** | | **≈1,385** |
-| **`2.15.0` + satellites total** | | **≈1,880-2,210** |
-| **Everything** | | **≈3,265-3,595** |
+| **Gate PR total** | | **≈1,405** |
+| **`2.15.0` + satellites total** | | **≈1,940-2,270** |
+| **Everything** | | **≈3,345-3,675** |
 
 §2.15's "~500 LOC on top of a large verification effort" describes the gate PR's **Rust** content, which is U2 plus U4 — about 105 lines. The gate PR's bulk is documentation, probe evidence, the dogfood report and the runbook, none of which the estimate counted. U1 corrects the estimate to name both halves.
 
