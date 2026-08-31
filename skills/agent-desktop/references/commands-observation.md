@@ -230,6 +230,14 @@ agent-desktop get @s8f3k2p9:e1 --property title
 | `role` | Element role string |
 | `states` | Array of active states |
 
+For `--property bounds`, the response carries a sibling `live` boolean. `true`
+means the rectangle came from a live read taken just now; `false` means the
+live read succeeded but found no current bounds (collapsed, not laid out,
+virtualized) or the platform could not perform one, so the snapshot-time
+rectangle was returned instead. A caller piping `bounds` straight into
+`mouse-click --x --y` should check `live` first — a `false` rectangle may no
+longer be where the element is.
+
 ## is
 
 Check a boolean state on an element.

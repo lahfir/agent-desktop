@@ -79,12 +79,9 @@ pub(super) fn display_capture_geometry(bounds: Rect) -> Result<(u32, u32, i32, i
             "Cannot capture a zero-area display",
         ));
     }
-    Ok((
-        width as u32,
-        height as u32,
-        bounds.x as i32,
-        bounds.y as i32,
-    ))
+    let (width, height) = (width as u32, height as u32);
+    gdi_surface::reject_oversized_capture(width, height)?;
+    Ok((width, height, bounds.x as i32, bounds.y as i32))
 }
 
 fn bitblt_screen_bgra(
@@ -118,7 +115,7 @@ fn bitblt_screen_bgra(
     {
         return Err(win32_last_error("BitBlt failed for display capture"));
     }
-    Ok(surface.into_bgra())
+    surface.into_bgra()
 }
 
 struct DibSection {
@@ -168,14 +165,13 @@ impl DibSection {
         })
     }
 
-    fn into_bgra(self) -> Vec<u8> {
-        let stride = (self.width * 4) as usize;
-        let bytes = stride * self.height as usize;
+    fn into_bgra(self) -> Result<Vec<u8>, AdapterError> {
+        let bytes = gdi_surface::checked_bgra_byte_len(self.width, self.height)?;
         let mut pixels = vec![0u8; bytes];
         unsafe {
             std::ptr::copy_nonoverlapping(self.bits, pixels.as_mut_ptr(), bytes);
         }
-        pixels
+        Ok(pixels)
     }
 }
 

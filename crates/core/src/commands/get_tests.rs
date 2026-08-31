@@ -25,6 +25,13 @@ impl LiveBoundsAdapter {
             bounds_supported: false,
         }
     }
+
+    fn resolvable_but_boundless() -> Self {
+        Self {
+            bounds: Mutex::new(None),
+            bounds_supported: true,
+        }
+    }
 }
 
 impl ObservationOps for LiveBoundsAdapter {
@@ -139,6 +146,7 @@ fn bounds_prefers_a_live_read_over_the_stale_snapshot_geometry() {
 
     assert_eq!(result["value"]["y"], 289.0);
     assert_ne!(result["value"]["y"], -322.0);
+    assert_eq!(result["live"], true);
 }
 
 /// When the platform cannot answer a live bounds read, the stored geometry
@@ -161,4 +169,31 @@ fn bounds_falls_back_to_snapshot_geometry_when_no_live_read_is_available() {
     .unwrap();
 
     assert_eq!(result["value"]["y"], -322.0);
+    assert_eq!(result["live"], false);
+}
+
+/// A live read can succeed and still report no bounds (collapsed, not laid
+/// out, virtualized). The response must not be indistinguishable from a
+/// live-verified rectangle: a caller piping this into `mouse-click --x --y`
+/// needs to know the rectangle it received is the snapshot-time fallback,
+/// not the element's current position.
+#[test]
+fn bounds_marks_snapshot_fallback_as_not_live_when_a_successful_live_read_finds_no_bounds() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = save_entry(entry_with_bounds(Some(stale_snapshot_bounds())));
+    let adapter = LiveBoundsAdapter::resolvable_but_boundless();
+
+    let result = execute(
+        GetArgs {
+            ref_id: "@e1".into(),
+            snapshot_id: Some(snapshot_id),
+            property: GetProperty::Bounds,
+        },
+        &adapter,
+        &CommandContext::default(),
+    )
+    .unwrap();
+
+    assert_eq!(result["value"]["y"], -322.0);
+    assert_eq!(result["live"], false);
 }

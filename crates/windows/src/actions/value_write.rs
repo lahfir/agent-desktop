@@ -190,7 +190,12 @@ mod imp {
         match pattern.is_readonly() {
             Ok(true) => return Ok(DeliveryOutcome::NotDelivered),
             Ok(false) => {}
-            Err(_) => return Ok(DeliveryOutcome::NotDelivered),
+            Err(error) => {
+                return Ok(DeliveryOutcome::from_delivery(
+                    classify_write("IsReadOnly", RANGE_LABEL, &error)?,
+                    false,
+                ));
+            }
         }
         let delivered = match pattern.set_value(target) {
             Ok(()) => classify_success()?,

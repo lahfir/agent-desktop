@@ -278,6 +278,82 @@ fn exhaustion_without_any_delivery_reports_not_delivered() {
 }
 
 #[test]
+fn genuine_err_after_prior_delivery_upgrades_disposition_to_delivered_unverified() {
+    let mut first_run = || Ok(DeliveryOutcome::DeliveredUnverified);
+    let mut second_run = || {
+        Err(
+            AdapterError::new(ErrorCode::StaleRef, "element became unavailable")
+                .with_disposition(DeliverySemantics::not_delivered()),
+        )
+    };
+    let def = ChainDef {
+        suggestion: "retry",
+        continue_after_unverified_delivery: true,
+    };
+    let error = execute_chain(
+        deadline(),
+        &def,
+        InteractionPolicy::headless(),
+        &mut [
+            ChainRung {
+                label: "ValuePattern.SetValue",
+                requires_headed: false,
+                run: &mut first_run,
+            },
+            ChainRung {
+                label: "RangeValuePattern.SetValue",
+                requires_headed: false,
+                run: &mut second_run,
+            },
+        ],
+    )
+    .expect_err("later rung hard-errors after an earlier delivery");
+    assert_eq!(error.code, ErrorCode::StaleRef);
+    assert_eq!(
+        error.disposition.delivery(),
+        agent_desktop_core::DeliveryDisposition::DeliveredUnverified
+    );
+}
+
+#[test]
+fn genuine_err_without_prior_delivery_keeps_classifier_disposition() {
+    let mut first_run = || {
+        Err(
+            AdapterError::new(ErrorCode::AppUnresponsive, "transport call failed")
+                .with_disposition(DeliverySemantics::uncertain()),
+        )
+    };
+    let mut second_run = || Ok(DeliveryOutcome::DeliveredUnverified);
+    let def = ChainDef {
+        suggestion: "retry",
+        continue_after_unverified_delivery: true,
+    };
+    let error = execute_chain(
+        deadline(),
+        &def,
+        InteractionPolicy::headless(),
+        &mut [
+            ChainRung {
+                label: "ValuePattern.SetValue",
+                requires_headed: false,
+                run: &mut first_run,
+            },
+            ChainRung {
+                label: "RangeValuePattern.SetValue",
+                requires_headed: false,
+                run: &mut second_run,
+            },
+        ],
+    )
+    .expect_err("first rung hard-errors before any delivery");
+    assert_eq!(error.code, ErrorCode::AppUnresponsive);
+    assert_eq!(
+        error.disposition.delivery(),
+        agent_desktop_core::DeliveryDisposition::DeliveryUncertain
+    );
+}
+
+#[test]
 fn exhausted_chain_carries_suggestion_and_disposition() {
     let mut first = || Ok(DeliveryOutcome::NotDelivered);
     let mut second = || Ok(DeliveryOutcome::NotDelivered);

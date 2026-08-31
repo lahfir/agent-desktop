@@ -10,11 +10,44 @@
 //! pairing, the GDI-object balance counter, and the `GetLastError` mapping
 //! live here once instead of twice.
 
-use agent_desktop_core::AdapterError;
+use agent_desktop_core::{AdapterError, ErrorCode};
 use windows_sys::Win32::Graphics::Gdi::{BI_RGB, BITMAPINFO, BITMAPINFOHEADER, HDC};
 
 use super::hresult::{com_hresult_detail, hresult_record};
 use super::process_state::hresult_from_win32;
+
+/// Refuses a capture whose pixel byte count would overflow the `i32`
+/// arithmetic a raw GDI write depends on, before either backend creates any
+/// GDI resource for it. `GetWindowRect`/display bounds are not clamped to a
+/// sane size by Windows, so this is reachable from ordinary input, not just
+/// adversarial input.
+pub(super) fn reject_oversized_capture(width: u32, height: u32) -> Result<(), AdapterError> {
+    let byte_len = u64::from(width)
+        .checked_mul(u64::from(height))
+        .and_then(|area| area.checked_mul(4));
+    match byte_len {
+        Some(len) if len <= i32::MAX as u64 => Ok(()),
+        _ => Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
+            format!("Cannot capture a {width}x{height} region: pixel buffer size overflows"),
+        )
+        .with_suggestion("Capture a smaller window or region, then retry the screenshot")),
+    }
+}
+
+/// Computes a BGRA pixel buffer's byte length with non-wrapping arithmetic.
+///
+/// `width` and `height` are validated non-negative by the caller before a
+/// surface is built from them; this still returns `Result` rather than
+/// panicking so a future caller that skips that validation fails closed
+/// instead of wrapping into an undersized allocation.
+pub(super) fn checked_bgra_byte_len(width: i32, height: i32) -> Result<usize, AdapterError> {
+    i64::from(width)
+        .checked_mul(i64::from(height))
+        .and_then(|area| area.checked_mul(4))
+        .and_then(|len| usize::try_from(len).ok())
+        .ok_or_else(|| AdapterError::internal("capture buffer size overflowed"))
+}
 
 pub(super) fn top_down_bgra_bitmap_info(width: i32, height: i32) -> BITMAPINFO {
     BITMAPINFO {
@@ -91,19 +124,30 @@ impl Drop for GdiDcPair {
     }
 }
 
-/// Restores the memory DC's prior GDI selection, deletes `bitmap`, and decrements
-/// the balance counter acquired when the bitmap was selected.
+/// Restores the memory DC's prior GDI selection, deletes `bitmap`, and
+/// decrements the balance counter acquired when the bitmap was selected.
+///
+/// Runs from `Drop`, so it cannot return an error and must not panic. A
+/// bitmap still selected into a DC cannot be deleted, so if restoring
+/// `previous` fails the balance counter is deliberately left un-decremented
+/// instead of being released for an object that is still alive: the leak
+/// becomes observable as a non-zero `gdi_balance::live()` rather than
+/// silently disappearing behind an unconditional release.
 pub(super) fn restore_selected_bitmap(
     memory_dc: HDC,
     previous: *mut core::ffi::c_void,
     bitmap: *mut core::ffi::c_void,
 ) {
     use windows_sys::Win32::Graphics::Gdi::{DeleteObject, SelectObject};
-    unsafe {
-        SelectObject(memory_dc, previous);
-        DeleteObject(bitmap);
-        gdi_balance::release();
+    let restored = unsafe { SelectObject(memory_dc, previous) };
+    if restored.is_null() {
+        return;
     }
+    let deleted = unsafe { DeleteObject(bitmap) };
+    if deleted == 0 {
+        return;
+    }
+    gdi_balance::release();
 }
 
 pub(crate) mod gdi_balance {
@@ -131,3 +175,7 @@ pub(crate) mod gdi_balance {
         LIVE.with(|cell| cell.set(0));
     }
 }
+
+#[cfg(test)]
+#[path = "gdi_surface_tests.rs"]
+mod tests;

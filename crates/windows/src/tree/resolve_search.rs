@@ -134,13 +134,22 @@ pub(crate) fn walk_stored_path<S: TreeSource>(
 ///
 /// The admission rule is [`admit_node`] itself rather than a second copy of
 /// the role gate, the composed identity rule and the geometry promotion, so
-/// the two tiers cannot drift into accepting different elements.
+/// the two tiers cannot drift into accepting different elements. One check
+/// sits ahead of it: [`geometry_contradicts`] refutes a landing whose live
+/// bounds hash disagrees with a known stored one even when `admit_node`'s
+/// identity tiers alone would call it a match - role and name survive a list
+/// reordering, a stored bounds hash does not, so this tier must not return
+/// early on identity alone and pre-empt the broad search's own bounds
+/// tie-break.
 pub(crate) fn accept_path_landing(
     source: &UiaTreeSource,
     candidate: &UIAElement,
     entry: &RefEntry,
 ) -> Option<UIAElement> {
     let (_, evidence, _) = source.evidence(candidate);
+    if geometry_contradicts(entry, &evidence) {
+        return None;
+    }
     match admit_node(entry, &evidence) {
         NodeAdmission::Collect => Some(candidate.clone()),
         NodeAdmission::Unread | NodeAdmission::Reject => None,
@@ -169,6 +178,25 @@ pub(crate) fn provisional_geometry_candidate(entry: &RefEntry) -> bool {
 /// otherwise-unreadable candidate to resolved.
 pub(crate) fn geometry_matches(entry: &RefEntry, evidence: &LocatorEvidence) -> bool {
     provisional_geometry_candidate(entry) && bounds_hash_of(evidence) == entry.geometry.bounds_hash
+}
+
+/// Whether the stored bounds hash and a candidate's live bounds hash are both
+/// known and disagree.
+///
+/// Deliberately not [`geometry_matches`]: that predicate is gated by
+/// [`provisional_geometry_candidate`], which requires
+/// `!has_meaningful_identity(entry)` - it exists to promote an otherwise
+/// unreadable candidate, not to refute an identity-matched one, so it always
+/// answers `false` for a ref that carries a name or an id, which is exactly
+/// the shape (duplicate-identity siblings sharing role, name and
+/// `AutomationId`) this refutation exists to catch. An unknown hash on either
+/// side answers `false` here, never a refutation - the resolver's tri-state
+/// discipline treats an unread field as `Unread`, not as evidence of absence.
+pub(crate) fn geometry_contradicts(entry: &RefEntry, evidence: &LocatorEvidence) -> bool {
+    match (entry.geometry.bounds_hash, bounds_hash_of(evidence)) {
+        (Some(stored), Some(live)) => stored != live,
+        _ => false,
+    }
 }
 
 /// Whether the stored ref carries nothing any resolution tier could ever
