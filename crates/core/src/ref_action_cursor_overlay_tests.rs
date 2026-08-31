@@ -212,6 +212,62 @@ fn renderer_failure_does_not_change_successful_action() {
     assert_eq!(result.action, "click");
 }
 
+struct NoOverlaySupportAdapter;
+
+impl ObservationOps for NoOverlaySupportAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    crate::adapter::complete_live_observation!(
+        "textfield",
+        "Run",
+        [capability::CLICK, capability::SET_VALUE]
+    );
+}
+
+impl ActionOps for NoOverlaySupportAdapter {
+    fn execute_action(
+        &self,
+        _handle: &NativeHandle,
+        _request: ActionRequest,
+        _lease: &crate::InteractionLease,
+    ) -> Result<ActionResult, AdapterError> {
+        Ok(ActionResult::delivered_unverified("click"))
+    }
+}
+
+impl InputOps for NoOverlaySupportAdapter {}
+
+impl SystemOps for NoOverlaySupportAdapter {
+    crate::adapter::guarded_interaction_lease!();
+    crate::adapter::exact_window_focus!();
+}
+
+#[test]
+fn adapter_with_no_overlay_support_still_completes_the_action() {
+    let adapter = NoOverlaySupportAdapter;
+
+    let error = adapter
+        .update_cursor_overlay(&CursorOverlayControl::disable("test-session".into()))
+        .expect_err("the trait default must refuse, proving this adapter has no override");
+    assert_eq!(error.code, crate::ErrorCode::PlatformNotSupported);
+
+    let result = execute_entry_with_context(
+        &adapter,
+        &entry(),
+        ActionRequest::headless(Action::Click),
+        &enabled_context(),
+    )
+    .expect("an adapter with no overlay support must still complete the action");
+
+    assert_eq!(result.action, "click");
+}
+
 #[test]
 fn a_value_write_outlines_the_element_without_a_click_ripple() {
     let adapter = CursorAdapter::new(false);
