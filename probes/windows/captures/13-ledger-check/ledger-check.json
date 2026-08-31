@@ -1,9 +1,9 @@
 {
     "Probe":  "13-ledger-check",
-    "CapturedAtUtc":  "2026-08-31T02:09:53Z",
+    "CapturedAtUtc":  "2026-08-31T02:48:11Z",
     "Question":  "does FINDINGS.md satisfy R5, R6 and R7 as a machine-checkable contract",
     "Ledger":  "probes/windows/FINDINGS.md",
-    "RowCount":  219,
+    "RowCount":  220,
     "SessionEvidenceRows":  25,
     "AreaCoverage":  [
                          {
@@ -104,11 +104,11 @@
                          },
                          {
                              "Area":  "27",
-                             "Rows":  3
+                             "Rows":  4
                          }
                      ],
     "VerdictCounts":  {
-                          "CONFIRMS":  114,
+                          "CONFIRMS":  115,
                           "CONTRADICTS":  16,
                           "NEW-EDGE":  70,
                           "DEFERRED":  19
@@ -210,9 +210,9 @@
                              "Closure":  "2.14"
                          }
                      ],
-    "MeasuredHunkCount":  124,
+    "MeasuredHunkCount":  125,
     "HunkIndexRowCount":  67,
-    "HunkIndexShortfall":  57,
+    "HunkIndexShortfall":  58,
     "ContradictsRowCount":  16,
     "ContradictsRowsMapped":  16,
     "BijectionHolds":  true,
