@@ -2,7 +2,7 @@
 //!
 //! Four measured behaviors drive four modules: per-component reparse-point
 //! rejection (`path`), `ReplaceFileW`-based atomic promotion with a
-//! write-scoped temp lease (`replace`), `TokenOwner` foreign-principal
+//! write-scoped temp lease (`replace`), owner-eligible-SID foreign-principal
 //! detection (`owner`), and control-call-disciplined storage locality
 //! (`locality`). Each override mirrors the portable default's observable
 //! semantics — parent handling, create/append/lock open modes, the hashed
@@ -26,9 +26,14 @@
 //!
 //! Locality gates only the write surfaces (atomic writes, appends, lock
 //! opens); reads stay ungated so observation commands keep working wherever
-//! a readable artifact lives. Ownership checks compare against `TokenOwner`,
-//! never `TokenUser`, and detect pre-creation by a foreign principal — they
-//! are not, and cannot be, an isolation boundary between administrators.
+//! a readable artifact lives. Ownership checks accept the owner-eligible SID
+//! set derived from the process token — `TokenUser`, `TokenOwner`, and any
+//! `TokenGroups` entry flagged `SE_GROUP_OWNER` — because a single human's
+//! `TokenOwner` flips between their own SID and `BUILTIN\Administrators` as
+//! elevation changes, and comparing against `TokenOwner` alone would refuse a
+//! path that same human created at a different elevation. They detect
+//! pre-creation by a genuinely foreign principal and are not, and cannot be,
+//! an isolation boundary between administrators.
 
 mod locality;
 mod owner;
@@ -79,7 +84,7 @@ impl PrivateFileOps for WindowsPrivateFile {
         let mut options = OpenOptions::new();
         options.read(true).create(true).append(true);
         let file = path::open_leaf_regular_no_follow(path, &mut options, "private append target")?;
-        owner::require_owned_by_token_owner(&file, "private append target")?;
+        owner::require_owned_by_eligible_principal(&file, "private append target")?;
         locality::require_local_for_private_write(&file, "private append target")?;
         Ok(file)
     }
@@ -92,7 +97,7 @@ impl PrivateFileOps for WindowsPrivateFile {
         let mut options = OpenOptions::new();
         options.read(true).write(true).create(create);
         let file = path::open_leaf_regular_no_follow(path, &mut options, "private lock file")?;
-        owner::require_owned_by_token_owner(&file, "private lock file")?;
+        owner::require_owned_by_eligible_principal(&file, "private lock file")?;
         locality::require_local_for_private_write(&file, "private lock file")?;
         Ok(file)
     }
@@ -101,7 +106,7 @@ impl PrivateFileOps for WindowsPrivateFile {
         let mut options = OpenOptions::new();
         options.read(true);
         let file = path::open_leaf_regular_no_follow(path, &mut options, "private file")?;
-        owner::require_owned_by_token_owner(&file, "private file")?;
+        owner::require_owned_by_eligible_principal(&file, "private file")?;
         bounded_read(file, max_bytes)
     }
 
@@ -113,7 +118,7 @@ impl PrivateFileOps for WindowsPrivateFile {
 
 fn validate_destination_if_present(path: &Path) -> std::io::Result<()> {
     match path::open_leaf_for_validation(path, "private file destination") {
-        Ok(file) => owner::require_owned_by_token_owner(&file, "private file destination"),
+        Ok(file) => owner::require_owned_by_eligible_principal(&file, "private file destination"),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),
     }
@@ -121,7 +126,7 @@ fn validate_destination_if_present(path: &Path) -> std::io::Result<()> {
 
 fn validate_written_destination(path: &Path) -> std::io::Result<()> {
     let file = path::open_leaf_for_validation(path, "replaced private file")?;
-    owner::require_owned_by_token_owner(&file, "replaced private file")
+    owner::require_owned_by_eligible_principal(&file, "replaced private file")
 }
 
 fn write_all_and_sync(mut file: File, bytes: &[u8]) -> std::io::Result<()> {

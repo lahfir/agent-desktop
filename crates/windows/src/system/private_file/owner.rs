@@ -1,11 +1,23 @@
-//! Ownership validation against the process token's `TokenOwner`.
+//! Ownership validation against the set of SIDs Windows itself would permit
+//! this process's token to hold as a file owner.
 //!
 //! New filesystem objects land owned by `TokenOwner`, not `TokenUser`:
 //! measured at both High and Medium integrity, a file created by an
 //! admin-group account is owned by the Administrators group while
 //! `OwnerMatchesTokenUser` is false and `OwnerMatchesTokenOwner` is true —
-//! group membership is the variable, never integrity. Validation therefore
-//! compares against `TokenOwner` only.
+//! group membership is the variable, never integrity.
+//!
+//! `TokenOwner` is not itself stable for one human across elevation: measured
+//! on the same account, a non-elevated process's `TokenOwner` reads as the
+//! user SID, while an elevated process's reads as `BUILTIN\Administrators`,
+//! because UAC elevation swaps the token's default owner to whichever group
+//! carries the `SE_GROUP_OWNER` attribute. A validation that compared only
+//! against `TokenOwner` therefore refused a path the same human created at a
+//! different elevation — indistinguishable, by that check, from a foreign
+//! principal. Validation instead accepts the owner-eligible set: `TokenUser`,
+//! `TokenOwner`, and every `TokenGroups` entry whose attributes carry
+//! `SE_GROUP_OWNER`. That is exactly the set of SIDs `SetSecurityInfo` would
+//! let this token assign as an owner — no wider, no narrower.
 //!
 //! The purpose is narrow: detecting a path pre-created by a foreign
 //! principal, the Windows analogue of the unix uid post-condition in core's
@@ -28,7 +40,8 @@ use windows_sys::Win32::Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, HAN
 use windows_sys::Win32::Security::Authorization::{GetSecurityInfo, SE_FILE_OBJECT};
 use windows_sys::Win32::Security::{
     EqualSid, GetLengthSid, GetTokenInformation, IsValidSid, OWNER_SECURITY_INFORMATION, PSID,
-    SECURITY_MAX_SID_SIZE, TOKEN_INFORMATION_CLASS, TOKEN_OWNER, TOKEN_QUERY, TokenOwner,
+    SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_OWNER,
+    TOKEN_QUERY, TOKEN_USER, TokenGroups, TokenOwner, TokenUser,
 };
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
@@ -36,6 +49,17 @@ use super::permission_denied;
 
 const TOKEN_OWNER_SIZE: usize = 8;
 const _: () = assert!(size_of::<TOKEN_OWNER>() == TOKEN_OWNER_SIZE);
+const TOKEN_USER_SIZE: usize = 16;
+const _: () = assert!(size_of::<TOKEN_USER>() == TOKEN_USER_SIZE);
+
+/// `SE_GROUP_OWNER` from `Win32_System_SystemServices`, defined locally so
+/// this module does not need that feature only for one flag constant. The
+/// value is fixed by the Win32 ABI. A too-wide filter (accepting groups that
+/// do not carry this flag) is pinned by
+/// `owner_eligible_sids_contains_token_user_and_owner_but_excludes_everyone`,
+/// which asserts `Everyone` stays out of the set even though it is present
+/// in every token's groups.
+const SE_GROUP_OWNER: u32 = 0x0000_0008;
 
 pub(super) struct SidBuffer {
     storage: Vec<u64>,
@@ -76,15 +100,85 @@ impl SidBuffer {
     }
 }
 
-pub(super) fn require_owned_by_token_owner(file: &File, what: &str) -> std::io::Result<()> {
-    let expected = process_token_owner_sid()?;
+/// The set of SIDs this process's token could legitimately have produced as
+/// a file owner: its `TokenUser`, its `TokenOwner`, and every `TokenGroups`
+/// entry carrying `SE_GROUP_OWNER`. Deliberately not "every group the token
+/// belongs to" — a token holds many groups (`Everyone`, `Users`, ...) that
+/// Windows never allows as an owner, and accepting those would make the
+/// foreign-principal check meaningless.
+pub(super) struct OwnerEligibleSids {
+    entries: Vec<SidBuffer>,
+}
+
+impl OwnerEligibleSids {
+    pub(super) fn contains(&self, candidate: &SidBuffer) -> bool {
+        self.entries.iter().any(|sid| sid.matches(candidate))
+    }
+}
+
+pub(super) fn require_owned_by_eligible_principal(file: &File, what: &str) -> std::io::Result<()> {
+    let eligible = process_owner_eligible_sids()?;
     let actual = actual_owner_for_comparison(file)?;
-    if !expected.matches(&actual) {
+    if !eligible.contains(&actual) {
         return Err(permission_denied(format!(
-            "{what} is owned by a foreign principal, not this process's token owner"
+            "{what} is owned by a foreign principal, not this process's token user, token \
+             owner, or an owner-eligible token group; if a different principal owns this path \
+             intentionally, relocate the state root with AGENT_DESKTOP_HOME instead of reusing it"
         )));
     }
     Ok(())
+}
+
+pub(super) fn process_owner_eligible_sids() -> std::io::Result<&'static OwnerEligibleSids> {
+    static OWNER_ELIGIBLE_SIDS: OnceLock<Result<OwnerEligibleSids, String>> = OnceLock::new();
+    OWNER_ELIGIBLE_SIDS
+        .get_or_init(|| read_owner_eligible_sids().map_err(|error| error.to_string()))
+        .as_ref()
+        .map_err(|message| std::io::Error::new(ErrorKind::PermissionDenied, message.clone()))
+}
+
+fn read_owner_eligible_sids() -> std::io::Result<OwnerEligibleSids> {
+    let mut entries = vec![read_process_token_user()?, read_process_token_owner()?];
+    entries.extend(read_owner_flagged_group_sids()?);
+    Ok(OwnerEligibleSids { entries })
+}
+
+fn read_owner_flagged_group_sids() -> std::io::Result<Vec<SidBuffer>> {
+    let buffer = read_process_token_information(TokenGroups)?;
+    let byte_len = buffer.len() * size_of::<u64>();
+    let bytes = buffer.as_ptr().cast::<u8>();
+    if byte_len < size_of::<u32>() {
+        return Err(std::io::Error::new(
+            ErrorKind::InvalidData,
+            "the process token reported a truncated TokenGroups payload",
+        ));
+    }
+    let group_count = unsafe { std::ptr::read_unaligned(bytes.cast::<u32>()) } as usize;
+    let groups_offset = core::mem::offset_of!(TOKEN_GROUPS, Groups);
+    let entry_size = size_of::<SID_AND_ATTRIBUTES>();
+    let required_bytes = groups_offset
+        .checked_add(group_count.saturating_mul(entry_size))
+        .ok_or_else(|| {
+            std::io::Error::new(
+                ErrorKind::InvalidData,
+                "the process token reported an impossible TokenGroups count",
+            )
+        })?;
+    if required_bytes > byte_len {
+        return Err(std::io::Error::new(
+            ErrorKind::InvalidData,
+            "the process token reported more groups than its payload holds",
+        ));
+    }
+    let mut owner_flagged = Vec::new();
+    for index in 0..group_count {
+        let entry_ptr = unsafe { bytes.add(groups_offset + index * entry_size) };
+        let entry: SID_AND_ATTRIBUTES = unsafe { std::ptr::read_unaligned(entry_ptr.cast()) };
+        if entry.Attributes & SE_GROUP_OWNER != 0 {
+            owner_flagged.push(SidBuffer::copied_from_valid(entry.Sid)?);
+        }
+    }
+    Ok(owner_flagged)
 }
 
 fn actual_owner_for_comparison(file: &File) -> std::io::Result<SidBuffer> {
@@ -120,6 +214,7 @@ pub(super) fn file_owner_sid(file: &File) -> std::io::Result<SidBuffer> {
     copied
 }
 
+#[cfg(test)]
 pub(super) fn process_token_owner_sid() -> std::io::Result<&'static SidBuffer> {
     static PROCESS_TOKEN_OWNER: OnceLock<Result<SidBuffer, String>> = OnceLock::new();
     PROCESS_TOKEN_OWNER
@@ -178,18 +273,19 @@ fn read_token_information(
     Ok(buffer)
 }
 
-#[cfg(test)]
-pub(super) fn process_token_user_sid_for_tests() -> std::io::Result<SidBuffer> {
-    use windows_sys::Win32::Security::{TOKEN_USER, TokenUser};
-    const TOKEN_USER_SIZE: usize = 16;
-    const _: () = assert!(size_of::<TOKEN_USER>() == TOKEN_USER_SIZE);
+fn read_process_token_user() -> std::io::Result<SidBuffer> {
     let buffer = read_process_token_information(TokenUser)?;
     let user: TOKEN_USER = unsafe { std::ptr::read(buffer.as_ptr().cast()) };
     SidBuffer::copied_from_valid(user.User.Sid)
 }
 
+#[cfg(test)]
+pub(super) fn process_token_user_sid_for_tests() -> std::io::Result<SidBuffer> {
+    read_process_token_user()
+}
+
 /// Forces the owner comparison to observe a foreign principal so the
-/// refusal branch of `require_owned_by_token_owner` can be exercised without
+/// refusal branch of `require_owned_by_eligible_principal` can be exercised without
 /// a file actually pre-created by another account. The substituted owner is
 /// the `WinLocalSystemSid`, built programmatically so the seam stays portable
 /// and privilege-free.
