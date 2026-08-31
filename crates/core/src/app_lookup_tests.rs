@@ -249,3 +249,21 @@ fn mutation_revalidation_rejects_missing_generation() {
 
     assert_eq!(error.code(), "ACTION_NOT_SUPPORTED");
 }
+
+#[test]
+fn app_not_found_carries_a_suggestion_naming_the_accepted_forms() {
+    let adapter = InventoryAdapter {
+        apps: Vec::new(),
+        windows: Vec::new(),
+    };
+
+    let error =
+        resolve_app(Some("NoSuchApp"), &adapter, Deadline::standard().unwrap()).unwrap_err();
+
+    assert_eq!(error.code(), "APP_NOT_FOUND");
+    assert!(
+        error
+            .suggestion()
+            .is_some_and(|suggestion| !suggestion.is_empty())
+    );
+}
