@@ -60,7 +60,7 @@ pub(super) fn ensure_private_directory_chain(path: &Path) -> std::io::Result<Pin
     let chain = walk_directory_components(path, MissingComponents::Create)?;
     let directory = open_directory_no_follow(path, FILE_READ_ATTRIBUTES | READ_CONTROL)?;
     require_verified_directory(&directory)?;
-    owner::require_owned_by_token_owner(&directory, "private file parent")?;
+    owner::require_owned_by_eligible_principal(&directory, "private file parent")?;
     Ok(chain)
 }
 

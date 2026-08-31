@@ -4,13 +4,14 @@
 //! lock directory's DACL is authored for.
 //!
 //! Deliberately separate from `system/private_file/owner.rs`: that module
-//! compares only against `TokenOwner` for a narrower purpose (detecting a
-//! path pre-created by a foreign principal), while the lease directory
-//! specifically must accept either `TokenOwner` or `TokenUser` - an elevated
-//! administrator's own token routinely carries a `TokenOwner` of
-//! `BUILTIN\Administrators` distinct from its `TokenUser`, and a directory
-//! this process creates is owned by whichever one Windows defaults new
-//! objects to.
+//! accepts a token's full owner-eligible SID set (`TokenUser`, `TokenOwner`,
+//! and any `SE_GROUP_OWNER`-flagged token group) for its narrower purpose
+//! (detecting a path pre-created by a foreign principal), while the lease
+//! directory here only ever needs to distinguish `TokenOwner` from
+//! `TokenUser` directly - an elevated administrator's own token routinely
+//! carries a `TokenOwner` of `BUILTIN\Administrators` distinct from its
+//! `TokenUser`, and a directory this process creates is owned by whichever
+//! one Windows defaults new objects to.
 
 use std::io::ErrorKind;
 use std::sync::OnceLock;

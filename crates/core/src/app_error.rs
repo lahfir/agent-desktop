@@ -15,9 +15,18 @@ pub enum AppError {
 }
 
 impl AppError {
+    /// A permission denial keeps its own code rather than collapsing into
+    /// `INTERNAL`. The two are not interchangeable to a caller: `INTERNAL`
+    /// says the tool broke and carries no action, while `PERM_DENIED` names a
+    /// condition the caller can do something about. Every other io kind stays
+    /// `INTERNAL`, because guessing a code from an errno is how an unrelated
+    /// failure acquires a confident, wrong label.
     pub fn code(&self) -> &str {
         match self {
             Self::Adapter(error) => error.code.as_str(),
+            Self::Io(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                ErrorCode::PermDenied.as_str()
+            }
             Self::Io(_) | Self::Json(_) | Self::Internal(_) => "INTERNAL",
         }
     }
