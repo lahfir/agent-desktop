@@ -169,25 +169,97 @@ fn dismiss_all_impl(
     if entries.is_empty() {
         return Ok((Vec::new(), Vec::new()));
     }
+    let captured: Vec<NotificationInfo> = entries.into_iter().map(|entry| entry.info).collect();
+    let mut invoke_errors: Vec<(usize, String)> = Vec::new();
     if app_filter.is_some() {
-        for entry in &entries {
-            let _ = invoke_dismiss(&entry.element, entry.info.index);
-        }
+        dismiss_each_by_freshly_read_identity(
+            &captured,
+            &filter,
+            hwnd,
+            deadline,
+            &mut invoke_errors,
+        )?;
     } else {
         let root = crate::tree::automation::root_from_hwnd(hwnd, deadline)?;
         let clear = super::read::find_clear_all_button(&root)?
             .ok_or_else(super::read::missing_clear_all_error)?;
         invoke_element(&clear)?;
     }
-    let captured: Vec<NotificationInfo> = entries.into_iter().map(|entry| entry.info).collect();
     let current = read_settling_without(&captured, hwnd, &filter, deadline)?;
-    let failures = survivor_failures(&captured, &current);
+    let failures = dismiss_all_failures(&captured, &current, &invoke_errors);
     let dismissed = captured
         .iter()
         .filter(|member| entry_gone(member, &current))
         .cloned()
         .collect();
     Ok((dismissed, failures))
+}
+
+/// Dismisses each captured target through a freshly re-read live element,
+/// never through the handle or index the outer capture took.
+///
+/// A filtered dismissal only ever narrows which entries are targeted; it must
+/// never fall back to the Action-Center-wide clear-all, because that control
+/// has no notion of "this app's entries" and would destroy every other
+/// application's notifications along with the ones the caller asked to
+/// remove. Removing one entry can renumber and recycle the elements after it
+/// in the center's virtualized list, so every iteration re-reads the live
+/// surface with the same filter and matches its target by identity - never by
+/// the index or element handle the outer capture took, which may already be
+/// stale by the time this entry's turn comes. An invoke's own error is
+/// recorded against the target's captured index rather than discarded, so the
+/// caller's survivor comparison can report the real reason a filtered entry
+/// refused to leave, not just that it remained.
+fn dismiss_each_by_freshly_read_identity(
+    captured: &[NotificationInfo],
+    filter: &NotificationFilter,
+    hwnd: isize,
+    deadline: Deadline,
+    invoke_errors: &mut Vec<(usize, String)>,
+) -> Result<(), AdapterError> {
+    for target in captured {
+        let live = list_entries(filter, hwnd, deadline)?;
+        let Some(current) = live.iter().find(|entry| same_identity(target, &entry.info)) else {
+            continue;
+        };
+        if let Err(error) = invoke_dismiss(&current.element, current.info.index) {
+            invoke_errors.push((target.index, error.to_string()));
+        }
+    }
+    Ok(())
+}
+
+/// One failure line per captured member still present after the clear,
+/// carrying the specific invoke error a filtered dismissal recorded for it
+/// when one exists, the generic survivor message otherwise - never both, and
+/// never for a member the settle read proved gone. A member that vanished
+/// during the clear is reported as dismissed even if its own invoke errored,
+/// because the settle read is the proof the caller's envelope trusts, not the
+/// invoke's own return value.
+fn dismiss_all_failures(
+    captured: &[NotificationInfo],
+    current: &[NotificationInfo],
+    invoke_errors: &[(usize, String)],
+) -> Vec<String> {
+    if invoke_errors.is_empty() {
+        return survivor_failures(captured, current);
+    }
+    captured
+        .iter()
+        .filter(|member| !entry_gone(member, current))
+        .map(|member| {
+            match invoke_errors
+                .iter()
+                .find(|(index, _)| *index == member.index)
+            {
+                Some((_, message)) => format!("#{}: {}", member.index, message),
+                None => format!(
+                    "#{}: notification from the captured set is still present",
+                    member.index
+                ),
+            }
+        })
+        .collect()
 }
 
 fn action_impl(
