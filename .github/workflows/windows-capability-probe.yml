@@ -22,6 +22,8 @@ on:
       - 'probes/windows/24-fixture-e2e/**'
       - 'probes/windows/25-packaging/**'
       - 'probes/windows/26-shell-surfaces/**'
+      - 'probes/windows/27-contract-decisions.ps1'
+      - 'probes/windows/28-tray-reproduction.ps1'
       - 'probes/windows/FINDINGS.md'
       - 'probes/windows/13-ledger-check.ps1'
       - 'probes/windows/13-ledger-content.ps1'
@@ -178,6 +180,11 @@ jobs:
         shell: powershell
         run: |
           .\probes\windows\26-shell-surfaces\06-cost.ps1 -Label ci
+
+      - name: Run the contract-decisions probe
+        shell: powershell
+        run: |
+          .\probes\windows\27-contract-decisions.ps1 -Label ci
 
       # Runs after the area probes so the ledger it audits reflects every
       # capture this job just wrote. Registered here rather than the main CI
