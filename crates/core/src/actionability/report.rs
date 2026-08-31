@@ -35,11 +35,16 @@ impl ActionabilityReport {
         }
     }
 
+    /// A blocking check carrying a terminal code is a permanent refusal;
+    /// one without carries a transient, waitable gap. A permanent refusal
+    /// outranks a transient gap regardless of which check ran first, so this
+    /// returns the first blocking check that carries a code rather than the
+    /// first blocking check outright.
     pub(crate) fn terminal_code(&self) -> Option<ErrorCode> {
         self.checks
             .iter()
-            .find(|check| is_blocking(check))
-            .and_then(|check| check.terminal_code.clone())
+            .filter(|check| is_blocking(check))
+            .find_map(|check| check.terminal_code.clone())
     }
 
     /// Whether `stable` is the sole reason this report is not actionable.
@@ -94,12 +99,38 @@ mod tests {
     }
 
     #[test]
-    fn retryable_failure_is_not_overridden_by_a_later_terminal_check() {
+    fn terminal_check_outranks_an_earlier_non_terminal_one() {
         let report = ActionabilityReport::from_checks(
             vec![
                 failed("enabled", None),
                 failed("supported_action", Some(ErrorCode::PolicyDenied)),
             ],
+            None,
+            None,
+            None,
+            PointerDelivery::NotApplicable,
+        );
+
+        assert_eq!(report.terminal_code(), Some(ErrorCode::PolicyDenied));
+    }
+
+    #[test]
+    fn sole_blocking_check_with_a_terminal_code_is_returned_unchanged() {
+        let report = ActionabilityReport::from_checks(
+            vec![failed("supported_action", Some(ErrorCode::PolicyDenied))],
+            None,
+            None,
+            None,
+            PointerDelivery::NotApplicable,
+        );
+
+        assert_eq!(report.terminal_code(), Some(ErrorCode::PolicyDenied));
+    }
+
+    #[test]
+    fn sole_blocking_check_without_a_terminal_code_is_returned_unchanged() {
+        let report = ActionabilityReport::from_checks(
+            vec![failed("enabled", None)],
             None,
             None,
             None,
