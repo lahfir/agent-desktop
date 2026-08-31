@@ -13,6 +13,9 @@ const STATE_SYSTEM_HASPOPUP: i32 = 0x4000_0000;
 /// `STATE_SYSTEM_BUSY`, the bit A15-6 measured alone on a plain text control.
 const STATE_SYSTEM_BUSY: i32 = 0x0000_0800;
 
+/// `STATE_SYSTEM_PRESSED`, the MSAA bit for a button in pressed state.
+const STATE_SYSTEM_PRESSED: i32 = 0x0000_0008;
+
 const TOGGLE_STATE_ON: i32 = 1;
 const TOGGLE_STATE_INDETERMINATE: i32 = 2;
 
@@ -50,28 +53,20 @@ const READ_HEALTH_PROBES: [TreeProperty; 6] = [
 /// it is not read at all and `invalid` stays unproduced rather than faked -
 /// the correct outcome for a token whose platform source turns out unusable.
 ///
-/// # `pressed` is deliberately unproduced, and the role mapping is why
+/// # `pressed` is produced from `LegacyIAccessibleState`
 ///
-/// Microsoft's ARIA state table pairs `pressed` with the same `ToggleState`
-/// source `checked` reads, and macOS's `state_reader.rs` genuinely emits
-/// `pressed` for that same logical control - a toggle button. Windows cannot
-/// reach that arm: `roles.rs`'s `button_role` reclassifies any `Button`
-/// control type that advertises `ToggleAvailable` to `Role::Switch` before
-/// states resolve, so a node whose role has reached this function as
-/// `"button"` has, by construction, never advertised `ToggleAvailable` and so
-/// never carries a `ToggleState` to read. The precondition a `pressed` arm
-/// would need - `role == "button"` alongside a live toggle value - cannot
-/// hold on this stack. That is a different reason than `invalid`'s: not an
-/// unusable source, but a role vocabulary the producer can never see because
-/// an earlier stage has already claimed it for `switch`. The same logical
-/// control therefore surfaces as `button` + `pressed` on macOS and `switch` +
-/// `checked` on Windows. The divergence is deliberate and unreconciled: it is
-/// the honest reading of what each platform's tree says, and collapsing it
-/// would mean either re-deriving a role this stack never exposes or emitting
-/// a state with no source behind it. The cost is that a caller matching on
-/// `button` + `pressed` will not find this control on Windows.
-/// `CONCEPTS.md`'s State Vocabulary entry defines the tokens both adapters
-/// answer to.
+/// A `button` role with the `STATE_SYSTEM_PRESSED` bit set in its
+/// `LegacyIAccessibleState` emits the `pressed` state. This covers the toolbar
+/// toggle button, which was measured advertising no `TogglePattern` at all -
+/// only `Invoke` and `LegacyIAccessible` - and carrying its pressed state in
+/// the legacy bit alone. `roles.rs`'s `button_role`
+/// reclassifies `Button` controls that advertise `ToggleAvailable` to
+/// `Role::Switch`, so toggle buttons surface as `switch` + `checked` on
+/// Windows. A `button` role reaching this function with the `STATE_SYSTEM_PRESSED`
+/// bit set represents a different pattern: a button whose pressed state is
+/// exposed through the legacy MSAA interface rather than through UI Automation
+/// patterns. macOS's `state_reader.rs` emits `pressed` for toggle buttons in
+/// the same logical pattern (role `button` + checked value).
 ///
 /// # Known vs Unknown
 /// `LocatorField::Unknown` is returned only when every [`READ_HEALTH_PROBES`]
@@ -124,7 +119,7 @@ pub fn resolve_states(
         states.push(state::MODAL.to_string());
     }
 
-    push_legacy_state(properties, &mut states);
+    push_legacy_state(properties, role, &mut states);
 
     LocatorField::Known(states)
 }
@@ -165,14 +160,18 @@ fn push_expand_collapse_state(properties: &ElementProperties, states: &mut Vec<S
     }
 }
 
-/// `LegacyIAccessibleState`, the only Windows source for `haspopup` and
-/// `busy`: Microsoft's ARIA state table records neither has a UI Automation
-/// property of its own. A15-6 measured the bitmask as readable and
-/// discriminating between the two bits.
-fn push_legacy_state(properties: &ElementProperties, states: &mut Vec<String>) {
+/// `LegacyIAccessibleState`, the Windows source for `pressed`, `haspopup`, and
+/// `busy`. Microsoft's ARIA state table records neither `haspopup` nor `busy`
+/// has a UI Automation property of its own. A15-6 measured the bitmask as
+/// readable and discriminating between those two bits. The `STATE_SYSTEM_PRESSED`
+/// bit covers toolbar toggle buttons that do not advertise `ToggleAvailable`.
+fn push_legacy_state(properties: &ElementProperties, role: &str, states: &mut Vec<String>) {
     let Some(bits) = properties.get(TreeProperty::LegacyState).number() else {
         return;
     };
+    if role == "button" && bits & STATE_SYSTEM_PRESSED != 0 {
+        states.push(state::PRESSED.to_string());
+    }
     if bits & STATE_SYSTEM_HASPOPUP != 0 {
         states.push(state::HASPOPUP.to_string());
     }
