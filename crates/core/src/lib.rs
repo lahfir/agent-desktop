@@ -117,6 +117,7 @@ mod refs_validate;
 mod renderer_accessibility;
 mod renderer_kind;
 mod resolve_attempt_outcome;
+pub mod resolve_errors;
 mod retry_disposition;
 mod retryability;
 mod role;

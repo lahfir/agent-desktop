@@ -2,7 +2,7 @@
 //! elevation gate, window foreground, and bounds-derived delivery points.
 
 use agent_desktop_core::{
-    AdapterError, Deadline, ErrorCode, InteractionPolicy, Point, ProcessId, Rect,
+    AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionPolicy, Point, ProcessId, Rect,
 };
 
 use crate::input::elevation::ensure_target_integrity_allows_input;
@@ -88,9 +88,12 @@ pub(crate) fn delivery_point(
         || point.y < bounds.y
         || point.y > bounds.y + bounds.height
     {
-        return Err(AdapterError::stale_ref(
+        return Err(AdapterError::new(
+            ErrorCode::StaleRef,
             "Actionability-verified input point is outside the target's live bounds",
-        ));
+        )
+        .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+        .with_disposition(DeliverySemantics::not_delivered()));
     }
     Ok(point)
 }

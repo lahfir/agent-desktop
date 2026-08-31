@@ -1,6 +1,6 @@
 use agent_desktop_core::{
-    AdapterError, Deadline, ErrorCode, InteractionPolicy, MouseButton, MouseEvent, MouseEventKind,
-    Point,
+    AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionPolicy, MouseButton,
+    MouseEvent, MouseEventKind, Point,
 };
 
 use crate::tree::AXElement;
@@ -72,9 +72,12 @@ fn delivery_point(
         || point.y < bounds.y
         || point.y > bounds.y + bounds.height
     {
-        return Err(AdapterError::stale_ref(
+        return Err(AdapterError::new(
+            ErrorCode::StaleRef,
             "Actionability-verified input point is outside the target's live bounds",
-        ));
+        )
+        .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+        .with_disposition(DeliverySemantics::not_delivered()));
     }
     Ok(point)
 }

@@ -6,6 +6,8 @@ use super::element::UIAElement;
 use super::resolve_match::CandidateOutcome;
 #[cfg(target_os = "windows")]
 use super::resolve_match::ambiguous_target_error;
+#[cfg(target_os = "windows")]
+use super::resolve_match::owning_process_exited_error;
 use super::resolve_match::stale_ref_error;
 #[cfg(target_os = "windows")]
 use super::resolve_search::descent::PathLanding;
@@ -276,23 +278,12 @@ pub(crate) fn sleep_before_retry(deadline: Deadline) {
 
 /// Stamps the final incomplete diagnosis with `deadline_elapsed` so the
 /// caller sees why the retries ran out, preserving the incomplete's own
-/// details rather than discarding them for a bare `TIMEOUT`.
+/// details rather than discarding them for a bare `TIMEOUT`. Core owns the
+/// payload (`agent_desktop_core::resolve_errors::mark_deadline_elapsed`)
+/// because it is line-for-line identical to macOS's copy.
 #[cfg(target_os = "windows")]
-pub(crate) fn mark_deadline_elapsed(mut error: AdapterError) -> AdapterError {
-    let mut details = error
-        .details
-        .take()
-        .unwrap_or_else(|| serde_json::json!({}));
-    if let Some(object) = details.as_object_mut() {
-        object.insert("deadline_elapsed".into(), serde_json::json!(true));
-    } else {
-        details = serde_json::json!({
-            "evidence": details,
-            "deadline_elapsed": true,
-        });
-    }
-    error.with_details(details)
-}
+pub(crate) use agent_desktop_core::resolve_errors::mark_deadline_elapsed;
+
 /// The non-Windows twin. The crate cross-compiles to the Linux lane with the
 /// resolver reachable, but there are no UI Automation elements there, so every
 /// stored ref fails closed as stale rather than attempting a search that
@@ -346,13 +337,41 @@ pub(crate) fn resolve_window_root(
     )
     .ok_or_else(|| stale_ref_error(entry))?
     .verify_stored()
-    .map_err(|_| stale_ref_error(entry))?;
+    .map_err(|_| verify_stored_failure_error(entry, deadline))?;
 
     crate::tree::surfaces::surface_root(
         agent_desktop_core::ObservationRoot::Window(&window),
         entry.source.source_surface,
         deadline,
     )
+}
+
+/// Classifies a `verify_stored()` failure by the owning process's own
+/// liveness, not merely the handle's: a window recreated mid-redraw by a
+/// still-running process is retryable, an exited owner is terminal. Without
+/// this split a dead owner's every re-attempt re-fails identically and the
+/// retry loop burns the whole deadline before reporting a bare `TIMEOUT`
+/// with no diagnosis. Answers only when the ref carries a real
+/// process-instance token; a token-less ref keeps today's retryable
+/// behaviour, since liveness cannot be checked without one.
+#[cfg(target_os = "windows")]
+fn verify_stored_failure_error(entry: &RefEntry, deadline: Deadline) -> AdapterError {
+    let Some(instance) = entry
+        .process
+        .process_instance
+        .as_deref()
+        .filter(|instance| !instance.is_empty())
+    else {
+        return stale_ref_error(entry);
+    };
+    let identity = agent_desktop_core::ProcessIdentity::new(entry.process.pid, instance);
+    match crate::system::process_state::process_state_impl(identity, deadline) {
+        Ok(
+            agent_desktop_core::process_state::ProcessState::Exited { .. }
+            | agent_desktop_core::process_state::ProcessState::Crashed { .. },
+        ) => owning_process_exited_error(entry),
+        _ => stale_ref_error(entry),
+    }
 }
 
 #[cfg(all(test, target_os = "windows"))]

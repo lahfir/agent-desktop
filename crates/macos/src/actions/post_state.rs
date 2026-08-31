@@ -1,6 +1,6 @@
 use agent_desktop_core::{
-    Action, AdapterError, Deadline, ElementState, ErrorCode, EvidenceRequirements, LiveElement,
-    LiveIdentity, LocatorField, Rect,
+    Action, AdapterError, Deadline, DeliverySemantics, ElementState, ErrorCode,
+    EvidenceRequirements, LiveElement, LiveIdentity, LocatorField, Rect,
 };
 use std::time::{Duration, Instant};
 
@@ -112,9 +112,12 @@ fn read_live_observation(
     usage.note_child_demand(read.child_read.total_count, &mut stats);
     usage.claim_edges(read.child_read.elements.len());
     if read.invalid_element {
-        return Err(AdapterError::stale_ref(
+        return Err(AdapterError::new(
+            ErrorCode::StaleRef,
             "Element became invalid while reading live state",
-        ));
+        )
+        .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+        .with_disposition(DeliverySemantics::not_delivered()));
     }
     if deadline.is_expired() {
         return Err(deadline.timeout_error());

@@ -14,7 +14,7 @@ description: >
   notification commands with their foreground requirement and verified
   mutations. Names the honest gaps explicitly: quick-settings is absent on
   pre-Windows-11 builds (the refusal names action-center), and cursor-overlay
-  records its session setting while nothing renders.
+  enable returns rendered: false while nothing renders.
   Covers UIPI elevation boundaries, Chromium/Electron first-contact settle
   behavior, and Windows-specific troubleshooting.
   Triggers on: "windows desktop automation", "UIA tree", "automate Windows app",
@@ -38,16 +38,16 @@ Requires Windows 10 1809+ / Windows Server 2019+ (x64 or ARM64).
 | Observation | `snapshot`, `find`, `get`, `is`, `screenshot` | Works; surfaces are `window`, `focused`, a Chromium modal reached as `sheet`, and an open application menu reached as `menu` |
 | Surfaces | `list-surfaces` | Works; per-process inventory of `window`, `focused` and `sheet` surfaces plus a `menu` surface carrying `item_count` when a menu is open |
 | Shell surfaces | `open-system-surface` | Works; raises `start-menu`, `taskbar`, `system-tray`, `system-tray-overflow` or `action-center` and returns the window identity `snapshot --surface <kind>` consumes; `quick-settings` refuses on pre-Windows-11 builds |
-| Ref interaction | `click`, `right-click`, `type`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll`, `scroll-to` | Works; semantic delivery in headless and `--headed` modes alike |
+| Ref interaction | `click`, `right-click`, `type`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll`, `scroll-to` | Works; semantic delivery in headless and `--headed` modes alike (`type` requires focus permission and returns `POLICY_DENIED` under strict headless) |
 | Multi-click and focus | `double-click`, `triple-click`, `focus` | Works with global `--headed`; focus is headed-required (A3-4, A19-5) |
-| Keyboard and mouse | `press`, `hover`, `drag`, `mouse-click`, `mouse-move`, `mouse-wheel` | Works; cursor-moving input requires `--headed`; `press --app` focuses then synthesizes after verification |
+| Keyboard and mouse | `press`, `hover`, `drag`, `mouse-click`, `mouse-move`, `mouse-wheel` | Works; cursor-moving input requires `--headed`; `press --app` synthesizes into the foreground queue after verification (fails closed headless if not already frontmost; non-interactive callers report `delivered_unverified`) |
 | Held input | `key-down`, `key-up`, `mouse-down`, `mouse-up` | Fails closed with `ACTION_NOT_SUPPORTED` on every platform until a daemon owns held-input lifetime |
 | App and window | `launch`, `close-app`, `list-windows`, `list-apps`, `focus-window`, `resize-window`, `move-window`, `minimize`, `maximize`, `restore` | Works; `launch` resolves an absolute path or a bare name under System32 or the Windows directory (A21-1), not display names |
 | Displays | `list-displays` | Works |
 | Clipboard | `clipboard-get`, `clipboard-set`, `clipboard-clear` | Works; typed text and image content |
 | Wait | `wait` | Works for ms, `--element`, `--window`, `--text`, `--menu`, `--menu-closed`, `--event`, and `--notification` predicates |
 | Notifications | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` | Works over the Action Center; the commands that raise shell chrome take the foreground, so pass `--headed` when the center is closed |
-| Cursor overlay | `cursor-overlay` | Enable records the session setting (`ok: true`) but nothing renders; disable removes it |
+| Cursor overlay | `cursor-overlay` | `cursor-overlay enable` returns `data.rendered` (`true` if drawn, `false` if unsupported; Windows reports `false` as no renderer ships yet); `cursor-overlay disable` carries no `rendered` field |
 | System | `status`, `permissions`, `version`, `batch`, `skills`, `session`, `trace` | Works |
 
 ## First Contact
@@ -65,6 +65,25 @@ Requires Windows 10 1809+ / Windows Server 2019+ (x64 or ARM64).
   commands verify exact-window focus and synthesize physical delivery.
   Dangerous shortcuts (`alt+f4`, `win+l`, `win+d`, `alt+tab` and modifier
   supersets) are refused without `--force`.
+- **`type` requires focus permission and fails closed headless.** `type` on
+  Windows is physical keystroke synthesis and requires focus permission, so a
+  strict-headless `type` returns `POLICY_DENIED`. macOS can insert text at the
+  selection semantically and succeeds headless. UI Automation exposes no
+  insert-at-selection equivalent, which is why the two differ.
+- **`press --app` synthesizes into the foreground queue.** `press --app` on
+  Windows is synthesis into the foreground queue with no per-process targeting,
+  so a headless press whose target is not already frontmost fails closed. macOS
+  can deliver to a specific process and can also match a menu-bar accelerator
+  semantically. A press issued from a non-interactive caller — a service, a
+  scheduled task, a CI job — is far less reliable than the same command from an
+  interactive session, and the envelope reports `delivered_unverified` because
+  the synthesis API cannot confirm delivery.
+- **`cursor-overlay enable` reports whether drawing occurred.**
+  `cursor-overlay enable` returns `data.rendered`, a boolean saying whether the
+  overlay was actually drawn. It is `true` on an adapter that implements the
+  overlay and `false` on one that does not — Windows currently reports `false`,
+  because no Windows renderer ships yet. `cursor-overlay disable` carries no
+  `rendered` field, because a disable has nothing to render.
 - **Commands that raise shell chrome take the foreground.** See Shell Surfaces
   and Notifications below; a strict-headless call is refused before anything
   is raised.
@@ -149,10 +168,14 @@ empty-state shape when none are, and a top-level `ClearAllButton`.
 - **`wait --notification` opens and closes the center per poll**, exactly as
   on macOS: each poll runs in its own one-call session that adopts an
   already-present center and restores the entry state afterwards — no
-  long-lived session is held. On this shell a toast joins the center only
-  while it is open (A26-3), so toasts posted while the center sits closed
-  between polls never land; if you are staging arrivals, hold the center open
-  yourself and the wait's polls will adopt it without closing it.
+  long-lived session is held. Each poll of `wait --notification` opens and closes
+  the Action Center, measured at roughly 1.24 seconds per poll on a reference
+  machine. Size timeouts accordingly — a five second wait buys roughly four
+  polls, and a notification that appears and is dismissed inside one interval can
+  be missed. On this shell a toast joins the center only while it is open
+  (A26-3), so toasts posted while the center sits closed between polls never
+  land; if you are staging arrivals, hold the center open yourself and the
+  wait's polls will adopt it without closing it.
 - **This output is sensitive.** The notification-area surface publishes the
   shell's names of installed background agents — security and remote-access
   products among them — and `list-notifications` returns notification titles
