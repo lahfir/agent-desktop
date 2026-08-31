@@ -2,6 +2,7 @@
 //! retries within budget, and expiry carries the last diagnosis.
 
 use super::*;
+use agent_desktop_core::DeliverySemantics;
 
 fn retryable_incomplete(message: &str) -> AdapterError {
     AdapterError::new(agent_desktop_core::ErrorCode::AppUnresponsive, message)
@@ -57,8 +58,13 @@ fn a_settled_non_match_never_retries() {
     let deadline = generous_deadline();
     let result = retry_incomplete_until(deadline, || {
         attempts += 1;
-        Err(agent_desktop_core::AdapterError::stale_ref("nothing")
-            .with_details(serde_json::json!({ "complete": true, "retryable": true })))
+        Err(AdapterError::new(
+            ErrorCode::StaleRef,
+            "Stored ref does not match any live element",
+        )
+        .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+        .with_disposition(DeliverySemantics::not_delivered())
+        .with_details(serde_json::json!({ "complete": true, "retryable": true })))
     });
     assert_eq!(err_code(result), agent_desktop_core::ErrorCode::StaleRef);
     assert_eq!(attempts, 1);
