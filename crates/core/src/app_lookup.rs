@@ -86,9 +86,10 @@ fn select_unique_app(mut candidates: Vec<AppInfo>, label: &str) -> Result<AppInf
                     })
                 })
                 .collect::<Vec<_>>();
-            Err(AdapterError::ambiguous_target(format!(
-                "Multiple application instances matched '{label}'"
-            ))
+            Err(AdapterError::ambiguous_process_target(
+                format!("Multiple application instances matched '{label}'"),
+                &candidate_pids,
+            )
             .with_details(json!({
                 "candidate_count": candidates.len(),
                 "candidate_pids": candidate_pids,

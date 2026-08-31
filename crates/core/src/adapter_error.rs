@@ -90,6 +90,23 @@ impl AdapterError {
             .with_disposition(DeliverySemantics::not_delivered())
     }
 
+    /// `AMBIGUOUS_TARGET` for a process resolved by name alone - `launch` and
+    /// the shared app lookup behind `close-app`, `wait`, `screenshot`, and
+    /// friends. None of those commands take a pid, an instance token, or a
+    /// ref, so the suggestion names the candidates instead of pointing at a
+    /// flag none of them have.
+    pub fn ambiguous_process_target(message: impl Into<String>, pids: &[crate::ProcessId]) -> Self {
+        let numeric: Vec<u32> = pids.iter().map(|pid| pid.get()).collect();
+        Self::new(ErrorCode::AmbiguousTarget, message)
+            .with_suggestion(format!(
+                "{} running instances match (pids {numeric:?}); this command selects a \
+                 process by name and has no pid or instance flag to disambiguate",
+                pids.len()
+            ))
+            .with_details(serde_json::json!({ "candidate_pids": pids }))
+            .with_disposition(DeliverySemantics::not_delivered())
+    }
+
     pub fn not_supported(method: &str) -> Self {
         Self::new(
             ErrorCode::PlatformNotSupported,

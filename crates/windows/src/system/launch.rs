@@ -373,10 +373,10 @@ fn already_running_error(pid: ProcessId, matches: &[ProcessRow]) -> AdapterError
 }
 
 fn ambiguous_apps(matches: &[ProcessRow]) -> AdapterError {
-    AdapterError::ambiguous_target("More than one application instance matches the launch target")
-        .with_details(serde_json::json!({
-            "candidate_pids": matches.iter().map(|row| row.pid).collect::<Vec<_>>(),
-        }))
+    AdapterError::ambiguous_process_target(
+        "More than one application instance matches the launch target",
+        &matches.iter().map(|row| row.pid).collect::<Vec<_>>(),
+    )
 }
 
 fn before_launch(error: AdapterError) -> AdapterError {

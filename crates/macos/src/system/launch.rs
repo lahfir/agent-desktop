@@ -264,10 +264,10 @@ fn required_instance(app: &AppInfo) -> Result<String, AdapterError> {
 
 #[cfg(target_os = "macos")]
 fn ambiguous_apps(apps: &[AppInfo]) -> AdapterError {
-    AdapterError::ambiguous_target("More than one application instance matches the launch target")
-        .with_details(serde_json::json!({
-            "candidate_pids": apps.iter().map(|app| app.pid).collect::<Vec<_>>(),
-        }))
+    AdapterError::ambiguous_process_target(
+        "More than one application instance matches the launch target",
+        &apps.iter().map(|app| app.pid).collect::<Vec<_>>(),
+    )
 }
 
 #[cfg(target_os = "macos")]

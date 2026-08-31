@@ -14,6 +14,36 @@ fn zero_wait_never_polls_after_first_observation() {
     assert!(should_poll_after_first_observation(1));
 }
 
+#[test]
+fn ambiguous_launch_target_suggestion_names_pids_instead_of_a_ref_retry() {
+    let matches = vec![
+        ProcessRow {
+            pid: ProcessId::from(111),
+            name: "Cursor.exe".into(),
+        },
+        ProcessRow {
+            pid: ProcessId::from(222),
+            name: "Cursor.exe".into(),
+        },
+    ];
+
+    let error = ambiguous_apps(&matches);
+
+    assert_eq!(error.code, ErrorCode::AmbiguousTarget);
+    let suggestion = error
+        .suggestion
+        .as_deref()
+        .expect("ambiguous launch target has a suggestion");
+    assert!(
+        !suggestion.contains("ref"),
+        "launch has no ref to disambiguate with: {suggestion}"
+    );
+    assert!(
+        suggestion.contains("111") && suggestion.contains("222"),
+        "suggestion must name the candidate pids the caller cannot select among: {suggestion}"
+    );
+}
+
 /// The `Timeout` arm of [`is_unobservable_within_budget`], mirroring the
 /// `WindowNotFound` arm's tolerance: an already-expired deadline makes
 /// `list_windows_live`'s shared retry budget (`retry_transient_window_race`'s
