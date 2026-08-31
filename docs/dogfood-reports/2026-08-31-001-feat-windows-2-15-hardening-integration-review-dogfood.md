@@ -142,5 +142,98 @@ reported as corroboration rather than as new work.
 
 ### Findings and dispositions
 
-*(This section is completed as each finding's disposition is settled; see the table
-below.)*
+#### Fixed here, each with a named invert-verified test
+
+| # | Subsystem | Finding | Test |
+|---|-----------|---------|------|
+| R1 | tree / observation | The resolver's stored-path fast tier accepted a landing on identity alone and returned before the broad search ever ran, so a list that reordered between snapshot and action put a duplicate-identity sibling at the stored index and an action landed on it silently. A landing whose live bounds hash is known and contradicts the stored one now falls through to the search that already tie-breaks on it. | `the_fast_path_refuses_a_contradicting_hash_and_still_accepts_an_agreeing_one`, plus `a_path_landing_with_an_unreadable_live_bounds_hash_is_still_accepted` — the second is the guard against turning an unread field into a refutation |
+| R2 | tree / observation | A provider answering a documented-boolean property as an integer read as gate-closed everywhere except `IsPassword`, which had already been widened once for this exact divergence. A checkbox reporting `IsTogglePatternAvailable` as an integer lost its advertised action, its refined role and its checked state, in silence. | `a_nonzero_known_number_opens_the_gate_but_an_unread_gate_still_does_not`, `is_true_reads_a_nonzero_known_number_on_an_ungated_available_property` |
+| R3 | tree / observation | A COM fault partway up the ancestor climb was folded into the same answer as a climb that reached the root and found nothing, so the occlusion gate was told a target was unclipped when the read that would have said otherwise never completed. Both callers now fail closed on the fault. | `a_completed_climb_with_no_scrollable_ancestor_reports_ok_none` guards the healthy path. **The fault arm ships unpinned and the report says so**: two independent attempts to force a parent-read fault on this host both returned the exhaustion answer instead, which is itself the measurement recorded as A28-8 |
+| R4 | semantic actions | A rung that hard-errors discarded the steps recorded before it. The value-write chain deliberately continues past an unverified delivery, so a later rung's error reported `not_delivered` and `retry: safe` after the field had already been written. | `genuine_err_after_prior_delivery_upgrades_disposition_to_delivered_unverified`, plus `genuine_err_without_prior_delivery_keeps_classifier_disposition` — the second injects an `uncertain` disposition rather than `not_delivered`, so an unconditional-upgrade regression cannot pass it |
+| R5 | semantic actions | A failed `IsReadOnly` read returned a clean not-delivered instead of the classification every other call in that file routes through, so a transport failure against a possibly-mid-mutation app was reported safe to retry. | **Unpinned, and the reason is stated**: the unit seam replaces the whole enclosing function, and no live element in this suite exposes the pattern at all. Building injection scaffolding to reach it was refused as over-engineering |
+| R6 | capture | The window capture computed its BGRA buffer length in `i32`. A window large enough to overflow it allocated less than `GetDIBits` then wrote — an out-of-bounds heap write, not a wrong image. Both capture paths now refuse an oversized capture by name before any GDI resource exists and allocate through checked arithmetic. | `oversized_dimensions_are_rejected_while_ordinary_dimensions_are_accepted`, and the display counterpart |
+| R7 | capture | A bitmap still selected into a DC cannot be deleted, so a failed restore leaks it permanently — and the balance counter was released anyway, erasing the only evidence. | `a_failed_restore_of_the_previous_selection_is_not_recorded_as_released` |
+| R8 | notifications | A per-entry property read swallowed every failure into a default. A recycled element produced an empty title, the entry was dropped as unnamed, and a filtered `dismiss-all` built its captured set from that list — reporting a clean clear while a real notification stayed behind. | **Unpinned, and the reason is measured**: two tests were written against a killed fixture process and both failed, because a property read on a held reference returns cached values rather than erroring on this build. They were removed rather than shipped asserting something that is not true here |
+| R9 | notifications | The walk enforced two bounds and was honest about only one: exceeding the entry count surfaced as an incomplete read, exceeding the depth silently stopped descending and returned success. | `a_walk_past_the_depth_cap_surfaces_as_an_error_not_a_silent_stop` |
+| R10 | core contract | The window selector filtered on accessibility before visibility and focus, so a hidden background window whose read happened to succeed beat the visible focused window whose read momentarily failed. | `shared_window_selector_prefers_the_visible_focused_window_over_an_accessible_hidden_one` |
+| R11 | core contract | `get --property bounds` fell back to the snapshot rectangle when the live read succeeded with no bounds and said nothing about it, so a caller piping it into a physical click clicked the old location. | `bounds_marks_snapshot_fallback_as_not_live_when_a_successful_live_read_finds_no_bounds`, and its live-read counterpart |
+| R12 | probe corpus | The redaction gate's pid rule matched only a JSON key, so a capture writing a pid inside a formatted line — the shape four committed tree dumps already carry — read clean. | A must-catch fixture in the embedded shape; the gate refused it before the rule was widened |
+| R13 | probe corpus | The ledger check's evidence-area list is hand-maintained, and an area missing from it got no deletion protection at all — an omission that already happened once, for twelve sub-phases. | The gate's own run: removing one id makes it fail naming the unaccounted area |
+| R14 | probe corpus | Two ledger passages claimed the checker enforces hunk-index bijection and an eleven-area floor. It enforces neither. A reader deciding whether CI would catch their omission was being told yes. | Corrected in place; the ledger's own rule is that a row reads true |
+| R15 | probe corpus | The capability-probe workflow filtered on a probe script that has never existed in this repository. | Removed |
+
+#### Refuted — reported as a finding, disproved by measurement
+
+One reviewer reported as a P0 that the workflow steps invoking a nested
+PowerShell gate script do not propagate its exit code, so a failing redaction
+gate would show green and the leaking artifact would upload anyway. Reproducing
+the Actions `powershell` wrapper locally against the same nesting returned exit 1
+to the outer process. The wrapper appends an exit on the last exit code, which
+GitHub documents. **No change was made, and the finding is recorded as refuted
+rather than quietly dropped** — a reviewer being wrong is worth the same amount
+of writing as a reviewer being right, because the next reader will otherwise
+rediscover it.
+
+Two reviewers independently rediscovered defects this gate had already fixed on
+its own branch — the `terminal_code` ordering and the `--app` exact-match gap —
+because they read the integration branch rather than the tip. Both are
+corroboration, not new work.
+
+#### Owned elsewhere — written into §2.16's scope in `docs/phases.md` in this PR
+
+Nine findings, each with what was already measured about it, so §2.16's
+implementer can act without reading this report: the clipboard worker that holds
+the clipboard open past its caller's deadline; the menu surface and the menu
+wait answering from different source sets while the code claims they cannot
+disagree; two more fault-read-as-absence collapses of the shape R3 separated;
+`set-value` advertised on a read-only range control; the budget arm of R4's fix,
+left rather than fixed blind; the key synthesis that drops the layout's shift
+requirement, which a US-layout rig cannot reproduce; the surface inventory that
+discards what it already collected when one window hangs; and five e2e harness
+legs that pass regardless of what they observe.
+
+#### Accepted, with reasons
+
+- **A duplicate-identity notification reports a successful dismiss as failed.**
+  Identity is deliberately app-plus-title-plus-body so a mutable control value
+  cannot break it, and this shell exposes no per-instance axis to add.
+- **A session cleanup failure replaces an operation's success with the cleanup's
+  error.** Intentional, and pinned by its own test.
+- **The hang probe examines the first sixteen top-level windows of a process.**
+  A bounded probe cost.
+- **`gated_number`'s converse divergence is unfixed.** A boolean answer to a
+  documented-integer property has not been measured, and this corpus measures
+  before it builds.
+- **A second write through `RangeValuePattern` can follow an unverified
+  `ValuePattern` write.** Reported as having no envelope signal; that half is
+  wrong — the step list carries both rungs and ships in the response. The
+  clamping risk is real but the alternative leaves the caller with less.
+- **The ownership guard on `AGENT_DESKTOP_HOME` is a no-op off unix.** It
+  rejects a foreign-owned state root on macOS and Linux and accepts one on
+  Windows. Writing a Windows ACL check into core would put platform code on a
+  path this repository has already been burned by once.
+
+### Runner registration and the live e2e lane
+
+The plan's one hard external dependency was owner authorization to register a
+self-hosted interactive Windows runner. It was declined, and the owner further
+directed that the live e2e lane be removed from CI. **R20, R21 and R22 are
+dispositioned as retired, not deferred** — there is no receiving sub-phase and
+no infrastructure waiting to be provisioned.
+
+The reason is not scheduling. A self-hosted runner's labels are reachable from
+every `pull_request`-triggered workflow in the repository, not only from the one
+file that names them, so a fork PR editing any of those workflows is code
+execution on the owner's interactive desktop. `windows-e2e.yml` is deleted along
+with the static assertion that policed its capture upload, and the one queued run
+that had accumulated against it is cancelled.
+
+**The live suite still runs, locally and on demand**, under the exclusive desktop
+lease on a box holding the interactive session — which is where every scenario in
+it has actually been verified since the harness landed. CI keeps everything that
+needs no desktop and already covers the Windows surface: the core and Windows
+library tests on both `windows-latest` and `windows-11-arm`, the x64/ARM64 parity
+job, clippy over the Windows crates, the example tests, the e2e contract gate and
+its self-test half, the seeded-failure run, the refusal-guard self-test, and the
+capture-redaction and ledger-citation gates.
+
