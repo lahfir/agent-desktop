@@ -1,4 +1,4 @@
-use super::{canonical_parts, is_blocked};
+use super::is_blocked;
 use agent_desktop_core::{KeyCombo, Modifier};
 
 fn combo(modifiers: Vec<Modifier>, key: &str) -> KeyCombo {
