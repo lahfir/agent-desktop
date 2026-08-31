@@ -58,12 +58,14 @@ Requires Windows 10 1809+ / Windows Server 2019+ (x64 or ARM64).
   Write `set-value '@s8f3k2p9:e1' hi`. This bites first because PowerShell is
   the default shell on Windows and the CLI's own examples are written
   unquoted for POSIX shells. cmd.exe and bash need no quoting.
-- **A window that is not frontmost reports every element as `offscreen`, and
-  ref actions on it fail.** This is the normal case for an agent driving from
-  a terminal: the app you launched is behind your own window. `focus-window
-  --app <image>` first, then re-snapshot — refs taken while the window was
-  behind carry the offscreen state and stay unactionable. Verify with
-  `is '<ref>' --property visible` rather than assuming.
+- **A window merely behind another window is fully drivable - a minimized one
+  is not.** Being backgrounded costs nothing: with the terminal frontmost and
+  Notepad behind it, `set-value` and a File-menu `expand` both succeed
+  `delivered_verified`. Minimizing is what changes the answer - every element
+  then reports `offscreen`, which is UI Automation telling the truth, and ref
+  actions fail. `restore --app <image>` and re-snapshot; refs taken while
+  minimized carry the offscreen state and stay unactionable. Do not reach for
+  `focus-window` reflexively - it steals the user's foreground for nothing.
 
 - **No permission dialog exists on Windows.** UI Automation reads of
   same-integrity targets need no grant; `permissions` probes UIA live and
@@ -220,7 +222,7 @@ chain is semantic, so it works with no `--headed` and no keystrokes. The shape
 generalises to any app whose save flow is File → Save As.
 
 ```bash
-agent-desktop focus-window --app notepad.exe          # ref actions need it in front
+agent-desktop restore --app notepad.exe               # only if minimized; behind is fine
 agent-desktop snapshot --app notepad.exe              # keep the snapshot_id
 agent-desktop set-value '@<snap>:e1' "the document body"
 agent-desktop expand '@<snap>:e13'                    # the File menu item
