@@ -1,10 +1,17 @@
 //! Activation-chain engine for UIA pattern dispatch.
 //!
-//! Rung closures return a delivery outcome or `Err`. A genuine `Err` aborts
-//! the chain via `?` and never falls through. Only a clean not-delivered
-//! outcome advances to the next rung. Policy-disallowed rungs are skipped
-//! with no step recorded (the hook later physical rungs will use). Mechanism
-//! is always `semantic_api` for every rung this adapter ships.
+//! Rung closures return a delivery outcome or `Err`. A genuine `Err` always
+//! aborts the chain and never falls through to a later rung. Its disposition,
+//! however, is not always the classifier's: chains that continue after an
+//! unverified delivery (`VALUE_WRITE_CHAIN`) can hard-error on a later rung
+//! after an earlier one already mutated the control, so an `Err` raised once
+//! `delivery_occurred` on the recorded steps is upgraded to
+//! `delivered_unverified` before it leaves this function — the code,
+//! message, suggestion and platform detail are left untouched. Only a clean
+//! not-delivered outcome advances to the next rung. Policy-disallowed rungs
+//! are skipped with no step recorded (the hook later physical rungs will
+//! use). Mechanism is always `semantic_api` for every rung this adapter
+//! ships.
 
 use agent_desktop_core::{
     ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionPolicy,
@@ -116,7 +123,16 @@ pub(crate) fn execute_chain(
         if !rung_allowed(rung, policy) {
             continue;
         }
-        let outcome = (rung.run)()?;
+        let outcome = match (rung.run)() {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                return Err(if delivery_occurred(&steps) {
+                    error.with_disposition(exhaustion_disposition(&steps))
+                } else {
+                    error
+                });
+            }
+        };
         if record_step_outcome(
             &mut steps,
             rung.label,

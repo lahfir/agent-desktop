@@ -199,6 +199,8 @@ menu-bar dump.
 | Flag | Description |
 |------|-------------|
 | `--app` | Application name |
+| `--window-id ID` | Search one window from `list-windows` instead of every window the app owns |
+| `--timeout-ms MS` | Traversal deadline, default 5000. A large tree — a shell file dialog, whose folder tree and item list both populate — can exceed it; raise this or narrow the search rather than reading the timeout as an unresponsive app |
 | `--root REF` | Search only inside this ref's subtree instead of the whole window. Pair with `--snapshot` for a legacy bare `@eN` ref |
 | `--surface` | Search an overlay instead of the window (`menubar`, `menu`, `sheet`, `alert`, `popover`, ...). A menu bar belongs to the application, so several open windows are not ambiguous here. Cannot be combined with `--root`, which already carries its own surface |
 | `--role` | Role to match against the live tree (button, textfield, checkbox, scrollarea, window, ...). Case-insensitive; `textarea`/`textbox`/`searchfield` fold to `textfield`. When a role filter matches nothing, the response carries `roles_present` — the roles actually in the searched tree — so you can tell "none on screen" from a wrong role name and retry |
@@ -258,19 +260,44 @@ agent-desktop get @s8f3k2p9:e1 --property title
 
 | Property | Returns |
 |----------|---------|
-| `text` | Current text value, an alias of `value` (default) |
+| `text` | The text a person reads on the control: its value where the value **is** the content (`textfield`, `combobox`, `listbox`, `datefield`, `timefield`), the accessible name everywhere else. Falls back across when the preferred half is empty |
 | `value` | Current value (text content, slider position, etc.) |
-| `title` | Window or element title |
+| `title` | Accessible name or label — this is the one that answers "what does this button say" |
 | `bounds` | `{ x, y, width, height }` rectangle |
 | `role` | Element role string |
 | `states` | Array of active states |
 
+`text` is the default property and answers what a person would read off the
+control. On a button or a menu item that is the label; on a text field it is
+the content, not the label — `title` is the accessible name in every case.
+When the preferred half is empty the other answers, so a nameless table cell
+still reports its content and a blank text field still reports its label.
+
+The split is by role, and deliberately not by whether a value changes during
+interaction: a checked checkbox answers its label rather than `1`, and a
+slider answers its label rather than its number. Use `--property value` when
+you want the raw value regardless of role.
+
+**This changed in the Windows adapter release.** Previously `text` and
+`value` were the same read, so `text` came back empty on every button. If you
+depend on the old behaviour, ask for `value` explicitly.
+
 `text`, `value`, `bounds`, and `states` use live reads when the adapter supports
 them. An absent live value or bounds returns `null`; it does not resurrect
-snapshot text or coordinates. For these properties, snapshot fallback applies
+snapshot text or coordinates. `text` applies the role split above to that live
+value and the saved name, so a blank live value falls back to the label, never
+to the snapshot-time value. For these properties, snapshot fallback applies
 only when the adapter does not support that live read. State reads retain the
 snapshot fallback when live state is unavailable. Native read failures remain
 errors. Use `title` for the saved element name.
+
+For `--property bounds`, the response carries a sibling `live` boolean. `true`
+means the answer came from a live read taken just now — a rectangle, or `null`
+when the element has no current bounds (collapsed, not laid out,
+virtualized). `false` means the platform could not perform a live read, so the
+snapshot-time rectangle was returned instead. A caller piping `bounds` straight
+into `mouse-click --x --y` should check `live` first — a `false` rectangle may
+no longer be where the element is.
 
 ## is
 

@@ -86,6 +86,27 @@ fn zero_area_display_bounds_are_rejected_before_bitmap_alloc() {
 }
 
 #[test]
+fn oversized_bounds_are_rejected_while_ordinary_bounds_are_accepted() {
+    let oversized = display_capture_geometry(Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 23171.0,
+        height: 23171.0,
+    })
+    .expect_err("a region whose byte count overflows i32 must be refused");
+    assert_eq!(oversized.code, ErrorCode::InvalidArgs);
+
+    let (width, height, _, _) = display_capture_geometry(Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 1920.0,
+        height: 1080.0,
+    })
+    .expect("an ordinary display size must still be accepted");
+    assert_eq!((width, height), (1920, 1080));
+}
+
+#[test]
 fn negative_origin_geometry_is_preserved_for_multi_monitor_arithmetic() {
     let (width, height, origin_x, origin_y) = display_capture_geometry(Rect {
         x: -1920.0,

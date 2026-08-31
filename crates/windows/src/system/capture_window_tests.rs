@@ -117,6 +117,16 @@ fn zero_area_and_minimized_windows_are_rejected_before_bitmap_alloc() {
 }
 
 #[test]
+fn oversized_dimensions_are_rejected_while_ordinary_dimensions_are_accepted() {
+    let oversized = crate::system::gdi_surface::reject_oversized_capture(23171, 23171)
+        .expect_err("a window whose pixel byte count overflows i32 must be refused");
+    assert_eq!(oversized.code, ErrorCode::InvalidArgs);
+
+    crate::system::gdi_surface::reject_oversized_capture(1920, 1080)
+        .expect("an ordinary window size must still be accepted");
+}
+
+#[test]
 fn gdi_objects_balance_across_success_deadline_and_forced_failure() {
     bootstrap();
     gdi_balance::reset();
