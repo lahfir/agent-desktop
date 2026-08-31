@@ -77,9 +77,8 @@ fn run() -> ExitCode {
                     Err(write_err) => report_output_failure(write_err),
                 };
             }
-            let msg = e.to_string();
-            let first_line = msg.lines().next().unwrap_or("parse error");
-            let error = AppError::invalid_input(diagnostic::bounded_text(first_line, 512));
+            let summary = diagnostic::clap_error_summary(&e.to_string());
+            let error = AppError::invalid_input(diagnostic::bounded_text(&summary, 512));
             return if let Err(write_err) = emit_response(&Response::err(
                 "unknown",
                 ErrorPayload::from_app_error(&error),

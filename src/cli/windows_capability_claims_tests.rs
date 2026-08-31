@@ -175,3 +175,20 @@ fn the_wait_notification_bullet_carries_its_measured_per_poll_cost() {
         "the numeric cost must name its unit and that it is per poll. Bullet read: {bullet}"
     );
 }
+
+/// The first thing a Windows caller hits, and the one a POSIX-shaped example
+/// cannot warn them about. PowerShell is the default shell there and deletes a
+/// bare `@token` before the binary sees it, so a skill that omits this teaches
+/// a form guaranteed to fail on the platform it documents.
+#[test]
+fn the_windows_skill_warns_that_powershell_eats_an_unquoted_ref() {
+    assert!(
+        WINDOWS_SKILL_DOC.contains("splatting"),
+        "the skill must name PowerShell's splatting operator as the reason a bare ref vanishes"
+    );
+    let quoted_example = WINDOWS_SKILL_DOC.contains("'@s8f3k2p9:e1'");
+    assert!(
+        quoted_example,
+        "the warning must show the quoted form, not merely assert that quoting is needed"
+    );
+}
