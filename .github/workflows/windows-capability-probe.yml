@@ -226,7 +226,7 @@ jobs:
         run: |
           .\probes\windows\13-ledger-check.ps1
 
-      # Gated, and gated before the upload runs, mirroring windows-e2e.yml's
+      # Gated, and gated before the upload runs, the same ordering the live e2e lane carried before it was retired's
       # own redaction-gate step: this job writes fresh *-ci.json captures on
       # every leg above, committed corpus or not, and uploading them as a
       # workflow-run artifact from a PUBLIC repository with no redaction
