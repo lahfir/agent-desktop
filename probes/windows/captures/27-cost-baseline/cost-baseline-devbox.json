@@ -7,33 +7,33 @@
     "list_apps":  {
                       "runs_total":  7,
                       "warmup_discarded":  1,
-                      "min_ms":  37.5223,
-                      "median_ms":  40.5832,
-                      "max_ms":  65.7032,
+                      "min_ms":  37.1543,
+                      "median_ms":  68.3696,
+                      "max_ms":  77.1973,
                       "exit_code_of_last_run":  0
                   },
     "list_windows":  {
                          "runs_total":  7,
                          "warmup_discarded":  1,
-                         "min_ms":  61.1491,
-                         "median_ms":  65.0437,
-                         "max_ms":  106.4404,
+                         "min_ms":  61.9434,
+                         "median_ms":  64.0669,
+                         "max_ms":  91.2963,
                          "exit_code_of_last_run":  0
                      },
     "status":  {
                    "runs_total":  7,
                    "warmup_discarded":  1,
-                   "min_ms":  63.6524,
-                   "median_ms":  93.6106,
-                   "max_ms":  123.402,
+                   "min_ms":  58.939,
+                   "median_ms":  62.7241,
+                   "max_ms":  121.9698,
                    "exit_code_of_last_run":  0
                },
     "list_displays":  {
                           "runs_total":  7,
                           "warmup_discarded":  1,
-                          "min_ms":  33.1312,
-                          "median_ms":  33.9909,
-                          "max_ms":  38.1799,
+                          "min_ms":  32.2305,
+                          "median_ms":  32.8786,
+                          "max_ms":  33.3809,
                           "exit_code_of_last_run":  0
                       }
 }
