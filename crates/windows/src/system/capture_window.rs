@@ -192,7 +192,9 @@ struct CaptureSurface {
 
 impl CaptureSurface {
     fn create(width: i32, height: i32) -> Result<Self, AdapterError> {
-        use windows_sys::Win32::Graphics::Gdi::{CreateCompatibleBitmap, SelectObject};
+        use windows_sys::Win32::Graphics::Gdi::{
+            CreateCompatibleBitmap, DeleteObject, SelectObject,
+        };
 
         let dc_pair = GdiDcPair::create("window capture")?;
         let bitmap = unsafe { CreateCompatibleBitmap(dc_pair.screen_dc, width, height) };
@@ -204,8 +206,11 @@ impl CaptureSurface {
         gdi_balance::acquire();
         let previous = unsafe { SelectObject(dc_pair.memory_dc, bitmap) };
         if previous.is_null() {
-            gdi_balance::release();
-            return Err(win32_last_error("SelectObject failed for window capture"));
+            let refused = win32_last_error("SelectObject failed for window capture");
+            if unsafe { DeleteObject(bitmap) } != 0 {
+                gdi_balance::release();
+            }
+            return Err(refused);
         }
         Ok(Self {
             dc_pair,
