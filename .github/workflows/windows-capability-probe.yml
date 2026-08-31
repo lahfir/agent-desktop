@@ -271,6 +271,8 @@ jobs:
             probes/windows/25-packaging/captures/*-ci.json
             probes/windows/26-shell-surfaces/captures/*-ci.json
             probes/windows/captures/13-ledger-check/*.json
+            probes/windows/captures/27-*/*.json
+            probes/windows/captures/28-*/*.json
           # warn, not error. A probe that fails before writing anything leaves
           # nothing to match, and erroring would stack a second "No files were
           # found" failure on top of the real one and read as the cause. What
