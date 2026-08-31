@@ -250,3 +250,42 @@ job, clippy over the Windows crates, the example tests, the e2e contract gate an
 its self-test half, the seeded-failure run, the refusal-guard self-test, and the
 capture-redaction and ledger-citation gates.
 
+## Part 3 — Performance baseline
+
+Taken by the Windows vehicle — the probe corpus cost methodology: seven runs, the
+warm-up discarded, reported as min with median and max beside it — through the release
+binary, against the merge-base and this branch's tip in turn, with the same script
+pointed at each binary by path. Recorded as A28-10 and committed as
+`probes/windows/captures/27-cost-baseline/cost-baseline-{devbox,mergebase}.json`.
+
+| Command | Merge-base (min / median) | Tip (min / median) | Delta |
+|---------|---------------------------|--------------------|-------|
+| `snapshot` | 119.3 / 181.5 ms | 117.4 / 184.6 ms | flat |
+| `list-apps` | 37.4 / 39.6 ms | 37.5 / 42.1 ms | flat |
+| `list-windows` | 59.5 / 80.7 ms | 54.1 / 66.1 ms | flat |
+| `status` | 58.6 / 114.2 ms | 66.2 / 112.6 ms | flat |
+| `list-displays` | 33.1 / 34.2 ms | 36.1 / 68.3 ms | flat |
+| ref action, live target | 227.3 / 309.6 ms | 196.7 / 243.7 ms | flat |
+| **ref action, dead target** | **5060.5 / 5114.9 ms** | **59.0 / 82.1 ms** | **86x at the min, 62x at the median** |
+
+The dead-target result is the one this baseline exists to check, and it holds. The old
+path polled out the whole default wait budget before failing; the new one answers
+terminally on the first resolution attempt. The live-target leg is deliberately
+unchanged — a live owner keeps the retryable path, and a drop there would have meant the
+fix was too broad.
+
+**Two gaps in the measuring harness were closed to take this.** The snapshot leg wrote a
+silent `null` because it looked for a window handle this host's probe process never has,
+and no ref-action leg existed at all — so the command this gate changed most was the one
+command the baseline could not see. A baseline that cannot measure the thing under test
+is the same defect class as a test that cannot fail.
+
+**The macOS baseline is not taken, and that is recorded rather than skipped.**
+`scripts/perf-baseline-compare.sh` is structurally macOS-bound — it opens the `.app`
+fixture bundle — so this box cannot run it. Three changes in this gate land in shared
+core and are therefore visible on macOS: the actionability verdict's severity ordering,
+the two error-envelope corrections, and the window selector's tier order. Each is a
+branch-selection change on a path that was already being walked, not new work per call,
+so no macOS latency delta is expected; that is an argument, not a measurement, and it is
+labelled as one.
+
