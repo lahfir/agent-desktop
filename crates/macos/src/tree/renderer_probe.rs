@@ -1,4 +1,4 @@
-use agent_desktop_core::{AdapterError, ErrorCode};
+use agent_desktop_core::{AdapterError, DeliverySemantics, ErrorCode};
 
 pub(crate) const MANUAL: &str = "AXManualAccessibility";
 pub(crate) const ENHANCED: &str = "AXEnhancedUserInterface";
@@ -11,9 +11,12 @@ pub(crate) fn activation_required(
     deadline: std::time::Instant,
 ) -> Result<bool, AdapterError> {
     if !crate::system::process_identity::matches_instance(pid, process_instance)? {
-        return Err(AdapterError::stale_ref(
+        return Err(AdapterError::new(
+            ErrorCode::StaleRef,
             "Renderer process instance changed before activation probing",
-        ));
+        )
+        .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+        .with_disposition(DeliverySemantics::not_delivered()));
     }
     let application = super::element_for_pid(pid);
     activation_needed(
