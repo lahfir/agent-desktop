@@ -205,6 +205,34 @@ requirement, which a US-layout rig cannot reproduce; the surface inventory that
 discards what it already collected when one window hangs; and five e2e harness
 legs that pass regardless of what they observe.
 
+#### Found by CI, which is the one reviewer that could not be run locally
+
+The macOS crate does not compile on the box this branch was built on, so no local
+gate reaches it. Opening the PR was therefore the first execution of this branch's
+macOS side, and it found two real failures on the first run — both now fixed, both
+of a kind no amount of local checking could have caught:
+
+- **`unused import: canonical_parts`** in the macOS blocked-combo tests, denied by
+  `-D warnings`, which failed the whole macOS test build. The superset matcher this
+  gate shipped stopped calling it from the test module and left it in the `use` line.
+- **A compile-time `cfg(windows)` in `crates/core/src/commands/session.rs`**, which a
+  CI rule forbids outside one allowlisted file. `activation_export` picked a
+  PowerShell or POSIX export line that way, but the shell that matters is the one the
+  caller pastes into. It is now a runtime branch, so both arms are compiled and
+  type-checked on every lane rather than one being a hypothesis on the other platform
+  — which is the reason the rule exists. **This one predates the branch**: the gate
+  and the violation both exist at the merge-base, so that job has been red on
+  `feat/windows-adapter`. Clearing it is what a hardening gate is for.
+
+**CodeQL's two high-severity alerts are not this branch's, and are left standing.**
+They point at assertion messages in `crates/core/src/commands/find_tests.rs`, a file
+that is not in this diff, and the alerts were raised against `refs/heads/main` three
+days before this PR opened. CodeQL says so itself — it warns that alerts it did not
+introduce can surface when a diff is large enough. The rule is cleartext-logging
+firing on an `assert!` message that interpolates a mock adapter's JSON. Silencing
+`main`'s alerts from a Windows sub-phase branch would be the wrong fix in the wrong
+place, so they are recorded here and left where they belong.
+
 #### Accepted, with reasons
 
 - **A duplicate-identity notification reports a successful dismiss as failed.**
