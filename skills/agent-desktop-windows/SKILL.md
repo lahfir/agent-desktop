@@ -52,6 +52,19 @@ Requires Windows 10 1809+ / Windows Server 2019+ (x64 or ARM64).
 
 ## First Contact
 
+- **Quote every ref in PowerShell.** PowerShell reads a bare `@token` as its
+  splatting operator and *deletes the argument* before the binary sees it, so
+  `set-value @s8f3k2p9:e1 hi` arrives with no ref and fails `INVALID_ARGS`.
+  Write `set-value '@s8f3k2p9:e1' hi`. This bites first because PowerShell is
+  the default shell on Windows and the CLI's own examples are written
+  unquoted for POSIX shells. cmd.exe and bash need no quoting.
+- **A window that is not frontmost reports every element as `offscreen`, and
+  ref actions on it fail.** This is the normal case for an agent driving from
+  a terminal: the app you launched is behind your own window. `focus-window
+  --app <image>` first, then re-snapshot — refs taken while the window was
+  behind carry the offscreen state and stay unactionable. Verify with
+  `is '<ref>' --property visible` rather than assuming.
+
 - **No permission dialog exists on Windows.** UI Automation reads of
   same-integrity targets need no grant; `permissions` probes UIA live and
   reports `automation` as `not_required`. Elevation boundaries are the one
@@ -199,7 +212,39 @@ menus — a DOM menu inside the application's own window that neither other
 source can see (A26-12). WinUI3/MSIX hosts are unevaluated. Read "no menu is
 open" from an app in an uncovered family as "not detected there", not as
 proof the menu is closed.
-
+
+## Saving a document, headless, without keyboard input
+
+No `save` command exists — saving is a menu path plus a dialog, and the whole
+chain is semantic, so it works with no `--headed` and no keystrokes. The shape
+generalises to any app whose save flow is File → Save As.
+
+```bash
+agent-desktop focus-window --app notepad.exe          # ref actions need it in front
+agent-desktop snapshot --app notepad.exe              # keep the snapshot_id
+agent-desktop set-value '@<snap>:e1' "the document body"
+agent-desktop expand '@<snap>:e13'                    # the File menu item
+agent-desktop snapshot --app notepad.exe --surface menu   # the open menu is its own surface
+agent-desktop click '@<menu>:e4'                      # Save As...
+agent-desktop list-windows --app notepad.exe          # the dialog is a new window
+agent-desktop find --name "File name" --window-id <dialog-id>
+agent-desktop set-value '@<found>:e2' 'C:\\out.txt'    # full path goes in the name field
+agent-desktop find --role button --name "Save" --window-id <dialog-id>
+agent-desktop click '@<found>:e1'
+```
+
+Two things that surprise a first-time caller:
+
+- **`find --name "File name"` returns three matches** — a `statictext` label, a
+  `combobox`, and the `textfield` inside the combobox. The textfield is the one
+  that accepts `set-value`; match on `role` as well as name.
+- **Setting the full path into the name field is what selects the directory.**
+  There is no separate folder-navigation step, and navigating the file list by
+  ref is far more fragile than writing the path.
+
+The dialog's Save button returns `delivered_unverified` — a synthesized invoke
+cannot confirm what the shell dialog did with it. Verify by reading the file
+back from disk, not from the envelope.
 Three focused references, loaded as needed:
 
 - [permissions-and-elevation.md](references/permissions-and-elevation.md) —
