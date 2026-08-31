@@ -237,7 +237,7 @@ mod imp {
             element.0.get_property_value(property)
         };
         let Ok(variant) = variant else {
-            return LabelOutcome::Unlabelled;
+            return LabelOutcome::Failed;
         };
         let Some(target) = element_of(&variant) else {
             return LabelOutcome::Unlabelled;

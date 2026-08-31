@@ -165,17 +165,21 @@ fn dismiss_all_impl(
     deadline: Deadline,
 ) -> Result<(Vec<NotificationInfo>, Vec<String>), AdapterError> {
     let filter = build_filter(app_filter);
-    let captured: Vec<NotificationInfo> = list_entries(&filter, hwnd, deadline)?
-        .into_iter()
-        .map(|entry| entry.info)
-        .collect();
-    if captured.is_empty() {
+    let entries = list_entries(&filter, hwnd, deadline)?;
+    if entries.is_empty() {
         return Ok((Vec::new(), Vec::new()));
     }
-    let root = crate::tree::automation::root_from_hwnd(hwnd, deadline)?;
-    let clear = super::read::find_clear_all_button(&root)?
-        .ok_or_else(super::read::missing_clear_all_error)?;
-    invoke_element(&clear)?;
+    if app_filter.is_some() {
+        for entry in &entries {
+            let _ = invoke_dismiss(&entry.element, entry.info.index);
+        }
+    } else {
+        let root = crate::tree::automation::root_from_hwnd(hwnd, deadline)?;
+        let clear = super::read::find_clear_all_button(&root)?
+            .ok_or_else(super::read::missing_clear_all_error)?;
+        invoke_element(&clear)?;
+    }
+    let captured: Vec<NotificationInfo> = entries.into_iter().map(|entry| entry.info).collect();
     let current = read_settling_without(&captured, hwnd, &filter, deadline)?;
     let failures = survivor_failures(&captured, &current);
     let dismissed = captured

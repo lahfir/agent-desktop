@@ -18,6 +18,14 @@ const CORE_WINDOW_CLASS: &str = "Windows.UI.Core.CoreWindow";
 const SHELL_TRAY_WND_CLASS: &str = "Shell_TrayWnd";
 const TRAY_NOTIFY_CLASS: &str = "TrayNotifyWnd";
 const TOOLBAR_CLASS: &str = "ToolbarWindow32";
+/// The notification area's toolbar is nested one level below
+/// `TrayNotifyWnd` rather than being its direct child. The direct child of
+/// that class is a zero-extent sibling whose automation element carries no
+/// children, so a chain that stops one hop short resolves a window that
+/// reads empty. Measured parent chains: the collapsed sibling is
+/// `ToolbarWindow32 <- TrayNotifyWnd`, the promoted area is
+/// `ToolbarWindow32 <- SysPager <- TrayNotifyWnd`.
+const SYS_PAGER_CLASS: &str = "SysPager";
 const OVERFLOW_WINDOW_CLASS: &str = "NotifyIconOverflowWindow";
 
 pub(crate) const VK_A: u16 = 0x41;
@@ -148,6 +156,7 @@ const KINDS: &[SurfaceKindRow] = &[
         family: SurfaceFamily::Win32Class(&[
             SHELL_TRAY_WND_CLASS,
             TRAY_NOTIFY_CLASS,
+            SYS_PAGER_CLASS,
             TOOLBAR_CLASS,
         ]),
         raise: SurfaceRaise::AlreadyRaised,
