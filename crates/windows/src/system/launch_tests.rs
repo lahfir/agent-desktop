@@ -348,3 +348,6 @@ fn a_trailing_backslash_cannot_escape_the_closing_quote() {
         "an empty argument must still occupy its own quoted token"
     );
 }
+
+#[path = "launch_renderer_tests.rs"]
+mod renderer_tests;
