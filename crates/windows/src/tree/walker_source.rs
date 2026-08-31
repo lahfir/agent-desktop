@@ -16,7 +16,13 @@ mod imp {
     use uiautomation::UIAutomation;
     use uiautomation::core::{UICacheRequest, UITreeWalker};
 
-    /// The operation budget ran out between two cross-process walker calls.
+    /// The climb toward the root could not be completed with a confident
+    /// answer: either the operation budget ran out between two cross-process
+    /// walker calls, or a parent read failed with a fault other than
+    /// exhaustion. Code review found the two collapsing into the same "no
+    /// viewport" answer as reaching the true root, which a caller reads as
+    /// licence to treat a genuinely clipped target as unclipped - so both
+    /// causes share this one shape, distinct from `Ok(None)`.
     #[derive(Debug)]
     pub struct BudgetExpired;
 
@@ -76,7 +82,8 @@ mod imp {
             }
             let parent = match parent_step(walker, &current) {
                 Ok(Some(parent)) => parent,
-                Ok(None) | Err(()) => return Ok(None),
+                Ok(None) => return Ok(None),
+                Err(()) => return Err(BudgetExpired),
             };
             if read_one(&parent, TreeProperty::ScrollAvailable).flag() == Some(true) {
                 return Ok(Some(parent));
