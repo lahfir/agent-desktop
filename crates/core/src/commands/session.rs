@@ -89,11 +89,17 @@ pub fn execute(action: SessionAction) -> Result<Value, AppError> {
     }
 }
 
+/// The line a caller pastes into their own shell, so the shell that matters
+/// is the one running the command rather than the one this was built for.
+/// Written as a runtime branch, not a compile-time one: core is built and
+/// tested on every supported platform, and a conditionally-compiled arm is
+/// only ever type-checked on the lane that selects it.
 pub(super) fn activation_export(session_id: &str) -> String {
-    #[cfg(windows)]
-    return format!("$env:AGENT_DESKTOP_SESSION = '{session_id}'");
-    #[cfg(not(windows))]
-    format!("export AGENT_DESKTOP_SESSION={session_id}")
+    if cfg!(windows) {
+        format!("$env:AGENT_DESKTOP_SESSION = '{session_id}'")
+    } else {
+        format!("export AGENT_DESKTOP_SESSION={session_id}")
+    }
 }
 
 pub(super) fn activation(session_id: &str) -> Value {
