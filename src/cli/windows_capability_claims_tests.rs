@@ -133,3 +133,45 @@ fn windows_adapter_still_refuses_what_the_skill_marks_unavailable() {
         "cursor-overlay changed behaviour; update the Windows skill's capability table"
     );
 }
+
+/// The bullet a caller reads before sizing a `wait --notification` timeout.
+/// Matched on the command rather than on a heading so the guard survives the
+/// paragraph moving.
+const POLL_COST_ANCHOR: &str = "`wait --notification` opens and closes the center per poll";
+
+/// A ratified poll cost is only useful if the number that justifies it ships
+/// beside it. Without this the paragraph could be reduced to "polling is slow"
+/// and still read as documentation while telling a caller nothing it can size
+/// a timeout against.
+#[test]
+fn the_wait_notification_bullet_carries_its_measured_per_poll_cost() {
+    let start = WINDOWS_SKILL_DOC.find(POLL_COST_ANCHOR).expect(
+        "the Windows skill must document the per-poll session behaviour of wait --notification",
+    );
+    let bullet_end = WINDOWS_SKILL_DOC[start..]
+        .find("\n- ")
+        .map_or(WINDOWS_SKILL_DOC.len(), |offset| start + offset);
+    let bullet = &WINDOWS_SKILL_DOC[start..bullet_end];
+
+    let states_a_decimal = bullet.split_whitespace().any(|token| {
+        token.split_once('.').is_some_and(|(whole, fraction)| {
+            whole
+                .chars()
+                .next_back()
+                .is_some_and(|character| character.is_ascii_digit())
+                && fraction
+                    .chars()
+                    .next()
+                    .is_some_and(|character| character.is_ascii_digit())
+        })
+    });
+    assert!(
+        states_a_decimal,
+        "the wait --notification bullet must state a numeric per-poll cost; \
+         a caller cannot size a timeout against prose alone. Bullet read: {bullet}"
+    );
+    assert!(
+        bullet.contains("ms per poll") || bullet.contains("seconds per poll"),
+        "the numeric cost must name its unit and that it is per poll. Bullet read: {bullet}"
+    );
+}

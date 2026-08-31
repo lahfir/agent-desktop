@@ -166,8 +166,8 @@ empty-state shape when none are, and a top-level `ClearAllButton`.
   on macOS: each poll runs in its own one-call session that adopts an
   already-present center and restores the entry state afterwards — no
   long-lived session is held. Each poll of `wait --notification` opens and closes
-  the Action Center, measured at roughly 1.24 seconds per poll on a reference
-  machine. Size timeouts accordingly — a five second wait buys roughly four
+  the Action Center, measured at 1243.5 ms per poll at the minimum and 1254.2 ms
+  at the median on a reference machine. Size timeouts accordingly — a five second wait buys roughly four
   polls, and a notification that appears and is dismissed inside one interval can
   be missed. On this shell a toast joins the center only while it is open
   (A26-3), so toasts posted while the center sits closed between polls never
