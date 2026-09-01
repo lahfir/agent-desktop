@@ -224,3 +224,26 @@ expression-bodied members, no `nameof`. Write it plainly and it compiles everywh
 A probe script dot-sources `common.ps1`, does its work in a `try`, tears down scratch
 processes in a `finally`, writes at least one capture, and ends with exactly one
 `Write-ProbeResult` whose status is `ok`, `fail`, or `skip`.
+
+## Reading the Windows live suite (A28-6, re-confirmed by A30-4)
+
+`cargo test -p agent-desktop-windows --lib` drives a real desktop, and its
+live legs stage windows, menus and toasts that outlive the test that created
+them. Three rules follow, and getting them backwards costs the same either
+way - a real regression dismissed as flake, or a clean branch blocked by one.
+
+- **Quiesce the desktop first.** Concurrent builds, probe processes and a
+  second test run all contend for the same windows.
+- **A single red run is not a regression, and a single green run is not
+  proof.** Re-run before believing either. Failures wander between unrelated
+  modules rather than repeating: while landing this sub-phase they appeared
+  in `surface_inventory`, then `frame_identity`, then `notifications` and
+  `tree::observe` - four different sets across five runs, every one passing
+  in isolation, with the suite green twice on the same tree.
+- **Never attribute a one-test difference to a change through a stash A/B.**
+  Stashing a change here reads as a one-test regression whether or not the
+  change caused anything; A28-6 measured that directly, and this sub-phase
+  met it again and nearly went hunting a defect that did not exist.
+
+If a run fails under load, check disk headroom too: A28-6 records a full
+volume surfacing as wandering test failures rather than as a write error.
