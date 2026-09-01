@@ -62,7 +62,7 @@ pub(crate) fn ensure_click_delivery_ready(
     ensure_budget(deadline)?;
     corroborate_verified_process(element)?;
     ensure_elevation_allows(element)?;
-    Ok(target_window_is_foreground(element, deadline))
+    target_window_is_foreground(element, deadline)
 }
 
 pub(crate) fn ensure_keyboard_delivery_ready(
@@ -141,36 +141,46 @@ pub(crate) fn focus_lost_before_delivery() -> AdapterError {
 /// refuse delivery before injecting, so the handle is resolved the way the
 /// rest of the crate resolves it: climb to the first ancestor that reports a
 /// non-zero handle.
-fn target_window_is_foreground(element: &UIAElement, deadline: Deadline) -> bool {
-    host_window_handle(element, deadline).is_some_and(is_root_foreground_window)
+fn target_window_is_foreground(
+    element: &UIAElement,
+    deadline: Deadline,
+) -> Result<bool, AdapterError> {
+    Ok(host_window_handle(element, deadline)?.is_some_and(is_root_foreground_window))
 }
 
 #[cfg(target_os = "windows")]
 fn host_window_handle(
     element: &UIAElement,
     deadline: Deadline,
-) -> Option<crate::system::window_enum::WindowHandle> {
-    let client = crate::tree::automation::automation_client().ok()?;
-    let walker = client.get_raw_view_walker().ok()?;
-    let hwnd = crate::tree::hit_test::corroborate::first_native_hwnd(element, &walker, deadline)?;
-    Some(hwnd as crate::system::window_enum::WindowHandle)
+) -> Result<Option<crate::system::window_enum::WindowHandle>, AdapterError> {
+    let Ok(client) = crate::tree::automation::automation_client() else {
+        return Ok(None);
+    };
+    let Ok(walker) = client.get_raw_view_walker() else {
+        return Ok(None);
+    };
+    match crate::tree::hit_test::corroborate::first_native_hwnd(element, &walker, deadline) {
+        Ok(hwnd) => Ok(hwnd.map(|value| value as crate::system::window_enum::WindowHandle)),
+        Err(_) => Err(deadline.timeout_error()),
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
 fn host_window_handle(
     element: &UIAElement,
     deadline: Deadline,
-) -> Option<crate::system::window_enum::WindowHandle> {
+) -> Result<Option<crate::system::window_enum::WindowHandle>, AdapterError> {
     let _ = (element, deadline);
-    None
+    Ok(None)
 }
 
 /// Exposes the host-window climb to the live lane, which is the only place a
-/// real element with a zero leaf handle exists.
+/// real element with a zero leaf handle exists. A faulted climb surfaces as
+/// `Err` here too, so the lane cannot read it as a missing window.
 #[cfg(test)]
 pub(crate) fn host_window_handle_for_test(
     element: &UIAElement,
     deadline: Deadline,
-) -> Option<crate::system::window_enum::WindowHandle> {
+) -> Result<Option<crate::system::window_enum::WindowHandle>, AdapterError> {
     host_window_handle(element, deadline)
 }

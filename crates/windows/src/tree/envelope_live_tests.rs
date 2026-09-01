@@ -314,7 +314,8 @@ fn live_wpf_control_resolves_a_host_window_despite_a_zero_leaf_handle() {
         "a WPF control is expected to report no window of its own; if this stack started reporting one, this test no longer covers the climb"
     );
     assert!(
-        host.is_some(),
+        host.expect("the climb completes rather than faulting")
+            .is_some(),
         "the click gate must resolve a host window by climbing to the first ancestor that owns one"
     );
 }
