@@ -707,6 +707,10 @@ The five `CONTRADICTS` rows are A1-5, A6-1, A8-3, A11-1 and A11-3; each appears 
 | H67 | `@@` 2.15 scope, the tray bullet's walk-versus-descent claim and the corrected hunk-index counts | A27-2, A27-3 |
 | H68 | `@@` 2.15 scope, the A26-13 Chromium exposure-floor bullet | A28-3 |
 | H69 | `@@` 2.15 scope, the tray-repair bullet's stated cause and closing condition | A28-4, A28-5 |
+| H70 | `@@` 2.16 Sequencing, Exit criteria and Est. PR size: the sub-phase delivers the promotion checklist rather than the promotion, and the estimate is restated against the twenty units it actually carries | A29-1, A29-2 |
+| H71 | `@@` 2.16 the `get --property text` contract, settled role-conditional with the reason `is_mutable_value_role` could not be reused | A29-1 |
+| H72 | `@@` 2.16 the shell-chrome question answered by pixel, and the OS animation preference deliberately unread with the cost of that choice stated | A29-3, A29-7, A29-8 |
+| H73 | `@@` New Dependencies: the two `windows-sys` feature modules the layered-window renderer and its control pipe require | A29-5 |
 
 ## Completeness self-check
 
