@@ -30,6 +30,7 @@ pub(super) const ALL_PROPERTIES: &[TreeProperty] = &[
     TreeProperty::ExpandCollapseState,
     TreeProperty::SelectionItemIsSelected,
     TreeProperty::ValueIsReadOnly,
+    TreeProperty::RangeValueIsReadOnly,
     TreeProperty::SelectionCanSelectMultiple,
     TreeProperty::WindowIsModal,
     TreeProperty::LegacyState,

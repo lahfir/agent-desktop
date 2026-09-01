@@ -245,3 +245,43 @@ fn legacy_availability_with_a_non_empty_default_action_contributes_click() {
 
     assert!(known_actions(&actions).contains(&capability::CLICK.to_string()));
 }
+
+fn range_reads(read_only: Option<bool>) -> Vec<(TreeProperty, PropertyOutcome)> {
+    let mut reads = inert_reads();
+    reads.retain(|(property, _)| *property != TreeProperty::RangeValueAvailable);
+    reads.push((TreeProperty::RangeValueAvailable, known_flag(true)));
+    match read_only {
+        Some(flag) => reads.push((TreeProperty::RangeValueIsReadOnly, known_flag(flag))),
+        None => reads.push((TreeProperty::RangeValueIsReadOnly, PropertyOutcome::Unknown)),
+    }
+    reads
+}
+
+fn advertises_set_value(read_only: Option<bool>) -> bool {
+    let properties = ElementProperties::from_reads(range_reads(read_only));
+    known_actions(&resolve_actions(&properties))
+        .iter()
+        .any(|action| action == capability::SET_VALUE)
+}
+
+/// The `ValueAvailable` arm has always been gated on its read-only companion;
+/// the `RangeValue` arm was not, so a read-only range control was advertised
+/// with an action that fails at execution - and a ref was allocated on it.
+#[test]
+fn a_writable_range_control_advertises_set_value() {
+    assert!(advertises_set_value(Some(false)));
+}
+
+#[test]
+fn a_read_only_range_control_does_not_advertise_set_value() {
+    assert!(!advertises_set_value(Some(true)));
+}
+
+/// A15-7 measured pattern-state properties returning a default-looking value
+/// rather than a not-supported sentinel, so an unreadable read-only flag must
+/// fail closed here. Negating a boolean-flavoured predicate would fail open
+/// instead, which is the shape recorded in the tri-state learning.
+#[test]
+fn a_range_control_whose_read_only_flag_is_unreadable_fails_closed() {
+    assert!(!advertises_set_value(None));
+}
