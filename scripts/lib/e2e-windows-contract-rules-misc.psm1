@@ -117,6 +117,113 @@ function Test-Rule08ScenarioLegs {
     return $hits.ToArray()
 }
 
+function Test-Rule15MeasuredAndDiscarded {
+    <#
+    .SYNOPSIS
+        Rule 15: a leg must not measure something and then discard it.
+        Within a scenario function, a variable that is assigned and then
+        either never read at all, or read only inside a Write-Host, is a
+        measurement the leg took and did not act on.
+
+        This is the shape four shipped legs had. `contended-focus-steal-rate`
+        counted how many trials won the foreground and printed it; the leg
+        gated on the trial count instead, so zero wins passed.
+        `split-integrity-capture-recorded` computed whether any pixels were
+        produced and printed it. `chromium-menu-attempt-bounded` read four
+        menu probes and referenced none of them again.
+
+        What it does NOT catch, stated so nobody reads a pass here as more
+        than it is: a leg verified by the command's own success flag, which
+        is a real assertion on a value that proves the wrong thing.
+        `reliability-wait-enabled-delayed-button` was that shape, and only a
+        reviewer can see it.
+
+        Two exclusions, both deliberate. A `$script:`- or `$global:`-scoped
+        variable is read across functions, which a per-function rule cannot
+        see, so it is skipped rather than reported as a false positive. And
+        a measurement a leg genuinely records rather than gates - a cost
+        baseline is the standing example - opts out with a
+        `rule15-reported:` comment naming why, so the exemption is written
+        down at the assignment instead of being argued for in review.
+    #>
+    [CmdletBinding()]
+    param($Parsed)
+    $hits = New-Object System.Collections.Generic.List[object]
+    $ignored = @('null', '_', 'args', 'psitem', 'true', 'false')
+    $printers = @('Write-Host', 'Write-Verbose', 'Write-Information', 'Write-Debug', 'Write-Warning')
+    $exempt = @()
+    foreach ($token in $Parsed.Tokens) {
+        if ($token.Kind -eq [System.Management.Automation.Language.TokenKind]::Comment -and $token.Text -match 'rule15-reported:') {
+            $exempt += $token.Extent.StartLineNumber
+            $exempt += ($token.Extent.StartLineNumber + 1)
+        }
+    }
+
+    $functions = Find-E2EAstNodes -Ast $Parsed.Ast -Predicate {
+        $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst]
+    }
+    foreach ($function in $functions) {
+        $functionExempt = $false
+        foreach ($line in $exempt) {
+            if ($line -ge $function.Extent.StartLineNumber -and $line -le $function.Extent.EndLineNumber) {
+                $functionExempt = $true
+                break
+            }
+        }
+        $printRanges = @()
+        foreach ($call in (Find-E2EAstNodes -Ast $function.Body -Predicate { $args[0] -is [System.Management.Automation.Language.CommandAst] })) {
+            if (Test-E2ECommandName -CommandAst $call -Names $printers) {
+                $printRanges += , @($call.Extent.StartOffset, $call.Extent.EndOffset)
+            }
+        }
+
+        $assignments = @{}
+        foreach ($node in (Find-E2EAstNodes -Ast $function.Body -Predicate { $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] })) {
+            $left = $node.Left -as [System.Management.Automation.Language.VariableExpressionAst]
+            if (-not $left) { continue }
+            if ($left.VariablePath.DriveName) { continue }
+            $name = $left.VariablePath.UserPath.ToLowerInvariant()
+            if ($ignored -contains $name) { continue }
+            if ($name -match ':') { continue }
+            if ($functionExempt) { continue }
+            if (-not $assignments.ContainsKey($name)) {
+                $assignments[$name] = [pscustomobject]@{ Line = $node.Extent.StartLineNumber; Offsets = @() }
+            }
+            $assignments[$name].Offsets += $left.Extent.StartOffset
+        }
+
+        $reads = @{}
+        foreach ($node in (Find-E2EAstNodes -Ast $function.Body -Predicate { $args[0] -is [System.Management.Automation.Language.VariableExpressionAst] })) {
+            if ($node.VariablePath.DriveName) { continue }
+            $name = $node.VariablePath.UserPath.ToLowerInvariant()
+            if (-not $assignments.ContainsKey($name)) { continue }
+            if ($assignments[$name].Offsets -contains $node.Extent.StartOffset) { continue }
+            if (-not $reads.ContainsKey($name)) { $reads[$name] = @() }
+            $reads[$name] += $node.Extent.StartOffset
+        }
+
+        foreach ($name in $assignments.Keys) {
+            $line = $assignments[$name].Line
+            if (-not $reads.ContainsKey($name)) {
+                $hits.Add((New-E2EViolation -RuleId 'rule15' -Pattern 'measured-and-never-read' -Line $line -Message "function '$($function.Name)' assigns `$$name and never reads it - a measurement the leg does not act on"))
+                continue
+            }
+            $actedOn = $false
+            foreach ($offset in $reads[$name]) {
+                $printed = $false
+                foreach ($range in $printRanges) {
+                    if ($offset -ge $range[0] -and $offset -lt $range[1]) { $printed = $true; break }
+                }
+                if (-not $printed) { $actedOn = $true; break }
+            }
+            if (-not $actedOn) {
+                $hits.Add((New-E2EViolation -RuleId 'rule15' -Pattern 'measured-and-only-printed' -Line $line -Message "function '$($function.Name)' assigns `$$name and only prints it - the leg reports the measurement without gating on it"))
+            }
+        }
+    }
+    return $hits.ToArray()
+}
+
 function Test-Rule11ConvertFromJson {
     <#
     .SYNOPSIS
@@ -246,5 +353,6 @@ function Test-Rule14AutomaticVariableAssignment {
 
 Export-ModuleMember -Function @(
     'Test-Rule06WriteVerdictReached', 'Test-Rule07EnvIdentity', 'Test-Rule08ScenarioLegs',
-    'Test-Rule11ConvertFromJson', 'Test-Rule12PropertyAndStub', 'Test-Rule14AutomaticVariableAssignment'
+    'Test-Rule11ConvertFromJson', 'Test-Rule12PropertyAndStub', 'Test-Rule14AutomaticVariableAssignment',
+    'Test-Rule15MeasuredAndDiscarded'
 )

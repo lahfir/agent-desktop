@@ -282,13 +282,20 @@ function Invoke-ChromiumMenuLeg {
         $rcUia = Test-ChromiumMenuFamilyReachable -ProcessId $ProcessId
         Invoke-ChromiumNativeEscape
 
-        $hostSearch = Find-ChromiumOtherInstalledShells
+        Write-Host ("VERDICT probe chromium-menu-attempt: alt=({0},{1}) rightclick=({2},{3}) otherShells={4}" -f `
+                $altClassic, $altUia, $rcClassic, $rcUia, (Find-ChromiumOtherInstalledShells))
         <# `A23-3`/`A24-6`/`A24-12`: no menu surface reachable by generic
            staging on this build, reconfirmed a third time with real
-           content staged. Neither source firing is the expected,
-           documented outcome (deferral item 4, docs/phases.md §2.14) -
-           the leg passes on that outcome, exactly as it would pass on a
-           surface actually staging. #>
+           content staged. That is the documented outcome, and the leg now
+           asserts it rather than passing regardless of what the four
+           probes observed - which is how the improvement this leg exists
+           to catch would have gone unnoticed. A source firing here is a
+           change to the record, not necessarily a regression, and the
+           failure says so. #>
+        if ($altClassic -or $altUia -or $rcClassic -or $rcUia) {
+            Add-Fail -Leg 'chromium-menu-attempt-bounded' -Reason 'a menu source fired where A23-3/A24-6/A24-12 recorded none - update the ledger rather than assuming a regression'
+            return
+        }
         Add-Pass -Leg 'chromium-menu-attempt-bounded'
     }
 }

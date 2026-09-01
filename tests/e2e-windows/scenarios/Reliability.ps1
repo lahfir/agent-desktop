@@ -130,8 +130,25 @@ function Invoke-WaitEnabledLeg {
             $enableLater = Require-Target -Target (Find-Target -App $App -NativeId 'enable-later' -TimeoutSeconds 10) -Description 'enable-later'
             Invoke-Target -Target $enableLater -Action 'click' -RequireOk -Description 'enable-later' | Out-Null
             $target = Require-Target -Target (Find-Target -App $App -NativeId 'delayed-button' -TimeoutSeconds 10) -Description 'delayed-button'
+            if (Test-Target -Target $target -Property 'enabled') {
+                throw 'delayed-button was already enabled before the wait, so the wait proves nothing'
+            }
+            $elapsed = [System.Diagnostics.Stopwatch]::StartNew()
             $ok = Wait-Target -Target $target -Predicate 'enabled' -TimeoutMs 8000
+            $elapsed.Stop()
             if (-not $ok) { throw 'wait --predicate enabled on delayed-button did not report found within 8000ms' }
+            <# The command's own success flag is the anti-pattern this harness
+               forbids, and the sibling leg two functions above already reads
+               the value back independently. Two things are checked that the
+               flag cannot show: the button really is enabled now, and the
+               wait actually waited - a build with no waiting at all would
+               return before the 4s timer flips it. #>
+            if (-not (Test-Target -Target $target -Property 'enabled')) {
+                throw 'wait reported found but an independent read says delayed-button is still disabled'
+            }
+            if ($elapsed.ElapsedMilliseconds -lt 2000) {
+                throw ("wait returned after only {0}ms, but delayed-button is not enabled until its 4s timer fires" -f $elapsed.ElapsedMilliseconds)
+            }
         }
         Add-Pass -Leg 'reliability-wait-enabled-delayed-button'
     } catch { Add-Fail -Leg 'reliability-wait-enabled-delayed-button' -Reason $_.Exception.Message }

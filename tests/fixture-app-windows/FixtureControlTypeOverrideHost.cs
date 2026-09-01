@@ -1,6 +1,7 @@
 using System;
 using System.Windows.Automation;
 using System.Windows.Automation.Provider;
+using System.Windows.Forms;
 
 namespace AgentDeskFixtureApp
 {
@@ -107,12 +108,26 @@ namespace AgentDeskFixtureApp
                 return null;
             }
 
+            /// <summary>
+            /// UI Automation can deliver this call on any thread, and the
+            /// action mutates a WinForms control. The two sibling providers
+            /// in this corpus guard with InvokeRequired for the same reason;
+            /// without it the menu-fire leg is an intermittent false pass or
+            /// false fail depending on which thread UIA happened to use.
+            /// </summary>
             public void Invoke()
             {
-                if (this.invokeAction != null)
+                if (this.invokeAction == null)
                 {
-                    this.invokeAction();
+                    return;
                 }
+                Control owner = Control.FromHandle(this.handle);
+                if (owner != null && owner.InvokeRequired)
+                {
+                    owner.BeginInvoke((MethodInvoker)delegate { this.invokeAction(); });
+                    return;
+                }
+                this.invokeAction();
             }
 
             public IRawElementProviderSimple HostRawElementProvider

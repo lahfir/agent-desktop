@@ -311,10 +311,17 @@ function Invoke-SplitIntegrityCaptureLeg {
             $medium.Envelope['ok'], $(if ($medium.Envelope['ok'] -ne $true) { $medium.Envelope['error']['code'] } else { '<none>' }), $pixelsProduced)
     Remove-ItemRecoverable -Path $outputPath | Out-Null
 
-    <# A failure to instrument (no envelope parsed at all) is the only
-       failure this leg recognizes - whichever branch the product took is
-       recorded, not pre-judged. Invoke-StagedAgentDesktop already throws on
-       that instrumentation failure before this leg's own body runs. #>
+    <# Which branch the product took is still recorded rather than
+       pre-judged: a refusal across the integrity boundary is a documented
+       outcome and passes. What does not pass is a success envelope with no
+       pixels behind it. That combination was computed and discarded here,
+       so a capture reporting ok:true over a zero-byte PNG went unnoticed -
+       and a capture path that silently produced nothing is exactly what
+       this leg exists to catch. #>
+    if ($medium.Envelope['ok'] -eq $true -and -not $pixelsProduced) {
+        Add-Fail -Leg 'split-integrity-capture-recorded' -Reason 'the capture reported ok:true but produced no pixels'
+        return
+    }
     Add-Pass -Leg 'split-integrity-capture-recorded'
 }
 

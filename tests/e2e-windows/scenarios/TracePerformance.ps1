@@ -170,7 +170,10 @@ function Invoke-CostMeasurementLeg {
         if (-not $samples -or $samples.Count -lt 7) { throw "collected $(if ($samples) { $samples.Count } else { 0 }) samples, expected 7" }
         $warm = $samples[1..6]
         $sorted = $warm | Sort-Object
-        $min = $sorted[0]
+        # rule15-reported: a cost baseline is recorded for the ledger, not gated -
+    # the corpus methodology reports min with median and max beside it, and a
+    # threshold here would fail on desktop contention rather than on latency.
+    $min = $sorted[0]
         $max = $sorted[-1]
         $median = $sorted[[Math]::Floor($sorted.Count / 2)]
         Write-Host ("VERDICT probe cost list-windows: min={0}ms median={1}ms max={2}ms (n=6, warm-up discarded)" -f $min, $median, $max)
