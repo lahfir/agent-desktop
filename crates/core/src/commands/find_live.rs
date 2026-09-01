@@ -17,13 +17,23 @@ use std::time::Duration;
 const LOCATOR_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_RAW_DEPTH: u8 = 50;
 
+/// The traversal budget: the caller's if they set one, the shipped default
+/// otherwise. Named rather than inlined so a test exercises the same
+/// selection a caller reaches, instead of restating the arms beside it.
+fn traversal_deadline(args: &FindArgs) -> Result<crate::Deadline, AdapterError> {
+    match args.timeout_ms {
+        Some(timeout_ms) => crate::Deadline::after(timeout_ms),
+        None => crate::Deadline::from_duration(LOCATOR_TIMEOUT),
+    }
+}
+
 pub(super) fn execute(
     args: &FindArgs,
     query: &LocatorQuery,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let deadline = crate::Deadline::from_duration(LOCATOR_TIMEOUT)?;
+    let deadline = traversal_deadline(args)?;
     let request = resolve_request(args, deadline);
     let mut resolution = match args.root.as_deref() {
         Some(root_ref) => {
@@ -233,6 +243,7 @@ mod tests {
                 exact: false,
             },
             states: Vec::new(),
+            timeout_ms: None,
             selection: crate::commands::find::FindSelectionArgs {
                 count: false,
                 first: false,
@@ -243,6 +254,24 @@ mod tests {
         }
     }
 
+    /// The budget is the caller's to set. Without this, find is fixed at five
+    /// seconds and a large tree - a shell file dialog is the measured case -
+    /// has no answer but to fail, while snapshot beside it takes --timeout-ms.
+    #[test]
+    fn an_explicit_budget_reaches_the_traversal_and_absence_keeps_the_default() {
+        let mut explicit = args(None);
+        explicit.timeout_ms = Some(30_000);
+        let deadline = traversal_deadline(&explicit).expect("deadline");
+        assert_eq!(deadline.timeout_ms(), 30_000);
+
+        let defaulted = args(None);
+        let deadline = traversal_deadline(&defaulted).expect("deadline");
+        assert_eq!(
+            deadline.timeout_ms(),
+            5_000,
+            "omitting the flag must leave the shipped default alone"
+        );
+    }
     #[test]
     fn zero_limit_requests_all_matches() {
         let request = resolve_request(&args(Some(0)), crate::Deadline::standard().unwrap());
