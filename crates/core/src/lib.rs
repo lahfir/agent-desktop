@@ -121,6 +121,7 @@ pub mod resolve_errors;
 mod retry_disposition;
 mod retryability;
 mod role;
+pub mod role_text;
 pub mod roles;
 pub mod screenshot_target;
 pub(crate) mod search_text;

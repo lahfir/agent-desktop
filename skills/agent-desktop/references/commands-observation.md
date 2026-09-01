@@ -225,19 +225,27 @@ agent-desktop get @s8f3k2p9:e1 --property title
 
 | Property | Returns |
 |----------|---------|
-| `text` | The element's current text content — today the same read as `value` |
+| `text` | The text a person reads on the control: its value where the value **is** the content (`textfield`, `combobox`, `listbox`, `datefield`, `timefield`), the accessible name everywhere else. Falls back across when the preferred half is empty |
 | `value` | Current value (text content, slider position, etc.) |
 | `title` | Accessible name or label — this is the one that answers "what does this button say" |
 | `bounds` | `{ x, y, width, height }` rectangle |
 | `role` | Element role string |
 | `states` | Array of active states |
 
-`text` is the default, and on a control with a label but no value — a button,
-a menu item — it comes back empty. `title` carries the accessible name there.
-The two are not yet distinct reads: `text` and `value` resolve identically,
-and whether `text` should prefer the name is an open contract question rather
-than settled behaviour, so this table describes what ships rather than what
-the name suggests.
+`text` is the default property and answers what a person would read off the
+control. On a button or a menu item that is the label; on a text field it is
+the content, not the label — `title` is the accessible name in every case.
+When the preferred half is empty the other answers, so a nameless table cell
+still reports its content and a blank text field still reports its label.
+
+The split is by role, and deliberately not by whether a value changes during
+interaction: a checked checkbox answers its label rather than `1`, and a
+slider answers its label rather than its number. Use `--property value` when
+you want the raw value regardless of role — that read is unchanged.
+
+**This changed in the Windows adapter release.** Previously `text` and
+`value` were the same read, so `text` came back empty on every button. If you
+depend on the old behaviour, ask for `value` explicitly.
 
 For `--property bounds`, the response carries a sibling `live` boolean. `true`
 means the rectangle came from a live read taken just now; `false` means the
