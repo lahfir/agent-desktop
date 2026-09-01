@@ -114,8 +114,14 @@ fn batch_pre_seed_baseline_lets_seen_set_report_a_window_close_not_a_timeout() {
     )
     .unwrap();
 
-    assert_eq!(value["results"][0]["ok"], true, "{value}");
-    assert_eq!(value["results"][1]["ok"], true, "{value}");
+    assert_eq!(
+        value["results"][0]["ok"], true,
+        "the first batch entry must succeed"
+    );
+    assert_eq!(
+        value["results"][1]["ok"], true,
+        "the wait entry must succeed"
+    );
     assert_eq!(
         value["results"][1]["data"]["event"]["kind"],
         "window_closed"
