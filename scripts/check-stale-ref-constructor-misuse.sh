@@ -50,6 +50,7 @@ EXPECTED_APP_CALLS=2
 #     items contain one.
 count_calls() {
     local constructor="$1"
+    shift
     local total=0
     local file matches
 
@@ -85,13 +86,49 @@ count_calls() {
             END { print count + 0 }
         ' "$file")"
         total=$((total + matches))
-    done < <(find crates src -name '*.rs' -print0)
+    done < <(find "$@" -name '*.rs' -print0)
 
     echo "$total"
 }
 
-adapter_calls="$(count_calls "AdapterError::stale_ref")"
-app_calls="$(count_calls "AppError::stale_ref")"
+# A gate is code, and code nobody has watched fail is a claim. The self-test
+# runs the same scan over committed fixtures whose correct counts are known,
+# so a change that breaks the counting is caught here rather than by a silent
+# pass over the real tree.
+self_test() {
+    local fixtures="$ROOT/scripts/fixtures/stale-ref-constructor"
+    local failures=0
+    local got
+
+    got="$(count_calls "AdapterError::stale_ref" "$fixtures/production.rs")"
+    if [ "$got" != "1" ]; then
+        printf 'FAIL self-test: a production caller must be counted, got %s\n' "$got" >&2
+        failures=1
+    fi
+
+    got="$(count_calls "AdapterError::stale_ref" "$fixtures/sample_tests.rs")"
+    if [ "$got" != "0" ]; then
+        printf 'FAIL self-test: a caller in a *_tests.rs file must not be counted, got %s\n' "$got" >&2
+        failures=1
+    fi
+
+    got="$(count_calls "AdapterError::stale_ref" "$fixtures/gated_then_production.rs")"
+    if [ "$got" != "1" ]; then
+        printf 'FAIL self-test: a gated caller must be skipped and the production caller after it still counted, got %s\n' "$got" >&2
+        failures=1
+    fi
+
+    if [ "$failures" -ne 0 ]; then
+        printf 'The scan cannot be trusted over the real tree while it miscounts fixtures.\n' >&2
+        exit 1
+    fi
+    printf 'OK: scan self-test passed (production counted, test file skipped, gated item skipped without losing the caller after it).\n'
+}
+
+self_test
+
+adapter_calls="$(count_calls "AdapterError::stale_ref" crates src)"
+app_calls="$(count_calls "AppError::stale_ref" crates src)"
 
 failed=0
 

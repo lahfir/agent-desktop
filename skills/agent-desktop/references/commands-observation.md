@@ -166,6 +166,8 @@ menu-bar dump.
 | Flag | Description |
 |------|-------------|
 | `--app` | Application name |
+| `--window-id ID` | Search one window from `list-windows` instead of every window the app owns |
+| `--timeout-ms MS` | Traversal deadline, default 5000. A large tree — a shell file dialog, whose folder tree and item list both populate — can exceed it; raise this or narrow the search rather than reading the timeout as an unresponsive app |
 | `--root REF` | Search only inside this ref's subtree instead of the whole window. Pair with `--snapshot` for a legacy bare `@eN` ref |
 | `--surface` | Search an overlay instead of the window (`menubar`, `menu`, `sheet`, `alert`, `popover`, ...). A menu bar belongs to the application, so several open windows are not ambiguous here. Cannot be combined with `--root`, which already carries its own surface |
 | `--role` | Role to match against the live tree (button, textfield, checkbox, scrollarea, window, ...). Case-insensitive; `textarea`/`textbox`/`searchfield` fold to `textfield`. When a role filter matches nothing, the response carries `roles_present` — the roles actually in the searched tree — so you can tell "none on screen" from a wrong role name and retry |
@@ -223,12 +225,19 @@ agent-desktop get @s8f3k2p9:e1 --property title
 
 | Property | Returns |
 |----------|---------|
-| `text` | Accessible name/label (default) |
+| `text` | The element's current text content — today the same read as `value` |
 | `value` | Current value (text content, slider position, etc.) |
-| `title` | Window or element title |
+| `title` | Accessible name or label — this is the one that answers "what does this button say" |
 | `bounds` | `{ x, y, width, height }` rectangle |
 | `role` | Element role string |
 | `states` | Array of active states |
+
+`text` is the default, and on a control with a label but no value — a button,
+a menu item — it comes back empty. `title` carries the accessible name there.
+The two are not yet distinct reads: `text` and `value` resolve identically,
+and whether `text` should prefer the name is an open contract question rather
+than settled behaviour, so this table describes what ships rather than what
+the name suggests.
 
 For `--property bounds`, the response carries a sibling `live` boolean. `true`
 means the rectangle came from a live read taken just now; `false` means the

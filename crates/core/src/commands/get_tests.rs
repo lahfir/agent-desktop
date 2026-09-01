@@ -197,3 +197,49 @@ fn bounds_marks_snapshot_fallback_as_not_live_when_a_successful_live_read_finds_
     assert_eq!(result["value"]["y"], -322.0);
     assert_eq!(result["live"], false);
 }
+
+/// `text` is the default property, and on a control with a label but no value
+/// it comes back empty while `title` carries the label. That surprises a
+/// caller, so the shipped reference now says so — and this pins the behaviour
+/// the corrected wording describes. If `text` is ever made name-preferring,
+/// this fails and forces the documentation to move with it, which is the only
+/// thing keeping the two from drifting apart again.
+#[test]
+fn text_reads_the_value_and_title_reads_the_name_as_the_reference_states() {
+    let _guard = HomeGuard::new();
+    let mut labelled_button = entry_with_bounds(Some(stale_snapshot_bounds()));
+    labelled_button.identity.role = "button".into();
+    labelled_button.identity.name = Some("Close".into());
+    labelled_button.identity.value = None;
+    let snapshot_id = save_entry(labelled_button);
+    let adapter = LiveBoundsAdapter::without_live_support();
+
+    let read = |property| {
+        execute(
+            GetArgs {
+                ref_id: "@e1".into(),
+                snapshot_id: Some(snapshot_id.clone()),
+                property,
+            },
+            &adapter,
+            &CommandContext::default(),
+        )
+        .expect("get succeeds")
+    };
+
+    assert!(
+        read(GetProperty::Text)["value"].is_null(),
+        "a button carries no value, so the default property answers empty"
+    );
+    assert_eq!(
+        read(GetProperty::Title)["value"],
+        "Close",
+        "the accessible name is reachable through title"
+    );
+    assert_eq!(
+        read(GetProperty::Text)["value"],
+        read(GetProperty::Value)["value"],
+        "text and value are the same read today; the reference says so, and a \
+         change here must move that wording with it"
+    );
+}
