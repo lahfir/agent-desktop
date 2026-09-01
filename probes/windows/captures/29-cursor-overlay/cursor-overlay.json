@@ -1,0 +1,140 @@
+{
+    "foreground_steal":  {
+                             "no_activate":  {
+                                                 "foreground_was_target_before":  true,
+                                                 "overlay_took_foreground":  [
+                                                                                 false,
+                                                                                 false,
+                                                                                 false,
+                                                                                 false
+                                                                             ],
+                                                 "target_kept_foreground":  [
+                                                                                true,
+                                                                                true,
+                                                                                true,
+                                                                                true
+                                                                            ],
+                                                 "stages":  [
+                                                                "create",
+                                                                "show",
+                                                                "paint",
+                                                                "move"
+                                                            ]
+                                             },
+                             "activating":  {
+                                                "foreground_was_target_before":  true,
+                                                "overlay_took_foreground":  [
+                                                                                false,
+                                                                                true,
+                                                                                true,
+                                                                                true
+                                                                            ],
+                                                "target_kept_foreground":  [
+                                                                               true,
+                                                                               false,
+                                                                               false,
+                                                                               false
+                                                                           ],
+                                                "stages":  [
+                                                               "create",
+                                                               "show",
+                                                               "paint",
+                                                               "move"
+                                                           ]
+                                            }
+                         },
+    "update_layered_window_cost":  {
+                                       "follower_256":  {
+                                                            "width":  256,
+                                                            "height":  256,
+                                                            "pixels":  65536,
+                                                            "cost_ms":  {
+                                                                            "min_ms":  0.048,
+                                                                            "median_ms":  0.055,
+                                                                            "max_ms":  0.082,
+                                                                            "samples":  7
+                                                                        }
+                                                        },
+                                       "follower_512":  {
+                                                            "width":  512,
+                                                            "height":  512,
+                                                            "pixels":  262144,
+                                                            "cost_ms":  {
+                                                                            "min_ms":  0.101,
+                                                                            "median_ms":  0.132,
+                                                                            "max_ms":  0.21,
+                                                                            "samples":  7
+                                                                        }
+                                                        },
+                                       "virtual_screen":  {
+                                                              "width":  1608,
+                                                              "height":  780,
+                                                              "pixels":  1254240,
+                                                              "cost_ms":  {
+                                                                              "min_ms":  0.5,
+                                                                              "median_ms":  0.573,
+                                                                              "max_ms":  0.732,
+                                                                              "samples":  7
+                                                                          }
+                                                          }
+                                   },
+    "taskbar_z_order":  {
+                            "taskbar_found":  true,
+                            "pixel_before":  "0x020101",
+                            "pixel_with_overlay":  "0x00FF00",
+                            "pixel_after_teardown":  "0x020101",
+                            "overlay_paints_over_taskbar":  true,
+                            "teardown_restores_pixel":  true,
+                            "overlay_took_foreground":  false
+                        },
+    "click_through":  {
+                          "transparent":  {
+                                              "hit_test_returned_overlay":  false
+                                          },
+                          "opaque_to_hit_test":  {
+                                                     "hit_test_returned_overlay":  true
+                                                 }
+                      },
+    "named_pipe_roundtrip":  {
+                                 "transport":  "NamedPipeClientStream connect + write + one-byte ack read",
+                                 "cost_ms":  {
+                                                 "min_ms":  0.255,
+                                                 "median_ms":  0.274,
+                                                 "max_ms":  0.639,
+                                                 "samples":  7
+                                             }
+                             },
+    "coordinate_space":  {
+                             "virtual_screen":  {
+                                                    "x":  0,
+                                                    "y":  0,
+                                                    "width":  1608,
+                                                    "height":  780
+                                                },
+                             "monitor_count":  1,
+                             "monitors":  [
+                                              {
+                                                  "primary":  true,
+                                                  "width":  1608,
+                                                  "height":  780
+                                              }
+                                          ],
+                             "client_area_animations":  {
+                                                            "call_succeeded":  true,
+                                                            "enabled":  false
+                                                        },
+                             "ui_effects":  {
+                                                "call_succeeded":  true,
+                                                "enabled":  true
+                                            },
+                             "refresh_hz":  {
+                                                "enum_display_settings_null_device":  {
+                                                                                          "call_succeeded":  false,
+                                                                                          "value":  0
+                                                                                      },
+                                                "screen_dc_vrefresh":  64
+                                            },
+                             "mixed_dpi_measurable":  false
+                         },
+    "foreground_at_start_was_target":  true
+}
