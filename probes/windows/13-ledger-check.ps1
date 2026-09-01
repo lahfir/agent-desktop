@@ -3,13 +3,75 @@
 . "$PSScriptRoot\13-ledger-content.ps1"
 
 $Probe = '13-ledger-check'
-$RequiredAreaIds = @('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29')
+$RequiredAreaIds = @('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30')
 $ValidVerdicts = @('CONFIRMS', 'CONTRADICTS', 'NEW-EDGE', 'DEFERRED')
 $ValidStacks = @('managed', 'uia3-com', 'n/a')
 $ValidScopes = @('api-contract', 'app/provider')
 $MinClosureMinor = 0
 $MaxClosureMinor = 16
+
+<#
+    A DEFERRED row must name where its work goes. Every Phase 2 sub-phase
+    is a valid destination, and so is `post-phase-2` - the disposition for
+    work this phase measured as out of its reach, which had no vocabulary
+    here before and so could only be expressed by pointing at a sub-phase
+    that would never do it.
+
+    Extracted from the scan loop so the gate's own fixtures can drive it;
+    an inline regex could not be tested, and a gate is code.
+#>
+function Test-DeferredClosure {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Action)
+    if ($Action -match 'closure:\s*post-phase-2\b') { return $null }
+    $closure = [regex]::Match($Action, 'closure:\s*2\.([0-9]{1,2})\b')
+    if (-not $closure.Success) {
+        return "DEFERRED row does not name a closure (expected 'closure: 2.<n>' or 'closure: post-phase-2' in the action cell)"
+    }
+    $minor = [int]$closure.Groups[1].Value
+    if ($minor -lt $script:MinClosureMinor -or $minor -gt $script:MaxClosureMinor) {
+        return 'DEFERRED closure sub-phase 2.' + $minor + ' is outside Phase 2 (2.' + $script:MinClosureMinor + '-2.' + $script:MaxClosureMinor + ')'
+    }
+    return $null
+}
+
+<#
+    The gate is code and needs its own test. These run before the real
+    ledger is scanned, so a broken predicate fails here rather than
+    silently accepting every row.
+#>
+function Invoke-ClosureSelfTest {
+    $failures = New-Object System.Collections.ArrayList
+    $mustPass = @(
+        'work moves to the next gate. closure: 2.16',
+        'measured out of reach for this phase. closure: post-phase-2'
+    )
+    foreach ($action in $mustPass) {
+        $result = Test-DeferredClosure -Action $action
+        if ($result) { [void]$failures.Add('closure self-test: a valid closure was rejected - ' + $result) }
+    }
+    $mustCatch = @(
+        'no closure named at all',
+        'work moves somewhere. closure: 3.1',
+        'work moves somewhere. closure: 2.99',
+        'work moves somewhere. closure: post-phase-3'
+    )
+    foreach ($action in $mustCatch) {
+        if (-not (Test-DeferredClosure -Action $action)) {
+            [void]$failures.Add('closure self-test: an invalid closure was accepted - ' + $action)
+        }
+    }
+    return $failures
+}
 $PreWideningContentAuditFloor = 20
+
+$closureSelfTest = Invoke-ClosureSelfTest
+foreach ($f in $closureSelfTest) {
+    Write-ProbeLog -Message ('LEDGER-CLOSURE-SELFTEST-FAIL ' + $f) -Level 'error'
+}
+if ($closureSelfTest.Count -gt 0) {
+    Write-ProbeResult -Probe $Probe -Status 'fail' -Message ('closure self-test failed: ' + $closureSelfTest[0])
+    exit 1
+}
 
 $contentSelfTest = Invoke-LedgerContentSelfTest -ProbeRoot $PSScriptRoot
 foreach ($f in $contentSelfTest.Failures) {
@@ -133,15 +195,8 @@ try {
         if (-not $row.Script) { [void]$failures.Add($row.Id + ': empty script/re-run command') }
         if (-not $row.Observed) { [void]$failures.Add($row.Id + ': empty observed cell') }
         if ($row.Verdict -eq 'DEFERRED') {
-            $closure = [regex]::Match($row.Action, 'closure:\s*2\.([0-9]{1,2})\b')
-            if (-not $closure.Success) {
-                [void]$failures.Add($row.Id + ": DEFERRED row does not name a Phase 2 closure sub-phase (expected 'closure: 2.<n>' in the action cell)")
-            } else {
-                $minor = [int]$closure.Groups[1].Value
-                if ($minor -lt $MinClosureMinor -or $minor -gt $MaxClosureMinor) {
-                    [void]$failures.Add($row.Id + ': DEFERRED closure sub-phase 2.' + $minor + ' is outside Phase 2 (2.' + $MinClosureMinor + '-2.' + $MaxClosureMinor + ')')
-                }
-            }
+            $closureFailure = Test-DeferredClosure -Action $row.Action
+            if ($closureFailure) { [void]$failures.Add($row.Id + ': ' + $closureFailure) }
         }
     }
 
