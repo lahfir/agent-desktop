@@ -75,6 +75,16 @@ fn snapshot_roundtrip_updates_latest_pointer() {
     assert_eq!(store.load(None).unwrap().len(), 1);
 }
 
+/// Saves under contention, retrying only while the store's write lock reports
+/// its own `lock_timeout`.
+///
+/// The lock's budget is a product decision - a caller waiting on a busy store
+/// is told to try again rather than blocked indefinitely - and `TIMEOUT`
+/// carries `retry: safe` precisely so a caller can. Eight writers racing one
+/// lock legitimately exhaust that budget, so a test requiring every writer to
+/// win on its first attempt asserts something the contract never promised.
+/// Matching on the `kind` keeps that tolerance narrow: a timeout from anywhere
+/// else in the save path is still a failure.
 fn save_snapshot_after_contention(store: &RefStore, name: &str) -> String {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {

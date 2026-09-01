@@ -15,6 +15,15 @@ const SKILL_DESKTOP_REF_WORKFLOWS: &str =
 const SKILL_DESKTOP_REF_MACOS: &str =
     include_str!("../../../../skills/agent-desktop/references/macos.md");
 
+const SKILL_WINDOWS_MAIN: &str = include_str!("../../../../skills/agent-desktop-windows/SKILL.md");
+const SKILL_WINDOWS_REF_PERMISSIONS: &str = include_str!(
+    "../../../../skills/agent-desktop-windows/references/permissions-and-elevation.md"
+);
+const SKILL_WINDOWS_REF_CHROMIUM: &str =
+    include_str!("../../../../skills/agent-desktop-windows/references/chromium-and-electron.md");
+const SKILL_WINDOWS_REF_TROUBLESHOOTING: &str =
+    include_str!("../../../../skills/agent-desktop-windows/references/troubleshooting.md");
+
 const SKILL_FFI_MAIN: &str = include_str!("../../../../skills/agent-desktop-ffi/SKILL.md");
 const SKILL_FFI_REF_BUILD: &str =
     include_str!("../../../../skills/agent-desktop-ffi/references/build-and-link.md");
@@ -35,7 +44,7 @@ struct Skill {
     aliases: &'static [&'static str],
     summary: &'static str,
     main: &'static str,
-    refs: fn() -> &'static [SkillRef],
+    refs: &'static [SkillRef],
 }
 
 const SKILL_DESKTOP_REFS: &[SkillRef] = &[
@@ -62,10 +71,6 @@ const SKILL_DESKTOP_REFS: &[SkillRef] = &[
     },
 ];
 
-fn skill_desktop_refs() -> &'static [SkillRef] {
-    SKILL_DESKTOP_REFS
-}
-
 const SKILL_FFI_REFS: &[SkillRef] = &[
     SkillRef {
         rel_path: "references/build-and-link.md",
@@ -85,24 +90,42 @@ const SKILL_FFI_REFS: &[SkillRef] = &[
     },
 ];
 
-fn skill_ffi_refs() -> &'static [SkillRef] {
-    SKILL_FFI_REFS
-}
+const SKILL_WINDOWS_REFS: &[SkillRef] = &[
+    SkillRef {
+        rel_path: "references/permissions-and-elevation.md",
+        body: SKILL_WINDOWS_REF_PERMISSIONS,
+    },
+    SkillRef {
+        rel_path: "references/chromium-and-electron.md",
+        body: SKILL_WINDOWS_REF_CHROMIUM,
+    },
+    SkillRef {
+        rel_path: "references/troubleshooting.md",
+        body: SKILL_WINDOWS_REF_TROUBLESHOOTING,
+    },
+];
 
 const SKILLS: &[Skill] = &[
     Skill {
         canonical: "agent-desktop",
         aliases: &["desktop", "agent-desktop"],
-        summary: "Primary guide. Snapshot/ref loop, JSON envelope, 59 commands including session lifecycle, cursor overlay, observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
+        summary: "Primary guide. Snapshot/ref loop, JSON envelope, 60 commands including session lifecycle, cursor overlay, observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
         main: SKILL_DESKTOP_MAIN,
-        refs: skill_desktop_refs,
+        refs: SKILL_DESKTOP_REFS,
     },
     Skill {
         canonical: "agent-desktop-ffi",
         aliases: &["ffi", "agent-desktop-ffi"],
         summary: "Embedding agent-desktop in another process via the C ABI. Build/link, error propagation, handle ownership, threading rules.",
         main: SKILL_FFI_MAIN,
-        refs: skill_ffi_refs,
+        refs: SKILL_FFI_REFS,
+    },
+    Skill {
+        canonical: "agent-desktop-windows",
+        aliases: &["windows", "agent-desktop-windows"],
+        summary: "Windows platform guide. Capability table (what works, what returns PLATFORM_NOT_SUPPORTED), shell surfaces and Action Center notifications, UIPI/elevation boundaries, Chromium/Electron settle behavior, troubleshooting.",
+        main: SKILL_WINDOWS_MAIN,
+        refs: SKILL_WINDOWS_REFS,
     },
 ];
 
@@ -120,7 +143,7 @@ pub fn list() -> Result<Value, AppError> {
                 "name": s.canonical,
                 "aliases": s.aliases,
                 "summary": s.summary,
-                "references": (s.refs)().iter().map(|r| r.rel_path).collect::<Vec<_>>(),
+                "references": s.refs.iter().map(|r| r.rel_path).collect::<Vec<_>>(),
             })
         })
         .collect();
@@ -131,7 +154,7 @@ pub fn get(args: GetArgs) -> Result<Value, AppError> {
     let skill = find_skill(&args.name)?;
 
     if let Some(rel) = args.reference {
-        let refs = (skill.refs)();
+        let refs = skill.refs;
         let r = refs
             .iter()
             .find(|r| matches_ref(r.rel_path, &rel))
@@ -192,16 +215,13 @@ fn matches_ref(rel_path: &str, query: &str) -> bool {
     if rel_path.eq_ignore_ascii_case(query) {
         return true;
     }
-    let stem = rel_path
-        .rsplit('/')
-        .next()
-        .and_then(|f| f.strip_suffix(".md").or(Some(f)))
-        .unwrap_or(rel_path);
-    stem.eq_ignore_ascii_case(query)
+    let file = rel_path.rsplit('/').next().unwrap_or(rel_path);
+    let stem = file.strip_suffix(".md").unwrap_or(file);
+    file.eq_ignore_ascii_case(query) || stem.eq_ignore_ascii_case(query)
 }
 
 fn render_full(skill: &Skill) -> String {
-    let refs = (skill.refs)();
+    let refs = skill.refs;
     let mut out = String::with_capacity(
         skill.main.len() + refs.iter().map(|r| r.body.len() + 64).sum::<usize>(),
     );

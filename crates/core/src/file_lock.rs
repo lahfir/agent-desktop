@@ -4,7 +4,13 @@ use std::time::Duration;
 
 use crate::{AdapterError, Deadline, ErrorCode};
 
+/// Releases by closing rather than unlocking: a duplicated descriptor shares
+/// the lock and unlocking would release it for the other holder too.
 pub(crate) struct FileLock {
+    /// Held for its lifetime rather than read: closing it is what releases the
+    /// lock, so the value being alive *is* its purpose. Unix additionally reads
+    /// it to duplicate the descriptor for a child.
+    #[cfg_attr(not(unix), allow(dead_code))]
     file: File,
     #[cfg(unix)]
     contention_count: u64,
@@ -89,12 +95,8 @@ impl FileLock {
     }
 }
 
-impl Drop for FileLock {
-    fn drop(&mut self) {
-        let _ = self.file.unlock();
-    }
-}
-
+/// Drops a contended lock without unlocking: shared file descriptions need drop,
+/// not unlock. On adopt path, shared descriptions exist and must be left alone.
 fn lock_file(
     file: File,
     deadline: Deadline,
@@ -109,7 +111,6 @@ fn lock_file(
         match file.try_lock() {
             Ok(()) => {
                 if deadline.is_expired() {
-                    let _ = file.unlock();
                     return Err(lock_timeout(deadline, purpose, path, contention_count));
                 }
                 return Ok(FileLock {

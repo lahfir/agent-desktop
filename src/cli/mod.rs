@@ -23,8 +23,8 @@ use crate::cli_args::{
     skills::SkillsArgs,
     system::{
         AppRefArgs, ClipboardGetArgs, ClipboardSetArgs, CloseAppArgs, FocusWindowArgs, LaunchArgs,
-        ListAppsArgs, ListWindowsArgs, MoveWindowCliArgs, PermissionsArgs, ResizeWindowCliArgs,
-        WaitArgs,
+        ListAppsArgs, ListWindowsArgs, MoveWindowCliArgs, OpenSystemSurfaceArgs, PermissionsArgs,
+        ResizeWindowCliArgs, WaitArgs,
     },
     trace::TraceArgs,
 };
@@ -123,6 +123,10 @@ pub(crate) enum Commands {
     Restore(AppRefArgs),
     #[command(about = "List accessibility surfaces for an app (window, menu, sheet ...)")]
     ListSurfaces(ListSurfacesArgs),
+    #[command(
+        about = "Open a shell surface (start-menu, taskbar, action-center ...) and return the window it presents"
+    )]
+    OpenSystemSurface(OpenSystemSurfaceArgs),
     #[command(about = "List notifications from Notification Center")]
     ListNotifications(ListNotificationsCliArgs),
     #[command(about = "Dismiss a notification by index")]
@@ -220,6 +224,7 @@ impl Commands {
             Self::Maximize(_) => CommandMetadata::new("maximize", false),
             Self::Restore(_) => CommandMetadata::new("restore", false),
             Self::ListSurfaces(_) => CommandMetadata::new("list-surfaces", false),
+            Self::OpenSystemSurface(_) => CommandMetadata::new("open-system-surface", false),
             Self::ListNotifications(_) => CommandMetadata::new("list-notifications", false),
             Self::DismissNotification(_) => CommandMetadata::new("dismiss-notification", false),
             Self::DismissAllNotifications(_) => {
@@ -280,6 +285,7 @@ impl Commands {
             | Self::Launch(_)
             | Self::CloseApp(_)
             | Self::FocusWindow(_)
+            | Self::OpenSystemSurface(_)
             | Self::ResizeWindow(_)
             | Self::MoveWindow(_)
             | Self::Minimize(_)
@@ -325,3 +331,7 @@ mod wait_for_cli_tests;
 #[cfg(test)]
 #[path = "contract_tests.rs"]
 mod contract_tests;
+
+#[cfg(test)]
+#[path = "contract_command_surface_tests.rs"]
+mod contract_command_surface_tests;

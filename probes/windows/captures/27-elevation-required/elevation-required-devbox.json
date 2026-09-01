@@ -1,0 +1,13 @@
+{
+    "label":  "devbox",
+    "fixture_present":  true,
+    "probe_compiled":  true,
+    "control_leg_launched":  true,
+    "control_leg_win32_error":  0,
+    "staged_caller_integrity_sid":  "S-1-16-8192",
+    "staged_caller_is_medium":  true,
+    "measured_leg_launched":  true,
+    "measured_win32_error":  0,
+    "elevation_boundary_manufactured":  false,
+    "mechanism_note":  "CreateRestrictedToken(DISABLE_MAX_PRIVILEGE) plus a lowered integrity label disables privileges but leaves the Administrators group SID in the token, so the staged caller is Medium-integrity while still carrying Administrators and Windows requires no elevation"
+}

@@ -19,16 +19,19 @@ fn default_surfaces_fail_closed() {
 }
 
 #[test]
-fn default_cursor_overlay_is_a_successful_no_op() {
+fn default_cursor_overlay_refuses_as_platform_not_supported() {
     let config = crate::CursorOverlayConfig::enabled(None, 6).expect("valid config");
     let instruction =
         crate::CursorOverlayInstruction::new(crate::Point { x: 20.0, y: 40.0 }, &config, true)
             .expect("valid instruction");
     let control = crate::CursorOverlayControl::present("test-session".into(), instruction);
 
-    DefaultOnly
-        .update_cursor_overlay(&control)
-        .expect("default presentation is fail-soft");
+    let error = match DefaultOnly.update_cursor_overlay(&control) {
+        Ok(_) => panic!("default cursor overlay must fail closed"),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.code, crate::ErrorCode::PlatformNotSupported);
     assert!(DefaultOnly.run_cursor_overlay_child().is_none());
 }
 

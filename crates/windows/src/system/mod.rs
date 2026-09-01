@@ -1,1 +1,64 @@
-
+mod adapter;
+pub(crate) mod app_ops;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_backend;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_d3d;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_display;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_envelope_parity;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_modern;
+#[cfg(target_os = "windows")]
+pub(crate) mod capture_window;
+pub(crate) mod close;
+pub(crate) mod com_runtime;
+pub(crate) mod display;
+pub(crate) mod dpi;
+pub(crate) mod frame_identity;
+#[cfg(target_os = "windows")]
+pub(crate) mod gdi_surface;
+pub(crate) mod hresult;
+#[cfg(target_os = "windows")]
+pub(crate) mod interaction_lease;
+pub(crate) mod key_dispatch;
+pub(crate) mod launch;
+mod launch_path;
+pub(crate) mod lifecycle_envelope_parity;
+pub(crate) mod listing_retry;
+pub(crate) mod menu_state;
+pub(crate) mod permissions;
+#[cfg(target_os = "windows")]
+pub(crate) mod png_codec;
+#[cfg(target_os = "windows")]
+pub(crate) mod private_file;
+pub(crate) mod process_identity;
+pub(crate) mod process_state;
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) mod raise_oracle;
+#[cfg(target_os = "windows")]
+pub(crate) mod screenshot;
+pub(crate) mod session;
+pub(crate) mod shell_surface;
+#[cfg(target_os = "windows")]
+pub(crate) mod shell_surface_immersive;
+pub(crate) mod shell_surface_kinds;
+pub(crate) mod shell_surface_open;
+pub(crate) mod shell_surface_raise;
+pub(crate) mod signal_filter_apply;
+pub(crate) mod signal_inventory;
+pub(crate) mod signal_surfaces;
+pub(crate) mod signals;
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) mod test_support;
+#[cfg(target_os = "windows")]
+pub(crate) mod thread_walk;
+pub(crate) mod wait;
+pub(crate) mod window_activate;
+pub(crate) mod window_enum;
+pub(crate) mod window_identity;
+pub(crate) mod window_op;
+pub(crate) mod window_op_verb;
+pub(crate) mod window_ops;
+pub(crate) mod window_resolve;

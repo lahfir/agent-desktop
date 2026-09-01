@@ -9,7 +9,7 @@ use crate::{
 
 pub trait SystemOps: Send + Sync {
     fn update_cursor_overlay(&self, _control: &CursorOverlayControl) -> Result<(), AdapterError> {
-        Ok(())
+        Err(AdapterError::not_supported("update_cursor_overlay"))
     }
 
     fn run_cursor_overlay_child(&self) -> Option<Result<(), AdapterError>> {
@@ -88,6 +88,25 @@ pub trait SystemOps: Send + Sync {
 
     fn supported_surfaces(&self) -> Vec<crate::adapter::SnapshotSurface> {
         Vec::new()
+    }
+
+    /// Raises an OS-chrome surface - the Start menu, the Action Center, the
+    /// taskbar - and returns the identity of the window the surface actually
+    /// presents, in the same shape the window observation stack consumes. It
+    /// takes the lease because it mutates OS chrome and takes the foreground;
+    /// the policy travels separately because the lease carries no
+    /// focus-steal refusal. Implementations must refuse with `POLICY_DENIED`
+    /// before anything is raised when `policy.allow_focus_steal` is false,
+    /// must return an already-present surface without raising it again, and
+    /// must answer a kind their platform does not expose with a refusal that
+    /// names what a caller should ask for instead - never with this default.
+    fn open_system_surface(
+        &self,
+        _surface: crate::adapter::SnapshotSurface,
+        _policy: InteractionPolicy,
+        _lease: &InteractionLease,
+    ) -> Result<WindowInfo, AdapterError> {
+        Err(AdapterError::not_supported("open_system_surface"))
     }
 
     /// Opens adapter-native connection affinity for a persistent host.

@@ -12,17 +12,19 @@ agent-desktop launch "TextEdit" --arg /tmp/notes.txt
 agent-desktop launch "MyTool" --arg --flag --arg value --env KEY=VALUE --cwd /tmp
 agent-desktop launch "MyTool" --no-attach
 agent-desktop launch "TextEdit" --activate
+agent-desktop launch "notepad.exe"                 # Windows: system-directory bare name
+agent-desktop launch "C:\\Windows\\System32\\notepad.exe"
 agent-desktop launch "Obsidian" --cdp
 agent-desktop launch "Obsidian" --cdp 9229
 ```
-Launches an application by name or bundle ID and returns once the process is running.
+Launches an application and returns once the process is running. On macOS the identifier is a display name or bundle ID. On Windows the identifier is an absolute path (drive + backslash, UNC, or `\\?\`) or a bare executable name that resolves only under `System32` / the Windows directory (A21-1) — display-name and AUMID launch are not on this path.
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--timeout` | 30000 | Upper bound in ms for the whole launch |
 | `--arg` | | Command-line argument passed to the launched app; repeatable, order preserved. For a value that starts with `-`, use the equals form (`--arg=<value>`) — the space form swallows the next flag |
 | `--env` | | `KEY=VALUE` environment variable for the launched process; repeatable |
-| `--cwd` | | Working directory for the launched process |
+| `--cwd` | | Working directory for the launched process (honored on Windows; rejected by macOS Launch Services) |
 | `--no-attach` | false | Require a fresh launch instead of the default attach-if-running behavior |
 | `--activate` | false | Bring the app forward so it presents a window, and wait for that window |
 | `--cdp` | | Launch fresh with a Chrome DevTools Protocol port, verified before return; optional `[PORT]`, `0` or omitted picks a free port |
@@ -58,6 +60,8 @@ When you need the window:
 
 Windowless, menu-bar-only, and background apps simply report no `window`; use `list-apps` to observe those processes and read their `presentation`. `--no-attach` rejects an already-running app with `ACTION_FAILED` and starts a fresh instance.
 
+On Windows, attach matches by image name across the process snapshot, so multiple running instances are `AMBIGUOUS_TARGET` (dogfood J2 against multi-instance `explorer.exe`). A launcher process whose visible window belongs to a child pid reports no `window` for the pid it launched (A21-1); `list-windows` finds the child's window.
+
 ### Driving the web contents of a Chromium app
 ```bash
 agent-desktop launch "Obsidian" --cdp
@@ -82,6 +86,8 @@ On success, the response adds a `cdp` object and a `suggestion` string naming th
 ```
 
 `suggestion` is informational, the same way `data.cdp` itself is — read it, do not treat it as a command the process enforces.
+
+`--cdp` itself is platform-neutral: the remote-debugging switches are passed to the process the same way on macOS and Windows, and the endpoint is verified by the same loopback probe. What differs is `renderer`. macOS detects a Chromium app from its bundle and reports `"renderer": "chromium"`, which is also what makes the *unprompted* nudge fire — launch a Chromium app **without** `--cdp` there and the response suggests closing and relaunching with it. Windows does not detect the renderer yet, so on Windows `renderer` is absent and that nudge never appears. Absent means undetected, never "not Chromium" — do not read a missing `renderer` on Windows as evidence the app is native. `--cdp` still works on a Windows Chromium app; you just have to know to ask for it.
 
 The probe that verifies the endpoint has a reserved time budget so a slow launch cannot consume it: `reserve = min(5s, one quarter of the remaining launch budget)`, carved out of `--timeout` before the probe starts.
 
@@ -115,11 +121,14 @@ agent-desktop never invokes `agent-browser` itself; the calling agent does. Even
 ```bash
 agent-desktop close-app "TextEdit"
 agent-desktop close-app "TextEdit" --force
+agent-desktop close-app "notepad.exe" --force   # Windows
 ```
-Requests an application quit. A graceful quit is asynchronous — the app may show an unsaved-changes dialog or refuse — so the response reports only what was guaranteed, never a termination it cannot confirm without blocking:
+Requests an application quit and returns success only after the process is observed gone. Session-critical processes are refused with `INVALID_ARGS` + `not_delivered` before any native close (`close_app.rs`; dogfood J2 for Windows `explorer.exe`) — not `PERM_DENIED`.
 
-- Graceful: `{ "app": "TextEdit", "method": "graceful", "requested": true }`. The quit was sent. To confirm it actually closed, observe with `list-apps` or `wait --window`; if a save dialog appears, `snapshot` it and click the choice (`find --role button --name Delete`).
-- `--force`: `{ "app": "TextEdit", "method": "force", "requested": true, "closed": true }`. Sends SIGTERM to matching app processes, escalates survivors to SIGKILL, and returns success only after termination is verified.
+- Graceful: posts a platform quit request (`WM_CLOSE` to every top-level window of the pid on Windows; Apple Events / SIGTERM path on macOS) and reports `{ "app", "method": "graceful", "requested": true, "closed": true }` only after verified exit. If a save dialog appears, `snapshot` it and click the choice.
+- `--force`: `{ "app", "method": "force", "requested": true, "closed": true }` after verified termination (`TerminateProcess` on Windows; SIGTERM then SIGKILL on macOS).
+
+On Windows, a steady-state windowless process is `APP_NOT_FOUND` via `list-apps` (window-owning inventory only), unlike macOS, which can close windowless apps.
 
 ### list-apps
 ```bash
@@ -191,9 +200,27 @@ Zooms the window to fill the screen.
 agent-desktop restore --app "TextEdit"
 agent-desktop restore --window-id w-4521
 ```
-Restores a minimized or maximized window to its previous size.
+Undoes a minimize: the window returns to whatever placement it held before,
+which for a window that was maximized when it was minimized is maximized
+again. Restore does not promise to un-maximize.
+
+On Windows, `minimize` / `maximize` / `restore` / `resize-window` /
+`move-window` and any headed command that must focus a window first refuse a
+target whose thread has stopped processing messages, reporting
+`APP_UNRESPONSIVE` with `not_delivered` rather than blocking: those operations
+are delivered to the target's message queue, so a hung application would
+otherwise hang the command with no timeout able to interrupt it.
 
 ## Notifications
+
+macOS drives Notification Center; Windows drives the Action Center over UI
+Automation. The command shapes and JSON fields are identical; the platform
+differences are noted inline.
+
+Output is not redacted at the command layer: notification titles and bodies
+are returned verbatim (and the notification-area surface publishes the
+shell's names of installed background agents). Treat output you route onward
+as sensitive.
 
 If Notification Center fails to close after a successful list or dismiss operation, the command still returns its completed result; the close failure is logged internally and is never surfaced as an error, so a cleanup hiccup never discards a completed action.
 
@@ -203,7 +230,12 @@ agent-desktop --headed list-notifications
 agent-desktop --headed list-notifications --app "Slack"
 agent-desktop --headed list-notifications --text "deploy" --limit 5
 ```
-Lists notifications in Notification Center. Headless mode can observe it only when it is already open; `--headed` may open it and restore the prior frontmost app afterward. Returns array of `{ index, app_name, title, body, actions }`.
+Lists notifications in Notification Center (macOS) or the Action Center
+(Windows). Headless mode can observe it only when it is already open — an
+open surface is adopted and left as found; when it is closed, a
+strict-headless call is refused with `POLICY_DENIED` before the surface is
+raised, and `--headed` may open it and restore the prior frontmost app
+afterward. Returns array of `{ index, app_name, title, body, actions }`.
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -234,12 +266,16 @@ Dismisses all notifications, optionally filtered by app. Requires `--headed` bec
 
 Returns `{ "dismissed_count": N, "failures": [...], "failed_count": N }`.
 
+On Windows the clear is judged against the identity set captured before it:
+only captured entries still present afterwards are failures, so entries
+arriving while the clear runs are new arrivals, not failures.
+
 ### notification-action
 ```bash
 agent-desktop --headed notification-action 1 "Reply" --expected-app Slack
 agent-desktop --headed notification-action 2 "Mark as Read" --expected-app Slack --expected-title "#general"
 ```
-Clicks a named action button on a notification by its 1-based index. Requires `--headed` and at least one listing fingerprint.
+Clicks a named action button on a notification by its 1-based index. Requires `--headed` and at least one listing fingerprint. An action name the entry does not offer fails with `ACTION_NOT_SUPPORTED` and leaves the notification unchanged.
 
 `--expected-app` and `--expected-title` pin the call to the notification
 you observed in `list-notifications`. Notification Center reorders
@@ -264,6 +300,13 @@ Blocks until a new notification appears (detects index-diff from a baseline capt
 
 Like listing, a headless wait can observe only an already-open Notification Center; use global `--headed` when the command may open and later restore it.
 
+On Windows the wait holds no long-lived session: each poll opens and closes
+the Action Center through its own one-call session, adopting a center that
+is already present and restoring the entry state afterwards. A toast joins
+the center only while it is open, so toasts posted while the center sits
+closed between polls never land — hold the center open yourself if you are
+staging arrivals.
+
 ## Clipboard
 
 ### clipboard-get
@@ -278,7 +321,7 @@ Reads a typed clipboard representation.
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--format` | text | Representation to read: `text`, `auto` (richest available: file references, then image, then text), `image`, `file-urls` |
-| `--out` | private temp file | Where to write image bytes when `--format image`/`auto` resolves to an image; defaults to a private file under the active session's directory, or `~/.agent-desktop/tmp` with no active session |
+| `--out` | private temp file | Where to write image bytes when `--format image`/`auto` resolves to an image; defaults to a private file under the active session's directory, or `~/.agent-desktop/tmp` with no active session. A user-named `--out` path bypasses the private-file seam via `write_user_atomic` so network shares and foreign-owned directories remain writable |
 
 **Output by format:**
 ```json
@@ -287,6 +330,8 @@ Reads a typed clipboard representation.
 { "data": { "type": "image", "path": "/Users/me/.agent-desktop/sessions/<id>/clipboard/clipboard-...png", "width": 800, "height": 600 } }
 ```
 When the pasteboard has nothing in the requested representation, the response is `{ "data": { "type": "<requested format>", "found": false } }` with no other payload fields.
+
+**Windows:** formats map through Win32 — `CF_UNICODETEXT` (text), `CF_DIB`/`CF_DIBV5`/registered PNG (image), `CF_HDROP` (file lists). `auto` resolves **FileUrls → Image → Text**, matching macOS. There is one clipboard per window station; hermetic tests use save/restore plus a serialization lock because creating a private window station failed without privilege 1314 (A22-5). Delay-rendered `GetClipboardData` can hang against a non-pumping owner, so the read path abandons a worker rather than blocking past the deadline (A22-3).
 
 ### clipboard-set
 ```bash
@@ -302,6 +347,8 @@ Writes typed content to the clipboard. `--file-url` (repeatable) and `--image` e
 | (positional) | Text to write (ignored if `--image` or `--file-url` is given) |
 | `--image` | Path to a PNG file to write to the clipboard |
 | `--file-url` | File path to write as a file reference; repeatable. Every path must exist on disk or the command returns `INVALID_ARGS` |
+
+**Windows:** publishes the same typed representations consumers actually read (`CF_UNICODETEXT`, DIB/PNG image formats, `CF_HDROP`). A write that loses clipboard ownership mid-transaction reports `delivered_unverified` rather than a false success.
 
 ### clipboard-clear
 ```bash
@@ -364,6 +411,20 @@ agent-desktop wait --event window-opened --window "Untitled" --timeout 10000
 ```
 Blocks until a desktop lifecycle signal is observed, detected by diffing a baseline captured at wait start against fresh reads — no need to know a new window's id or title up front. `--window-id`/`--window` are optional narrowing filters on top of `--event`, never a requirement by themselves (bare `--window` without `--event` instead selects the `wait (window)` mode above).
 
+**`--app` resolves once, at wait start, and that has three consequences worth
+knowing before you rely on it.** The application must already be running:
+every event except `app-launched` resolves the target before the first poll,
+so scoping to a process that does not exist yet returns `APP_NOT_FOUND`
+immediately rather than waiting out the timeout. Use `app-launched` — or an
+unscoped wait — when you are racing a launch. The wait then pins to the one
+process instance it resolved, so a *second* process of the same name starting
+later is invisible to it; if you need any instance of a name, run the wait
+unscoped and filter the event yourself. And a target that dies before that
+resolution completes also reports `APP_NOT_FOUND`, which reads like a bad
+`--app` value but means the opposite: the application existed and its
+disappearance is what broke the lookup. For a disappearance you expect,
+prefer an unscoped wait.
+
 | Token | Fires when |
 |-------|------------|
 | `window-opened` | A window not present in the baseline appears |
@@ -393,7 +454,7 @@ Transient errors (timeouts, element-not-found) are retried within the `--timeout
 | `--event` | | Desktop lifecycle signal to wait for: `window-opened`, `window-closed`, `app-launched`, `app-terminated`, `focus-changed`, `surface-appeared`, `surface-dismissed` |
 | `--window-id` | | Narrows `--event` to one window ID (window/focus events only) |
 | `--timeout` | 30000 | Timeout in ms (for element/window/text/menu/event waits) |
-| `--app` | | Scope the wait to a specific application |
+| `--app` | | Scope the wait to **one already-running process instance**, resolved once at wait start — not to every process of that name for the wait's duration. See the note below |
 
 ## Batch
 
@@ -465,6 +526,14 @@ agent-desktop cursor-overlay disable
 ```
 
 No flags gives the default look: white body, near-black rim, blue ripple, blue element outline.
+
+`enable` answers with `data.rendered`, a boolean saying whether anything was 
+actually drawn. It is `true` where a renderer ships and `false` where the 
+session setting was recorded but nothing painted, which is the answer on 
+Windows today. Read it rather than treating `ok: true` as proof of a visible 
+cursor: the command succeeded at what it could do, and the field is how it 
+tells you which of the two happened. `disable` carries no such field, because 
+a disable has nothing to render.
 
 Style is stored in the session manifest and inherited by every eligible headless command, batch entries included. Action and batch-entry schemas take no cursor flags. Run `enable` again to restyle; it applies at once.
 
@@ -599,7 +668,7 @@ When `session_id` resolves to a session with a readable manifest, the response a
 agent-desktop permissions
 agent-desktop permissions --request
 ```
-Checks the cached per-process permission report: `accessibility`, `screen_recording`, and `automation`, each as `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording. Automation is probed against System Events without prompting; `{ "state": "unknown" }` means macOS would need to prompt or the target could not be probed. `--request` asks for all three permissions through a bounded isolated helper so a stalled native prompt cannot strand the command process.
+Checks the cached per-process permission report: `accessibility`, `screen_recording`, and `automation`, each as `{ "state": "granted" }`, `{ "state": "denied", "suggestion": "..." }`, `{ "state": "not_required" }`, or `{ "state": "unknown" }`. The current macOS adapter reports concrete `granted` or `denied` states for Accessibility and Screen Recording. Automation is probed against System Events without prompting; `{ "state": "unknown" }` means macOS would need to prompt or the target could not be probed. On Windows, capture has no screen-recording consent gate — `screen_recording` reports `not_required` when capture works and `unknown` only where the session cannot support it. `--request` asks for all three permissions through a bounded isolated helper so a stalled native prompt cannot strand the command process.
 
 `status`, `permissions`, command preflight, and `batch` share one nonprompting permission probe per process. `permissions --request` is the only path that intentionally asks the platform to prompt again, and it does so in the isolated helper.
 

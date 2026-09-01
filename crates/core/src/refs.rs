@@ -204,6 +204,12 @@ pub(crate) fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), AppErr
     crate::private_file::write_atomic(path, bytes).map_err(AppError::from)
 }
 
+/// Writes user-requested output for `screenshot` and `clipboard get`.
+///
+/// Unlike `write_private_file`, this does not route through the
+/// `PrivateFileOps` seam: the destination is user-chosen and must tolerate
+/// remote, reparse-traversing, and foreign-owned paths that the private
+/// policy refuses. See `crate::private_file::write_user_atomic`.
 pub(crate) fn write_user_file(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
     crate::private_file::write_user_atomic(path, bytes).map_err(|error| {
         if error.kind() == std::io::ErrorKind::InvalidData {

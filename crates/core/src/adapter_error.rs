@@ -90,6 +90,23 @@ impl AdapterError {
             .with_disposition(DeliverySemantics::not_delivered())
     }
 
+    /// `AMBIGUOUS_TARGET` for a process resolved by name alone - `launch` and
+    /// the shared app lookup behind `close-app`, `wait`, `screenshot`, and
+    /// friends. None of those commands take a pid, an instance token, or a
+    /// ref, so the suggestion names the candidates instead of pointing at a
+    /// flag none of them have.
+    pub fn ambiguous_process_target(message: impl Into<String>, pids: &[crate::ProcessId]) -> Self {
+        let numeric: Vec<u32> = pids.iter().map(|pid| pid.get()).collect();
+        Self::new(ErrorCode::AmbiguousTarget, message)
+            .with_suggestion(format!(
+                "{} running instances match (pids {numeric:?}); this command selects a \
+                 process by name and has no pid or instance flag to disambiguate",
+                pids.len()
+            ))
+            .with_details(serde_json::json!({ "candidate_pids": pids }))
+            .with_disposition(DeliverySemantics::not_delivered())
+    }
+
     pub fn not_supported(method: &str) -> Self {
         Self::new(
             ErrorCode::PlatformNotSupported,
@@ -99,6 +116,17 @@ impl AdapterError {
             "Use a platform/build that advertises this capability or choose a supported command",
         )
         .with_disposition(DeliverySemantics::not_delivered())
+    }
+
+    /// Whether this error is the trait-default answer a defaulted capability
+    /// method returns for `method` - the marker a caller consults to fall
+    /// through to an older path rather than to treat as a deliberate
+    /// refusal. A platform's own "this build does not expose it" refusal
+    /// carries the same code but not this message, so the two stay
+    /// distinguishable.
+    pub fn is_default_not_supported(&self, method: &str) -> bool {
+        self.code == ErrorCode::PlatformNotSupported
+            && self.message == format!("{method} is not supported on this platform")
     }
 
     pub fn element_not_found(ref_id: &str) -> Self {
@@ -212,6 +240,23 @@ fn policy_denied_suggestion(policy: InteractionPolicy) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_default_not_supported_marker_recognizes_only_its_own_constructor() {
+        let default = AdapterError::not_supported("resolve_shell_surface");
+        assert!(default.is_default_not_supported("resolve_shell_surface"));
+        assert!(!default.is_default_not_supported("list_surfaces"));
+
+        let refusal = AdapterError::new(
+            ErrorCode::PlatformNotSupported,
+            "the running build does not expose the 'quick-settings' shell surface",
+        );
+        assert!(
+            !refusal.is_default_not_supported("resolve_shell_surface"),
+            "a platform's own refusal must not read as the trait default, or core \
+             would fall through to the application path instead of surfacing it"
+        );
+    }
 
     #[test]
     fn retryability_is_typed_once_and_survives_diagnostic_enrichment() {

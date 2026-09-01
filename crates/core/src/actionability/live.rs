@@ -1,5 +1,7 @@
 use super::{
-    evaluate::check_with_stability, evidence::ActionabilityEvidence, report::ActionabilityReport,
+    evaluate::{check_with_stability, check_with_stability_or_gap},
+    evidence::ActionabilityEvidence,
+    report::ActionabilityReport,
     stability::StabilityExpectation,
 };
 use crate::{
@@ -54,6 +56,28 @@ pub(crate) fn check_live_with_stability(
             .get_live_element(target.handle, target.deadline),
     )?;
     check_with_stability(
+        stability,
+        &evidence,
+        request,
+        Some((target.handle, target.adapter)),
+        target.deadline,
+    )
+}
+
+/// [`check_live_with_stability`]'s report-preserving counterpart - see
+/// [`check_with_stability_or_gap`] for why `stable_preflight` needs it.
+pub(crate) fn check_live_with_stability_or_gap(
+    target: &LiveCheckTarget<'_>,
+    request: &ActionRequest,
+    stability: StabilityExpectation,
+) -> Result<ActionabilityReport, AdapterError> {
+    let evidence = observe(
+        target.entry,
+        target
+            .adapter
+            .get_live_element(target.handle, target.deadline),
+    )?;
+    check_with_stability_or_gap(
         stability,
         &evidence,
         request,

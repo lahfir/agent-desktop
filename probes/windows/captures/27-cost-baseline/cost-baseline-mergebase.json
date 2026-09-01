@@ -1,0 +1,73 @@
+{
+    "probe":  "27-cost-baseline",
+    "methodology":  "min-of-seven with the warm-up discarded, reported as min with median and max beside it",
+    "label":  "mergebase",
+    "binary_present":  true,
+    "snapshot_self":  {
+                          "measurable":  true,
+                          "command":  "snapshot --window-id \u003cwindow\u003e",
+                          "target":  "notepad",
+                          "runs_total":  7,
+                          "warmup_discarded":  1,
+                          "min_ms":  119.3314,
+                          "median_ms":  181.4794,
+                          "max_ms":  324.532,
+                          "exit_code_of_last_run":  0
+                      },
+    "list_apps":  {
+                      "runs_total":  7,
+                      "warmup_discarded":  1,
+                      "min_ms":  37.4352,
+                      "median_ms":  39.5612,
+                      "max_ms":  68.9564,
+                      "exit_code_of_last_run":  0
+                  },
+    "list_windows":  {
+                         "runs_total":  7,
+                         "warmup_discarded":  1,
+                         "min_ms":  59.5127,
+                         "median_ms":  80.712,
+                         "max_ms":  87.195,
+                         "exit_code_of_last_run":  0
+                     },
+    "status":  {
+                   "runs_total":  7,
+                   "warmup_discarded":  1,
+                   "min_ms":  58.578,
+                   "median_ms":  114.1633,
+                   "max_ms":  140.4032,
+                   "exit_code_of_last_run":  0
+               },
+    "list_displays":  {
+                          "runs_total":  7,
+                          "warmup_discarded":  1,
+                          "min_ms":  33.1036,
+                          "median_ms":  34.1765,
+                          "max_ms":  110.3594,
+                          "exit_code_of_last_run":  0
+                      },
+    "ref_action_live":  {
+                            "measurable":  true,
+                            "command":  "click \u003cref\u003e",
+                            "target":  "fixture-primary-button",
+                            "target_state":  "live",
+                            "runs_total":  7,
+                            "warmup_discarded":  1,
+                            "min_ms":  227.3111,
+                            "median_ms":  309.5505,
+                            "max_ms":  442.7499,
+                            "exit_code_of_last_run":  0
+                        },
+    "ref_action_dead":  {
+                            "measurable":  true,
+                            "command":  "click \u003cref\u003e",
+                            "target":  "fixture-primary-button",
+                            "target_state":  "dead",
+                            "runs_total":  7,
+                            "warmup_discarded":  1,
+                            "min_ms":  5060.5215,
+                            "median_ms":  5114.8899,
+                            "max_ms":  5141.2234,
+                            "exit_code_of_last_run":  1
+                        }
+}

@@ -338,6 +338,7 @@ fn authoritatively_absent_native_identifier_is_a_definitive_mismatch() {
         ref_evidence: LocatorRefEvidence {
             bounds: LocatorField::Absent,
             available_actions: LocatorField::Absent,
+            descriptors: Default::default(),
         },
     };
 
@@ -370,6 +371,7 @@ fn native_identifier_reuse_by_a_different_role_is_definitively_stale() {
         ref_evidence: LocatorRefEvidence {
             bounds: LocatorField::Absent,
             available_actions: LocatorField::Absent,
+            descriptors: Default::default(),
         },
     };
 

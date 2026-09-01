@@ -12,6 +12,10 @@ pub use agent_desktop_ffi::{
 };
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
+
+#[cfg(target_os = "windows")]
+pub mod win32_fixture;
+
 use std::sync::{
     Mutex,
     atomic::{AtomicU64, Ordering},
@@ -20,10 +24,13 @@ use std::sync::{
 static HOME_LOCK: Mutex<()> = Mutex::new(());
 static HOME_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Clears AGENT_DESKTOP_HOME rather than pinning it: the two layout branches
+/// produce different paths, and a pinned var breaks test layout assumptions.
 struct IsolatedHome {
     _lock: std::sync::MutexGuard<'static, ()>,
     path: std::path::PathBuf,
     previous: Option<std::ffi::OsString>,
+    previous_state_root: Option<std::ffi::OsString>,
 }
 
 impl IsolatedHome {
@@ -38,11 +45,14 @@ impl IsolatedHome {
         ));
         std::fs::create_dir_all(&path).expect("create isolated FFI test HOME");
         let previous = std::env::var_os("HOME");
+        let previous_state_root = std::env::var_os("AGENT_DESKTOP_HOME");
         unsafe { std::env::set_var("HOME", &path) };
+        unsafe { std::env::remove_var("AGENT_DESKTOP_HOME") };
         Self {
             _lock: lock,
             path,
             previous,
+            previous_state_root,
         }
     }
 }
@@ -52,6 +62,10 @@ impl Drop for IsolatedHome {
         match self.previous.as_ref() {
             Some(previous) => unsafe { std::env::set_var("HOME", previous) },
             None => unsafe { std::env::remove_var("HOME") },
+        }
+        match self.previous_state_root.as_ref() {
+            Some(previous) => unsafe { std::env::set_var("AGENT_DESKTOP_HOME", previous) },
+            None => unsafe { std::env::remove_var("AGENT_DESKTOP_HOME") },
         }
         let _ = std::fs::remove_dir_all(&self.path);
     }

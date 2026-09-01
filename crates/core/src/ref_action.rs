@@ -1,10 +1,11 @@
 use crate::{
-    AdapterError, AppError,
+    AdapterError, AppError, DeliverySemantics, ErrorCode,
     action_request::ActionRequest,
     action_result::ActionResult,
     actionability,
     adapter::{NativeHandle, PlatformAdapter},
     context::CommandContext,
+    ref_action_actionability,
     ref_action_context::RefActionContext,
     refs::RefEntry,
 };
@@ -22,10 +23,10 @@ pub(crate) struct ResolvedRefAction<'a> {
 }
 
 pub(crate) struct ActionabilityPreflight {
-    verified_point: Option<crate::Point>,
-    presentation_point: Option<crate::Point>,
-    presentation_bounds: Option<crate::Rect>,
-    pointer_delivery: actionability::PointerDelivery,
+    pub(crate) verified_point: Option<crate::Point>,
+    pub(crate) presentation_point: Option<crate::Point>,
+    pub(crate) presentation_bounds: Option<crate::Rect>,
+    pub(crate) pointer_delivery: actionability::PointerDelivery,
 }
 
 impl<'a> ResolvedRefAction<'a> {
@@ -61,7 +62,14 @@ pub(crate) fn dispatch_resolved(
         .process_instance
         .as_deref()
         .filter(|instance| !instance.is_empty())
-        .ok_or_else(|| AdapterError::stale_ref("target process instance is unavailable"))?;
+        .ok_or_else(|| {
+            AdapterError::new(
+                ErrorCode::StaleRef,
+                "target process instance is unavailable",
+            )
+            .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+            .with_disposition(DeliverySemantics::not_delivered())
+        })?;
     let expected_process = crate::ProcessIdentity::new(target.entry.process.pid, process_instance);
     let mut handle = target
         .adapter
@@ -83,10 +91,16 @@ pub(crate) fn dispatch_resolved(
             if !crate::ref_action_wait_evidence::should_scroll_after_preflight(&request, &error) {
                 return Err(error.into());
             }
-            target
-                .adapter
-                .scroll_into_view(&handle, lease)
-                .inspect_err(|error| trace_scroll_error(&target, error))?;
+            if let Err(scroll_error) = target.adapter.scroll_into_view(&handle, lease) {
+                trace_scroll_error(&target, &scroll_error);
+                return Err(
+                    crate::ref_action_wait_evidence::attach_scroll_recovery_failure(
+                        error,
+                        &scroll_error,
+                    )
+                    .into(),
+                );
+            }
             handle = target
                 .adapter
                 .resolve_element_strict(target.entry, target.deadline)
@@ -221,22 +235,27 @@ fn pre_trace_capture_deadline(parent: crate::Deadline) -> Option<crate::Deadline
     Some(parent.capped(capture_budget))
 }
 
+/// The permissive check compares live bounds against the ref's
+/// snapshot-time evidence, which a caller's own preceding `scroll-to` on
+/// this same ref legitimately moved - so a report whose only gap is
+/// `stable` is not yet a verdict, it is the reason to sample. Anything else
+/// unmet (disabled, hidden, policy) is terminal immediately: no amount of
+/// waiting changes it, and `check_live_with_stability_or_gap` already
+/// converts those to `Err` for us.
 fn stable_preflight(
     target: &ResolvedRefAction<'_>,
     request: &ActionRequest,
 ) -> Result<ActionabilityPreflight, AppError> {
-    let permissive = check_actionability_with_trace(
+    let stability =
+        actionability::StabilityExpectation::permissive(target.entry.geometry.bounds_hash);
+    let report = ref_action_actionability::check_report_with_trace(
         target,
         request,
-        actionability::StabilityExpectation::permissive(target.entry.geometry.bounds_hash),
+        stability,
+        actionability::check_live_with_stability_or_gap,
     )?;
-    if !actionability::requires_stability(&request.action)
-        || matches!(
-            permissive.pointer_delivery,
-            actionability::PointerDelivery::Semantic
-        )
-    {
-        return Ok(permissive);
+    if report.actionable {
+        return Ok(ref_action_actionability::preflight_from_report(&report));
     }
     let started = std::time::Instant::now();
     let mut sampler = actionability::stability_sampler::StabilitySampler::new();
@@ -296,40 +315,13 @@ fn check_actionability_with_trace(
     request: &ActionRequest,
     stability: actionability::StabilityExpectation,
 ) -> Result<ActionabilityPreflight, AppError> {
-    target.context.trace_lazy(
-        "actionability.check.start",
-        || json!({ "ref": target.ref_id, "action": request.action.name() }),
-    )?;
-    let report = actionability::check_live_with_stability(
-        &actionability::LiveCheckTarget {
-            entry: target.entry,
-            handle: target.handle,
-            adapter: target.adapter,
-            deadline: target.deadline,
-        },
+    let report = ref_action_actionability::check_report_with_trace(
+        target,
         request,
         stability,
-    )
-    .inspect_err(|err| {
-        let _ = target.context.trace_lazy("actionability.check.error", || {
-            json!({
-                "ref": target.ref_id,
-                "action": request.action.name(),
-                "code": err.code.as_str(),
-                "message": err.message.clone(),
-                "details": err.details.clone()
-            })
-        });
-    })?;
-    target.context.trace_lazy("actionability.check.ok", || {
-        json!({ "ref": target.ref_id, "action": request.action.name(), "report": json!(report) })
-    })?;
-    Ok(ActionabilityPreflight {
-        verified_point: report.verified_point,
-        presentation_point: report.presentation_point,
-        presentation_bounds: report.presentation_bounds,
-        pointer_delivery: report.pointer_delivery,
-    })
+        actionability::check_live_with_stability,
+    )?;
+    Ok(ref_action_actionability::preflight_from_report(&report))
 }
 
 /// Builds a stable, non-sensitive trace label from a `RefEntry`. The label
@@ -397,3 +389,7 @@ mod tests;
 #[cfg(test)]
 #[path = "ref_action_cursor_overlay_tests.rs"]
 mod cursor_overlay_tests;
+
+#[cfg(test)]
+#[path = "ref_action_scroll_recovery_tests.rs"]
+mod scroll_recovery_tests;

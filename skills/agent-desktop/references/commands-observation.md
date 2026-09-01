@@ -29,10 +29,12 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 | `--max-depth` | 10 | Maximum tree traversal depth |
 | `--include-bounds` | false | Include `{x, y, width, height}` for each element |
 | `--compact` | false | Omit empty structural nodes |
-| `--surface` | window | Target surface: `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert` |
+| `--surface` | window | Target surface: `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert`. Windows additionally serves the shell kinds `taskbar`, `system-tray`, `system-tray-overflow`, `start-menu`, `action-center` |
 | `--skeleton` | false | Clamp traversal to depth 3 and add `children_count` to truncated containers |
 | `--root <REF>` | | Drill down from a ref discovered in a previous snapshot. Cannot be combined with `--surface` |
 | `--snapshot <snapshot_id>` | embedded in qualified root | Required only when `--root` is a legacy bare ref |
+| `--timeout-ms <MS>` | 3000 | Observation deadline. A cold Chromium/Electron settle can take 10-25s; raise this when a fresh snapshot returns a shell-thin tree |
+| `--force-electron-a11y` | false | Assume Chromium renderer accessibility is already forced, so the adapter skips activation guidance and returns the observed tree |
 
 **Output structure:**
 ```json
@@ -45,6 +47,7 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
     "window": { "id": "w-4521", "title": "General" },
     "ref_count": 14,
     "snapshot_id": "s8f3k2p9",
+    "complete": true,
     "tree": {
       "role": "window",
       "name": "General",
@@ -74,10 +77,23 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 }
 ```
 
+**Partial snapshots (`data.complete`):**
+- `complete` is present on every snapshot. `true` means the whole tree was observed
+- A snapshot that exhausts its observation budget still succeeds: `ok: true` with `"complete": false`, the tree it did observe, `"truncated": true`, and `"nodes_observed"` — it is not a `TIMEOUT` error, so read `complete` rather than branching on an error code to detect an oversized tree
+- Every node whose descendants were cut short carries `"subtree_truncated": true`, emitted only when true, so you can walk from the root to each boundary and drill in with `--root`
+- Raise `--timeout-ms` or lower `--max-depth` to turn a partial tree into a complete one
+- A `--root` drill-down replaces refs inside an existing snapshot, so it is all-or-nothing: an incomplete observation returns `TIMEOUT` instead of a partial tree
+
 **Skeleton mode (`--skeleton`):**
 - Produces a shallow overview by clamping depth to `min(max_depth, 3)`
 - Truncated containers include a `children_count` field showing how many children were omitted
 - Each truncated branch exposes its deepest safely resolvable drill target using stable text, native ID, or bounds evidence; an anonymous boundary falls back to its nearest resolvable ancestor
+
+**Optional descriptor fields** (emitted by Windows; absent on macOS and Linux; all four are optional and omitted unless a provider produces them):
+- `subrole` — finer role refinement from UIA `AriaRole` (web content)
+- `role_description` — provider's localized control-type description
+- `placeholder` — `HelpText` where it is not already the description
+- `dom_classes` — DOM class list; no Windows producer yet, so always absent on Windows in the current phase
 
 **Root mode (`--root <REF>`):**
 - Starts tree traversal from the given ref instead of the window root
@@ -99,8 +115,23 @@ agent-desktop snapshot --root @e3 --snapshot <snapshot_id> -i
 
 **Tips:**
 - Always use `-i` to keep output compact for LLM context windows
-- Use `--surface menu` to capture open context menus or dropdown menus
-- Use `--surface sheet` for modal dialogs
+- Use `--surface menu` to capture open context menus or dropdown menus (macOS and Windows)
+- Use `--surface sheet` for modal dialogs (both platforms)
+
+**Surfaces are platform-specific, and the honest list is in `status`.** Run
+`agent-desktop status` and read `supported_surfaces` before requesting one:
+macOS serves `window`, `focused`, `menu`, `menubar`, `sheet`, `popover` and
+`alert`, while Windows serves `window`, `focused`, `sheet`, `menu`, and the
+shell kinds `taskbar`, `system-tray`, `system-tray-overflow`, `start-menu`
+and `action-center`. A surface the adapter does not serve returns
+`PLATFORM_NOT_SUPPORTED` with the supported list in `details`, so the failure
+is honest — but it is cheaper to read `status` first than to discover it from
+an error.
+
+The shell kinds are OS chrome no application owns: `snapshot --surface
+<kind>` resolves an already-present shell surface with no `--app`, and a
+closed one returns `WINDOW_NOT_FOUND` with a suggestion naming
+`open-system-surface` as the way to raise it — see that command below.
 - Use `--compact` with `-i` for maximum token efficiency
 - Combine `--max-depth 5` to limit deep trees (e.g., Xcode)
 - Use exact `find` first when you know the target role or name; otherwise use `--skeleton` for a high-level map, then `--root` to drill into specific regions
@@ -135,6 +166,8 @@ menu-bar dump.
 | Flag | Description |
 |------|-------------|
 | `--app` | Application name |
+| `--window-id ID` | Search one window from `list-windows` instead of every window the app owns |
+| `--timeout-ms MS` | Traversal deadline, default 5000. A large tree — a shell file dialog, whose folder tree and item list both populate — can exceed it; raise this or narrow the search rather than reading the timeout as an unresponsive app |
 | `--root REF` | Search only inside this ref's subtree instead of the whole window. Pair with `--snapshot` for a legacy bare `@eN` ref |
 | `--surface` | Search an overlay instead of the window (`menubar`, `menu`, `sheet`, `alert`, `popover`, ...). A menu bar belongs to the application, so several open windows are not ambiguous here. Cannot be combined with `--root`, which already carries its own surface |
 | `--role` | Role to match against the live tree (button, textfield, checkbox, scrollarea, window, ...). Case-insensitive; `textarea`/`textbox`/`searchfield` fold to `textfield`. When a role filter matches nothing, the response carries `roles_present` — the roles actually in the searched tree — so you can tell "none on screen" from a wrong role name and retry |
@@ -192,12 +225,27 @@ agent-desktop get @s8f3k2p9:e1 --property title
 
 | Property | Returns |
 |----------|---------|
-| `text` | Accessible name/label (default) |
+| `text` | The element's current text content — today the same read as `value` |
 | `value` | Current value (text content, slider position, etc.) |
-| `title` | Window or element title |
+| `title` | Accessible name or label — this is the one that answers "what does this button say" |
 | `bounds` | `{ x, y, width, height }` rectangle |
 | `role` | Element role string |
 | `states` | Array of active states |
+
+`text` is the default, and on a control with a label but no value — a button,
+a menu item — it comes back empty. `title` carries the accessible name there.
+The two are not yet distinct reads: `text` and `value` resolve identically,
+and whether `text` should prefer the name is an open contract question rather
+than settled behaviour, so this table describes what ships rather than what
+the name suggests.
+
+For `--property bounds`, the response carries a sibling `live` boolean. `true`
+means the rectangle came from a live read taken just now; `false` means the
+live read succeeded but found no current bounds (collapsed, not laid out,
+virtualized) or the platform could not perform one, so the snapshot-time
+rectangle was returned instead. A caller piping `bounds` straight into
+`mouse-click --x --y` should check `live` first — a `false` rectangle may no
+longer be where the element is.
 
 ## is
 
@@ -229,7 +277,7 @@ agent-desktop is @s8f3k2p9:e6 --property selected
 
 ## screenshot
 
-Capture a PNG screenshot of an application window.
+Capture a PNG screenshot of an application window or display.
 
 ```bash
 agent-desktop screenshot --app "Finder"
@@ -245,9 +293,11 @@ agent-desktop screenshot --screen 0 display.png
 | `--screen` | Capture display by index instead of an app window (from `list-displays`; `0` = primary) |
 | (positional) | File path to save PNG (omit for base64 in JSON) |
 
-When no output path is given, the screenshot is returned as a base64-encoded string in the JSON `data` field.
+When no output path is given, the screenshot is returned as a base64-encoded string in the JSON `data` field. A positional PATH writes through the user-path atomic writer (not the private-file seam), so network shares and foreign-owned directories stay writable; omitting the path keeps bytes in the JSON envelope.
 
-Screenshots require Screen Recording permission. Permission denial is reported as `PERM_DENIED`, not `INTERNAL`.
+**macOS:** screenshots require Screen Recording permission. Permission denial is reported as `PERM_DENIED`, not `INTERNAL`.
+
+**Windows:** runtime precedence is Modern (`Windows.Graphics.Capture`) then Legacy (`PrintWindow` / `BitBlt`). Gate on the runtime `IsSupported` predicate and successful interop activation, not on OS build number (A22-1). When modern is unavailable or fails to activate — including hosts where `IsSupported` is true but interop cannot activate — the command attempts Legacy silently; a 200ms floor is reserved for the Legacy attempt out of the overall deadline, but budget exhaustion or a Legacy failure can still surface as an error rather than guaranteeing `ok: true` (`LEGACY_DEADLINE_FLOOR` in `capture_backend.rs`). Windows has no screen-recording consent gate; `permissions` reports `screen_recording` as `not_required` when capture works. Bare `screenshot PATH` (no `--app` / `--screen`) maps to the primary display, matching `--screen 0`.
 
 ## list-displays
 
@@ -271,10 +321,45 @@ Returns an array of `{ id, bounds: { x, y, width, height }, is_primary, scale }`
 
 ## list-surfaces
 
-List available accessibility surfaces for an application.
+List the surfaces an application presents right now.
 
 ```bash
 agent-desktop list-surfaces --app "Finder"
 ```
 
-Returns the available surfaces (window, menu, menubar, sheet, popover, alert) for snapshotting. Use this to discover what surfaces are currently available before targeting a specific one with `snapshot --surface`.
+Returns the surfaces available for `snapshot --surface`. On macOS these are
+the app-owned overlay surfaces (window, menu, menubar, sheet, popover,
+alert). On Windows the inventory is per-process: every top-level window as
+`window`, the foreground one also `focused`, a modal window as `sheet`, and
+an open menu as one `menu` surface carrying `item_count`. Shell surfaces
+belong to the OS rather than to any process and never appear here — use
+`snapshot --surface <kind>` for those.
+
+## open-system-surface
+
+Raise a shell surface and get the identity of the window it actually
+presents — the same `w-<id>` shape `list-windows` emits, so the round trip
+into `snapshot` needs no second lookup.
+
+```bash
+agent-desktop --headed open-system-surface --surface action-center
+agent-desktop --headed open-system-surface --surface start-menu
+```
+
+| Flag | Description |
+|------|-------------|
+| `--surface` | Shell surface to open. Windows: `start-menu`, `taskbar`, `system-tray`, `system-tray-overflow`, `action-center` |
+
+The command takes the foreground, so it enforces the same floor as every
+chrome-raising command: a strict-headless call is refused with
+`POLICY_DENIED` before anything is raised — pass global `--headed`. An
+already-present surface is returned without being raised again.
+
+A kind the running OS does not expose returns `PLATFORM_NOT_SUPPORTED` with
+a `platform_detail` naming the build and the surface that carries the
+capability instead — `quick-settings` on pre-Windows-11 builds points at
+`action-center`, whose pane holds the quick actions there. `start-menu`
+resolves to whatever the OS accelerator actually raises, which on
+pre-Windows-11 builds is a search-hosted overlay. The macOS kinds
+(`spotlight`, `dock`, `menu-bar-extras`) are not implemented yet and return
+`PLATFORM_NOT_SUPPORTED`.

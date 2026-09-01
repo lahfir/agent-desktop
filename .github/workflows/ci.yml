@@ -38,6 +38,7 @@ jobs:
       - name: Validate GitHub Actions workflows
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.11
 
+
   msrv:
     name: Rust 1.89 MSRV
     runs-on: ubuntu-latest
@@ -64,6 +65,9 @@ jobs:
             package: agent-desktop-linux
           - platform: Windows
             os: windows-latest
+            package: agent-desktop-windows
+          - platform: Windows ARM64
+            os: windows-11-arm
             package: agent-desktop-windows
           - platform: macOS
             os: macos-latest
@@ -125,6 +129,12 @@ jobs:
 
       - name: Enforce Rust source rules
         run: scripts/check-rust-file-size.sh
+
+      - name: Enforce no delivery-plan references in source
+        run: scripts/check-no-phase-references.sh
+
+      - name: Enforce the stale_ref constructors take only ref ids
+        run: scripts/check-stale-ref-constructor-misuse.sh
 
       - name: Clippy
         run: cargo clippy --locked -p agent-desktop-core -p agent-desktop-macos -p agent-desktop -p agent-desktop-ffi --all-targets -- -D warnings
@@ -223,42 +233,399 @@ jobs:
   test-windows:
     name: Test (Windows)
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     permissions:
       contents: read
+    outputs:
+      lib_tests: ${{ steps.unit_tests.outputs.lib_tests }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust toolchain
         run: rustup show
 
+      # Core resolves its data dir via HOME then USERPROFILE (crates/core/src/refs.rs
+      # fn home_dir), and env assigned inside one run: block does not survive into
+      # the next step, so the isolation is hoisted here and exported through
+      # GITHUB_ENV for every later step. CARGO_HOME and RUSTUP_HOME must be resolved
+      # from the real USERPROFILE first (rustup/cargo default them to
+      # %USERPROFILE%\.rustup and %USERPROFILE%\.cargo) so repointing USERPROFILE at
+      # the empty test home doesn't strand the installed toolchain.
+      # ORIGINAL_USERPROFILE feeds the trailing profile-isolation guard.
+      - name: Isolate HOME for the whole lane
+        shell: pwsh
+        run: |
+          $cargoHome  = if ($env:CARGO_HOME)  { $env:CARGO_HOME }  else { Join-Path $env:USERPROFILE '.cargo' }
+          $rustupHome = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $env:USERPROFILE '.rustup' }
+          $testHome = Join-Path $env:RUNNER_TEMP ("agent-desktop-test-home-" + [guid]::NewGuid())
+          New-Item -ItemType Directory -Path $testHome | Out-Null
+          Add-Content -Path $env:GITHUB_ENV -Value "ORIGINAL_USERPROFILE=$env:USERPROFILE"
+          Add-Content -Path $env:GITHUB_ENV -Value "CARGO_HOME=$cargoHome"
+          Add-Content -Path $env:GITHUB_ENV -Value "RUSTUP_HOME=$rustupHome"
+          Add-Content -Path $env:GITHUB_ENV -Value "HOME=$testHome"
+          Add-Content -Path $env:GITHUB_ENV -Value "USERPROFILE=$testHome"
+
+      # HOME and USERPROFILE now point into RUNNER_TEMP for every remaining step
+      # (including the post-job cache save), so ~ would miss the real registry; the
+      # cache paths must go through the hoisted CARGO_HOME instead.
       - name: Cache cargo registry
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
+            ${{ env.CARGO_HOME }}/registry/index/
+            ${{ env.CARGO_HOME }}/registry/cache/
+            ${{ env.CARGO_HOME }}/git/db/
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      # Core resolves its data dir via HOME then USERPROFILE (crates/core/src/refs.rs
-      # fn home_dir), so pointing HOME at a fresh runner-temp directory is enough to
-      # keep tests off the real profile — the bash isolation script the macOS/Linux
-      # lanes use doesn't apply here since this step runs under pwsh. CARGO_HOME and
-      # RUSTUP_HOME must be resolved from the real USERPROFILE first (rustup/cargo
-      # default them to %USERPROFILE%\.rustup and %USERPROFILE%\.cargo) so repointing
-      # USERPROFILE at the empty test home doesn't strand the installed toolchain.
-      - name: Core and Windows unit tests (isolated HOME)
+      - name: Cache build artifacts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/
+          key: ${{ runner.os }}-build-ci-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}-${{ hashFiles('crates/**/*.rs', 'src/**/*.rs', 'tests/**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-build-ci-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}-
+            ${{ runner.os }}-build-ci-
+
+      # Widened relative to the macOS-lane check: dev edges are included (a Win32
+      # binding crate hiding in dev-dependencies otherwise passes clean) and the
+      # resolution is additionally pinned to the MSVC target.
+      - name: Check dependency isolation
         shell: pwsh
         run: |
-          $env:CARGO_HOME  = if ($env:CARGO_HOME)  { $env:CARGO_HOME }  else { Join-Path $env:USERPROFILE '.cargo' }
-          $env:RUSTUP_HOME = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $env:USERPROFILE '.rustup' }
+          $pattern = 'agent-desktop-(macos|windows|linux)|\bwindows-sys\b|\bwindows\b|\bwinapi\b'
+          foreach ($target in @('', 'x86_64-pc-windows-msvc')) {
+            $arguments = @('tree', '--locked', '-p', 'agent-desktop-core', '--edges', 'normal,build,dev')
+            if ($target) { $arguments += @('--target', $target) }
+            $tree = cargo @arguments
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $violations = @($tree | Select-String -Pattern $pattern)
+            if ($violations.Count -gt 0) {
+              $violations | ForEach-Object { Write-Host $_.Line }
+              Write-Host "FAIL: core crate pulls platform or Win32 binding crates (target: '$target')"
+              exit 1
+            }
+          }
+          Write-Host 'OK: core crate has no platform dependencies on normal, build, or dev edges'
+
+      # The dependency check cannot see hand-written externs, so reject the raw
+      # Win32 surface at source level. The allowlist is the pair of portable no-op
+      # directory-sync shims in private_file.rs; the count is pinned so a third
+      # windows conditional cannot ride in on the allowlisted file either.
+      - name: Check core source for Win32 leakage
+        shell: pwsh
+        run: |
+          $sources = Get-ChildItem -Path crates/core/src -Recurse -Filter *.rs
+          $forbidden = @($sources | Select-String -Pattern 'extern "system|std::os::windows|\bwinapi\b|\bwindows_sys\b')
+          if ($forbidden.Count -gt 0) {
+            $forbidden | ForEach-Object { Write-Host "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
+            Write-Host 'FAIL: core source declares a raw Win32 surface'
+            exit 1
+          }
+          $allowed = (Resolve-Path 'crates/core/src/private_file.rs').Path
+          $cfgMatches = @($sources | Select-String -Pattern 'cfg\(windows\)|cfg\(target_os = "windows"\)' -AllMatches)
+          $outside = @($cfgMatches | Where-Object { $_.Path -ne $allowed })
+          if ($outside.Count -gt 0) {
+            $outside | ForEach-Object { Write-Host "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
+            Write-Host 'FAIL: windows cfg outside the private_file.rs allowlist'
+            exit 1
+          }
+          $shimCount = [int]($cfgMatches | ForEach-Object { $_.Matches.Count } | Measure-Object -Sum).Sum
+          if ($shimCount -ne 2) {
+            Write-Host "FAIL: expected exactly 2 windows cfg shims in private_file.rs, found $shimCount"
+            exit 1
+          }
+          Write-Host 'OK: core source keeps windows conditionals to the 2 allowlisted shims'
+
+      # Supply-chain gate: Win32_UI_Shell stays out of the windows crate until a
+      # reviewed sub-phase takes it. Both SHCreateMemStream and DROPFILES sit
+      # behind that feature and would compile the moment it is added.
+      - name: Check Win32_UI_Shell exclusion
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-win32-ui-shell-exclusion.ps1
+
+      - name: Clippy
+        run: cargo clippy --locked -p agent-desktop-core -p agent-desktop-windows -p agent-desktop -p agent-desktop-ffi --all-targets -- -D warnings
+
+      # The zero-area visibility evidence can only come from a WPF control, and
+      # staging its on-screen host is opt-in so a developer's desktop does not
+      # gain a window mid-suite. This lane is the one that runs unattended, so
+      # it opts in; without the variable the test body skips and the evidence is
+      # never gathered anywhere. The passed-test total is exported so the ARM64
+      # lane can prove it executed the same suite rather than silently skipping
+      # tests whose runtime is missing from its image.
+      - name: Core and Windows unit tests
+        id: unit_tests
+        env:
+          AGENT_DESKTOP_LIVE_WPF: "1"
+        shell: pwsh
+        run: |
+          $output = cmd /c "cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib 2>&1"
+          $output | ForEach-Object { Write-Host $_ }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $passed = 0
+          foreach ($line in @($output)) {
+            if ("$line" -match '^test result: ok\.\s+(\d+) passed') { $passed += [int]$Matches[1] }
+          }
+          Write-Host "Total lib tests passed: $passed"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "lib_tests=$passed"
+
+      # The census example carries the redaction rule that keeps a real
+      # application's text out of a committed capture, and a --lib run does not
+      # execute tests inside examples/. Without this step that guard exists but
+      # never fires on the runner.
+      - name: Windows example tests
+        run: cargo test --locked -p agent-desktop-windows --examples
+
+      - name: Binary command tests
+        run: cargo test --locked -p agent-desktop
+
+      # The FFI crate ships integration harnesses under crates/ffi/tests/ that a
+      # --lib run skips, and the Windows-gated reachability coverage landing there
+      # must execute on this runner, so wire them in explicitly.
+      - name: FFI integration tests
+        run: cargo test --locked -p agent-desktop-ffi --tests
+
+      - name: Build stripped release binary
+        run: cargo build --locked --release -p agent-desktop
+
+      # The Windows analog of native-e2e.yml's exclusive suite gate: what a
+      # hosted windows-latest runner can actually execute today, run on
+      # every PR touching the tree - the harness's own assertion
+      # primitives, the failing-leg-to-exit-code wire, the redaction gate,
+      # the phases.md/FINDINGS.md citation gate, and a fixture compile
+      # smoke. The live suite itself still needs a real desktop and is
+      # proven separately by the local exclusive run (§2.12's own gate);
+      # this is what keeps the harness's structural half from rotting
+      # unexecuted between local runs.
+      - name: Windows E2E contract gate (scan and self-test halves)
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-e2e-windows-contract.ps1 -SelfTest
+
+      # R10/R9: a failing leg must reach a non-zero process exit code.
+      # -SelfTestSeedFailure always fails one leg and nothing else, so this
+      # is the one place that proves the exit-code wire itself rather than
+      # asserting it indirectly through the live suite's own pass/fail mix.
+      - name: Seeded-failure run asserts a non-zero exit code
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e-windows\Run-E2E.ps1 -SelfTestSeedFailure
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host 'FAIL: Run-E2E.ps1 -SelfTestSeedFailure exited 0; a failing leg must reach a non-zero exit code'
+            exit 1
+          }
+          Write-Host "OK: Run-E2E.ps1 -SelfTestSeedFailure exited $LASTEXITCODE"
+          # The step verifies that a command fails, so it must not inherit that
+          # command's exit code as its own verdict: $LASTEXITCODE is still
+          # non-zero here and Write-Host does not clear it, which would fail the
+          # step on the very outcome it was written to require.
+          exit 0
+
+      - name: Capture redaction gate
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-capture-redaction.ps1
+
+      - name: phases.md / FINDINGS.md citation gate
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-phases-ledger-citations.ps1
+
+      # R9's refusal-guard self-test: with AGENT_DESKTOP_NATIVE_E2E_RUNNER
+      # unset, run-windows-e2e-ci.ps1 must refuse before touching cargo, the
+      # desktop lease, or any process. Placed after the release binary
+      # above exists, so the unchanged-mtime predicate is not vacuously
+      # true (see the fixture's own header comment).
+      - name: run-windows-e2e-ci.ps1 refusal-guard self-test
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\fixtures\run-windows-e2e-ci-refusal-selftest.ps1
+
+      # csc.exe is in-box on windows-latest (A24-1's pinned compiler), so a
+      # fixture that fails to compile here is caught on every PR rather
+      # than only on the one dev box that has ever built it.
+      - name: E2E fixture compile smoke
+        shell: powershell
+        run: |
+          $smokeOut = Join-Path $env:RUNNER_TEMP 'agent-desktop-fixture-smoke'
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\fixture-app-windows\build.ps1 -OutputDir $smokeOut
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "FAIL: tests\fixture-app-windows\build.ps1 exited $LASTEXITCODE"
+            exit 1
+          }
+          if (-not (Test-Path -LiteralPath (Join-Path $smokeOut 'AgentDeskFixture.exe'))) {
+            Write-Host 'FAIL: build.ps1 reported success but AgentDeskFixture.exe is missing'
+            exit 1
+          }
+          Write-Host 'OK: the E2E fixture compiles under the pinned in-box csc.exe'
+
+      # The macOS lane's stat -f%z is BSD-only and fails under Git Bash, so the
+      # size gate is native pwsh. There is no helper binary on Windows — the cap
+      # applies to the one shipped executable.
+      - name: Check shipped binary size
+        shell: pwsh
+        run: |
+          $binary = Get-Item target/release/agent-desktop.exe
+          $limit = 15MB
+          Write-Host "Binary size: $($binary.Length) bytes"
+          if ($binary.Length -gt $limit) {
+            Write-Host "FAIL: shipped executable exceeds 15MB limit (binary=$($binary.Length) bytes)"
+            exit 1
+          }
+          Write-Host 'OK: shipped executable is within the 15MB per-file limit'
+
+      # The isolation scenario this lane must prove: a test that writes a private
+      # artifact observes it under RUNNER_TEMP, never the runner profile.
+      - name: Guard profile isolation
+        shell: pwsh
+        run: |
+          if (-not $env:HOME -or -not $env:HOME.StartsWith($env:RUNNER_TEMP, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "FAIL: HOME is not under RUNNER_TEMP: $env:HOME"
+            exit 1
+          }
+          if (-not $env:USERPROFILE -or -not $env:USERPROFILE.StartsWith($env:RUNNER_TEMP, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "FAIL: USERPROFILE is not under RUNNER_TEMP: $env:USERPROFILE"
+            exit 1
+          }
+          $leak = Join-Path $env:ORIGINAL_USERPROFILE '.agent-desktop'
+          if (Test-Path $leak) {
+            Write-Host "FAIL: a test escaped the isolated HOME and wrote $leak"
+            exit 1
+          }
+          Write-Host 'OK: private artifacts stayed under RUNNER_TEMP'
+
+  # The native ARM64 lane. aarch64-pc-windows-msvc is validated here — built on
+  # every PR via platform-check and its unit suite executed on real ARM64
+  # hardware with the same live-staging opt-in the x64 lane uses. It does not
+  # duplicate the harness-contract gates or fixture smoke; what it answers is
+  # whether the adapter behaves the same on this architecture.
+  test-windows-arm:
+    name: Test (Windows ARM64)
+    runs-on: windows-11-arm
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    outputs:
+      lib_tests: ${{ steps.unit_tests.outputs.lib_tests }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Isolate HOME for the whole lane
+        shell: pwsh
+        run: |
+          $cargoHome  = if ($env:CARGO_HOME)  { $env:CARGO_HOME }  else { Join-Path $env:USERPROFILE '.cargo' }
+          $rustupHome = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $env:USERPROFILE '.rustup' }
           $testHome = Join-Path $env:RUNNER_TEMP ("agent-desktop-test-home-" + [guid]::NewGuid())
           New-Item -ItemType Directory -Path $testHome | Out-Null
-          $env:HOME = $testHome
-          $env:USERPROFILE = $testHome
-          cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib
+          Add-Content -Path $env:GITHUB_ENV -Value "ORIGINAL_USERPROFILE=$env:USERPROFILE"
+          Add-Content -Path $env:GITHUB_ENV -Value "CARGO_HOME=$cargoHome"
+          Add-Content -Path $env:GITHUB_ENV -Value "RUSTUP_HOME=$rustupHome"
+          Add-Content -Path $env:GITHUB_ENV -Value "HOME=$testHome"
+          Add-Content -Path $env:GITHUB_ENV -Value "USERPROFILE=$testHome"
+
+      # windows-11-arm reports runner.os == 'Windows' like the x64 lane, so an
+      # unsuffixed key would make both lanes collide on one cache entry.
+      - name: Cache cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ env.CARGO_HOME }}/registry/index/
+            ${{ env.CARGO_HOME }}/registry/cache/
+            ${{ env.CARGO_HOME }}/git/db/
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'src/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
+
+      - name: Core and Windows unit tests
+        id: unit_tests
+        env:
+          AGENT_DESKTOP_LIVE_WPF: "1"
+        shell: pwsh
+        run: |
+          $output = cmd /c "cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib 2>&1"
+          $output | ForEach-Object { Write-Host $_ }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $passed = 0
+          foreach ($line in @($output)) {
+            if ("$line" -match '^test result: ok\.\s+(\d+) passed') { $passed += [int]$Matches[1] }
+          }
+          Write-Host "Total lib tests passed: $passed"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "lib_tests=$passed"
+
+      - name: Build release binary
+        run: cargo build --locked --release -p agent-desktop
+
+      # win32-arm64's npm resolution, shim and wrapper can only be exercised
+      # on this hardware. AGENT_DESKTOP_BINARY_PATH points postinstall at the
+      # binary just built; the download leg itself needs a published asset and
+      # is proven by the release dry run on x64 instead.
+      - name: Install the packed npm package and run it through the shim
+        shell: pwsh
+        run: |
+          $env:AGENT_DESKTOP_BINARY_PATH = (Resolve-Path 'target/release/agent-desktop.exe').Path
+          Push-Location npm
+          npm pack
+          $tarball = Get-ChildItem -Filter 'agent-desktop-*.tgz' | Select-Object -First 1
+          if (-not $tarball) { Write-Host 'FAIL: npm pack produced no tarball'; exit 1 }
+          Pop-Location
+          $prefix = Join-Path $env:RUNNER_TEMP 'npm-arm64-prefix'
+          npm install -g $tarball.FullName --prefix $prefix
+          if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: npm install exited $LASTEXITCODE"; exit $LASTEXITCODE }
+          & (Join-Path $prefix 'agent-desktop.cmd') version
+          if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: agent-desktop version through the npm shim exited $LASTEXITCODE"; exit $LASTEXITCODE }
+          Write-Host 'OK: the win32-arm64 table entry resolves and runs through the npm shim'
+
+      - name: Guard profile isolation
+        shell: pwsh
+        run: |
+          if (-not $env:HOME -or -not $env:HOME.StartsWith($env:RUNNER_TEMP, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "FAIL: HOME is not under RUNNER_TEMP: $env:HOME"
+            exit 1
+          }
+          if (-not $env:USERPROFILE -or -not $env:USERPROFILE.StartsWith($env:RUNNER_TEMP, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "FAIL: USERPROFILE is not under RUNNER_TEMP: $env:USERPROFILE"
+            exit 1
+          }
+          $leak = Join-Path $env:ORIGINAL_USERPROFILE '.agent-desktop'
+          if (Test-Path $leak) {
+            Write-Host "FAIL: a test escaped the isolated HOME and wrote $leak"
+            exit 1
+          }
+          Write-Host 'OK: private artifacts stayed under RUNNER_TEMP'
+
+  # A count below the x64 lane's means tests skipped silently on the ARM image
+  # (typically a missing .NET desktop runtime for the live WPF staging) — that
+  # is a finding to disposition, not a difference to accept. This job waits for
+  # BOTH lanes so they can run concurrently instead of serializing the ARM64
+  # hardware behind the whole x64 suite.
+  windows-lib-test-parity:
+    name: Windows lib-test parity (x64 vs ARM64)
+    runs-on: ubuntu-latest
+    needs: [test-windows, test-windows-arm]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Compare exported lib test counts
+        run: |
+          X64="${{ needs.test-windows.outputs.lib_tests }}"
+          ARM="${{ needs.test-windows-arm.outputs.lib_tests }}"
+          echo "x64 lane lib tests: ${X64}; ARM64 lane lib tests: ${ARM}"
+          if [ -z "$X64" ] || [ -z "$ARM" ]; then
+            echo "FAIL: a lane did not export its lib test count (x64='${X64}', arm64='${ARM}')"
+            exit 1
+          fi
+          # Parity between two silences is not parity: if the count regex stops
+          # matching, both lanes export 0 while cargo still exits 0.
+          if [ "$X64" = "0" ] || [ "$ARM" = "0" ]; then
+            echo "FAIL: a lane exported zero lib tests (x64='${X64}', arm64='${ARM}') - the count extraction stopped matching cargo's summary line"
+            exit 1
+          fi
+          if [ "$X64" != "$ARM" ]; then
+            echo "FAIL: ARM64 executed ${ARM} lib tests against the x64 lane's ${X64}"
+            exit 1
+          fi
+          echo "OK: both Windows lanes executed ${X64} lib tests"
 
   ffi-python-smoke:
     name: FFI Python Smoke

@@ -76,3 +76,71 @@ fn trace_keeps_actionability_check_identifier_but_redacts_occluder_name() {
     assert_eq!(value["checks"][1]["occluder"]["role"], "AXSheet");
     assert_eq!(value["checks"][1]["occluder"]["name"]["redacted"], true);
 }
+
+/// The P2-O8 descriptor group rides evidence into trace sinks, and page-authored
+/// tokens must be masked wherever it does — the same rule that masks a
+/// placeholder. `subrole` and `dom_classes` tokenize to fragments this key list
+/// names; `placeholder` and `role_description` (the `description` token) were
+/// already covered.
+#[test]
+fn trace_redacts_descriptor_fields_alongside_placeholder() {
+    let value = sanitize_trace_value(json!({
+        "presentation": {
+            "subrole": "custom-role",
+            "role_description": "A button",
+            "placeholder": "Type here",
+            "dom_classes": ["panel", "pane"],
+        }
+    }));
+
+    assert_eq!(value["presentation"]["subrole"]["redacted"], true);
+    assert_eq!(value["presentation"]["role_description"]["redacted"], true);
+    assert_eq!(value["presentation"]["placeholder"]["redacted"], true);
+    assert_eq!(value["presentation"]["dom_classes"]["redacted"], true);
+}
+
+#[test]
+fn trace_redacts_notification_body() {
+    let value = sanitize_trace_value(json!({
+        "body": "Your package has shipped"
+    }));
+
+    assert_eq!(value["body"]["redacted"], true);
+}
+
+#[test]
+fn trace_redacts_notification_actions_as_a_whole_array_not_element_wise() {
+    let value = sanitize_trace_value(json!({
+        "actions": ["Snooze", "Dismiss"]
+    }));
+
+    assert_eq!(value["actions"]["redacted"], true);
+    assert!(value["actions"].get(0).is_none());
+}
+
+#[test]
+fn trace_redacts_notification_app_name_regression_pin() {
+    let value = sanitize_trace_value(json!({
+        "app_name": "Mail"
+    }));
+
+    assert_eq!(value["app_name"]["redacted"], true);
+}
+
+#[test]
+fn trace_redacts_notification_title_regression_pin() {
+    let value = sanitize_trace_value(json!({
+        "title": "New Message"
+    }));
+
+    assert_eq!(value["title"]["redacted"], true);
+}
+
+#[test]
+fn trace_does_not_redact_notification_index() {
+    let value = sanitize_trace_value(json!({
+        "index": 3
+    }));
+
+    assert_eq!(value["index"], 3);
+}

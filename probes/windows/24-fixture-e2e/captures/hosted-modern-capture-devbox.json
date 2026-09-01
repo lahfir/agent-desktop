@@ -1,0 +1,16 @@
+{
+    "probe":  "24-fixture-e2e-10-hosted-modern-capture",
+    "question":  "does a real Windows.Graphics.Capture frame capture against this host\u0027s primary monitor produce non-degenerate pixels, and which branch fires (unsupported, supported-and-succeeded, supported-and-failed)",
+    "cites":  [
+                  "A22-1"
+              ],
+    "reading":  {
+                    "branch":  "supported_capture_failed",
+                    "elapsed_ms":  0,
+                    "failure_reason":  "activate IGraphicsCaptureItemInterop failed: HRESULT(0x80004002)",
+                    "measurable":  false,
+                    "probe":  "24-fixture-e2e-10-hosted-modern-capture",
+                    "question":  "does a real Windows.Graphics.Capture frame capture against this host\u0027s primary monitor produce non-degenerate pixels, and which branch fires (unsupported, supported-and-succeeded, supported-and-failed)",
+                    "wgc_is_supported":  true
+                }
+}

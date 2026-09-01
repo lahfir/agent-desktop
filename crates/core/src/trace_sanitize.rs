@@ -40,6 +40,11 @@ fn is_sensitive_trace_key(key: &str) -> bool {
         "url",
         "help",
         "placeholder",
+        "subrole",
+        "dom",
+        "classes",
+        "body",
+        "actions",
     ];
     trace_key_tokens(key)
         .iter()

@@ -1,0 +1,231 @@
+{
+    "Probe":  "13-ledger-check",
+    "CapturedAtUtc":  "2026-09-01T04:06:11Z",
+    "Question":  "does FINDINGS.md satisfy R5, R6 and R7 as a machine-checkable contract",
+    "Ledger":  "probes/windows/FINDINGS.md",
+    "RowCount":  230,
+    "SessionEvidenceRows":  25,
+    "AreaCoverage":  [
+                         {
+                             "Area":  "1",
+                             "Rows":  8
+                         },
+                         {
+                             "Area":  "2",
+                             "Rows":  6
+                         },
+                         {
+                             "Area":  "3",
+                             "Rows":  5
+                         },
+                         {
+                             "Area":  "4",
+                             "Rows":  7
+                         },
+                         {
+                             "Area":  "5",
+                             "Rows":  3
+                         },
+                         {
+                             "Area":  "6",
+                             "Rows":  2
+                         },
+                         {
+                             "Area":  "7",
+                             "Rows":  4
+                         },
+                         {
+                             "Area":  "8",
+                             "Rows":  4
+                         },
+                         {
+                             "Area":  "9",
+                             "Rows":  3
+                         },
+                         {
+                             "Area":  "10",
+                             "Rows":  7
+                         },
+                         {
+                             "Area":  "11",
+                             "Rows":  5
+                         },
+                         {
+                             "Area":  "14",
+                             "Rows":  13
+                         },
+                         {
+                             "Area":  "15",
+                             "Rows":  13
+                         },
+                         {
+                             "Area":  "16",
+                             "Rows":  12
+                         },
+                         {
+                             "Area":  "17",
+                             "Rows":  8
+                         },
+                         {
+                             "Area":  "18",
+                             "Rows":  9
+                         },
+                         {
+                             "Area":  "19",
+                             "Rows":  8
+                         },
+                         {
+                             "Area":  "20",
+                             "Rows":  6
+                         },
+                         {
+                             "Area":  "21",
+                             "Rows":  8
+                         },
+                         {
+                             "Area":  "22",
+                             "Rows":  9
+                         },
+                         {
+                             "Area":  "23",
+                             "Rows":  12
+                         },
+                         {
+                             "Area":  "24",
+                             "Rows":  18
+                         },
+                         {
+                             "Area":  "25",
+                             "Rows":  8
+                         },
+                         {
+                             "Area":  "26",
+                             "Rows":  13
+                         },
+                         {
+                             "Area":  "27",
+                             "Rows":  4
+                         },
+                         {
+                             "Area":  "28",
+                             "Rows":  10
+                         }
+                     ],
+    "VerdictCounts":  {
+                          "CONFIRMS":  119,
+                          "CONTRADICTS":  18,
+                          "NEW-EDGE":  74,
+                          "DEFERRED":  19
+                      },
+    "DeferredRows":  [
+                         {
+                             "Id":  "A10-2",
+                             "Area":  "10",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A10-3",
+                             "Area":  "10",
+                             "Closure":  "2.4"
+                         },
+                         {
+                             "Id":  "A10-5",
+                             "Area":  "10",
+                             "Closure":  "2.10"
+                         },
+                         {
+                             "Id":  "A10-6",
+                             "Area":  "10",
+                             "Closure":  "2.4"
+                         },
+                         {
+                             "Id":  "A10-7",
+                             "Area":  "10",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A17-8",
+                             "Area":  "17",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A18-3",
+                             "Area":  "18",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A18-9",
+                             "Area":  "18",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A19-4",
+                             "Area":  "19",
+                             "Closure":  "2.8"
+                         },
+                         {
+                             "Id":  "A20-2",
+                             "Area":  "20",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A20-5",
+                             "Area":  "20",
+                             "Closure":  "2.4"
+                         },
+                         {
+                             "Id":  "A21-2",
+                             "Area":  "21",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A21-7",
+                             "Area":  "21",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A22-7",
+                             "Area":  "22",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A22-8",
+                             "Area":  "22",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A23-3",
+                             "Area":  "23",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A23-4",
+                             "Area":  "23",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A23-5",
+                             "Area":  "23",
+                             "Closure":  "2.12"
+                         },
+                         {
+                             "Id":  "A26-13",
+                             "Area":  "26",
+                             "Closure":  "2.14"
+                         }
+                     ],
+    "MeasuredHunkCount":  125,
+    "HunkIndexRowCount":  69,
+    "HunkIndexShortfall":  56,
+    "ContradictsRowCount":  18,
+    "ContradictsRowsMapped":  18,
+    "BijectionHolds":  true,
+    "CaptureContentRowsAudited":  84,
+    "CaptureContentFailures":  [
+
+                               ],
+    "Failures":  [
+
+                 ],
+    "HunkCountSource":  "git -C \u003crepo\u003e diff -U0 main -- docs/phases.md, counting lines matching ^@@ -[0-9]; the measured count is authoritative over any count written in prose"
+}

@@ -8,7 +8,9 @@ still-supported compatibility form; never use a bare ref without that flag.
 
 ## First-Time Setup
 
-Before any automation, verify permissions:
+Before any automation, verify permissions.
+
+On macOS (TCC):
 
 ```bash
 agent-desktop permissions
@@ -18,6 +20,8 @@ agent-desktop permissions --request
 ```
 
 For screenshots, also grant Screen Recording. `permissions` reports `accessibility`, `screen_recording`, and `automation` separately.
+
+On Windows there is no permission dialog: UI Automation reads of same-integrity targets need no grant, and `permissions` probes UIA live (`automation` reports `not_required`). Input into an elevated target requires running from an equally elevated terminal, because the OS blocks cross-integrity input synthesis — see the `agent-desktop-windows` skill's permissions-and-elevation reference.
 
 ## Pattern: Session-Scoped Tracing (Default for Multi-Step Runs)
 
@@ -295,6 +299,31 @@ agent-desktop snapshot --app "Calculator" -i
 # ... perform automation ...
 
 agent-desktop close-app "Calculator"
+```
+
+## Pattern: Launch, Automate, Close (Windows)
+
+Windows-specific notes: `launch` resolves an absolute path or a bare name
+found under System32 or the Windows directory — not display names; dangerous
+shortcuts are refused without `--force`; notifications do not exist on the
+Windows adapter.
+
+```bash
+# 1. Launch by system-directory bare name and wait for a window
+agent-desktop launch "notepad.exe"
+agent-desktop wait --event window-opened --app "notepad" --timeout 10000
+
+# 2. Observe, then act through refs - semantic and headless
+agent-desktop snapshot --skeleton --app "notepad" -i --compact
+agent-desktop set-value @s8f3k2p9:e2 --snapshot <snapshot_id> "typed through UIA"
+
+# 3. Physical input is explicit: focus is headed-required, then press works
+agent-desktop --headed focus @s8f3k2p9:e2 --snapshot <snapshot_id>
+agent-desktop press ctrl+s --app "notepad"
+
+# 4. Close cleanly instead of alt+f4 (blocked without --force)
+agent-desktop press alt+f4            # POLICY_DENIED; add --force only deliberately
+agent-desktop close-app "notepad"     # success only after verified exit
 ```
 
 ## Pattern: Multi-Window Workflow

@@ -9,15 +9,15 @@ description: >
   Use when an AI agent needs to observe, interact with, or automate desktop applications
   (click buttons, fill forms, navigate menus, read UI state, toggle checkboxes, scroll,
   drag, type text, take screenshots, manage windows, use clipboard, manage notifications).
-  Covers 59 command names (55 operational; four held-input names fail closed until
+  Covers 60 command names (56 operational; four held-input names fail closed until
   daemon ownership exists) across observation, interaction, keyboard/mouse, app
-  lifecycle, notifications (macOS), clipboard, wait, session lifecycle, and a
+  lifecycle, notifications, clipboard, wait, session lifecycle, and a
   `skills` command that bundles docs straight from the binary.
   Triggers on: "click button", "fill form", "open app", "read UI", "automate desktop",
   "accessibility tree", "snapshot app", "type into field", "navigate menu", "toggle checkbox",
   "take screenshot", "desktop automation", "agent-desktop", or any desktop GUI interaction task.
-  Supports the macOS Phase 1 adapter, with Windows and Linux planned against
-  the same core contracts.
+  Ships a macOS adapter and a Windows adapter built against the same core
+  contracts; Linux is not yet supported.
 ---
 
 # agent-desktop
@@ -34,7 +34,7 @@ npm install -g agent-desktop
 bun install -g --trust agent-desktop
 ```
 
-Requires macOS 12+ with Accessibility permission granted to your terminal. Screen Recording permission is also required for screenshots.
+macOS requires macOS 12+; grant Accessibility permission to your terminal, plus Screen Recording for screenshots. Windows requires Windows 10 1809+ / Server 2019+ and needs no permission grant for same-integrity UI Automation targets (elevated targets want an elevated terminal — see the `agent-desktop-windows` skill).
 
 ## Reference Files
 
@@ -45,8 +45,9 @@ Detailed documentation is split into focused reference files. Read them as neede
 | `references/commands-observation.md` | snapshot, find, get, is, screenshot, list-surfaces — all flags, output examples |
 | `references/commands-interaction.md` | click, type, set-value, select, toggle, scroll, drag, keyboard, mouse — choosing the right command |
 | `references/commands-system.md` | launch (including `--cdp` for Chromium web contents), close, windows, clipboard, wait, batch, session, status, permissions, version |
-| `references/workflows.md` | 16 common patterns: forms, menus, dialogs, scroll-find, drag-drop, async wait, anti-patterns |
+| `references/workflows.md` | 17 common patterns: forms, menus, dialogs, scroll-find, drag-drop, async wait, anti-patterns |
 | `references/macos.md` | macOS permissions/TCC, AX API internals, smart activation chain, surfaces, Notification Center, troubleshooting |
+| `agent-desktop-windows` skill | Separate bundled package (`skills get agent-desktop-windows`): Windows capability table, UIPI/elevation, Chromium/Electron settle behavior, troubleshooting |
 
 ## The Observe-Act Loop (Progressive Skeleton Traversal)
 
@@ -94,8 +95,8 @@ When you know the target's role or exact name, use `find --role ... --name ... -
 - After any action that changes UI, re-drill the affected region or re-snapshot
 - **Scoped invalidation:** re-drilling a qualified root ref only replaces refs from that root's previous drill — refs from other regions and the skeleton itself are preserved
 - **Strict resolution:** stale refs return `STALE_REF`; duplicate plausible targets return `AMBIGUOUS_TARGET` instead of choosing arbitrarily.
-- **Actionability:** every ref-addressed action checks its applicable live visibility, stability, enabled, editability, policy, supported-action, and hit-test requirements under one bounded budget before a single dispatch. Pointer actions focus before their final geometry read, re-resolve moving endpoints, and return `TIMEOUT` with `details.kind: "actionability_timeout"` instead of sending input after the deadline.
-- **Headless vs headed:** ref actions are strictly headless by default: semantic accessibility APIs only, with no focus stealing, cursor movement, or synthesized keyboard input. In headed mode, core focuses the exact ref window before dispatch; pointer actions also require a verified target point, while the adapter owns OS delivery. On macOS, `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; double/triple-click, hover, and drag are physical-only; expand/collapse and other semantic actions remain semantic. Raw `--xy` input has no window identity and never steals focus. `press` is explicit physical keyboard input; held-input commands (`key-down`, `key-up`, `mouse-down`, `mouse-up`) are reserved and fail closed in the stateless CLI.
+- **Actionability:** every ref-addressed action checks its applicable live visibility, stability, enabled, editability, policy, supported-action, and hit-test requirements under one bounded budget before a single dispatch. Pointer actions focus before their final geometry read, re-resolve moving endpoints, and return `TIMEOUT` with `details.kind: "actionability_timeout"` instead of sending input after the deadline. When an error carries `details.retryable: false`, waiting cannot change the outcome — branch to a different approach rather than spending the budget (`details.kind: "scroll_into_view_unsupported"` means no scrollable ancestor remains after the platform's into-view / ancestor ladder).
+- **Headless vs headed:** ref actions are strictly headless by default: semantic accessibility APIs only, with no focus stealing, cursor movement, or synthesized keyboard input. In headed mode, core focuses the exact ref window before dispatch; pointer actions also require a verified target point, while the adapter owns OS delivery. On macOS, `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; double/triple-click, hover, and drag are physical-only. On Windows, the semantic set stays semantic under `--headed`; physical multi-click, `type`, hover, drag, and `press` synthesize via `SendInput`; `focus` is headed-required (A3-4, A19-5); `--headed press --app` focuses then synthesizes after focus verification. Expand/collapse and other semantic actions remain semantic on both platforms. Raw `--xy` input has no window identity and never steals focus. `press` is explicit physical keyboard input; held-input commands (`key-down`, `key-up`, `mouse-down`, `mouse-up`) are reserved and fail closed in the stateless CLI.
 - **Sessions and tracing:** run `session start` once per agent run to create a manifest with `trace: on` (default), then pass its returned ID with `--session` or `AGENT_DESKTOP_SESSION`. Use `session start --screenshots` when you need replay artifacts (`artifacts: full`): pre/post-action PNGs and refmap copies under the session trace directory (sensitive — treat exports like screenshots). Commands in that explicit scope record JSONL automatically to per-process segments under `~/.agent-desktop/sessions/<id>/trace/<pid>-<procTs>.jsonl` — no `--trace` on every call. Read traces back with `trace show` (bounded JSON for agents) or `trace export` (single-file HTML for humans). A session owns both its trace and its latest-snapshot namespace. Snapshot lookup never searches another namespace. **`--session <id>` alone** (no manifest from `session start`) selects only the snapshot namespace — existing callers see no surprise trace files. **`--trace <path>`** still overrides to one atomic file for CI or one-offs. Activation precedence is `--session` > `AGENT_DESKTOP_SESSION` > no session; `session start` does not activate later processes. Multi-agent shared sessions: each agent acts on qualified refs from its own snapshot — implicit latest is not a cross-agent guarantee. Run `status` to see `session_id` and `tracing`. Trace lines include `ts_ms`, monotonic per-process `seq`, and redacted sensitive fields (`text`, `value`, `expected`, `name`, `username`, `description`, `label`, `query`, `secret`, `token`, `password`, `title`, `url`, `help`, `placeholder` → `{ "redacted": true }`). `--trace-strict` fails on trace setup and pre-action writes; post-action success traces are best-effort.
 
 ## JSON Output Contract
@@ -107,7 +108,7 @@ Every command returns a JSON envelope on stdout:
 
 The `error` object may also carry an optional `details` object (e.g. the actionability report on an actionability failure, candidate summaries on `AMBIGUOUS_TARGET`, or the last observed state on a `wait` `TIMEOUT`). Parse errors leniently — `details` and future fields are additive, so do not reject responses with unknown keys.
 
-An actionability failure on a hit-test action (`click`, `double-click`, `right-click`, `triple-click`, `hover`, `drag`) can carry a `receives_events` check with `reason: "occluded by <role>"` plus a structured `occluder: { "role", "name", "bounds" }` — another element is on top of the target. Bring the target window/element to the front (or dismiss the occluder) rather than blind-retrying; see `references/commands-interaction.md` for the full check list.
+An actionability failure on a hit-test action (`click`, `double-click`, `right-click`, `triple-click`, `hover`, `drag`) can carry a `receives_events` check with `reason: "occluded by <role>"` plus a structured `occluder: { "role", "name", "bounds" }` — another element is on top of the target. Bring the target window/element to the front (or dismiss the occluder) rather than blind-retrying. The check fails open: an inconclusive hit test reports `unknown` and lets the action dispatch, so a `receives_events` check that did not fail is not proof the target was unobstructed. See `references/commands-interaction.md` for the full check list.
 
 Exit codes: `0` success, `1` structured error, `2` argument error.
 
@@ -118,7 +119,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 | `PERM_DENIED` | Accessibility or Screen Recording permission not granted | Grant the named permission in System Settings |
 | `ELEMENT_NOT_FOUND` | Ref cannot be resolved against the live UI | Re-run snapshot, use fresh ref |
 | `APP_NOT_FOUND` | App not running | Launch it first |
-| `ACTION_FAILED` | AX action rejected | Try an explicit alternative command |
+| `ACTION_FAILED` | Semantic action rejected, blocked, or unverified (occluded target, missing affordance, no observed effect) | Inspect `error.details` — a `checks[]` report names the blocking check; `details.retryable: false` means waiting cannot help and a different approach is needed |
 | `ACTION_NOT_SUPPORTED` | Element can't do this | Use different command |
 | `STALE_REF` | Ref could not be re-identified in the live UI | Use the `snapshot_id` returned with this ref; if the UI changed or the target disappeared, re-run `snapshot` / `snapshot --skeleton` to get fresh refs |
 | `AMBIGUOUS_TARGET` | Multiple elements matched the old ref identity | Re-run snapshot and choose a more specific ref |
@@ -128,13 +129,13 @@ Exit codes: `0` success, `1` structured error, `2` argument error.
 | `WINDOW_NOT_FOUND` | No matching window | Check app name, use list-windows |
 | `PLATFORM_NOT_SUPPORTED` | Adapter method not implemented on this platform | Use a supported platform adapter |
 | `TIMEOUT` | Wait or actionability condition not met | Inspect `error.details.kind`; increase the command budget only after checking the last report, and use `AGENT_DESKTOP_CHAIN_TIMEOUT_MS` only for `chain_deadline` |
-| `INVALID_ARGS` | Bad arguments | Check command syntax |
+| `INVALID_ARGS` | Bad arguments, or a protected system process was targeted for close | Check command syntax; target a regular application when closing (`close_app.rs`; dogfood J2) |
 | `NOTIFICATION_NOT_FOUND` | Notification index no longer exists | Re-run list-notifications |
 | `INTERNAL` | Unexpected platform/OS failure (e.g. event synthesis failed) | Read `message`/`suggestion` for cleanup state, then retry once; persistent failures indicate an environment problem |
 
 `TIMEOUT` errors carry a `details` object whose `kind` field selects the schema. `kind: "wait_timeout"` includes `predicate`, `timeout_ms`, and `last_observed` or `last_error`, plus `ref`/`title`/`text_chars` depending on the wait mode. `kind: "chain_deadline"` includes `value_before`, `value_at_timeout`, `target`, and `mutated` (increment waits) or `wanted_expanded`/`observed_expanded` (disclosure waits). `mutated: true` — or an unknown `observed_expanded` state — means re-read the element before retrying; `mutated: false` means the state did not change and retrying directly is safe.
 
-## Command Quick Reference (59 names, 55 operational)
+## Command Quick Reference (60 names, 56 operational)
 
 ### Observation
 ```
@@ -148,7 +149,7 @@ agent-desktop find --root @s8f3k2p9:e3 --role button        # Search one region 
 agent-desktop find --app "App" --surface menubar --name "Save" --first  # Search a menu
 agent-desktop get @e1 --snapshot <snapshot_id> --property text       # Read element property
 agent-desktop is @e1 --snapshot <snapshot_id> --property enabled     # Check element state
-agent-desktop list-surfaces --app "App"                     # Available surfaces
+agent-desktop list-surfaces --app "App"                     # Surfaces the app presents right now (per-process inventory on Windows)
 ```
 
 ### Interaction
@@ -186,11 +187,13 @@ agent-desktop --headed mouse-move --xy 100,200  # Move cursor
 
 ### App & Window
 ```
-agent-desktop launch "System Settings"          # Launch; returns once running
-agent-desktop launch "TextEdit" --activate       # Also bring it forward and wait for a window
-agent-desktop launch "Obsidian" --cdp            # Fresh launch + verified Chrome DevTools Protocol port for web contents
-agent-desktop close-app "TextEdit"              # Quit gracefully
+agent-desktop launch "System Settings"          # macOS: launch by display name; returns once running
+agent-desktop launch "notepad.exe"              # Windows: system-directory bare name (A21-1)
+agent-desktop launch "TextEdit" --activate      # Also bring it forward and wait for a window
+agent-desktop launch "Obsidian" --cdp           # Fresh launch + verified Chrome DevTools Protocol port for web contents
+agent-desktop close-app "TextEdit"              # Quit; success only after verified exit
 agent-desktop close-app "TextEdit" --force      # Force quit; SIGKILL if SIGTERM does not exit
+agent-desktop close-app "notepad.exe" --force   # Windows force terminate
 agent-desktop list-windows --app "Finder"       # List windows
 agent-desktop list-apps                         # List running GUI apps
 agent-desktop focus-window --app "Finder"       # Bring to front
@@ -199,6 +202,7 @@ agent-desktop move-window --app "App" --x 0 --y 0
 agent-desktop minimize --app "App"
 agent-desktop maximize --app "App"
 agent-desktop restore --app "App"
+agent-desktop --headed open-system-surface --surface action-center  # Windows: raise a shell surface, get the window it presents
 ```
 
 Use `--window-id <id>` from `list-windows` instead of `--app` when an app has multiple windows.
@@ -214,9 +218,10 @@ agent-desktop --headed dismiss-all-notifications --app "Slack"  # Dismiss all fr
 agent-desktop --headed notification-action 1 "Reply" --expected-app Slack --expected-title "Deploy complete"
 ```
 
+macOS drives Notification Center; Windows drives the Action Center.
 Every notification mutation requires global `--headed`; single-notification
 mutations also require an app or title fingerprint from the same listing.
-Headless listing works only while Notification Center is already open.
+Headless listing works only while the notification surface is already open.
 
 ### Clipboard
 ```

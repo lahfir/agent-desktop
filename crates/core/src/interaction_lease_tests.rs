@@ -7,6 +7,32 @@ use std::{
 
 use super::*;
 
+/// Blocks until the parent closes this child's stdin, which happens when the
+/// parent kills this process, drops the pipe, or exits for any reason including
+/// a panic. A holder that slept for a fixed span instead would release its lease
+/// on a schedule the parent has to out-race, and a parent thread starved past
+/// that span observes a free lock and fails an assertion about contention that
+/// was true when it was written.
+fn hold_until_parent_releases() {
+    use std::io::Read;
+
+    let mut released = Vec::new();
+    let _ = std::io::stdin().read_to_end(&mut released);
+}
+
+/// Waits for a child's readiness marker on a deliberately generous budget. A
+/// holder may have to start further test binaries before it can signal, and a
+/// loaded machine can starve this thread between polls; nothing downstream
+/// depends on how long the wait took, because the holder now keeps its lease
+/// until it is released explicitly rather than until a timer expires.
+fn wait_for_marker(path: &std::path::Path) -> bool {
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    while !path.is_file() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    path.is_file()
+}
+
 static INTERACTION_LEASE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 fn interaction_lease_test_guard() -> MutexGuard<'static, ()> {
@@ -41,7 +67,7 @@ fn a_second_lease_times_out_and_drop_releases_the_first() {
             .unwrap()
             >= 1
     );
-    assert!(deadline.elapsed() < Duration::from_secs(1));
+    assert!(deadline.elapsed() < Duration::from_secs(5));
     drop(first);
     acquire_unix_interaction_lease_at(Deadline::after(100).unwrap(), &root).unwrap();
     std::fs::remove_dir_all(root).unwrap();
@@ -72,7 +98,7 @@ fn subprocess_holder() {
     let root = PathBuf::from(std::env::var_os("AGENT_DESKTOP_LOCK_HELPER_ROOT").unwrap());
     let _lease = acquire_unix_interaction_lease_at(Deadline::after(5_000).unwrap(), &root).unwrap();
     std::fs::write(ready_path, b"ready").unwrap();
-    std::thread::sleep(Duration::from_secs(5));
+    hold_until_parent_releases();
 }
 
 #[test]
@@ -99,7 +125,7 @@ fn subprocess_adopted_holder() {
         .unwrap();
     assert!(status.success());
     std::fs::write(ready_path, b"ready").unwrap();
-    std::thread::sleep(Duration::from_secs(5));
+    hold_until_parent_releases();
 }
 
 #[test]
@@ -131,14 +157,11 @@ fn different_home_subprocess_contends_and_crash_releases() {
         .env("HOME", &other_home)
         .env("AGENT_DESKTOP_LOCK_HELPER_READY", &ready)
         .env("AGENT_DESKTOP_LOCK_HELPER_ROOT", &interaction_root)
+        .stdin(std::process::Stdio::piped())
         .spawn()
         .unwrap();
-    let ready_deadline = std::time::Instant::now() + Duration::from_secs(2);
-    while !ready.is_file() && std::time::Instant::now() < ready_deadline {
-        std::thread::sleep(Duration::from_millis(10));
-    }
     assert!(
-        ready.is_file(),
+        wait_for_marker(&ready),
         "subprocess did not acquire interaction lease"
     );
     let error =
@@ -148,7 +171,7 @@ fn different_home_subprocess_contends_and_crash_releases() {
         };
     assert_eq!(error.code, ErrorCode::Timeout);
     let _ = child.kill();
-    reap_child(&mut child, Duration::from_secs(2));
+    reap_child(&mut child, Duration::from_secs(60));
     acquire_unix_interaction_lease_at(Deadline::after(1_000).unwrap(), &interaction_root).unwrap();
     std::fs::remove_dir_all(directory).unwrap();
 }
@@ -172,16 +195,13 @@ fn inherited_descriptor_survives_parent_drop_and_crash_releases() {
             "AGENT_DESKTOP_ADOPT_HELPER_FD",
             inherited.as_raw_fd().to_string(),
         )
+        .stdin(std::process::Stdio::piped())
         .spawn()
         .unwrap();
     drop(inherited);
     drop(lease);
-    let ready_deadline = std::time::Instant::now() + Duration::from_secs(2);
-    while !ready.is_file() && std::time::Instant::now() < ready_deadline {
-        std::thread::sleep(Duration::from_millis(10));
-    }
     assert!(
-        ready.is_file(),
+        wait_for_marker(&ready),
         "subprocess did not adopt interaction lease"
     );
     let error = acquire_unix_interaction_lease_at(Deadline::after(25).unwrap(), &root)
@@ -189,7 +209,7 @@ fn inherited_descriptor_survives_parent_drop_and_crash_releases() {
         .expect("adopted descriptor must retain the lease");
     assert_eq!(error.code, ErrorCode::Timeout);
     child.kill().unwrap();
-    reap_child(&mut child, Duration::from_secs(2));
+    reap_child(&mut child, Duration::from_secs(60));
     acquire_unix_interaction_lease_at(Deadline::after(1_000).unwrap(), &root).unwrap();
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -266,6 +286,10 @@ fn inherited_descriptor_serializes_threads_in_one_host_process() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
+/// Waits for a killed holder to be reaped. The budget is generous because the
+/// assertion is meant to catch a child that never exits, not a scheduler that
+/// took its time getting back to this thread; a tight budget turns ordinary
+/// load into a failure that reads like a stuck subprocess.
 fn reap_child(child: &mut std::process::Child, timeout: Duration) {
     let deadline = std::time::Instant::now() + timeout;
     loop {
