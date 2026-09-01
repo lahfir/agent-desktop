@@ -36,8 +36,9 @@ const _: () = {
 
 pub(crate) fn synthesize_key(combo: &KeyCombo, deadline: Deadline) -> Result<(), AdapterError> {
     ensure_budget(deadline)?;
-    let key_vk = keyboard_map::key_name_to_vk(&combo.key)?;
-    let modifier_vks: Vec<u16> = combo.modifiers.iter().map(modifier_vk).collect();
+    let resolved = keyboard_map::resolve_key(&combo.key)?;
+    let modifier_vks = chord_modifiers(combo, resolved);
+    let key_vk = resolved.vk;
 
     let mut guard = KeyReleaseGuard::new();
     let outcome = press_chord(&mut guard, &modifier_vks, key_vk, deadline);
@@ -69,6 +70,18 @@ fn press_chord(
         guard.note_released(vk);
     }
     Ok(())
+}
+
+/// The caller's modifiers, plus any the active layout needs to produce this
+/// character, without pressing the same modifier twice.
+fn chord_modifiers(combo: &KeyCombo, resolved: keyboard_map::ResolvedKey) -> Vec<u16> {
+    let mut vks: Vec<u16> = combo.modifiers.iter().map(modifier_vk).collect();
+    for vk in resolved.layout_modifier_vks() {
+        if !vks.contains(&vk) {
+            vks.push(vk);
+        }
+    }
+    vks
 }
 
 pub(crate) fn modifier_vk(modifier: &Modifier) -> u16 {

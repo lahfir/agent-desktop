@@ -20,7 +20,7 @@ fn a_chord_presses_and_releases_every_modifier_around_the_key() {
         .expect("an ample deadline must succeed");
 
     let recorded = sink::recorded();
-    let key_vk = keyboard_map::key_name_to_vk("a").expect("'a' resolves");
+    let key_vk = keyboard_map::resolve_key("a").expect("'a' resolves").vk;
     assert_eq!(
         recorded.len(),
         6,
@@ -159,4 +159,42 @@ fn enrich_error_omits_emergency_release_when_everything_was_released() {
     let details = error.details.expect("enriched details");
     assert_eq!(details["delivered_events"], 2);
     assert!(details.get("emergency_release_posted").is_none());
+}
+
+/// The caller's own modifiers and the layout's requirement have to combine
+/// without pressing the same key twice - and without dropping either side.
+#[test]
+fn a_layout_required_shift_joins_the_callers_modifiers() {
+    let combo = KeyCombo {
+        key: "5".into(),
+        modifiers: vec![Modifier::Ctrl],
+    };
+    let resolved = keyboard_map::resolved_from_scan(0x0135);
+
+    assert_eq!(
+        chord_modifiers(&combo, resolved),
+        vec![VK_CONTROL, VK_SHIFT]
+    );
+}
+
+#[test]
+fn a_modifier_the_caller_already_asked_for_is_not_pressed_twice() {
+    let combo = KeyCombo {
+        key: "5".into(),
+        modifiers: vec![Modifier::Shift],
+    };
+    let resolved = keyboard_map::resolved_from_scan(0x0135);
+
+    assert_eq!(chord_modifiers(&combo, resolved), vec![VK_SHIFT]);
+}
+
+#[test]
+fn a_key_the_layout_produces_unshifted_carries_only_the_callers_modifiers() {
+    let combo = KeyCombo {
+        key: "a".into(),
+        modifiers: vec![Modifier::Ctrl],
+    };
+    let resolved = keyboard_map::resolved_from_scan(0x0041);
+
+    assert_eq!(chord_modifiers(&combo, resolved), vec![VK_CONTROL]);
 }
