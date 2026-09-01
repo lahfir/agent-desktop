@@ -73,7 +73,9 @@ pub fn resolve_actions(properties: &ElementProperties) -> LocatorField<Vec<Strin
     {
         push_unique(&mut actions, capability::SET_VALUE);
     }
-    if properties.is_true(TreeProperty::RangeValueAvailable) {
+    if properties.is_true(TreeProperty::RangeValueAvailable)
+        && properties.gated_flag(TreeProperty::RangeValueIsReadOnly) == Some(false)
+    {
         push_unique(&mut actions, capability::SET_VALUE);
     }
     if properties.is_true(TreeProperty::ScrollAvailable) {

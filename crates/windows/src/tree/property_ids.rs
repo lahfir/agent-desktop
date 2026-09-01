@@ -37,6 +37,7 @@ pub enum TreeProperty {
     ExpandCollapseState,
     SelectionItemIsSelected,
     ValueIsReadOnly,
+    RangeValueIsReadOnly,
     SelectionCanSelectMultiple,
     WindowIsModal,
     LegacyState,
@@ -113,9 +114,13 @@ impl TreeProperty {
     /// bounded per-node prefetch for a round trip per pattern-bearing node -
     /// 26 of 81 nodes on the WPF fixture - which is unbounded on a
     /// selection-dense tree, for at best a tenth off a walk.
-    /// What was available instead was trimming: `ItemStatus`, `Orientation`
-    /// and `RangeValueIsReadOnly` are read by no vocabulary here and are not
-    /// requested. `IsDataValidForForm` joined them after the dogfood run -
+    /// What was available instead was trimming: `ItemStatus` and `Orientation`
+    /// are read by no vocabulary here and are not requested.
+    /// `RangeValueIsReadOnly` was trimmed on the same ground and has since
+    /// been restored: `resolve_actions` advertised `SetValue` on every
+    /// range-valued control without it, including the read-only ones, so a
+    /// progress-bar-shaped element got a ref on an action that fails at
+    /// execution. `IsDataValidForForm` joined them after the dogfood run -
     /// `states.rs` records why its `invalid` token is unproduced.
     ///
     /// `LocalizedControlType` and `AriaRole` joined the flat set on measured
@@ -127,7 +132,7 @@ impl TreeProperty {
     /// nothing consumes it on the pinned stack (A16-6 measured it carrying no
     /// `class` token, so `dom_classes` ships schema-only), and the standing
     /// rule is that nothing unread is paid for.
-    pub const WALK_SET: [TreeProperty; 42] = [
+    pub const WALK_SET: [TreeProperty; 43] = [
         TreeProperty::Name,
         TreeProperty::AutomationId,
         TreeProperty::ClassName,
@@ -150,6 +155,7 @@ impl TreeProperty {
         TreeProperty::ExpandCollapseState,
         TreeProperty::SelectionItemIsSelected,
         TreeProperty::ValueIsReadOnly,
+        TreeProperty::RangeValueIsReadOnly,
         TreeProperty::SelectionCanSelectMultiple,
         TreeProperty::WindowIsModal,
         TreeProperty::LegacyState,
@@ -213,6 +219,7 @@ impl TreeProperty {
             | TreeProperty::ExpandCollapseState
             | TreeProperty::SelectionItemIsSelected
             | TreeProperty::ValueIsReadOnly
+            | TreeProperty::RangeValueIsReadOnly
             | TreeProperty::SelectionCanSelectMultiple
             | TreeProperty::WindowIsModal
             | TreeProperty::LegacyState
@@ -265,6 +272,7 @@ impl TreeProperty {
             TreeProperty::ExpandCollapseState => Some(TreeProperty::ExpandCollapseAvailable),
             TreeProperty::SelectionItemIsSelected => Some(TreeProperty::SelectionItemAvailable),
             TreeProperty::ValueIsReadOnly => Some(TreeProperty::ValueAvailable),
+            TreeProperty::RangeValueIsReadOnly => Some(TreeProperty::RangeValueAvailable),
             TreeProperty::SelectionCanSelectMultiple => Some(TreeProperty::SelectionAvailable),
             TreeProperty::WindowIsModal => Some(TreeProperty::WindowAvailable),
             _ => None,
@@ -297,6 +305,7 @@ impl TreeProperty {
             Self::ExpandCollapseState => "ExpandCollapseExpandCollapseState",
             Self::SelectionItemIsSelected => "SelectionItemIsSelected",
             Self::ValueIsReadOnly => "ValueIsReadOnly",
+            Self::RangeValueIsReadOnly => "RangeValueIsReadOnly",
             Self::SelectionCanSelectMultiple => "SelectionCanSelectMultiple",
             Self::WindowIsModal => "WindowIsModal",
             Self::LegacyState => "LegacyIAccessibleState",
@@ -324,64 +333,8 @@ impl TreeProperty {
 }
 
 #[cfg(target_os = "windows")]
-mod imp {
-    use super::TreeProperty;
-    use uiautomation::types::UIProperty;
-
-    /// Resolves an internal property to the crate's generated constant.
-    ///
-    /// An exhaustive `match` with no catch-all arm, so adding a variant is a
-    /// compile error rather than a silent fallback to a wrong id.
-    pub fn uia_property(property: TreeProperty) -> UIProperty {
-        match property {
-            TreeProperty::Name => UIProperty::Name,
-            TreeProperty::AutomationId => UIProperty::AutomationId,
-            TreeProperty::ClassName => UIProperty::ClassName,
-            TreeProperty::HelpText => UIProperty::HelpText,
-            TreeProperty::FullDescription => UIProperty::FullDescription,
-            TreeProperty::LabeledBy => UIProperty::LabeledBy,
-            TreeProperty::Value => UIProperty::ValueValue,
-            TreeProperty::LegacyValue => UIProperty::LegacyIAccessibleValue,
-            TreeProperty::BoundingRectangle => UIProperty::BoundingRectangle,
-            TreeProperty::IsPassword => UIProperty::IsPassword,
-            TreeProperty::IsOffscreen => UIProperty::IsOffscreen,
-            TreeProperty::IsEnabled => UIProperty::IsEnabled,
-            TreeProperty::IsControlElement => UIProperty::IsControlElement,
-            TreeProperty::IsContentElement => UIProperty::IsContentElement,
-            TreeProperty::IsKeyboardFocusable => UIProperty::IsKeyboardFocusable,
-            TreeProperty::HasKeyboardFocus => UIProperty::HasKeyboardFocus,
-            TreeProperty::IsRequiredForForm => UIProperty::IsRequiredForForm,
-            TreeProperty::IsDataValidForForm => UIProperty::IsDataValidForForm,
-            TreeProperty::IsDialog => UIProperty::IsDialog,
-            TreeProperty::ToggleState => UIProperty::ToggleToggleState,
-            TreeProperty::ExpandCollapseState => UIProperty::ExpandCollapseExpandCollapseState,
-            TreeProperty::SelectionItemIsSelected => UIProperty::SelectionItemIsSelected,
-            TreeProperty::ValueIsReadOnly => UIProperty::ValueIsReadOnly,
-            TreeProperty::SelectionCanSelectMultiple => UIProperty::SelectionCanSelectMultiple,
-            TreeProperty::WindowIsModal => UIProperty::WindowIsModal,
-            TreeProperty::LegacyState => UIProperty::LegacyIAccessibleState,
-            TreeProperty::LegacyDefaultAction => UIProperty::LegacyIAccessibleDefaultAction,
-            TreeProperty::InvokeAvailable => UIProperty::IsInvokePatternAvailable,
-            TreeProperty::ToggleAvailable => UIProperty::IsTogglePatternAvailable,
-            TreeProperty::ExpandCollapseAvailable => UIProperty::IsExpandCollapsePatternAvailable,
-            TreeProperty::SelectionItemAvailable => UIProperty::IsSelectionItemPatternAvailable,
-            TreeProperty::SelectionAvailable => UIProperty::IsSelectionPatternAvailable,
-            TreeProperty::ValueAvailable => UIProperty::IsValuePatternAvailable,
-            TreeProperty::RangeValueAvailable => UIProperty::IsRangeValuePatternAvailable,
-            TreeProperty::ScrollAvailable => UIProperty::IsScrollPatternAvailable,
-            TreeProperty::ScrollItemAvailable => UIProperty::IsScrollItemPatternAvailable,
-            TreeProperty::WindowAvailable => UIProperty::IsWindowPatternAvailable,
-            TreeProperty::GridItemAvailable => UIProperty::IsGridItemPatternAvailable,
-            TreeProperty::TableItemAvailable => UIProperty::IsTableItemPatternAvailable,
-            TreeProperty::LegacyAvailable => UIProperty::IsLegacyIAccessiblePatternAvailable,
-            TreeProperty::ProviderDescription => UIProperty::ProviderDescription,
-            TreeProperty::ControlType => UIProperty::ControlType,
-            TreeProperty::RuntimeId => UIProperty::RuntimeId,
-            TreeProperty::LocalizedControlType => UIProperty::LocalizedControlType,
-            TreeProperty::AriaRole => UIProperty::AriaRole,
-        }
-    }
-}
+#[path = "property_uia.rs"]
+mod imp;
 
 #[cfg(target_os = "windows")]
 pub use imp::uia_property;
