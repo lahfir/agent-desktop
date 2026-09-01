@@ -154,11 +154,11 @@ impl DibSection {
         gdi_balance::acquire();
         let previous = unsafe { SelectObject(dc_pair.memory_dc, bitmap) };
         if previous.is_null() {
-            let refused = win32_last_error("SelectObject failed for display capture");
+            let error = win32_last_error("SelectObject failed for display capture");
             if unsafe { DeleteObject(bitmap) } != 0 {
                 gdi_balance::release();
             }
-            return Err(refused);
+            return Err(error);
         }
         Ok(Self {
             dc_pair,
