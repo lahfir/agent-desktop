@@ -12,6 +12,7 @@ pub(crate) mod clipboard_image;
 #[cfg(target_os = "windows")]
 pub(crate) mod clipboard_session;
 pub(crate) mod clipboard_text;
+pub(crate) mod clipboard_worker_state;
 #[cfg(target_os = "windows")]
 pub(crate) mod clipboard_write;
 pub(crate) mod drag;

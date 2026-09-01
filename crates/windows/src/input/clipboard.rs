@@ -48,6 +48,7 @@ pub(crate) fn get_clipboard_content(
     deadline: Deadline,
 ) -> Result<Option<ClipboardContent>, AdapterError> {
     ensure_budget(deadline).map_err(not_delivered)?;
+    crate::input::clipboard_worker_state::ensure_no_outstanding_worker()?;
     for attempt in 0..SEQUENCE_RETRY_ATTEMPTS {
         ensure_budget(deadline).map_err(not_delivered)?;
         let before = unsafe { GetClipboardSequenceNumber() };
@@ -76,10 +77,12 @@ pub(crate) fn set_content(
     content: &ClipboardContent,
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
+    crate::input::clipboard_worker_state::ensure_no_outstanding_worker()?;
     set_clipboard_content(content, deadline)
 }
 
 pub(crate) fn clear(deadline: Deadline) -> Result<(), AdapterError> {
+    crate::input::clipboard_worker_state::ensure_no_outstanding_worker()?;
     clear_clipboard_write(deadline)
 }
 
@@ -159,6 +162,12 @@ fn format_available(format: u32) -> bool {
     unsafe { IsClipboardFormatAvailable(format) != 0 }
 }
 
+/// Whether the clipboard owner is dispatching messages at all.
+///
+/// This rules out a fully hung message pump. It does **not** rule out a
+/// responsive-but-slow renderer, which passes this probe and then blocks
+/// inside `GetClipboardData` for as long as it likes - the condition
+/// `clipboard_worker_state` exists to detect after the fact.
 pub(crate) fn ensure_owner_responsive() -> Result<(), AdapterError> {
     let owner = unsafe { GetClipboardOwner() };
     if owner.is_null() {
@@ -186,6 +195,7 @@ pub(crate) fn read_format_bytes(
     deadline: Deadline,
 ) -> Result<Option<Vec<u8>>, AdapterError> {
     ensure_budget(deadline).map_err(not_delivered)?;
+    crate::input::clipboard_worker_state::ensure_no_outstanding_worker()?;
     let owner = unsafe { GetClipboardOwner() };
     if owner.is_null() {
         return read_format_bytes_on_caller(format, deadline);
@@ -208,13 +218,17 @@ fn read_format_bytes_on_worker(
     #[cfg(test)]
     let size_override = GLOBAL_SIZE_OVERRIDE_BYTES.with(Cell::get);
     let (sender, receiver) = channel();
+    let ticket = crate::input::clipboard_worker_state::WorkerTicket::arm();
     thread::spawn(move || {
         #[cfg(test)]
         seed_worker_global_size_override(size_override);
-        let result = (|| {
-            let _session = ClipboardSession::open_for_read(deadline)?;
-            copy_clipboard_format(format)
-        })();
+        let result = {
+            let _ticket = ticket;
+            (|| {
+                let _session = ClipboardSession::open_for_read(deadline)?;
+                copy_clipboard_format(format)
+            })()
+        };
         let _ = sender.send(result);
     });
     match receiver.recv_timeout(deadline.remaining()) {
