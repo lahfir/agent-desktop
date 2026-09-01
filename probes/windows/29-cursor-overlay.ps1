@@ -489,6 +489,15 @@ try {
     $screenDc = $O::GetDC([IntPtr]::Zero)
     $deviceCapsHz = $O::GetDeviceCaps($screenDc, 116)
     [void]$O::ReleaseDC([IntPtr]::Zero, $screenDc)
+    # A remote session would explain an animations-disabled reading as a bandwidth
+    # artifact rather than a configured preference, so the session kind is read
+    # rather than inferred from the fact that this desktop arrives over RDP.
+    $remoteSession = $O::GetSystemMetrics(4096)
+    $results['session_kind'] = [ordered]@{
+        remote_session       = ($remoteSession -ne 0)
+        monitors_by_metric   = $O::GetSystemMetrics(80)
+    }
+
     $results['coordinate_space'] = [ordered]@{
         virtual_screen         = [ordered]@{ x = $virtualX; y = $virtualY; width = $virtualWidth; height = $virtualHeight }
         monitor_count          = $monitors.Count
