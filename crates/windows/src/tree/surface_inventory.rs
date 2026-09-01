@@ -33,25 +33,16 @@ pub(crate) fn list_surfaces_for_process(
     crate::system::permissions::ensure_budget(deadline)?;
     require_live_process(&process)?;
     let windows = windows_of(process.pid, deadline)?;
-    let mut surfaces = Vec::new();
-    for window in &windows {
-        let title = live_window_title(window.handle);
-        surfaces.push(surface(
-            SnapshotSurface::Window,
-            window.handle,
-            title.clone(),
-        ));
-        if is_foreground_window(window.handle) {
-            surfaces.push(surface(
-                SnapshotSurface::Focused,
-                window.handle,
-                title.clone(),
-            ));
-        }
-        if is_modal_sheet(window.handle, deadline)? {
-            surfaces.push(surface(SnapshotSurface::Sheet, window.handle, title));
-        }
-    }
+    let observed: Vec<ObservedWindow> = windows
+        .iter()
+        .map(|window| ObservedWindow {
+            handle: window.handle,
+            title: live_window_title(window.handle),
+            foreground: is_foreground_window(window.handle),
+            sheet: is_modal_sheet(window.handle, deadline),
+        })
+        .collect();
+    let mut surfaces = surfaces_of(observed);
     crate::system::permissions::ensure_budget(deadline)?;
     if let Some(menu) = locate_menu(process.pid, deadline)? {
         surfaces.push(menu_surface(&menu)?);
@@ -106,6 +97,53 @@ fn surface(kind: SnapshotSurface, handle: WindowHandle, title: Option<String>) -
         title,
         item_count: None,
     }
+}
+
+/// One window as this inventory observed it. The sheet probe is carried as a
+/// `Result` rather than resolved here, so the rule about what a failed probe
+/// costs is decided in one pure place and can be tested without a desktop.
+pub(crate) struct ObservedWindow {
+    pub(crate) handle: WindowHandle,
+    pub(crate) title: Option<String>,
+    pub(crate) foreground: bool,
+    pub(crate) sheet: Result<bool, AdapterError>,
+}
+
+/// One window whose UIA root cannot be read costs that window its `sheet`
+/// classification and nothing else. Propagating it discarded every surface
+/// already collected for the process, so a single hung window erased its
+/// responsive siblings from the inventory - where the observation path
+/// reports the partial it did observe rather than a discard.
+pub(crate) fn surfaces_of(observed: Vec<ObservedWindow>) -> Vec<SurfaceInfo> {
+    let mut surfaces = Vec::new();
+    for window in observed {
+        surfaces.push(surface(
+            SnapshotSurface::Window,
+            window.handle,
+            window.title.clone(),
+        ));
+        if window.foreground {
+            surfaces.push(surface(
+                SnapshotSurface::Focused,
+                window.handle,
+                window.title.clone(),
+            ));
+        }
+        match window.sheet {
+            Ok(true) => surfaces.push(surface(SnapshotSurface::Sheet, window.handle, window.title)),
+            Ok(false) => {}
+            Err(error) => trace_unreadable_window(window.handle, &error),
+        }
+    }
+    surfaces
+}
+
+fn trace_unreadable_window(handle: WindowHandle, error: &AdapterError) {
+    tracing::debug!(
+        code = %error.code.as_str(),
+        handle = handle as usize,
+        "a window's modal classification could not be read; its other surfaces stand"
+    );
 }
 
 /// The modal classification is the surface path's own predicate, read from
