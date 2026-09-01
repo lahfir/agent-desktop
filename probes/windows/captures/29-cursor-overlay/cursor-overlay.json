@@ -49,9 +49,9 @@
                                                             "height":  256,
                                                             "pixels":  65536,
                                                             "cost_ms":  {
-                                                                            "min_ms":  0.048,
-                                                                            "median_ms":  0.055,
-                                                                            "max_ms":  0.082,
+                                                                            "min_ms":  0.029,
+                                                                            "median_ms":  0.034,
+                                                                            "max_ms":  0.072,
                                                                             "samples":  7
                                                                         }
                                                         },
@@ -60,9 +60,9 @@
                                                             "height":  512,
                                                             "pixels":  262144,
                                                             "cost_ms":  {
-                                                                            "min_ms":  0.101,
-                                                                            "median_ms":  0.132,
-                                                                            "max_ms":  0.21,
+                                                                            "min_ms":  0.105,
+                                                                            "median_ms":  0.13,
+                                                                            "max_ms":  0.159,
                                                                             "samples":  7
                                                                         }
                                                         },
@@ -71,9 +71,9 @@
                                                               "height":  780,
                                                               "pixels":  1254240,
                                                               "cost_ms":  {
-                                                                              "min_ms":  0.5,
-                                                                              "median_ms":  0.573,
-                                                                              "max_ms":  0.732,
+                                                                              "min_ms":  0.528,
+                                                                              "median_ms":  0.635,
+                                                                              "max_ms":  0.726,
                                                                               "samples":  7
                                                                           }
                                                           }
@@ -98,12 +98,16 @@
     "named_pipe_roundtrip":  {
                                  "transport":  "NamedPipeClientStream connect + write + one-byte ack read",
                                  "cost_ms":  {
-                                                 "min_ms":  0.255,
-                                                 "median_ms":  0.274,
-                                                 "max_ms":  0.639,
+                                                 "min_ms":  0.253,
+                                                 "median_ms":  0.272,
+                                                 "max_ms":  0.576,
                                                  "samples":  7
                                              }
                              },
+    "session_kind":  {
+                         "remote_session":  false,
+                         "monitors_by_metric":  1
+                     },
     "coordinate_space":  {
                              "virtual_screen":  {
                                                     "x":  0,
