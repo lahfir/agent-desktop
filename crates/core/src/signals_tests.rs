@@ -335,3 +335,6 @@ fn reused_pid_and_window_id_with_new_process_generation_is_replacement() {
 
 #[path = "signals_surface_tests.rs"]
 mod surface_tests;
+
+#[path = "signals_merge_tests.rs"]
+mod merge_tests;

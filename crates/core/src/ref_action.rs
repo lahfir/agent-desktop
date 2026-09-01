@@ -1,5 +1,5 @@
 use crate::{
-    AdapterError, AppError,
+    AdapterError, AppError, DeliverySemantics, ErrorCode,
     action_request::ActionRequest,
     action_result::ActionResult,
     actionability,
@@ -62,7 +62,14 @@ pub(crate) fn dispatch_resolved(
         .process_instance
         .as_deref()
         .filter(|instance| !instance.is_empty())
-        .ok_or_else(|| AdapterError::stale_ref("target process instance is unavailable"))?;
+        .ok_or_else(|| {
+            AdapterError::new(
+                ErrorCode::StaleRef,
+                "target process instance is unavailable",
+            )
+            .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+            .with_disposition(DeliverySemantics::not_delivered())
+        })?;
     let expected_process = crate::ProcessIdentity::new(target.entry.process.pid, process_instance);
     let mut handle = target
         .adapter
@@ -84,10 +91,16 @@ pub(crate) fn dispatch_resolved(
             if !crate::ref_action_wait_evidence::should_scroll_after_preflight(&request, &error) {
                 return Err(error.into());
             }
-            target
-                .adapter
-                .scroll_into_view(&handle, lease)
-                .inspect_err(|error| trace_scroll_error(&target, error))?;
+            if let Err(scroll_error) = target.adapter.scroll_into_view(&handle, lease) {
+                trace_scroll_error(&target, &scroll_error);
+                return Err(
+                    crate::ref_action_wait_evidence::attach_scroll_recovery_failure(
+                        error,
+                        &scroll_error,
+                    )
+                    .into(),
+                );
+            }
             handle = target
                 .adapter
                 .resolve_element_strict(target.entry, target.deadline)
@@ -376,3 +389,7 @@ mod tests;
 #[cfg(test)]
 #[path = "ref_action_cursor_overlay_tests.rs"]
 mod cursor_overlay_tests;
+
+#[cfg(test)]
+#[path = "ref_action_scroll_recovery_tests.rs"]
+mod scroll_recovery_tests;

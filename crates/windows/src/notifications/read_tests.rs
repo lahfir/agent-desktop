@@ -248,3 +248,53 @@ mod live {
         );
     }
 }
+
+/// Uses the crate's own hosted fixture window - never the shell's Action
+/// Center - so this case stays deterministic.
+///
+/// `name_of` and `control_type`'s own fix has no equivalent test here: a
+/// property read through an element resolved before its owning process was
+/// killed was measured, on this host, to answer `Ok` with a stale value
+/// (`""` for the name, `Pane` for the control type) rather than fail, so
+/// there is no in-repo, deterministic way to make that read fail the way
+/// `find_by_id`'s searches fail reliably.
+#[cfg(target_os = "windows")]
+mod fixture_backed {
+    use agent_desktop_core::{Deadline, ErrorCode};
+
+    use super::super::{MAX_WALK_DEPTH, walk};
+    use crate::tree::fixture::{HostedFixture, bootstrap};
+
+    fn deadline(ms: u64) -> Deadline {
+        Deadline::after(ms).expect("deadline")
+    }
+
+    /// `walk` checks its depth cap before it ever touches `element`'s
+    /// children, so a real but otherwise ordinary fixture element proves the
+    /// cap's own behavior without needing an eleven-level-deep tree.
+    #[test]
+    fn a_walk_past_the_depth_cap_surfaces_as_an_error_not_a_silent_stop() {
+        bootstrap();
+        let fixture = HostedFixture::spawn().expect("a fixture host starts");
+        let root = crate::tree::automation::root_from_hwnd(fixture.handle(), deadline(10_000))
+            .expect("the fixture window resolves");
+        let mut entries = Vec::new();
+
+        let error = walk(
+            &root,
+            None,
+            MAX_WALK_DEPTH + 1,
+            &mut entries,
+            deadline(10_000),
+        )
+        .expect_err("a walk past the depth cap must surface as an error, not stop silently");
+
+        assert_eq!(error.code, ErrorCode::AppUnresponsive);
+        let details = error
+            .details
+            .clone()
+            .expect("the depth truncation must be an honest, surfaced detail");
+        assert_eq!(details["complete"], false);
+        assert!(entries.is_empty());
+    }
+}

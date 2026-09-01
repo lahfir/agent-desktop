@@ -294,6 +294,11 @@ fn zero_bounds_click_reports_visible_fail_after_scroll_seam() {
     assert_eq!(visible["reason"], "bounds are zero-sized");
 }
 
+/// A scroll recovery that cannot run must not become the answer. The caller
+/// keeps the actionability diagnosis - zero bounds failed the visible check -
+/// and the refused recovery is recorded beside it, so neither the real cause
+/// nor the attempt is lost. The code stays ACTION_FAILED and never becomes
+/// PLATFORM_NOT_SUPPORTED, which is what this case originally guarded.
 #[test]
 fn zero_bounds_without_scroll_impl_is_not_platform_not_supported() {
     let mut adapter = EnvelopeAdapter::new(live_button(true, area(0.0, 10.0)));
@@ -306,8 +311,19 @@ fn zero_bounds_without_scroll_impl_is_not_platform_not_supported() {
     assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_ne!(error.code, ErrorCode::PlatformNotSupported);
     assert_not_delivered(&error);
-    let details = error.details.expect("unsupported details");
-    assert_eq!(details["kind"], "scroll_into_view_unsupported");
+    let details = error.details.expect("actionability details");
+    let attempted = &details["scroll_into_view_attempted"];
+    assert!(
+        attempted["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("ScrollIntoView")),
+        "the refused recovery is recorded as a detail, got: {details}"
+    );
+    let visible = find_check(&details, "visible");
+    assert_eq!(
+        visible["status"], "fail",
+        "the recovery failure must not replace the diagnosis it was recovering from"
+    );
     let defaulted = AdapterError::not_supported("scroll_into_view");
     assert_ne!(error.code, defaulted.code);
 }

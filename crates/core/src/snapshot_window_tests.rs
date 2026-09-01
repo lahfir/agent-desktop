@@ -105,6 +105,74 @@ fn running_application_without_a_window_is_not_reported_as_absent() {
     assert_eq!(error.code(), "WINDOW_NOT_FOUND");
 }
 
+/// An adapter whose window inventory is always empty for the requested app,
+/// and whose app inventory is caller-chosen, so the discrimination between
+/// "never launched" and "running with no window" can be observed without any
+/// platform involved.
+struct AppInventoryAdapter {
+    running_apps: Vec<crate::AppInfo>,
+}
+
+impl ObservationOps for AppInventoryAdapter {
+    fn list_windows(
+        &self,
+        _filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, crate::AdapterError> {
+        Ok(Vec::new())
+    }
+
+    fn list_apps(
+        &self,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<crate::AppInfo>, crate::AdapterError> {
+        Ok(self.running_apps.clone())
+    }
+}
+
+impl ActionOps for AppInventoryAdapter {}
+impl InputOps for AppInventoryAdapter {}
+impl SystemOps for AppInventoryAdapter {}
+
+fn running_app(name: &str) -> crate::AppInfo {
+    crate::AppInfo {
+        name: name.into(),
+        pid: crate::ProcessId::new(7),
+        bundle_id: None,
+        process_instance: Some("generation-a".into()),
+        presentation: None,
+    }
+}
+
+/// A name that never matched any running process yields `APP_NOT_FOUND`, and
+/// a name that matches a running but windowless process still yields
+/// `WINDOW_NOT_FOUND` - both from the same code path, so neither can pass by
+/// accident of the other's fix.
+#[test]
+fn app_name_resolution_discriminates_absent_from_windowless() {
+    let adapter = AppInventoryAdapter {
+        running_apps: vec![running_app("ApplicationFrameHost.exe")],
+    };
+
+    let absent = resolve_window(
+        &adapter,
+        Some("NoSuchApp.exe"),
+        None,
+        crate::Deadline::after(100).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(absent.code(), "APP_NOT_FOUND");
+
+    let windowless = resolve_window(
+        &adapter,
+        Some("ApplicationFrameHost.exe"),
+        None,
+        crate::Deadline::after(100).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(windowless.code(), "WINDOW_NOT_FOUND");
+}
+
 /// An adapter whose `resolve_shell_surface` answers with the trait default -
 /// the exact shape `AdapterError::not_supported` builds - falls through to
 /// the application path for a routed shell kind, so upgrading an adapter in

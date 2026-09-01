@@ -527,6 +527,14 @@ agent-desktop cursor-overlay disable
 
 No flags gives the default look: white body, near-black rim, blue ripple, blue element outline.
 
+`enable` answers with `data.rendered`, a boolean saying whether anything was 
+actually drawn. It is `true` where a renderer ships and `false` where the 
+session setting was recorded but nothing painted, which is the answer on 
+Windows today. Read it rather than treating `ok: true` as proof of a visible 
+cursor: the command succeeded at what it could do, and the field is how it 
+tells you which of the two happened. `disable` carries no such field, because 
+a disable has nothing to render.
+
 Style is stored in the session manifest and inherited by every eligible headless command, batch entries included. Action and batch-entry schemas take no cursor flags. Run `enable` again to restyle; it applies at once.
 
 | Flag | Meaning | Default |

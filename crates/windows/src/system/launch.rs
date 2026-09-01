@@ -1,6 +1,6 @@
 use agent_desktop_core::{
-    AdapterError, Deadline, DeliverySemantics, ErrorCode, ProcessId, WindowFilter, WindowInfo,
-    launch_options::LaunchOptions, launch_result::LaunchResult,
+    AdapterError, Deadline, DeliverySemantics, ErrorCode, ProcessId, RendererKind, WindowFilter,
+    WindowInfo, launch_options::LaunchOptions, launch_result::LaunchResult,
 };
 #[cfg(test)]
 use std::collections::BTreeMap;
@@ -89,6 +89,7 @@ fn launch_result(
     process_instance: String,
     window: Option<WindowInfo>,
 ) -> LaunchResult {
+    let renderer = window.as_ref().and_then(detect_renderer_from_window);
     LaunchResult {
         app: window
             .as_ref()
@@ -98,9 +99,26 @@ fn launch_result(
         process_instance: Some(process_instance),
         window,
         cdp: None,
-        renderer: None,
+        renderer,
         suggestion: None,
     }
+}
+
+#[cfg(target_os = "windows")]
+fn detect_renderer_from_window(window: &WindowInfo) -> Option<RendererKind> {
+    const CHROMIUM_WINDOW_CLASS: &str = "Chrome_WidgetWin_1";
+    let handle = super::window_ops::parse_handle(&window.id);
+    if handle.is_null() {
+        return None;
+    }
+    super::window_ops::window_class_name(handle)
+        .filter(|class| class == CHROMIUM_WINDOW_CLASS)
+        .map(|_| RendererKind::Chromium)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn detect_renderer_from_window(_window: &WindowInfo) -> Option<RendererKind> {
+    None
 }
 
 /// One window observation, tolerant of the inventory's mid-walk identity race.
@@ -355,10 +373,10 @@ fn already_running_error(pid: ProcessId, matches: &[ProcessRow]) -> AdapterError
 }
 
 fn ambiguous_apps(matches: &[ProcessRow]) -> AdapterError {
-    AdapterError::ambiguous_target("More than one application instance matches the launch target")
-        .with_details(serde_json::json!({
-            "candidate_pids": matches.iter().map(|row| row.pid).collect::<Vec<_>>(),
-        }))
+    AdapterError::ambiguous_process_target(
+        "More than one application instance matches the launch target",
+        &matches.iter().map(|row| row.pid).collect::<Vec<_>>(),
+    )
 }
 
 fn before_launch(error: AdapterError) -> AdapterError {

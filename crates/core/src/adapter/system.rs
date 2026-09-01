@@ -9,7 +9,7 @@ use crate::{
 
 pub trait SystemOps: Send + Sync {
     fn update_cursor_overlay(&self, _control: &CursorOverlayControl) -> Result<(), AdapterError> {
-        Ok(())
+        Err(AdapterError::not_supported("update_cursor_overlay"))
     }
 
     fn run_cursor_overlay_child(&self) -> Option<Result<(), AdapterError>> {

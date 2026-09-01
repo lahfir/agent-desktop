@@ -2,18 +2,22 @@ use super::{Scratch, scratch_nonce};
 use crate::system::private_file::WindowsPrivateFile;
 use crate::system::private_file::owner::forced_foreign_owner::with_forced_foreign_owner;
 use crate::system::private_file::owner::{
-    SidBuffer, file_owner_sid, process_token_owner_sid, process_token_user_sid_for_tests,
-    require_owned_by_token_owner,
+    SidBuffer, file_owner_sid, process_owner_eligible_sids, process_token_owner_sid,
+    process_token_user_sid_for_tests, require_owned_by_eligible_principal,
 };
 use agent_desktop_core::PrivateFileOps;
 use std::io::ErrorKind;
+use std::os::windows::io::AsRawHandle;
 use std::path::Path;
 use windows_sys::Win32::Foundation::LocalFree;
-use windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW;
-use windows_sys::Win32::Security::{
-    CreateWellKnownSid, SECURITY_MAX_SID_SIZE, WELL_KNOWN_SID_TYPE, WinBuiltinAdministratorsSid,
-    WinBuiltinUsersSid, WinLocalSystemSid,
+use windows_sys::Win32::Security::Authorization::{
+    ConvertSidToStringSidW, SE_FILE_OBJECT, SetSecurityInfo,
 };
+use windows_sys::Win32::Security::{
+    CreateWellKnownSid, OWNER_SECURITY_INFORMATION, SECURITY_MAX_SID_SIZE, WELL_KNOWN_SID_TYPE,
+    WinBuiltinAdministratorsSid, WinBuiltinUsersSid, WinLocalSystemSid, WinWorldSid,
+};
+use windows_sys::Win32::Storage::FileSystem::WRITE_OWNER;
 
 #[test]
 fn a_freshly_created_files_owner_equals_the_process_token_owner() {
@@ -28,7 +32,7 @@ fn a_freshly_created_files_owner_equals_the_process_token_owner() {
         token_owner.matches(&owner_sid),
         "a freshly created file must land owned by the token owner"
     );
-    require_owned_by_token_owner(&file, "freshly created file").unwrap();
+    require_owned_by_eligible_principal(&file, "freshly created file").unwrap();
 }
 
 #[test]
@@ -43,19 +47,105 @@ fn the_token_owner_does_not_match_a_foreign_well_known_principal() {
 }
 
 #[test]
-fn require_owned_by_token_owner_refuses_a_foreign_owner_via_the_forced_seam() {
+fn require_owned_by_eligible_principal_refuses_a_foreign_owner_via_the_forced_seam() {
     let scratch = Scratch::new("owner-foreign");
     let path = scratch.path().join("fresh.txt");
     let file = std::fs::File::create(&path).unwrap();
 
     let refused = with_forced_foreign_owner(|| {
-        require_owned_by_token_owner(&file, "seam target").unwrap_err()
+        require_owned_by_eligible_principal(&file, "seam target").unwrap_err()
     });
 
     assert_eq!(refused.kind(), ErrorKind::PermissionDenied);
     assert!(
         refused.to_string().contains("foreign principal"),
         "the refusal must name the foreign principal: {refused}"
+    );
+}
+
+/// The bug this module exists to fix: on an elevated token, `TokenOwner`
+/// reads as `BUILTIN\Administrators` while `TokenUser` is the human's own
+/// SID, so a file this same process moves to be owned by its `TokenUser`
+/// must still be accepted. A `TokenOwner`-only compare refuses it - that
+/// refusal is exactly what shipped as the reported bug.
+#[test]
+fn require_owned_by_eligible_principal_accepts_a_token_user_owner_even_when_token_owner_differs() {
+    let scratch = Scratch::new("owner-token-user");
+    let path = scratch.path().join("user-owned.txt");
+    let file = open_with_write_owner_access(&path);
+
+    let token_user = process_token_user_sid_for_tests().unwrap();
+    force_file_owner(&file, &token_user);
+
+    let observed_owner = file_owner_sid(&file).unwrap();
+    assert!(
+        token_user.matches(&observed_owner),
+        "the file must now be owned by this process's token user SID"
+    );
+
+    require_owned_by_eligible_principal(&file, "token-user-owned file").expect(
+        "a file owned by the token's own user SID must be accepted even when it differs from \
+         TokenOwner",
+    );
+}
+
+/// Pins the owner-eligible set itself, independent of which SIDs this test
+/// box's token happens to expose today: it must contain both TokenUser and
+/// TokenOwner, and it must exclude Everyone even though Everyone is a token
+/// group present on every token - Everyone never carries `SE_GROUP_OWNER`,
+/// so a filter bug that widened to "any group" would make this fail.
+#[test]
+fn owner_eligible_sids_contains_token_user_and_owner_but_excludes_everyone() {
+    let eligible = process_owner_eligible_sids().unwrap();
+    let token_user = process_token_user_sid_for_tests().unwrap();
+    let token_owner = process_token_owner_sid().unwrap();
+    let everyone = well_known_sid_buffer(WinWorldSid);
+
+    assert!(
+        eligible.contains(&token_user),
+        "the owner-eligible set must contain this process's token user SID"
+    );
+    assert!(
+        eligible.contains(token_owner),
+        "the owner-eligible set must contain this process's token owner SID"
+    );
+    assert!(
+        !eligible.contains(&everyone),
+        "the owner-eligible set must exclude Everyone: it is present in every token's groups \
+         but never carries SE_GROUP_OWNER, so accepting it would defeat the foreign-principal \
+         check"
+    );
+}
+
+fn open_with_write_owner_access(path: &Path) -> std::fs::File {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::{FILE_GENERIC_READ, FILE_GENERIC_WRITE};
+
+    std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .access_mode(FILE_GENERIC_READ | FILE_GENERIC_WRITE | WRITE_OWNER)
+        .open(path)
+        .expect("the test file must open with WRITE_OWNER access")
+}
+
+fn force_file_owner(file: &std::fs::File, owner: &SidBuffer) {
+    let status = unsafe {
+        SetSecurityInfo(
+            file.as_raw_handle(),
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            owner.as_psid(),
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            std::ptr::null(),
+        )
+    };
+    assert_eq!(
+        status,
+        0,
+        "SetSecurityInfo must move the test file's owner to the requested SID: {}",
+        std::io::Error::from_raw_os_error(status as i32)
     );
 }
 

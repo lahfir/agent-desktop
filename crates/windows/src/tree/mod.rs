@@ -51,3 +51,7 @@ pub(crate) mod fixture_pattern;
 pub(crate) mod fixture_window;
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod offscreen_origin;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "resolve_dead_process_tests.rs"]
+mod resolve_dead_process_tests;

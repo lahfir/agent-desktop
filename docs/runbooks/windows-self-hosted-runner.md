@@ -1,13 +1,28 @@
 # Windows self-hosted E2E runner
 
-This runbook is the registration and hardening policy for the interactive
-Windows runner `windows-e2e.yml` targets with the labels
-`[self-hosted, Windows, agent-desktop-e2e]`. **No runner is registered by
-this document** - registration is repository-admin action the owner has
-reserved, and the policy below is what §2.15's implementer registers
-against. Shipping the policy unregistered is the deliberate scope of this
-sub-phase: the artifacts are written down and reviewable now; the live
-runner and its CI-green gate are §2.15's.
+This runbook is the registration and hardening policy for an interactive
+Windows runner carrying the labels `[self-hosted, Windows, agent-desktop-e2e]`.
+**No runner is registered, and no CI workflow targets one.** The live e2e
+lane that named these labels was retired on the owner's decision: the
+runner's labels are reachable from every `pull_request`-triggered workflow
+in the repository rather than from one file, so a fork PR that edits any of
+them is code execution on the owner's interactive desktop. That exposure is
+the whole reason GitHub advises against self-hosted runners on public
+repositories, and it is not worth automating a suite that already runs on
+demand.
+
+**The live Windows e2e suite is therefore run locally, not in CI.** It is
+driven with `scripts/run-windows-e2e-ci.ps1` on a developer box holding the
+interactive session, under the exclusive `DesktopLease`, and its result is
+read from that run. CI runs the Windows unit tests, clippy, the contract
+gates and the harness self-tests on GitHub-hosted `windows-latest` and
+`windows-11-arm`; none of that needs a desktop.
+
+This document is kept, unexecuted, for one reason: if a runner is ever
+registered, the policy it must be registered against should already exist
+and be reviewable, rather than being invented under time pressure. Read the
+sections below as preconditions on that future decision, not as a procedure
+anyone is expected to run today.
 
 ## Why an interactive session, not a service
 
@@ -158,17 +173,20 @@ To decommission the runner (temporarily or permanently):
    auto-logon credential or scheduled task referencing the runner account
    remains configured.
 
-## What §2.15 still owes
+## What is still owed, and by whom
 
-This document ships the policy; it does not register a runner or prove the
-live gate green on one. §2.15 registers the runner against this policy,
-re-ratifies the trigger policy at that point (the moment the exposure
-above becomes real), flushes whatever `push`-triggered runs queued while
-unregistered, and runs the full live suite green in both headless and
-headed tiers - the half of this sub-phase's exit criterion that could not
-be satisfied without a runner to run it on. §2.15 separately owns
-multi-monitor and session-degradation (locked desktop, disconnected RDP
-session, Session 0) evidence, which needs a **second, disposable**
-interactive host: this runner's own session cannot safely be locked or
-disconnected to measure that, because a failed reattach would strand the
-box this runbook exists to keep running.
+Nothing in this document is owed by a sub-phase any more. The CI-green-on-a-
+self-hosted-runner obligation that rode here was **retired, not deferred**:
+the owner declined registration a second time and directed that the live e2e
+lane be removed from CI, so there is no receiving sub-phase and no
+infrastructure waiting to be provisioned. The live suite's evidence comes
+from local exclusive runs on a developer box, which is how every scenario in
+it has actually been verified.
+
+One genuinely separate need survives and is unrelated to CI: multi-monitor
+and session-degradation evidence (locked desktop, disconnected RDP session,
+Session 0) requires a **second, disposable** interactive host. The box that
+holds the working session cannot safely be locked or disconnected to measure
+it, because a failed reattach strands the machine mid-run. That is recorded
+as a ratification with its reason in `probes/windows/FINDINGS.md` rather
+than as work waiting for a runner.

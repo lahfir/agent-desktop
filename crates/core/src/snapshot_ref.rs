@@ -142,9 +142,14 @@ fn resolve_result_window(
 ) -> Result<crate::WindowInfo, AppError> {
     let Some(window_id) = entry.source.source_window_id.as_deref() else {
         let instance = entry.process.process_instance.as_deref().ok_or_else(|| {
-            AppError::Adapter(crate::AdapterError::stale_ref(
-                "root ref has no process-instance identity",
-            ))
+            AppError::Adapter(
+                crate::AdapterError::new(
+                    crate::ErrorCode::StaleRef,
+                    "root ref has no process-instance identity",
+                )
+                .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+                .with_disposition(crate::DeliverySemantics::not_delivered()),
+            )
         })?;
         return crate::window_lookup::find_window_for_process(
             crate::ProcessIdentity::new(entry.process.pid, instance),

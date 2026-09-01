@@ -59,6 +59,22 @@ npm install -g agent-desktop        # downloads prebuilt binary automatically
 
 The same command installs on macOS (ARM64, x64) and Windows (x64, ARM64). The installer downloads a `.tar.gz` release asset, verifies its SHA-256 against the release's `checksums.txt`, and places the native binary beside the `agent-desktop` launcher.
 
+Recent npm versions block install scripts by default, which prevents the wrapper from fetching its binary and produces a loud binary-not-found failure on first run. To permit this package's install script, add the `allowScripts` configuration to your `package.json` (or npm config):
+
+```json
+{
+  "allowScripts": {
+    "agent-desktop": true
+  }
+}
+```
+
+Or via npm config:
+
+```bash
+npm config set allowScripts.agent-desktop true
+```
+
 Or without installing:
 
 ```bash
@@ -79,6 +95,8 @@ curl -fsSL https://github.com/lahfir/agent-desktop/releases/download/v<version>/
 sha256sum <downloaded-archive>   # compare with the matching checksums.txt line
 gh attestation verify <downloaded-archive> --repo lahfir/agent-desktop
 ```
+
+The checksums published beside a release come from the same release as the artifact they describe, so they detect corruption rather than proving provenance. A reader who downloads an artifact manually can verify provenance with `gh attestation verify <file> --repo lahfir/agent-desktop`.
 
 ### From source
 

@@ -59,8 +59,38 @@ fn unlabeled_bounded_boundary_gets_drill_ref() {
     assert!(boundary.ref_id.is_some());
     assert!(boundary.presentation.bounds.is_none());
     let entry = refmap.get(boundary.ref_id.as_deref().unwrap()).unwrap();
-    assert!(entry.geometry.bounds.is_none());
+    assert!(
+        entry.geometry.bounds.is_some(),
+        "geometry is this anchor's only evidence, and the promotion that resolves it needs the rect, not just the hash"
+    );
     assert!(entry.geometry.bounds_hash.is_some());
+}
+
+/// The narrowing holds: an anchor carrying a name of its own is resolved by
+/// that name, so hiding bounds still strips its rect. Without this the
+/// assertion above would read as "always keep bounds" and would re-open the
+/// size decision the ref-able allocation path already settled.
+#[test]
+fn a_named_bounded_boundary_still_has_its_rect_stripped() {
+    let mut boundary = node("group");
+    boundary.identity.name = Some("Sidebar".into());
+    boundary.children_count = Some(5);
+    boundary.presentation.bounds = Some(crate::Rect {
+        x: 10.0,
+        y: 20.0,
+        width: 300.0,
+        height: 400.0,
+    });
+    let mut root = node("window");
+    root.children = vec![boundary];
+
+    let mut refmap = RefMap::new();
+    let result = ref_alloc::allocate_refs(root, &mut refmap, &run_config(false, false)).unwrap();
+
+    let boundary = &result.children[0];
+    let entry = refmap.get(boundary.ref_id.as_deref().unwrap()).unwrap();
+    assert!(crate::ref_identity::has_meaningful_identity(entry));
+    assert!(entry.geometry.bounds.is_none());
 }
 
 #[test]

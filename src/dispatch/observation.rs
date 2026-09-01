@@ -53,6 +53,7 @@ pub(super) fn find(
             root: args.root,
             snapshot: args.snapshot,
             surface: args.surface.to_core(),
+            timeout_ms: args.timeout_ms,
             filter: find_command::FindFilterArgs {
                 role: args.filter.role,
                 name: args.filter.name,

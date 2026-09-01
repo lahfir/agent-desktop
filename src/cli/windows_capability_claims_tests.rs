@@ -118,13 +118,77 @@ fn windows_adapter_still_refuses_what_the_skill_marks_unavailable() {
          capability, got: {detail}"
     );
 
-    SystemOps::update_cursor_overlay(
+    let cursor_overlay = SystemOps::update_cursor_overlay(
         &adapter,
         &CursorOverlayControl::disable("skill-capability-probe".into()),
     )
-    .expect(
-        "cursor-overlay must keep core's Ok(()) default on Windows: the skill \
+    .expect_err(
+        "cursor-overlay must keep core's refusing default on Windows: the skill \
          documents 'records its session setting, renders nothing', so an \
          override arriving here needs a capability-table update in the same PR",
+    );
+    assert_eq!(
+        cursor_overlay.code,
+        ErrorCode::PlatformNotSupported,
+        "cursor-overlay changed behaviour; update the Windows skill's capability table"
+    );
+}
+
+/// The bullet a caller reads before sizing a `wait --notification` timeout.
+/// Matched on the command rather than on a heading so the guard survives the
+/// paragraph moving.
+const POLL_COST_ANCHOR: &str = "`wait --notification` opens and closes the center per poll";
+
+/// A ratified poll cost is only useful if the number that justifies it ships
+/// beside it. Without this the paragraph could be reduced to "polling is slow"
+/// and still read as documentation while telling a caller nothing it can size
+/// a timeout against.
+#[test]
+fn the_wait_notification_bullet_carries_its_measured_per_poll_cost() {
+    let start = WINDOWS_SKILL_DOC.find(POLL_COST_ANCHOR).expect(
+        "the Windows skill must document the per-poll session behaviour of wait --notification",
+    );
+    let bullet_end = WINDOWS_SKILL_DOC[start..]
+        .find("\n- ")
+        .map_or(WINDOWS_SKILL_DOC.len(), |offset| start + offset);
+    let bullet = &WINDOWS_SKILL_DOC[start..bullet_end];
+
+    let states_a_decimal = bullet.split_whitespace().any(|token| {
+        token.split_once('.').is_some_and(|(whole, fraction)| {
+            whole
+                .chars()
+                .next_back()
+                .is_some_and(|character| character.is_ascii_digit())
+                && fraction
+                    .chars()
+                    .next()
+                    .is_some_and(|character| character.is_ascii_digit())
+        })
+    });
+    assert!(
+        states_a_decimal,
+        "the wait --notification bullet must state a numeric per-poll cost; \
+         a caller cannot size a timeout against prose alone. Bullet read: {bullet}"
+    );
+    assert!(
+        bullet.contains("ms per poll") || bullet.contains("seconds per poll"),
+        "the numeric cost must name its unit and that it is per poll. Bullet read: {bullet}"
+    );
+}
+
+/// The first thing a Windows caller hits, and the one a POSIX-shaped example
+/// cannot warn them about. PowerShell is the default shell there and deletes a
+/// bare `@token` before the binary sees it, so a skill that omits this teaches
+/// a form guaranteed to fail on the platform it documents.
+#[test]
+fn the_windows_skill_warns_that_powershell_eats_an_unquoted_ref() {
+    assert!(
+        WINDOWS_SKILL_DOC.contains("splatting"),
+        "the skill must name PowerShell's splatting operator as the reason a bare ref vanishes"
+    );
+    let quoted_example = WINDOWS_SKILL_DOC.contains("'@s8f3k2p9:e1'");
+    assert!(
+        quoted_example,
+        "the warning must show the quoted form, not merely assert that quoting is needed"
     );
 }

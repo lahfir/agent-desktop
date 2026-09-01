@@ -105,6 +105,10 @@ BATCH
   batch items may set "session": "id" to override the inherited --session
 
 REF IDs
+  On Windows, quote every ref: PowerShell reads a bare @token as its
+  splatting operator and drops the argument before this binary sees it,
+  so `set-value @s8f3k2p9:e1 hi` arrives with the ref missing. Write
+  `set-value '@s8f3k2p9:e1' hi`. cmd.exe and POSIX shells need no quoting.
   snapshot emits qualified refs such as @s8f3k2p9:e1 in depth-first order.
   Qualified refs embed their snapshot ID and need no --snapshot flag. Legacy
   bare @eN input requires an explicit --snapshot <snapshot_id>. Snapshot lookup

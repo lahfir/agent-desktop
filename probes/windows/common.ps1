@@ -831,7 +831,7 @@ function Get-MandatoryGateSelfTestVerdict {
 }
 
 function Get-MandatoryMeasurementVerdict {
-    param([Parameter(Mandatory = $true)][ValidateSet('devbox', 'ci')][string]$Label)
+    param([Parameter(Mandatory = $true)][ValidateSet('devbox', 'mergebase', 'ci')][string]$Label)
     $gap = Get-MandatoryMeasurementGap
     if ($Label -ne 'ci') { return $null }
     $selfTest = Get-MandatoryGateSelfTestVerdict
@@ -859,7 +859,7 @@ function Get-MandatoryMeasurementVerdict {
 function Assert-MandatoryMeasurement {
     param(
         [Parameter(Mandatory = $true)][string]$Probe,
-        [Parameter(Mandatory = $true)][ValidateSet('devbox', 'ci')][string]$Label
+        [Parameter(Mandatory = $true)][ValidateSet('devbox', 'mergebase', 'ci')][string]$Label
     )
     $verdict = Get-MandatoryMeasurementVerdict -Label $Label
     if ($null -eq $verdict -and $Label -eq 'ci') { $verdict = Get-MandatoryGateSelfTestVerdict }

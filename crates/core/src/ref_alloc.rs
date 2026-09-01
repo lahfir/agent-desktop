@@ -198,6 +198,13 @@ fn plan_skeleton_anchors(
     true
 }
 
+/// A skeleton anchor is offered as a drill target because it carries
+/// evidence a later resolve can re-identify it by. When that evidence is
+/// geometry alone, the entry must keep its bounds: dropping them because the
+/// caller did not ask to *see* bounds leaves a ref this predicate approved
+/// and nothing can resolve, which is a drill target that fails on its own
+/// snapshot. The ref-able path guards the same strip with the same
+/// condition.
 fn is_resolvable_skeleton_anchor(node: &AccessibilityNode) -> bool {
     can_receive_observed_ref(node)
         && (has_meaningful_text(node.identity.name.as_deref())
@@ -249,7 +256,7 @@ fn allocate_refs_at_path(
     if is_skeleton_anchor {
         let mut entry = ref_entry_from_node(&node, &config.source, None, path);
         entry.capabilities.available_actions = vec![];
-        if !config.options.include_bounds {
+        if !config.options.include_bounds && has_meaningful_identity(&entry) {
             entry.geometry.bounds = None;
         }
         node.ref_id = allocate_observed_ref(refmap, entry)?;

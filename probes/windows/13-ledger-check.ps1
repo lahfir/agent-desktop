@@ -3,12 +3,12 @@
 . "$PSScriptRoot\13-ledger-content.ps1"
 
 $Probe = '13-ledger-check'
-$RequiredAreaIds = @('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11')
+$RequiredAreaIds = @('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28')
 $ValidVerdicts = @('CONFIRMS', 'CONTRADICTS', 'NEW-EDGE', 'DEFERRED')
 $ValidStacks = @('managed', 'uia3-com', 'n/a')
 $ValidScopes = @('api-contract', 'app/provider')
 $MinClosureMinor = 0
-$MaxClosureMinor = 15
+$MaxClosureMinor = 16
 $PreWideningContentAuditFloor = 20
 
 $contentSelfTest = Invoke-LedgerContentSelfTest -ProbeRoot $PSScriptRoot
@@ -139,7 +139,7 @@ try {
             } else {
                 $minor = [int]$closure.Groups[1].Value
                 if ($minor -lt $MinClosureMinor -or $minor -gt $MaxClosureMinor) {
-                    [void]$failures.Add($row.Id + ': DEFERRED closure sub-phase 2.' + $minor + ' is outside Phase 2 (2.0-2.15)')
+                    [void]$failures.Add($row.Id + ': DEFERRED closure sub-phase 2.' + $minor + ' is outside Phase 2 (2.' + $MinClosureMinor + '-2.' + $MaxClosureMinor + ')')
                 }
             }
         }
@@ -150,6 +150,18 @@ try {
         $count = @($rows | Where-Object { $_.Area -eq $areaId }).Count
         [void]$areaCoverage.Add([pscustomobject]@{ Area = $areaId; Rows = $count })
         if ($count -lt 1) { [void]$failures.Add('section 2.0 evidence area ' + $areaId + ' has no ledger row') }
+    }
+    # $RequiredAreaIds is hand-maintained, so an area whose id is never added
+    # to it gets no row-deletion protection at all - the coverage loop above
+    # only iterates ids it already knows. That omission has happened once
+    # already (A27-3: areas 14-26 carried zero enforced coverage for twelve
+    # sub-phases). Every heading the parse actually found must therefore be
+    # accounted for, so a new area cannot enter the ledger unpoliced.
+    $headingAreaIds = @($rows | Where-Object { $_.Area -match '^[0-9]+$' } | ForEach-Object { $_.Area } | Sort-Object -Unique)
+    foreach ($seen in $headingAreaIds) {
+        if ($RequiredAreaIds -notcontains $seen) {
+            [void]$failures.Add('evidence area ' + $seen + ' carries rows but is absent from $RequiredAreaIds, so its rows are never checked for deletion')
+        }
     }
     $sessionRowCount = @($rows | Where-Object { $_.Area -eq 'R6' }).Count
     if ($sessionRowCount -lt 1) { [void]$failures.Add('no R6 session-evidence rows found') }
@@ -182,8 +194,9 @@ try {
 # the invariant that carries its value is still enforced below - every indexed
 # hunk must name a ledger row that exists, and every CONTRADICTS row must be
 # backed by a hunk - so a doc change still cannot claim evidence it does not have.
-# Bringing the index current across the whole phase belongs to the gate that
-# reviews the assembled branch (docs/phases.md sub-phase 2.15, Docs/skills sync).
+# Completeness is retired rather than deferred: a bijection measured against a
+# base that is a whole platform phase behind counts the branch's age, not
+# anyone's diligence. The two halves that carry the value stay enforced above.
     $hunkIndexShortfall = if ($measuredHunkCount -lt 0) { -1 } else { $measuredHunkCount - $hunkRows.Count }
 
     $mappedRowIds = @{}
@@ -280,7 +293,7 @@ try {
         Write-ProbeResult -Probe $Probe -Status 'fail' -Message ([string]$failures.Count + ' ledger completeness failure(s); first: ' + $failures[0] + '; ' + $coverageNote) -Data $summary
         exit 1
     }
-    Write-ProbeResult -Probe $Probe -Status 'ok' -Message ('ledger complete: all 11 evidence areas covered, zero UNKNOWN verdicts, every DEFERRED row names a Phase 2 closure sub-phase, every row carries stack and scope, every indexed phases.md hunk names a ledger row and every CONTRADICTS row is backed by a hunk (' + $(if ($measuredHunkCount -lt 0) { 'no base ref available here, so hunk completeness was not measured' } else { 'index lists ' + $hunkRows.Count + ' of ' + $measuredHunkCount + ' measured hunk(s); completeness is reported, not enforced - see 2.15 docs sync' }) + '); ' + $coverageNote) -Data $summary
+    Write-ProbeResult -Probe $Probe -Status 'ok' -Message ('ledger complete: all ' + $RequiredAreaIds.Count + ' evidence areas covered, zero UNKNOWN verdicts, every DEFERRED row names a Phase 2 closure sub-phase, every row carries stack and scope, every indexed phases.md hunk names a ledger row and every CONTRADICTS row is backed by a hunk (' + $(if ($measuredHunkCount -lt 0) { 'no base ref available here, so hunk completeness was not measured' } else { 'index lists ' + $hunkRows.Count + ' of ' + $measuredHunkCount + ' measured hunk(s); index completeness is retired, not enforced' }) + '); ' + $coverageNote) -Data $summary
     exit 0
 } catch {
     Write-ProbeResult -Probe $Probe -Status 'fail' -Message ('unhandled error: ' + $_.Exception.Message)

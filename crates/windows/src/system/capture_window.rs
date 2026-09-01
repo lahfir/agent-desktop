@@ -117,7 +117,9 @@ fn window_capture_size(handle: WindowHandle) -> Result<(u32, u32), AdapterError>
                 .with_suggestion("Restore or resize the window, then retry the screenshot"),
         );
     }
-    Ok((width as u32, height as u32))
+    let (width, height) = (width as u32, height as u32);
+    gdi_surface::reject_oversized_capture(width, height)?;
+    Ok((width, height))
 }
 
 /// Prefer [`PW_RENDERFULLCONTENT`] for a composited frame; when that yields an
@@ -190,7 +192,9 @@ struct CaptureSurface {
 
 impl CaptureSurface {
     fn create(width: i32, height: i32) -> Result<Self, AdapterError> {
-        use windows_sys::Win32::Graphics::Gdi::{CreateCompatibleBitmap, SelectObject};
+        use windows_sys::Win32::Graphics::Gdi::{
+            CreateCompatibleBitmap, DeleteObject, SelectObject,
+        };
 
         let dc_pair = GdiDcPair::create("window capture")?;
         let bitmap = unsafe { CreateCompatibleBitmap(dc_pair.screen_dc, width, height) };
@@ -201,6 +205,13 @@ impl CaptureSurface {
         }
         gdi_balance::acquire();
         let previous = unsafe { SelectObject(dc_pair.memory_dc, bitmap) };
+        if previous.is_null() {
+            let error = win32_last_error("SelectObject failed for window capture");
+            if unsafe { DeleteObject(bitmap) } != 0 {
+                gdi_balance::release();
+            }
+            return Err(error);
+        }
         Ok(Self {
             dc_pair,
             bitmap,
@@ -214,7 +225,8 @@ impl CaptureSurface {
         use windows_sys::Win32::Graphics::Gdi::{DIB_RGB_COLORS, GetDIBits};
 
         let mut info = gdi_surface::top_down_bgra_bitmap_info(self.width, self.height);
-        let mut pixels = vec![0u8; (self.width * self.height * 4) as usize];
+        let byte_len = gdi_surface::checked_bgra_byte_len(self.width, self.height)?;
+        let mut pixels = vec![0u8; byte_len];
         let copied = unsafe {
             GetDIBits(
                 self.dc_pair.memory_dc,

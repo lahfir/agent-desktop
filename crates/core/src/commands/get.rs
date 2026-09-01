@@ -30,25 +30,34 @@ pub fn execute(
         resolve_ref_with_context(&args.ref_id, args.snapshot_id.as_deref(), adapter, context)?;
     let deadline = crate::Deadline::standard()?;
 
-    let (prop_name, value) = match args.property {
-        GetProperty::Role => ("role", json!(entry.identity.role)),
-        GetProperty::Title => ("title", json!(entry.identity.name)),
+    let (prop_name, value, bounds_live) = match args.property {
+        GetProperty::Role => ("role", json!(entry.identity.role), None),
+        GetProperty::Title => ("title", json!(entry.identity.name), None),
         GetProperty::Text => {
             let live = optional_live_read(adapter.get_live_value(&handle, deadline))?;
-            ("text", json!(live.or(entry.identity.value)))
+            ("text", json!(live.or(entry.identity.value)), None)
         }
         GetProperty::Value => {
             let live = optional_live_read(adapter.get_live_value(&handle, deadline))?;
-            ("value", json!(live.or(entry.identity.value)))
+            ("value", json!(live.or(entry.identity.value)), None)
         }
         GetProperty::Bounds => {
             let live = optional_live_read(adapter.get_element_bounds(&handle, deadline))?;
-            ("bounds", json!(live.or(entry.geometry.bounds)))
+            let bounds_live = live.is_some();
+            (
+                "bounds",
+                json!(live.or(entry.geometry.bounds)),
+                Some(bounds_live),
+            )
         }
-        GetProperty::States => ("states", json!(entry.capabilities.states)),
+        GetProperty::States => ("states", json!(entry.capabilities.states), None),
     };
 
-    Ok(json!({ "property": prop_name, "ref": args.ref_id, "value": value }))
+    let mut response = json!({ "property": prop_name, "ref": args.ref_id, "value": value });
+    if let Some(live) = bounds_live {
+        response["live"] = json!(live);
+    }
+    Ok(response)
 }
 
 #[cfg(test)]

@@ -175,6 +175,15 @@ pub(crate) fn resolve_window(
             )
         })
     } else if let Some(app) = app_name {
+        if windows.is_empty() {
+            if let Err(AppError::Adapter(error)) =
+                crate::app_lookup::resolve_app(Some(app), adapter, deadline)
+            {
+                if error.code == crate::ErrorCode::AppNotFound {
+                    return Err(AppError::Adapter(error));
+                }
+            }
+        }
         crate::window_lookup::select_window(
             windows,
             crate::AdapterError::new(

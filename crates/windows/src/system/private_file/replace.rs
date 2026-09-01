@@ -128,7 +128,7 @@ fn open_verified_liveness_handle(directory: &Path) -> std::io::Result<File> {
         .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
         .open(directory)?;
     path::require_verified_lease_directory(&handle)?;
-    owner::require_owned_by_token_owner(&handle, "the private temp directory")?;
+    owner::require_owned_by_eligible_principal(&handle, "the private temp directory")?;
     locality::require_local_for_private_write(&handle, "the private temp directory")?;
     Ok(handle)
 }

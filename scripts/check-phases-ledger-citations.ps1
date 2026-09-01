@@ -21,7 +21,9 @@
           else, is disposed of nowhere. 2.12 was the original target; 2.14
           was added when the shell-surfaces sub-phase became a closure owner
           in its own right, so a `closure: 2.14` row is enforced exactly as
-          a 2.12 row is.
+          a 2.12 row is. 2.15 was added on the same ground: the
+          hardening gate closed three rows of its own, and a closure owner
+          whose rows are not enforced is a closure owner in name only.
       (c) none of the retired stems below - phrases a sub-phase's own
           correction pass took out of docs/phases.md - may reappear anywhere
           in the file. Matching is case-insensitive substring over the WHOLE
@@ -34,7 +36,7 @@ param(
     [string]$RepoRoot = '',
     [string]$PhasesPath = '',
     [string]$FindingsPath = '',
-    [string[]]$ClosureTargets = @('2.12', '2.14')
+    [string[]]$ClosureTargets = @('2.12', '2.14', '2.15')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -293,9 +295,11 @@ function Invoke-PhasesLedgerCitationsSelfTest {
         $failures.Add('MUST PASS, false positive: a cited closure:2.14 row failed rule (b)') | Out-Null
     }
 
-    # --- Rule (b) boundary: a row naming a closure target that is NOT under
-    # test (2.15) stays outside rule (b). ---
-    $ruleBOffFindings = '| A9-8 | script | uia3-com | app/provider | expectation | observed | DEFERRED | rides the integration gate, closure: 2.15 |'
+    # --- Rule (b) boundary: a row naming a closure sub-phase that is NOT a
+    # target stays outside rule (b). The example moved from 2.15 to 2.16 when
+    # 2.15 became a target itself - a boundary fixture that names a target is
+    # not a boundary fixture. ---
+    $ruleBOffFindings = '| A9-8 | script | uia3-com | app/provider | expectation | observed | DEFERRED | rides the cursor overlay, closure: 2.16 |'
     $ruleBOff = Test-PhasesLedgerCitations -PhasesText $ruleBText -FindingsText $ruleBOffFindings -RetiredStems $RetiredStems -DispositionStems $DispositionStems -ClosureTargets $ClosureTargets
     if ($ruleBOff.Failures | Where-Object { $_ -match '^rule \(b\)' }) {
         $failures.Add('MUST PASS, false positive: a row naming a non-target closure sub-phase failed rule (b)') | Out-Null

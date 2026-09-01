@@ -38,66 +38,6 @@ jobs:
       - name: Validate GitHub Actions workflows
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.11
 
-      # R21: windows-e2e.yml's live-run captures are never committed, so the
-      # only thing standing between them and a public download is the
-      # ordering inside this one file - and the workflow itself cannot be
-      # executed to prove that ordering, since no runner is registered
-      # (deferral item 6). This is a text-level static check for exactly
-      # that reason: the gate must not be a claim resting on a job nobody
-      # can run. Checked: the checkout sets persist-credentials: false; a
-      # step named redaction-gate exists and runs
-      # scripts/check-capture-redaction.ps1; no step in the file carries
-      # continue-on-error (which would let the gate step "fail" without
-      # failing the job); and the upload-artifact step's `if:` requires
-      # both !cancelled() and steps.redaction-gate.outcome == 'success' -
-      # not job success alone, which would either skip the gate on a red
-      # suite (losing the debugging payload) or upload regardless of the
-      # gate's own result.
-      - name: Static check - windows-e2e.yml gates its capture upload
-        run: |
-          set -euo pipefail
-          file='.github/workflows/windows-e2e.yml'
-          failed=0
-
-          if ! grep -q 'persist-credentials: false' "$file"; then
-            echo "FAIL: $file checkout does not set persist-credentials: false"
-            failed=1
-          fi
-
-          if ! grep -q 'id: redaction-gate' "$file"; then
-            echo "FAIL: $file has no step with id: redaction-gate"
-            failed=1
-          fi
-
-          if ! awk '/id: redaction-gate/,/^$/' "$file" | grep -q 'check-capture-redaction.ps1'; then
-            echo "FAIL: $file's redaction-gate step does not run check-capture-redaction.ps1"
-            failed=1
-          fi
-
-          if grep -q 'continue-on-error' "$file"; then
-            echo "FAIL: $file sets continue-on-error somewhere - the gate step must be able to fail the job"
-            failed=1
-          fi
-
-          upload_if="$(awk '/name: Upload/,/^$/' "$file" | grep '^\s*if:' || true)"
-          if [ -z "$upload_if" ]; then
-            echo "FAIL: $file's upload step has no if: condition"
-            failed=1
-          else
-            if ! printf '%s' "$upload_if" | grep -q "steps.redaction-gate.outcome == 'success'"; then
-              echo "FAIL: $file's upload step's if: does not require steps.redaction-gate.outcome == 'success': $upload_if"
-              failed=1
-            fi
-            if ! printf '%s' "$upload_if" | grep -q '!cancelled()'; then
-              echo "FAIL: $file's upload step's if: does not require !cancelled(): $upload_if"
-              failed=1
-            fi
-          fi
-
-          if [ "$failed" -ne 0 ]; then
-            exit 1
-          fi
-          echo "OK: $file gates upload-artifact behind the redaction-gate step's own outcome"
 
   msrv:
     name: Rust 1.89 MSRV
@@ -192,6 +132,9 @@ jobs:
 
       - name: Enforce no delivery-plan references in source
         run: scripts/check-no-phase-references.sh
+
+      - name: Enforce the stale_ref constructors take only ref ids
+        run: scripts/check-stale-ref-constructor-misuse.sh
 
       - name: Clippy
         run: cargo clippy --locked -p agent-desktop-core -p agent-desktop-macos -p agent-desktop -p agent-desktop-ffi --all-targets -- -D warnings

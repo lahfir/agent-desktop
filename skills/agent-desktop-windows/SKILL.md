@@ -14,7 +14,7 @@ description: >
   notification commands with their foreground requirement and verified
   mutations. Names the honest gaps explicitly: quick-settings is absent on
   pre-Windows-11 builds (the refusal names action-center), and cursor-overlay
-  records its session setting while nothing renders.
+  enable returns rendered: false while nothing renders.
   Covers UIPI elevation boundaries, Chromium/Electron first-contact settle
   behavior, and Windows-specific troubleshooting.
   Triggers on: "windows desktop automation", "UIA tree", "automate Windows app",
@@ -38,19 +38,34 @@ Requires Windows 10 1809+ / Windows Server 2019+ (x64 or ARM64).
 | Observation | `snapshot`, `find`, `get`, `is`, `screenshot` | Works; surfaces are `window`, `focused`, a Chromium modal reached as `sheet`, and an open application menu reached as `menu` |
 | Surfaces | `list-surfaces` | Works; per-process inventory of `window`, `focused` and `sheet` surfaces plus a `menu` surface carrying `item_count` when a menu is open |
 | Shell surfaces | `open-system-surface` | Works; raises `start-menu`, `taskbar`, `system-tray`, `system-tray-overflow` or `action-center` and returns the window identity `snapshot --surface <kind>` consumes; `quick-settings` refuses on pre-Windows-11 builds |
-| Ref interaction | `click`, `right-click`, `type`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll`, `scroll-to` | Works; semantic delivery in headless and `--headed` modes alike |
+| Ref interaction | `click`, `right-click`, `type`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll`, `scroll-to` | Works; semantic delivery in headless and `--headed` modes alike (`type` requires focus permission and returns `POLICY_DENIED` under strict headless) |
 | Multi-click and focus | `double-click`, `triple-click`, `focus` | Works with global `--headed`; focus is headed-required (A3-4, A19-5) |
-| Keyboard and mouse | `press`, `hover`, `drag`, `mouse-click`, `mouse-move`, `mouse-wheel` | Works; cursor-moving input requires `--headed`; `press --app` focuses then synthesizes after verification |
+| Keyboard and mouse | `press`, `hover`, `drag`, `mouse-click`, `mouse-move`, `mouse-wheel` | Works; cursor-moving input requires `--headed`; `press --app` synthesizes into the foreground queue after verification (fails closed headless if not already frontmost; non-interactive callers report `delivered_unverified`) |
 | Held input | `key-down`, `key-up`, `mouse-down`, `mouse-up` | Fails closed with `ACTION_NOT_SUPPORTED` on every platform until a daemon owns held-input lifetime |
 | App and window | `launch`, `close-app`, `list-windows`, `list-apps`, `focus-window`, `resize-window`, `move-window`, `minimize`, `maximize`, `restore` | Works; `launch` resolves an absolute path or a bare name under System32 or the Windows directory (A21-1), not display names |
 | Displays | `list-displays` | Works |
 | Clipboard | `clipboard-get`, `clipboard-set`, `clipboard-clear` | Works; typed text and image content |
 | Wait | `wait` | Works for ms, `--element`, `--window`, `--text`, `--menu`, `--menu-closed`, `--event`, and `--notification` predicates |
 | Notifications | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` | Works over the Action Center; the commands that raise shell chrome take the foreground, so pass `--headed` when the center is closed |
-| Cursor overlay | `cursor-overlay` | Enable records the session setting (`ok: true`) but nothing renders; disable removes it |
+| Cursor overlay | `cursor-overlay` | `cursor-overlay enable` returns `data.rendered` (`true` if drawn, `false` if unsupported; Windows reports `false` as no renderer ships yet); `cursor-overlay disable` carries no `rendered` field |
 | System | `status`, `permissions`, `version`, `batch`, `skills`, `session`, `trace` | Works |
 
 ## First Contact
+
+- **Quote every ref in PowerShell.** PowerShell reads a bare `@token` as its
+  splatting operator and *deletes the argument* before the binary sees it, so
+  `set-value @s8f3k2p9:e1 hi` arrives with no ref and fails `INVALID_ARGS`.
+  Write `set-value '@s8f3k2p9:e1' hi`. This bites first because PowerShell is
+  the default shell on Windows and the CLI's own examples are written
+  unquoted for POSIX shells. cmd.exe and bash need no quoting.
+- **A window merely behind another window is fully drivable - a minimized one
+  is not.** Being backgrounded costs nothing: with the terminal frontmost and
+  Notepad behind it, `set-value` and a File-menu `expand` both succeed
+  `delivered_verified`. Minimizing is what changes the answer - every element
+  then reports `offscreen`, which is UI Automation telling the truth, and ref
+  actions fail. `restore --app <image>` and re-snapshot; refs taken while
+  minimized carry the offscreen state and stay unactionable. Do not reach for
+  `focus-window` reflexively - it steals the user's foreground for nothing.
 
 - **No permission dialog exists on Windows.** UI Automation reads of
   same-integrity targets need no grant; `permissions` probes UIA live and
@@ -65,6 +80,25 @@ Requires Windows 10 1809+ / Windows Server 2019+ (x64 or ARM64).
   commands verify exact-window focus and synthesize physical delivery.
   Dangerous shortcuts (`alt+f4`, `win+l`, `win+d`, `alt+tab` and modifier
   supersets) are refused without `--force`.
+- **`type` requires focus permission and fails closed headless.** `type` on
+  Windows is physical keystroke synthesis and requires focus permission, so a
+  strict-headless `type` returns `POLICY_DENIED`. macOS can insert text at the
+  selection semantically and succeeds headless. UI Automation exposes no
+  insert-at-selection equivalent, which is why the two differ.
+- **`press --app` synthesizes into the foreground queue.** `press --app` on
+  Windows is synthesis into the foreground queue with no per-process targeting,
+  so a headless press whose target is not already frontmost fails closed. macOS
+  can deliver to a specific process and can also match a menu-bar accelerator
+  semantically. A press issued from a non-interactive caller — a service, a
+  scheduled task, a CI job — is far less reliable than the same command from an
+  interactive session, and the envelope reports `delivered_unverified` because
+  the synthesis API cannot confirm delivery.
+- **`cursor-overlay enable` reports whether drawing occurred.**
+  `cursor-overlay enable` returns `data.rendered`, a boolean saying whether the
+  overlay was actually drawn. It is `true` on an adapter that implements the
+  overlay and `false` on one that does not — Windows currently reports `false`,
+  because no Windows renderer ships yet. `cursor-overlay disable` carries no
+  `rendered` field, because a disable has nothing to render.
 - **Commands that raise shell chrome take the foreground.** See Shell Surfaces
   and Notifications below; a strict-headless call is refused before anything
   is raised.
@@ -100,19 +134,16 @@ deliberately excludes shell windows — so the shell round trip routes through
   a `SearchTextBox`, not a tile grid (A26-9) — drive it as the search surface
   it is.
 - **The tray path is the generic command surface** — no Windows-specific tray
-  commands exist. The tray surfaces list: `snapshot --surface taskbar` refs
-  the notification area's tray `button`s, and `snapshot --surface
+  commands exist. The tray surfaces list: `snapshot --surface system-tray`
+  returns the promoted notification-area items (it reads whatever the shell
+  currently promotes, which may be zero items on a machine with no tray icons —
+  that is a correct empty answer, not a failure), `snapshot --surface taskbar`
+  refs the notification area's tray `button`s, and `snapshot --surface
   system-tray-overflow` (raised first with `open-system-surface`) refs its
-  five items. Clicking a tray item by ref is **not delivered on this build**
-  — no route completed, and three mechanisms were measured: the dedicated
-  `system-tray` surface's promoted read returned zero items while the taskbar
-  surface refs the same toolbar's buttons; the overflow raise is accepted and
-  the flyout is never presented, so every overflow ref fails actionability at
-  the occlusion check; and a click on a tray ref taken from the taskbar
-  surface refuses `WINDOW_NOT_FOUND`, because the tray window is deliberately
-  outside the agent window inventory. Expect a tray-item `click @ref` to fail
-  until the repair lands — the repair is scoped, and the platform phases
-  document (`docs/phases.md`) owns it.
+  items. Clicking a tray item by ref is delivered, and the envelope reports
+  `delivery: delivered_unverified` with `retry: unsafe` — a synthesized click
+  cannot confirm what the owning application chose to do with it, so plan for
+  an unverified delivery rather than a confirmed effect.
 
 ## Notifications
 
@@ -149,10 +180,14 @@ empty-state shape when none are, and a top-level `ClearAllButton`.
 - **`wait --notification` opens and closes the center per poll**, exactly as
   on macOS: each poll runs in its own one-call session that adopts an
   already-present center and restores the entry state afterwards — no
-  long-lived session is held. On this shell a toast joins the center only
-  while it is open (A26-3), so toasts posted while the center sits closed
-  between polls never land; if you are staging arrivals, hold the center open
-  yourself and the wait's polls will adopt it without closing it.
+  long-lived session is held. Each poll of `wait --notification` opens and closes
+  the Action Center, measured at 1243.5 ms per poll at the minimum and 1254.2 ms
+  at the median on a reference machine. Size timeouts accordingly — a five second wait buys roughly four
+  polls, and a notification that appears and is dismissed inside one interval can
+  be missed. On this shell a toast joins the center only while it is open
+  (A26-3), so toasts posted while the center sits closed between polls never
+  land; if you are staging arrivals, hold the center open yourself and the
+  wait's polls will adopt it without closing it.
 - **This output is sensitive.** The notification-area surface publishes the
   shell's names of installed background agents — security and remote-access
   products among them — and `list-notifications` returns notification titles
@@ -179,7 +214,39 @@ menus — a DOM menu inside the application's own window that neither other
 source can see (A26-12). WinUI3/MSIX hosts are unevaluated. Read "no menu is
 open" from an app in an uncovered family as "not detected there", not as
 proof the menu is closed.
-
+
+## Saving a document, headless, without keyboard input
+
+No `save` command exists — saving is a menu path plus a dialog, and the whole
+chain is semantic, so it works with no `--headed` and no keystrokes. The shape
+generalises to any app whose save flow is File → Save As.
+
+```bash
+agent-desktop restore --app notepad.exe               # only if minimized; behind is fine
+agent-desktop snapshot --app notepad.exe              # keep the snapshot_id
+agent-desktop set-value '@<snap>:e1' "the document body"
+agent-desktop expand '@<snap>:e13'                    # the File menu item
+agent-desktop snapshot --app notepad.exe --surface menu   # the open menu is its own surface
+agent-desktop click '@<menu>:e4'                      # Save As...
+agent-desktop list-windows --app notepad.exe          # the dialog is a new window
+agent-desktop find --name "File name" --window-id <dialog-id>
+agent-desktop set-value '@<found>:e2' 'C:\\out.txt'    # full path goes in the name field
+agent-desktop find --role button --name "Save" --window-id <dialog-id>
+agent-desktop click '@<found>:e1'
+```
+
+Two things that surprise a first-time caller:
+
+- **`find --name "File name"` returns three matches** — a `statictext` label, a
+  `combobox`, and the `textfield` inside the combobox. The textfield is the one
+  that accepts `set-value`; match on `role` as well as name.
+- **Setting the full path into the name field is what selects the directory.**
+  There is no separate folder-navigation step, and navigating the file list by
+  ref is far more fragile than writing the path.
+
+The dialog's Save button returns `delivered_unverified` — a synthesized invoke
+cannot confirm what the shell dialog did with it. Verify by reading the file
+back from disk, not from the envelope.
 Three focused references, loaded as needed:
 
 - [permissions-and-elevation.md](references/permissions-and-elevation.md) —

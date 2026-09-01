@@ -22,6 +22,11 @@ on:
       - 'probes/windows/24-fixture-e2e/**'
       - 'probes/windows/25-packaging/**'
       - 'probes/windows/26-shell-surfaces/**'
+      - 'probes/windows/27-contract-decisions.ps1'
+      - 'probes/windows/27-elevation-required.ps1'
+      - 'probes/windows/27-elevation-required.cs'
+      - 'probes/windows/28-chromium-exposure.ps1'
+      - 'probes/windows/28-tray-read-diagnosis.ps1'
       - 'probes/windows/FINDINGS.md'
       - 'probes/windows/13-ledger-check.ps1'
       - 'probes/windows/13-ledger-content.ps1'
@@ -179,6 +184,26 @@ jobs:
         run: |
           .\probes\windows\26-shell-surfaces\06-cost.ps1 -Label ci
 
+      - name: Run the contract-decisions probe
+        shell: powershell
+        run: |
+          .\probes\windows\27-contract-decisions.ps1 -Label ci
+
+      - name: Run the elevation-required probe
+        shell: powershell
+        run: |
+          .\probes\windows\27-elevation-required.ps1 -Label ci
+
+      - name: Run the chromium-exposure probe
+        shell: powershell
+        run: |
+          .\probes\windows\28-chromium-exposure.ps1 -Label ci
+
+      - name: Run the tray-read-diagnosis probe
+        shell: powershell
+        run: |
+          .\probes\windows\28-tray-read-diagnosis.ps1 -Label ci
+
       # Runs after the area probes so the ledger it audits reflects every
       # capture this job just wrote. Registered here rather than the main CI
       # lane (ci.yml) per KTD12: the gate reads the probe corpus and diffs
@@ -201,7 +226,7 @@ jobs:
         run: |
           .\probes\windows\13-ledger-check.ps1
 
-      # Gated, and gated before the upload runs, mirroring windows-e2e.yml's
+      # Gated, and gated before the upload runs, the same ordering the live e2e lane carried before it was retired's
       # own redaction-gate step: this job writes fresh *-ci.json captures on
       # every leg above, committed corpus or not, and uploading them as a
       # workflow-run artifact from a PUBLIC repository with no redaction
@@ -246,6 +271,8 @@ jobs:
             probes/windows/25-packaging/captures/*-ci.json
             probes/windows/26-shell-surfaces/captures/*-ci.json
             probes/windows/captures/13-ledger-check/*.json
+            probes/windows/captures/27-*/*.json
+            probes/windows/captures/28-*/*.json
           # warn, not error. A probe that fails before writing anything leaves
           # nothing to match, and erroring would stack a second "No files were
           # found" failure on top of the real one and read as the cause. What

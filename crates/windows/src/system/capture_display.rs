@@ -79,12 +79,9 @@ pub(super) fn display_capture_geometry(bounds: Rect) -> Result<(u32, u32, i32, i
             "Cannot capture a zero-area display",
         ));
     }
-    Ok((
-        width as u32,
-        height as u32,
-        bounds.x as i32,
-        bounds.y as i32,
-    ))
+    let (width, height) = (width as u32, height as u32);
+    gdi_surface::reject_oversized_capture(width, height)?;
+    Ok((width, height, bounds.x as i32, bounds.y as i32))
 }
 
 fn bitblt_screen_bgra(
@@ -118,7 +115,7 @@ fn bitblt_screen_bgra(
     {
         return Err(win32_last_error("BitBlt failed for display capture"));
     }
-    Ok(surface.into_bgra())
+    surface.into_bgra()
 }
 
 struct DibSection {
@@ -132,7 +129,9 @@ struct DibSection {
 
 impl DibSection {
     fn create(width: i32, height: i32) -> Result<Self, AdapterError> {
-        use windows_sys::Win32::Graphics::Gdi::{CreateDIBSection, DIB_RGB_COLORS, SelectObject};
+        use windows_sys::Win32::Graphics::Gdi::{
+            CreateDIBSection, DIB_RGB_COLORS, DeleteObject, SelectObject,
+        };
 
         let dc_pair = GdiDcPair::create("display capture")?;
         let info = gdi_surface::top_down_bgra_bitmap_info(width, height);
@@ -154,6 +153,13 @@ impl DibSection {
         }
         gdi_balance::acquire();
         let previous = unsafe { SelectObject(dc_pair.memory_dc, bitmap) };
+        if previous.is_null() {
+            let error = win32_last_error("SelectObject failed for display capture");
+            if unsafe { DeleteObject(bitmap) } != 0 {
+                gdi_balance::release();
+            }
+            return Err(error);
+        }
         Ok(Self {
             dc_pair,
             bitmap,
@@ -164,14 +170,13 @@ impl DibSection {
         })
     }
 
-    fn into_bgra(self) -> Vec<u8> {
-        let stride = (self.width * 4) as usize;
-        let bytes = stride * self.height as usize;
+    fn into_bgra(self) -> Result<Vec<u8>, AdapterError> {
+        let bytes = gdi_surface::checked_bgra_byte_len(self.width, self.height)?;
         let mut pixels = vec![0u8; bytes];
         unsafe {
             std::ptr::copy_nonoverlapping(self.bits, pixels.as_mut_ptr(), bytes);
         }
-        pixels
+        Ok(pixels)
     }
 }
 

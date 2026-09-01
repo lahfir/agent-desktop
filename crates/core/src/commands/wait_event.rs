@@ -1,6 +1,7 @@
 use crate::{
-    AdapterError, AppError, ErrorCode, EventKind, SignalBaseline, SignalFilter, UiEvent,
-    adapter::PlatformAdapter, commands::wait_event_input::EventWaitInput, diff_signals,
+    AdapterError, AppError, ErrorCode, EventKind, ProcessIdentity, SignalBaseline, SignalFilter,
+    UiEvent, adapter::PlatformAdapter, commands::wait_event_input::EventWaitInput, diff_signals,
+    process_state::ProcessState, signals::merge_signal_baseline,
 };
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
@@ -19,13 +20,22 @@ pub(crate) fn wait_for_event(
     let requested = parse_event_kind(&input.event)?;
     let start = Instant::now();
     let deadline = crate::Deadline::at(start, input.timeout_ms)?;
-    let filter = signal_filter(
+    let filter = match signal_filter(
         &input,
         &requested,
         seeded_baseline.as_ref(),
         adapter,
         deadline,
-    )?;
+    ) {
+        Ok(filter) => filter,
+        Err(AppError::Adapter(err))
+            if err.code == ErrorCode::AppNotFound && is_disappearance_class(&requested) =>
+        {
+            return unresolved_target_result(&requested, input.app.as_deref(), start);
+        }
+        Err(err) => return Err(err),
+    };
+    let disappearance = is_disappearance_class(&requested);
     let (mut baseline, mut last_error) = match seeded_baseline {
         Some(Ok(baseline)) => {
             validate_signal_scope(&filter, &baseline)?;
@@ -35,6 +45,7 @@ pub(crate) fn wait_for_event(
         Some(Err(error)) => return Err(AppError::Adapter(error)),
         None => (None, None),
     };
+    let mut seen = baseline.clone();
 
     loop {
         if deadline.is_expired() {
@@ -62,21 +73,36 @@ pub(crate) fn wait_for_event(
             Ok(current) => {
                 validate_signal_scope(&filter, &current)?;
                 match &baseline {
-                    None => baseline = Some(current),
+                    None => {
+                        baseline = Some(current.clone());
+                        seen = Some(current);
+                    }
                     Some(base) => {
-                        let events = diff_signals(base, &current);
+                        let diff_base_owned;
+                        let diff_base: &SignalBaseline = if disappearance {
+                            diff_base_owned = seen.clone().unwrap_or_else(|| base.clone());
+                            &diff_base_owned
+                        } else {
+                            base
+                        };
+                        let events = diff_signals(diff_base, &current);
                         if let Some(found) = find_match(
                             &events,
                             &requested,
                             input.window_id.as_deref(),
                             input.window_title.as_deref(),
                         ) {
-                            let elapsed = start.elapsed().as_millis();
-                            return Ok(json!({
-                                "found": true,
-                                "event": serde_json::to_value(found)?,
-                                "elapsed_ms": elapsed,
-                            }));
+                            if confirm_app_terminated(adapter, found, diff_base, deadline) {
+                                let elapsed = start.elapsed().as_millis();
+                                return Ok(json!({
+                                    "found": true,
+                                    "event": serde_json::to_value(found)?,
+                                    "elapsed_ms": elapsed,
+                                }));
+                            }
+                        }
+                        if disappearance {
+                            seen = Some(merge_signal_baseline(diff_base, &current));
                         }
                     }
                 }
@@ -101,6 +127,72 @@ pub(crate) fn wait_for_event(
     }
 }
 
+fn is_appearance_class(kind: &EventKind) -> bool {
+    matches!(
+        kind,
+        EventKind::AppLaunched | EventKind::WindowOpened | EventKind::SurfaceAppeared { .. }
+    )
+}
+
+fn is_disappearance_class(kind: &EventKind) -> bool {
+    matches!(
+        kind,
+        EventKind::AppTerminated | EventKind::WindowClosed | EventKind::SurfaceDismissed { .. }
+    )
+}
+
+fn unresolved_target_result(
+    requested: &EventKind,
+    app: Option<&str>,
+    start: Instant,
+) -> Result<Value, AppError> {
+    let event = UiEvent {
+        kind: requested.clone(),
+        window_id: None,
+        title: None,
+        app: app.map(str::to_string),
+        pid: None,
+    };
+    Ok(json!({
+        "found": true,
+        "event": serde_json::to_value(event)?,
+        "elapsed_ms": start.elapsed().as_millis(),
+    }))
+}
+
+/// Before a matched `AppTerminated` is reported, corroborates it against
+/// `SystemOps::process_state` so a process that only dropped out of the
+/// window-owning population (a close-to-tray) is not mistaken for a real
+/// exit. Fails open: any ambiguity — no pid on the event, no recoverable
+/// `process_instance`, a `not_supported`/errored read, or a non-`AppTerminated`
+/// event — reports the event rather than risking a silent no-op that leaves
+/// a genuine termination unreported.
+fn confirm_app_terminated(
+    adapter: &dyn PlatformAdapter,
+    event: &UiEvent,
+    diff_base: &SignalBaseline,
+    deadline: crate::Deadline,
+) -> bool {
+    if !matches!(event.kind, EventKind::AppTerminated) {
+        return true;
+    }
+    let Some(pid) = event.pid else {
+        return true;
+    };
+    let Some(instance) = diff_base
+        .apps
+        .iter()
+        .find(|app| app.pid == pid)
+        .and_then(|app| app.process_instance.clone())
+    else {
+        return true;
+    };
+    match adapter.process_state(ProcessIdentity::new(pid, instance), deadline) {
+        Ok(ProcessState::Running | ProcessState::Unresponsive) => false,
+        Ok(ProcessState::Exited { .. } | ProcessState::Crashed { .. }) | Err(_) => true,
+    }
+}
+
 fn signal_filter(
     input: &EventWaitInput,
     requested: &EventKind,
@@ -122,17 +214,33 @@ fn signal_filter(
         .map(|baseline| process_from_baseline(baseline, app))
         .transpose()?
         .flatten();
-    let process = match seeded_process {
-        Some(process) => Some(process),
-        None if successful_seed.is_some() && matches!(requested, EventKind::AppTerminated) => None,
-        None => Some(crate::commands::helpers::process_identity(
-            &crate::commands::helpers::resolve_app(Some(app), adapter, deadline)?,
-        )?),
-    };
-    Ok(SignalFilter {
-        app: input.app.clone(),
-        process,
-    })
+    if let Some(process) = seeded_process {
+        return Ok(SignalFilter {
+            app: input.app.clone(),
+            process: Some(process),
+        });
+    }
+    if successful_seed.is_some() && matches!(requested, EventKind::AppTerminated) {
+        return Ok(SignalFilter {
+            app: input.app.clone(),
+            process: None,
+        });
+    }
+    match crate::commands::helpers::resolve_app(Some(app), adapter, deadline) {
+        Ok(resolved) => Ok(SignalFilter {
+            app: input.app.clone(),
+            process: Some(crate::commands::helpers::process_identity(&resolved)?),
+        }),
+        Err(AppError::Adapter(err))
+            if err.code == ErrorCode::AppNotFound && is_appearance_class(requested) =>
+        {
+            Ok(SignalFilter {
+                app: input.app.clone(),
+                process: None,
+            })
+        }
+        Err(err) => Err(err),
+    }
 }
 
 fn process_from_baseline(
