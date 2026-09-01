@@ -317,3 +317,61 @@ branch-selection change on a path that was already being walked, not new work pe
 so no macOS latency delta is expected; that is an argument, not a measurement, and it is
 labelled as one.
 
+## Part 4 — A second stranger run, and what it found
+
+An independent agent was handed the skill and the binary and asked to write a
+poem in Notepad and save it to `C:\`, headless and without keyboard input. It
+succeeded. Triaging its transcript produced four findings and two non-findings,
+and the non-findings are recorded because two of them were mine.
+
+**S1 — the agent was reading a stale skill.** *Fixed here.* `.claude/skills/`
+held real directory copies of the Windows and FFI skills alongside a symlink for
+the shared one. The copies are gitignored, so they rot while the sources move:
+the Windows copy still advertised `list-surfaces` and the notification commands
+as `PLATFORM_NOT_SUPPORTED` — corrected two sub-phases earlier — and carried
+neither the PowerShell quoting warning nor the save recipe. That accounts for
+most of the run's stumbles. All three are symlinks now.
+
+**S2 — `--skeleton` offered drill targets that could not be drilled.** *Fixed
+here.* An anonymous boundary earns its ref from geometry, and allocation then
+dropped the rect from the persisted entry unless the caller had asked to *see*
+bounds — a presentation flag deciding whether a ref resolves. The entry kept its
+bounds hash, which looks sufficient and is not: geometry promotion needs a
+positive-area rect as well, because zero-extent elements share hashes (A17-7).
+Measured: three of four anonymous anchors answered `STALE_REF`, and all four
+resolved when the same snapshot was taken with `--include-bounds`. After the fix,
+none fail. Tests: `unlabeled_bounded_boundary_gets_drill_ref` (assertion
+corrected — it pinned the stripped rect) and
+`a_named_bounded_boundary_still_has_its_rect_stripped`, which stops the fix
+reading as *always keep bounds*.
+
+**S3 — `find` had no traversal budget.** *Fixed here.* Fixed at five seconds
+with no flag, while `snapshot` beside it has always taken `--timeout-ms`. On a
+shell file dialog that simply had no answer but to fail. Measured after: 800 ms
+fails at 1093 ms, 5000 ms answers in 4096 ms. Tests:
+`an_explicit_budget_reaches_the_traversal_and_absence_keeps_the_default` drives
+the same function `execute` calls — a first draft restated its arms beside it
+and passed while the flag was still ignored.
+
+**S4 — that timeout blamed the application.** *Fixed here.* It suggested the
+target may be busy or unresponsive; the app was healthy and the tree was large.
+`find` now supplies its own suggestion naming the two levers a caller has. The
+shared constructor is deliberately untouched — every other command reaches it,
+and a test elsewhere asserts on its wording, so fixing one caller's message
+there would have rewritten every command's envelope. Wiring is pinned by a
+zero-budget run through `execute`, because the direct test of the mapping
+function does not notice the mapping being removed.
+
+### Recorded as not-findings
+
+- **`click` on a menu-bar item opening the wrong menu.** Observed once in the
+  transcript. Re-ran the identical sequence **five times and got the right menu
+  every time**. One observation is not a defect, and a claim measured in one
+  direction names whichever cause happened to be present.
+- **My own first two explanations of S2.** I called it a structural contract
+  violation on anonymous boundaries, then a settle-time race. Both were wrong;
+  the same nodes passed and failed under conditions neither explanation
+  predicted. Only the third measurement — toggling `--include-bounds` — held up.
+  Recorded because the gate now requires measuring a claim in both directions
+  before writing it down, and this is what that rule is for.
+
