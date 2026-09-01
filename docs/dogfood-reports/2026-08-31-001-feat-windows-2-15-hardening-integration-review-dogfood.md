@@ -375,3 +375,56 @@ function does not notice the mapping being removed.
   Recorded because the gate now requires measuring a claim in both directions
   before writing it down, and this is what that rule is for.
 
+## Part 5 — A second full-branch review, and its dispositions
+
+A further multi-persona review ran over the assembled diff. Its findings and
+what became of each:
+
+**R16 — `get --property text` does not return what the reference promised.**
+*Fixed as documentation here; the contract decision is owned by §2.16.* `text`
+and `value` are byte-identical reads, and the accessible name is reachable only
+through `title`. Measured on a real control: a button named `Close` answers
+empty for `text`, empty for `value`, and `Close` for `title` — and `text` is the
+**default**, so it is the first thing a caller reaches for. The reference now
+describes what ships, says plainly that a labelled control's `text` comes back
+empty and `title` is the one that answers, and
+`text_reads_the_value_and_title_reads_the_name_as_the_reference_states` pins it:
+making `text` name-preferring fails that test, which forces the wording to move
+with the code. **Changing the read was declined here on purpose** — it flips
+every named textfield's `text` from content to label on both adapters, a larger
+behavioural change than any normalization this gate shipped, for a defect no
+dogfood and no stranger run ever hit. A reviewer found it by reading.
+
+**R17 — find's flags were undocumented.** *Fixed here.* `--timeout-ms`, added
+earlier in this gate, and `--window-id`, which predates it, were both missing
+from the observation reference's flag table. A flag that ships undocumented is a
+flag nobody uses.
+
+**R18 — the stale-ref gate had no self-test.** *Fixed here.* Its two sibling
+gates each carry one; this one policed the tree while nothing policed it. Its
+counting is not trivial — it skips `*_tests.rs` files and brace-tracks inline
+`#[cfg(test)]` items, and its own comment admits the tracking could desync.
+Three committed fixtures now pin the three behaviours, including the one the
+brace tracking exists for: a gated caller skipped without losing the production
+caller that follows it. The self-test is itself invert-verified — removing that
+trailing caller makes the gate refuse to scan the real tree at all.
+
+### Declined, with reasons
+
+- **`FindArgs` exceeds the seven-field limit.** *Accepted.* It was already at
+  eight before this gate; the traversal budget took it to nine. Splitting it
+  touches the CLI argument mirror, dispatch, and nine construction sites, across
+  three layers, to satisfy a ceiling the struct already broke. The split belongs
+  to whoever next adds a field.
+- **Test helpers described as dead code in `find.rs`.** *Not a defect.* They are
+  `#[cfg(test)]`-gated, so they do not ship, and the compiler reports no dead
+  code. Verified rather than assumed.
+- **The `wait_event` baseline clone and `app_name_matches`' redundant branch.**
+  *Raised again, declined again, same grounds* — one clone per poll on a loop
+  that sleeps far longer than the allocation costs, against restructuring a
+  borrow inside correctness-sensitive wait logic; and a case-sensitivity claim
+  that is unreachable because the comparison is already case-insensitive. Noted
+  as repeats so a third review need not re-litigate them.
+- **A trivial wrapper, and files sitting near the 400-line cap.** Observations,
+  not work. The cap is a limit, not a target to stay far from.
+
