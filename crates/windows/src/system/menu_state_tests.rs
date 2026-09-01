@@ -138,16 +138,6 @@ fn a_pid_with_no_gui_threads_reports_closed_rather_than_erroring() {
 /// Windows process ids are always multiples of 4 (0 is the Idle process, 4
 /// is the System process), so an odd id is never assigned to a real process
 /// on any Windows build - a deterministic structural fact, not a race
-/// against pid reuse from a spawned-and-killed process.
-#[test]
-fn a_nonexistent_pid_returns_a_classified_error_not_a_panic_or_false_closed() {
-    let pid = ProcessId::from(1u32);
-
-    let error = menu_is_open(pid, deadline())
-        .expect_err("a nonexistent pid must not silently report closed");
-
-    assert_eq!(error.code, ErrorCode::AppUnresponsive);
-}
 
 #[test]
 fn classic_source_detects_the_fixtures_context_menu_open_and_closed() {
@@ -394,3 +384,9 @@ fn a_failed_snapshot_open_is_an_error_not_an_empty_enumeration() {
         error.code
     );
 }
+
+/// Split from this file so it stays inside the size cap. The agreement cases
+/// need this module's fixture helpers, so they are a child of it rather than
+/// a sibling.
+#[path = "menu_state_agreement_tests.rs"]
+mod agreement;

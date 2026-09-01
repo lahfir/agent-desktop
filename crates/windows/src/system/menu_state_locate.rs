@@ -48,13 +48,21 @@ impl MenuLocation {
     }
 }
 
-/// [`uia_menu_reachable`]'s source-B shape, returning the located element
-/// instead of a bool: the `Menu` surface arm resolves the same compound
-/// predicate the detector answers, so `snapshot --surface menu` and a
-/// `surface-appeared` event can never disagree about whether a menu is
-/// addressable. An open menu whose host family no candidate covers reads as
-/// absent here - the same honest "no menu is open" answer the bool source
-/// gives.
+/// The `Menu` surface arm, resolving the sources the detector answers with
+/// so a wait and the snapshot that follows it agree wherever they can.
+///
+/// Source B (a menu-family element under a tool window) and source C (a
+/// Chromium DOM menu) are both resolved here, because both name an element
+/// this can root at.
+///
+/// **Source A cannot be, and this is the one place the two predicates do
+/// diverge.** `classic_menu_mode_active` reads `GetGUIThreadInfo`'s
+/// menu-mode flag, which reports that a classic Win32 menu is up without
+/// naming any element: there is nothing to return. A `surface-appeared`
+/// wait therefore succeeds for such a menu while `snapshot --surface menu`
+/// reports it cannot be rooted. The previous wording claimed the two could
+/// never disagree, which was false for exactly this case; the surface
+/// arm's refusal now names it rather than reading as "no menu is open".
 #[cfg(target_os = "windows")]
 pub(crate) fn locate_menu(
     pid: ProcessId,
@@ -81,7 +89,16 @@ pub(crate) fn locate_menu(
             }));
         }
     }
-    Ok(None)
+    locate_chromium(pid, deadline)
+}
+
+#[cfg(target_os = "windows")]
+fn locate_chromium(
+    pid: ProcessId,
+    deadline: Deadline,
+) -> Result<Option<MenuLocation>, AdapterError> {
+    Ok(super::chromium::locate_chromium_dom_menu(pid, deadline)?
+        .map(|(element, window)| MenuLocation { element, window }))
 }
 
 #[cfg(not(target_os = "windows"))]

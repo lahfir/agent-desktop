@@ -52,6 +52,44 @@ pub(super) fn chromium_dom_menu_reachable(
     Ok(false)
 }
 
+/// Source C's locating variant, so the surface arm can root where the
+/// detector fires. Without it a wait on `surface-appeared --surface menu`
+/// against a Chromium application succeeded and the `snapshot --surface menu`
+/// that followed answered `WINDOW_NOT_FOUND`, because only source B could
+/// locate anything.
+#[cfg(target_os = "windows")]
+pub(super) fn locate_chromium_dom_menu(
+    pid: ProcessId,
+    deadline: Deadline,
+) -> Result<Option<(uiautomation::UIElement, isize)>, AdapterError> {
+    ensure_budget(deadline)?;
+    let candidates = chromium_menu_candidates(pid)?;
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+    let client =
+        crate::tree::automation::automation_client().map_err(super::narrow_to_permitted_codes)?;
+    let condition = chromium_menu_condition(&client)?;
+    for (index, handle) in candidates.into_iter().enumerate() {
+        if index > 0 {
+            ensure_budget(deadline)?;
+        }
+        if let Some(element) = super::probe_candidate_element(&client, &condition, handle)? {
+            return Ok(Some((element, handle)));
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(super) fn locate_chromium_dom_menu(
+    _pid: ProcessId,
+    deadline: Deadline,
+) -> Result<Option<(uiautomation::UIElement, isize)>, AdapterError> {
+    ensure_budget(deadline)?;
+    Ok(None)
+}
+
 #[cfg(not(target_os = "windows"))]
 pub(super) fn chromium_dom_menu_reachable(
     _pid: ProcessId,
