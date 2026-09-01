@@ -71,18 +71,22 @@ pub(crate) fn list_displays_live(deadline: Deadline) -> Result<Vec<DisplayInfo>,
             1
         }
 
-        unsafe {
+        let enumerated = unsafe {
             EnumDisplayMonitors(
                 std::ptr::null_mut(),
                 std::ptr::null(),
                 Some(callback),
                 capture as isize,
-            );
-        }
-        if state.dpi_read_failed {
-            return Err(AdapterError::internal(
-                "Could not read a monitor's effective DPI",
-            ));
+            )
+        };
+        match classify_enumeration(enumerated != 0, state.dpi_read_failed) {
+            EnumerationOutcome::Completed => {}
+            EnumerationOutcome::DpiUnreadable => {
+                return Err(AdapterError::internal(
+                    "Could not read a monitor's effective DPI",
+                ));
+            }
+            EnumerationOutcome::EnumerationFailed => return Err(enumeration_failed()),
         }
         primaries_first(&mut state.displays);
         Ok(state.displays)
@@ -91,6 +95,41 @@ pub(crate) fn list_displays_live(deadline: Deadline) -> Result<Vec<DisplayInfo>,
     {
         Ok(Vec::new())
     }
+}
+
+/// What an enumeration pass actually established, kept separate from the
+/// Win32 call so the three outcomes can be told apart in a test on any
+/// host - the shape `classify_dpi_awareness_call` already uses next door.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EnumerationOutcome {
+    Completed,
+    DpiUnreadable,
+    EnumerationFailed,
+}
+
+/// `EnumDisplayMonitors` returning zero is a failure, not an empty desktop.
+/// Reading it as an empty success made every caller report "no displays
+/// attached" for what was an API failure, which is the one answer a caller
+/// cannot recover from because it looks like a fact about the machine.
+pub(crate) fn classify_enumeration(enumerated: bool, dpi_read_failed: bool) -> EnumerationOutcome {
+    if dpi_read_failed {
+        return EnumerationOutcome::DpiUnreadable;
+    }
+    if !enumerated {
+        return EnumerationOutcome::EnumerationFailed;
+    }
+    EnumerationOutcome::Completed
+}
+
+/// An enumeration that fails returns zero, which is not an empty desktop.
+/// Reporting it as an empty success made every caller say "no displays
+/// attached" for what was an API failure.
+#[cfg(target_os = "windows")]
+fn enumeration_failed() -> AdapterError {
+    let code = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+    AdapterError::internal("The attached displays could not be enumerated")
+        .with_platform_detail(format!("EnumDisplayMonitors Win32 error {code}"))
+        .with_suggestion("Retry once the session has an interactive desktop attached")
 }
 
 pub(crate) fn display_at(index: usize, deadline: Deadline) -> Result<DisplayInfo, AdapterError> {

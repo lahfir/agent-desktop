@@ -37,6 +37,7 @@ use crate::tree::properties::read_one;
 use crate::tree::property_ids::TreeProperty;
 use crate::tree::property_outcome::PropertyOutcome;
 use crate::tree::roles::resolve_role;
+use crate::tree::walker_source::BudgetExpired;
 use crate::tree::walker_source::parent_step;
 
 /// Properties the occluder evidence batch must read together. `IsPassword`
@@ -156,36 +157,48 @@ pub(crate) fn element_root_hwnd(
     start: &UIAElement,
     walker: &UITreeWalker,
     deadline: Deadline,
-) -> Option<isize> {
-    let hwnd = first_native_hwnd(start, walker, deadline)?;
-    root_of_hwnd(hwnd)
+) -> Result<Option<isize>, BudgetExpired> {
+    Ok(first_native_hwnd(start, walker, deadline)?.and_then(root_of_hwnd))
 }
 
+/// Climbs to the first ancestor reporting a non-zero window handle.
+///
+/// `Ok(None)` means the climb completed and no ancestor owns a window -
+/// the ordinary shape for WPF, WinUI and Chromium content, where one
+/// window hosts a whole tree. `Err(BudgetExpired)` means the climb could
+/// not be completed: a handle read faulted, a parent step faulted, or the
+/// budget ran out between two cross-process calls. Folding those together
+/// let a caller read a failed read as "this element has no window", which
+/// is licence it should never have had.
 pub(crate) fn first_native_hwnd(
     start: &UIAElement,
     walker: &UITreeWalker,
     deadline: Deadline,
-) -> Option<isize> {
+) -> Result<Option<isize>, BudgetExpired> {
     use windows::Win32::Foundation::HWND;
 
     let mut current = start.clone();
     for _ in 0..ancestry_limit() {
         if deadline.is_expired() {
-            return None;
+            return Err(BudgetExpired);
         }
-        if let Ok(handle) = current.0.get_native_window_handle() {
-            let hwnd: HWND = handle.into();
-            let value = hwnd.0 as isize;
-            if value != 0 {
-                return Some(value);
+        match current.0.get_native_window_handle() {
+            Ok(handle) => {
+                let hwnd: HWND = handle.into();
+                let value = hwnd.0 as isize;
+                if value != 0 {
+                    return Ok(Some(value));
+                }
             }
+            Err(_) => return Err(BudgetExpired),
         }
         match parent_step(walker, &current) {
             Ok(Some(parent)) => current = parent,
-            Ok(None) | Err(()) => return None,
+            Ok(None) => return Ok(None),
+            Err(()) => return Err(BudgetExpired),
         }
     }
-    None
+    Ok(None)
 }
 
 pub(crate) fn root_of_hwnd(hwnd: isize) -> Option<isize> {
@@ -310,7 +323,9 @@ pub(crate) fn corroborate_interception(
     context: &InterceptionContext<'_>,
     demote_for_viewport: bool,
 ) -> HitTestResult {
-    let hit_root = element_root_hwnd(context.hit, context.walker, context.deadline);
+    let Ok(hit_root) = element_root_hwnd(context.hit, context.walker, context.deadline) else {
+        return super::classify::result_for_incomplete_walk();
+    };
     let win32_root = window_from_point_root(&context.point);
     let win32_owner_pid = win32_root.and_then(pid_of_hwnd);
     if context.deadline.is_expired() {
@@ -339,3 +354,11 @@ pub(crate) fn corroborate_interception(
 #[cfg(test)]
 #[path = "hit_test_corroborate_tests.rs"]
 mod tests;
+
+/// Split from `hit_test_corroborate_tests.rs`: this module owns the cases
+/// that drive a live fixture and a real walker to tell an incomplete climb
+/// apart from a completed one that found no window.
+#[cfg(test)]
+#[cfg(target_os = "windows")]
+#[path = "hit_test_corroborate_climb_tests.rs"]
+mod climb_tests;
