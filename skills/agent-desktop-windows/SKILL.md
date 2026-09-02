@@ -263,6 +263,17 @@ agent-desktop cursor-overlay disable
   namespace where a session-scoped action cannot see it - the ref then fails
   `SNAPSHOT_NOT_FOUND` no matter how fresh it is. `session start`, then
   `cursor-overlay enable`, then `snapshot`, then act.
+- **A harness that contains its children takes the overlay with them.** The
+  renderer is a detached process, and it outlives the CLI invocation that
+  started it - but not a job object carrying `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`,
+  which CI runners and some agent harnesses wrap every child in. Measured
+  (A30-6): inside such a job, `enable` answers `rendered: true` and the
+  overlay is drawn, and both go away the moment the harness closes the job.
+  Nothing functional is lost - the overlay is presentation-only and never
+  fails an action - but do not read a vanished overlay in that setting as a
+  renderer defect. The renderer deliberately does not break out of such a
+  job: escaping a containment the operator chose would be worse than not
+  persisting.
 - **Teardown.** `cursor-overlay disable` ends the renderer process for its
   session. A session that ends out of band — a crash, `session gc`, an
   operator who simply stops — is reclaimed by the renderer itself on its next
