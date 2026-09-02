@@ -528,12 +528,15 @@ agent-desktop cursor-overlay disable
 No flags gives the default look: white body, near-black rim, blue ripple, blue element outline.
 
 `enable` answers with `data.rendered`, a boolean saying whether anything was 
-actually drawn. It is `true` where a renderer ships and `false` where the 
-session setting was recorded but nothing painted, which is the answer on 
-Windows today. Read it rather than treating `ok: true` as proof of a visible 
-cursor: the command succeeded at what it could do, and the field is how it 
-tells you which of the two happened. `disable` carries no such field, because 
-a disable has nothing to render.
+actually drawn. It is `true` once a renderer has acknowledged the control 
+over its own channel — not merely that a process was started — and `false` 
+where the session setting was recorded but the renderer could not be reached, 
+refused to start, or never acknowledged. Read it rather than treating 
+`ok: true` as proof of a visible cursor: the command succeeded at what it 
+could do, and the field is how it tells you which of the two happened. 
+`disable` carries no such field, because a disable has nothing to render, and 
+neither does `session start --cursor`, which enables through the same 
+adapter call but only echoes `cursor_overlay` in its own response.
 
 Style is stored in the session manifest and inherited by every eligible headless command, batch entries included. Action and batch-entry schemas take no cursor flags. Run `enable` again to restyle; it applies at once.
 
@@ -556,8 +559,14 @@ Behaviour:
 - The card shows the label. With no label there is no card.
 - Idle for 6 s it fades out; the next command restores it.
 - `disable` removes it and stops the renderer. Ending the session is not needed.
-- Headed actions hide it while the real pointer is in use.
-- macOS renders it natively; other platforms use the adapter's presentation no-op.
+  A session that ends without a `disable` — a crash, `session gc` — is
+  reclaimed by the renderer itself within a few seconds regardless.
+- Headed actions hide it while the real pointer is in use; the overlay draws
+  only for headless semantic actions.
+- macOS and Windows render it natively; Linux uses the adapter's presentation
+  no-op. On Windows the renderer does not collapse to a still pose under the
+  OS's reduce-motion accessibility preference the way macOS does — see
+  `agent-desktop-windows/SKILL.md` for the reason and its cost.
 
 ### session start
 ```bash
