@@ -293,6 +293,12 @@ agent-desktop cursor-overlay disable
   renderer defect. The renderer deliberately does not break out of such a
   job: escaping a containment the operator chose would be worse than not
   persisting.
+- **Its control pipe trusts any process running as you.** The pipe rejects
+  remote clients and refuses another user, and the client checks that the
+  renderer is this tool's own image — but it carries no security descriptor
+  and its name is derivable, so a same-user process can hold the name (leaving
+  `rendered: false`) or drive a live renderer's cursor and label text. See
+  "The Cursor Overlay's Control Pipe" in `references/permissions-and-elevation.md`.
 - **Teardown.** `cursor-overlay disable` ends the renderer process for its
   session. A session that ends out of band — a crash, `session gc`, an
   operator who simply stops — is reclaimed by the renderer itself on its next
@@ -325,21 +331,37 @@ No `save` command exists — saving is a menu path plus a dialog, and the whole
 chain is semantic, so it works with no `--headed` and no keystrokes. The shape
 generalises to any app whose save flow is File → Save As.
 
-```bash
-agent-desktop restore --app notepad.exe               # only if minimized; behind is fine
-agent-desktop snapshot --app notepad.exe              # keep the snapshot_id
-agent-desktop set-value '@<snap>:e1' "the document body"
-agent-desktop expand '@<snap>:e13'                    # the File menu item
-agent-desktop snapshot --app notepad.exe --surface menu   # the open menu is its own surface
-agent-desktop click '@<menu>:e4'                      # Save As...
-agent-desktop list-windows --app notepad.exe          # the dialog is a new window
-agent-desktop find --name "File name" --window-id <dialog-id>
-agent-desktop set-value '@<found>:e2' 'C:\\out.txt'    # full path goes in the name field
-agent-desktop find --role button --name "Save" --window-id <dialog-id>
-agent-desktop click '@<found>:e1'
+Runs as written against an open Notepad, with no ref typed by hand — every
+ref is captured out of the JSON of the step before it, which is what keeps the
+sequence correct when the tree shifts under it.
+
+```powershell
+$out = "$env:TEMP\notepad-save-demo.txt"
+
+agent-desktop restore --app notepad.exe                 # only if minimized; behind is fine
+$doc = (agent-desktop find --app notepad.exe --role textfield | ConvertFrom-Json).data.matches[0]
+agent-desktop set-value $doc.ref_id "the document body"
+
+$file = (agent-desktop find --app notepad.exe --role menuitem --name "File" | ConvertFrom-Json).data.matches[0]
+agent-desktop expand $file.ref_id
+agent-desktop wait --menu --app notepad.exe             # the open menu is its own surface
+$menu = (agent-desktop snapshot --app notepad.exe --surface menu | ConvertFrom-Json).data.tree
+agent-desktop click ($menu.children | Where-Object name -eq 'Save As...').ref_id
+
+agent-desktop wait --window "Save As" --app notepad.exe # the dialog is a new window
+$dialog = (agent-desktop list-windows --app notepad.exe | ConvertFrom-Json).data |
+    Where-Object title -eq 'Save As'
+$name = (agent-desktop find --name "File name" --window-id $dialog.id | ConvertFrom-Json).data.matches |
+    Where-Object role -eq 'textfield'
+agent-desktop set-value $name.ref_id $out               # full path goes in the name field
+
+$save = (agent-desktop find --role button --name "Save" --window-id $dialog.id | ConvertFrom-Json).data.matches[0]
+agent-desktop click $save.ref_id
+agent-desktop wait --window "notepad-save-demo - Notepad" --app notepad.exe
+Get-Content $out
 ```
 
-Two things that surprise a first-time caller:
+Three things that surprise a first-time caller:
 
 - **`find --name "File name"` returns three matches** — a `statictext` label, a
   `combobox`, and the `textfield` inside the combobox. The textfield is the one
@@ -347,6 +369,11 @@ Two things that surprise a first-time caller:
 - **Setting the full path into the name field is what selects the directory.**
   There is no separate folder-navigation step, and navigating the file list by
   ref is far more fragile than writing the path.
+- **The file does not exist the moment the Save click returns.** Measured on
+  this flow, the shell took 10.9 s between the click's envelope and the file
+  appearing on disk. Wait for the title change with `wait --window` rather
+  than sleeping: a fixed sleep of a second or two reads as a missing file and
+  looks like a defect that is not one.
 
 The dialog's Save button returns `delivered_unverified` — a synthesized invoke
 cannot confirm what the shell dialog did with it. Verify by reading the file

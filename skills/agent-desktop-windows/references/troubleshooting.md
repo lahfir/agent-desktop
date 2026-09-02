@@ -15,7 +15,7 @@ already familiar.
 
 ## PERM_DENIED with an E_ACCESSDENIED Detail
 
-```
+```json
 "code": "PERM_DENIED",
 "platform_detail": "COM HRESULT 0x80070005 (E_ACCESSDENIED: Access is denied)"
 ```
@@ -31,7 +31,7 @@ the measured exception that does cross the boundary (A24-16).
 
 ## COM Apartment Error
 
-```
+```json
 "message": "... COM multithreaded apartment ..."
 ```
 
@@ -86,7 +86,7 @@ differently:
 
 ## POLICY_DENIED from a Shell-Surface or Notification Command
 
-```
+```json
 "code": "POLICY_DENIED"
 ```
 
@@ -132,7 +132,7 @@ returns. When the app is live, the documented shape is a deliberate split:
 
 ## INTERNAL: "private file parent is owned by a foreign principal"
 
-```
+```json
 "code": "INTERNAL",
 "message": "private file parent is owned by a foreign principal, not this
 process's token owner"
