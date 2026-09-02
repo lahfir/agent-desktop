@@ -6,6 +6,69 @@
 
 use super::*;
 
+use crate::system::menu_state::locate::first_located;
+
+/// The composition every source after the first is reached through, driven
+/// directly.
+///
+/// This is the executable half of the guarantee the structural cases below
+/// can only read off the source text. The defect it inverts against is the
+/// shipped one: `locate_menu` returned early when the tool-window pool was
+/// empty, so the Chromium source was never consulted for a process whose
+/// menu lives in its own window - a `surface-appeared` wait fired and the
+/// `snapshot --surface menu` after it answered `WINDOW_NOT_FOUND`.
+///
+/// A live positive for that path - a real Chromium DOM menu located end to
+/// end - is not staged anywhere in this suite: the rig has no Chromium shell
+/// the e2e scenario could open a menu in. What is covered here is the
+/// composition itself, on values, which is the part that regressed.
+#[test]
+fn a_source_that_locates_nothing_still_consults_the_next_one() {
+    let located = first_located(None, || Ok(Some(7u32)));
+
+    assert_eq!(
+        located.expect("a fall-through that locates something is not a failure"),
+        Some(7),
+        "a source answering None must fall through, not end the search"
+    );
+}
+
+/// The other direction: a source that did locate something answers, and the
+/// next source is never paid for. The fall-through added for the Chromium
+/// case must not turn every located tool-window menu into a second search.
+#[test]
+fn a_source_that_locates_something_does_not_pay_for_the_next_one() {
+    let located = first_located(Some(1u32), || -> Result<Option<u32>, AdapterError> {
+        panic!("the next source must not be consulted once one has located a menu")
+    });
+
+    assert_eq!(
+        located.expect("the located menu is the answer"),
+        Some(1),
+        "the first source to locate a menu answers"
+    );
+}
+
+/// A refusal from the next source reaches the caller. Flattening it to `None`
+/// would turn a budget exhaustion into "no menu is open", which is the false
+/// negative the whole surface arm exists to avoid.
+#[test]
+fn a_refusal_from_the_next_source_is_propagated_rather_than_read_as_no_menu() {
+    let located: Result<Option<u32>, AdapterError> = first_located(None, || {
+        Err(AdapterError::new(
+            ErrorCode::Timeout,
+            "the next source ran out of budget",
+        ))
+    });
+
+    assert_eq!(
+        located
+            .expect_err("a refused fall-through must not read as an absent menu")
+            .code,
+        ErrorCode::Timeout
+    );
+}
+
 /// The defect this guards is a source set that drifts. `menu_is_open` composes
 /// three sources; `locate_menu` implemented only one, so a wait that fired on
 /// the Chromium source was followed by a snapshot that answered
@@ -13,50 +76,122 @@ use super::*;
 /// the locator a way to root it would reopen exactly that gap, and a live test
 /// cannot see it: it needs the application that fires the new source.
 ///
-/// The bodies are sliced rather than the files searched, because a first draft
-/// of this test matched a bare mention of the Chromium locator and passed with
-/// the call to it removed - a test that could not fail.
+/// The source set is read from the calls inside `menu_is_open`'s own body
+/// rather than from the file, so a source that is only mentioned in a doc
+/// comment or left behind as dead code - the module carries
+/// `#![allow(dead_code)]`, so both survive compilation - is not counted, and
+/// an unmapped fourth source fails the match arm below instead of passing
+/// unnoticed.
+///
+/// The bound on that: what is read is the calls taking exactly
+/// `(pid, deadline)`, which is the shape every source has and no guard in
+/// that body has. A fourth source introduced with a different argument list
+/// is outside what this reads, and this case would not see it.
+///
+/// What each arm checks differs by what is checkable. The two locatable
+/// sources are matched to the locator function that resolves them. The
+/// classic source is matched only to its being *named* in the locator's
+/// documentation, because "named as not locatable" is the entire claim for
+/// that one - this case does not, and cannot, check that it resolves.
 #[test]
 fn every_detector_source_is_either_locatable_or_named_as_not() {
     let detector = include_str!("menu_state.rs");
     let locator = include_str!("menu_state_locate.rs");
 
-    for source in [
+    let sources = sources_called_by(body_of(detector, "pub(crate) fn menu_is_open("));
+    for expected in [
         "classic_menu_mode_active",
         "uia_menu_reachable",
         "chromium_dom_menu_reachable",
     ] {
         assert!(
-            detector.contains(source),
-            "{source} is still one of the detector's sources"
+            sources.contains(&expected),
+            "{expected} is no longer called by the detector - the mapping below describes a \
+             source set that no longer exists and must be revisited"
         );
     }
 
-    let locate_menu_body = body_of(locator, "pub(crate) fn locate_menu(");
+    for source in sources {
+        match source {
+            "classic_menu_mode_active" => assert!(
+                locator.contains("classic_menu_mode_active"),
+                "the one source the locator cannot resolve is named in its own documentation, \
+                 so the divergence is stated rather than discovered"
+            ),
+            "uia_menu_reachable" => assert!(
+                body_of(locator, "fn locate_in_tool_windows(")
+                    .contains("probe_candidate_element(&client, &condition, handle)"),
+                "the tool-window source has a locating shape"
+            ),
+            "chromium_dom_menu_reachable" => assert!(
+                body_of(locator, "fn locate_chromium(")
+                    .contains("locate_chromium_dom_menu(pid, deadline)"),
+                "the Chromium fall-through actually calls the Chromium locator"
+            ),
+            unmapped => panic!(
+                "{unmapped} is a detector source with no locator mapping: give it a locating \
+                 shape, or state in the locator's documentation that it cannot have one"
+            ),
+        }
+    }
+}
+
+/// The locator must reach every locatable source unconditionally. The shipped
+/// defect was an early `Ok(None)` in `locate_menu` on an empty tool-window
+/// pool, which skipped the Chromium source for every process whose menu is
+/// not in a tool window; the composition is now the only thing in that body,
+/// so there is no return for a source's empty pool to take.
+///
+/// The Windows definition is sliced by its `cfg` attribute as well as its
+/// signature: the non-Windows stub below it answers `Ok(None)` legitimately,
+/// and matching the bare signature could slice that one instead.
+#[test]
+fn locate_menu_composes_its_sources_instead_of_returning_early() {
+    let locator = include_str!("menu_state_locate.rs");
+    let locate_menu_body = body_of(
+        locator,
+        "#[cfg(target_os = \"windows\")]\npub(crate) fn locate_menu(",
+    );
+
     assert!(
-        locate_menu_body.contains("probe_candidate_element(&client, &condition, handle)"),
-        "locate_menu resolves the tool-window source"
+        locate_menu_body.contains("first_located("),
+        "locate_menu reaches its later sources through the composition the tests above drive"
+    );
+    assert!(
+        locate_menu_body.contains("locate_in_tool_windows(pid, deadline)"),
+        "locate_menu asks the tool-window source"
     );
     assert!(
         locate_menu_body.contains("locate_chromium(pid, deadline)"),
-        "locate_menu must reach the Chromium source, or a wait that fires on it is followed          by a snapshot that cannot root what the wait found"
+        "locate_menu must reach the Chromium source, or a wait that fires on it is followed \
+         by a snapshot that cannot root what the wait found"
     );
-
-    let chromium_body = body_of(locator, "fn locate_chromium(");
     assert!(
-        chromium_body.contains("locate_chromium_dom_menu(pid, deadline)"),
-        "the Chromium fall-through actually calls the Chromium locator"
+        !locate_menu_body.contains("Ok(None)"),
+        "locate_menu must own no absent answer of its own: an early return here is what made \
+         the Chromium source unreachable"
     );
+}
 
-    assert!(
-        locator.contains("classic_menu_mode_active"),
-        "the one source the locator cannot resolve is named in its own documentation, so the          divergence is stated rather than discovered"
-    );
+/// The identifiers called with `(pid, deadline)` inside one function body.
+/// In the detector's body only its sources take that argument pair - the
+/// budget and existence guards take one argument each - so this is the set of
+/// sources actually called, as opposed to mentioned.
+fn sources_called_by(body: &str) -> Vec<&str> {
+    body.match_indices("(pid, deadline)")
+        .map(|(offset, _)| {
+            let before = &body[..offset];
+            let start = before
+                .rfind(|character: char| !character.is_alphanumeric() && character != '_')
+                .map_or(0, |index| index + 1);
+            &before[start..]
+        })
+        .collect()
 }
 
 /// The text of one function, from its signature to the first line that closes
 /// it at column zero. Enough to tell a call inside a body from a mention
-/// elsewhere in the file, which is the distinction the test above needs.
+/// elsewhere in the file, which is the distinction the tests above need.
 fn body_of<'a>(source: &'a str, signature: &str) -> &'a str {
     let start = source
         .find(signature)

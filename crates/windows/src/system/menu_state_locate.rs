@@ -1,8 +1,14 @@
-//! The located menu element for the `Menu` surface arm: [`uia_menu_reachable`]'s
-//! source-B shape returning the element instead of a bool, split out of
-//! `menu_state.rs` on the 400-line file cap - the same purely mechanical
-//! split `menu_state_multi.rs` is - with the predicate it answers shared from
-//! there rather than duplicated.
+//! The located menu element for the `Menu` surface arm: the locating shapes of
+//! the detector's sources, returning the element instead of a bool, split out
+//! of `menu_state.rs` on the 400-line file cap - the same purely mechanical
+//! split `menu_state_multi.rs` is - with the predicates they answer shared
+//! from there rather than duplicated.
+//!
+//! Each source locates on its own and [`locate_menu`] composes them, so a
+//! source whose pool is empty answers "not mine" and the next source is still
+//! asked. Composing them the other way round - one source's empty pool ending
+//! the whole search - is what made a Chromium DOM menu unrootable while the
+//! detector reported it open.
 
 use agent_desktop_core::{AdapterError, Deadline, ProcessId};
 
@@ -48,12 +54,32 @@ impl MenuLocation {
     }
 }
 
+/// One source's answer, falling through to the next source only when this one
+/// located nothing. A source that did locate something short-circuits, so the
+/// fall-through costs nothing on the answering path.
+///
+/// This is a named function rather than an `if let` inside [`locate_menu`]
+/// because it is the whole of the composition decision, and as a function it
+/// can be driven directly by a test on a machine where no second-source menu
+/// can be staged. The defect it exists to prevent is a later source that
+/// silently stops being consulted.
+pub(super) fn first_located<T>(
+    located: Option<T>,
+    next: impl FnOnce() -> Result<Option<T>, AdapterError>,
+) -> Result<Option<T>, AdapterError> {
+    match located {
+        Some(location) => Ok(Some(location)),
+        None => next(),
+    }
+}
+
 /// The `Menu` surface arm, resolving the sources the detector answers with
 /// so a wait and the snapshot that follows it agree wherever they can.
 ///
 /// Source B (a menu-family element under a tool window) and source C (a
 /// Chromium DOM menu) are both resolved here, because both name an element
-/// this can root at.
+/// this can root at. Every source is asked through [`first_located`], so no
+/// source's empty candidate pool can end the search on another's behalf.
 ///
 /// **Source A cannot be, and this is the one place the two predicates do
 /// diverge.** `classic_menu_mode_active` reads `GetGUIThreadInfo`'s
@@ -71,6 +97,21 @@ pub(crate) fn locate_menu(
     super::ensure_budget(deadline)?;
     super::ensure_process_exists(pid)?;
     super::ensure_budget(deadline)?;
+    first_located(locate_in_tool_windows(pid, deadline)?, || {
+        locate_chromium(pid, deadline)
+    })
+}
+
+/// Source B's locating shape. A process owning no tool window has no
+/// tool-window menu, which is the whole meaning of the empty answer here -
+/// it says nothing about the other sources, and the automation client is
+/// deliberately not created for it, so a process this source cannot serve
+/// pays only the window enumeration.
+#[cfg(target_os = "windows")]
+fn locate_in_tool_windows(
+    pid: ProcessId,
+    deadline: Deadline,
+) -> Result<Option<MenuLocation>, AdapterError> {
     let candidates = super::tool_window_candidates(pid)?;
     if candidates.is_empty() {
         return Ok(None);
@@ -89,7 +130,7 @@ pub(crate) fn locate_menu(
             }));
         }
     }
-    locate_chromium(pid, deadline)
+    Ok(None)
 }
 
 #[cfg(target_os = "windows")]
