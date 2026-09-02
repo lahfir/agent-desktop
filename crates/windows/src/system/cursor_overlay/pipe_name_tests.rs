@@ -4,8 +4,13 @@ use super::{
 };
 use std::path::Path;
 
+/// Deliberately not shaped like a home directory. The privacy scan treats
+/// `C:\Users\<name>` as an operator identity wherever it appears, and it is
+/// right to: a rule that made an exception for invented names could not tell
+/// one from a real account captured by a probe. The pipe name hashes whatever
+/// root it is given, so the fixture only has to be a path.
 fn root() -> &'static Path {
-    Path::new(r"C:\Users\someone\.agent-desktop")
+    Path::new(r"C:\ProgramData\agent-desktop-fixture")
 }
 
 #[test]
