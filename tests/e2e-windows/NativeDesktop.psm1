@@ -305,7 +305,16 @@ function ConvertTo-NativeWindowHandle {
     if ($WindowId -notmatch '^w-(\d+)$') {
         throw "ConvertTo-NativeWindowHandle: '$WindowId' is not a 'w-<handle>' shaped window id"
     }
-    return [IntPtr][int64]$Matches[1]
+    <#
+        Reinterpret the bits rather than casting through a signed integer. A
+        HWND is unsigned, and agent-desktop prints it unsigned, so a window
+        whose handle has the high bit set renders as a decimal above
+        Int64.MaxValue and `[int64]` throws - aborting the whole suite rather
+        than the one leg. Which windows land there varies per run, so the
+        failure is intermittent and looks like anything but a cast.
+    #>
+    $unsigned = [uint64]$Matches[1]
+    return [IntPtr][System.BitConverter]::ToInt64([System.BitConverter]::GetBytes($unsigned), 0)
 }
 
 Export-ModuleMember -Function @(
