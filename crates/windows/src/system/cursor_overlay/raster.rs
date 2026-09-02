@@ -92,12 +92,39 @@ impl Surface {
 /// inside a frame.
 const SAMPLES: i32 = 3;
 
+/// A pixel that its own corners and centre all agree about is not on an
+/// edge, so its coverage is already known and the sampling grid would spend
+/// sixteen polygon walks confirming it.
+///
+/// This matters because the interior of a shape dwarfs its outline: the
+/// probe of the busiest frame spent most of a display frame supersampling
+/// pixels that were never in doubt. The early-out is exact for a convex
+/// region - four corners inside means the pixel is inside - and the centre
+/// is sampled with them so a thin ring passing between the corners is still
+/// treated as an edge. A feature thinner than a pixel could still slip
+/// between all five, which is why the ring widths here are kept above one
+/// pixel at the smallest style size the CLI accepts.
 fn coverage(x: i32, y: i32, inside: impl Fn(f64, f64) -> bool) -> f64 {
+    let left = f64::from(x);
+    let top = f64::from(y);
+    let first = inside(left, top);
+    let undecided = [
+        (left + 1.0, top),
+        (left, top + 1.0),
+        (left + 1.0, top + 1.0),
+        (left + 0.5, top + 0.5),
+    ]
+    .iter()
+    .any(|(px, py)| inside(*px, *py) != first);
+    if !undecided {
+        return if first { 1.0 } else { 0.0 };
+    }
+
     let mut hits = 0;
     for sy in 0..SAMPLES {
         for sx in 0..SAMPLES {
-            let px = f64::from(x) + (f64::from(sx) + 0.5) / f64::from(SAMPLES);
-            let py = f64::from(y) + (f64::from(sy) + 0.5) / f64::from(SAMPLES);
+            let px = left + (f64::from(sx) + 0.5) / f64::from(SAMPLES);
+            let py = top + (f64::from(sy) + 0.5) / f64::from(SAMPLES);
             if inside(px, py) {
                 hits += 1;
             }

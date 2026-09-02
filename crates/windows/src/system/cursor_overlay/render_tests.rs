@@ -22,6 +22,20 @@ fn frame<'a>(style: &'a CursorOverlayStyle, label: Option<&'a str>) -> Frame<'a>
     }
 }
 
+/// The frame budgets describe the binary that ships. An unoptimised build
+/// composes several times slower, so asserting there would fail for a reason
+/// that tells nobody anything — the measurement is still printed, because a
+/// developer watching that number climb is the point of having it.
+fn skip_unoptimised(what: &str) -> bool {
+    if cfg!(debug_assertions) {
+        eprintln!(
+            "skip the budget for {what}: measured, but asserted only against an optimised build"
+        );
+        return true;
+    }
+    false
+}
+
 fn painted_pixels(composed: &super::Composed) -> usize {
     composed
         .surface
@@ -171,4 +185,104 @@ fn a_larger_style_size_yields_a_larger_surface() {
     let large_surface = compose(&frame(&large, None)).surface.width;
 
     assert!(large_surface > small_surface);
+}
+
+/// The frame budget, stated as a test rather than as a hope.
+///
+/// The travel loop samples core's trajectory on a clock and composes one
+/// surface per frame, so smoothness is bounded by what composing costs
+/// against the display's frame interval. A compose that overran the interval
+/// would not drop the arrival instant - core owns that - but it would make
+/// the motion visibly step. Measured the way the probe corpus measures cost:
+/// min of seven with the warm-up discarded.
+#[test]
+fn composing_the_busiest_frame_fits_well_inside_a_display_frame() {
+    let style = CursorOverlayStyle::default();
+    let target = Rect {
+        x: 380.0,
+        y: 280.0,
+        width: 220.0,
+        height: 44.0,
+    };
+    let busiest = || Frame {
+        tip: Point { x: 400.0, y: 300.0 },
+        style: &style,
+        ripple_phase: 0.5,
+        target: Some(target),
+        highlight_opacity: 1.0,
+        label: Some("Click the Submit button"),
+        screen: screen(),
+    };
+
+    let mut samples = Vec::new();
+    for run in 0..8 {
+        let started = std::time::Instant::now();
+        let composed = compose(&busiest());
+        let elapsed = started.elapsed();
+        assert!(painted_pixels(&composed) > 0, "the frame actually drew");
+        if run > 0 {
+            samples.push(elapsed);
+        }
+    }
+    let best = samples.iter().min().copied().unwrap_or_default();
+    let worst = samples.iter().max().copied().unwrap_or_default();
+    eprintln!("busiest frame: min {best:?} max {worst:?}");
+
+    if skip_unoptimised("the busiest frame") {
+        return;
+    }
+    assert!(
+        best < std::time::Duration::from_millis(9),
+        "composing the busiest frame took {best:?} at best and {worst:?} at worst; 60Hz is the \
+         refresh the schedule falls back to, and its 16.6ms has to cover this compose and the \
+         layered present that follows it"
+    );
+}
+
+/// What the travel actually composes: the glyph, the label that follows it,
+/// and the outline of the element it is heading for. No ripple and no
+/// highlight - those belong to the effect that plays after dispatch has
+/// already confirmed, so they never sit inside the motion the caller waits
+/// on. This is the frame whose cost decides whether the movement steps.
+#[test]
+fn composing_a_travel_frame_leaves_most_of_the_display_frame_unspent() {
+    let style = CursorOverlayStyle::default();
+    let target = Rect {
+        x: 380.0,
+        y: 280.0,
+        width: 220.0,
+        height: 44.0,
+    };
+    let travel = || Frame {
+        tip: Point { x: 400.0, y: 300.0 },
+        style: &style,
+        ripple_phase: 0.0,
+        target: Some(target),
+        highlight_opacity: 0.0,
+        label: Some("Click the Submit button"),
+        screen: screen(),
+    };
+
+    let mut samples = Vec::new();
+    for run in 0..8 {
+        let started = std::time::Instant::now();
+        let composed = compose(&travel());
+        let elapsed = started.elapsed();
+        assert!(painted_pixels(&composed) > 0, "the frame actually drew");
+        if run > 0 {
+            samples.push(elapsed);
+        }
+    }
+    let best = samples.iter().min().copied().unwrap_or_default();
+    let worst = samples.iter().max().copied().unwrap_or_default();
+    eprintln!("travel frame: min {best:?} max {worst:?}");
+
+    if skip_unoptimised("a travel frame") {
+        return;
+    }
+    assert!(
+        best < std::time::Duration::from_millis(5),
+        "composing a travel frame took {best:?} at best and {worst:?} at worst; the motion is \
+         sampled once per display frame, so a compose near the interval makes it step"
+    );
 }
