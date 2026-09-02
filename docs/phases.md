@@ -1522,6 +1522,65 @@ System tray interaction is built from scratch here.
 
 **Depends on:** 2.15's response-shape decision (this sub-phase consumes it), and 2.9/2.8 for the window and input primitives the renderer sits beside.
 
+**Promotion checklist — the ordered steps that merge `feat/windows-adapter` into `main`.**
+
+This is not run by this sub-phase. It is run once, later, by whoever carries the
+promotion, and it is written to be executable without reading any sub-phase plan.
+The promotion is **one release-noted `feat!` merge of the whole integration
+branch**, not a series of sub-phase merges, and it is what closes Phase 2.
+
+1. **Confirm the branch is complete.** Every sub-phase 2.0 through 2.16 has merged
+   into `feat/windows-adapter`, and the branch is even with or ahead of `main` with
+   no sub-phase work outstanding. A sub-phase still open means the promotion waits.
+2. **Merge `main` into `feat/windows-adapter`** — never the reverse, and never a
+   rebase of the integration branch onto `main`. Resolve conflicts on the
+   integration branch, where they can be tested on the platform they affect.
+3. **Run the non-desktop gates on both hosted runners.** `cargo fmt --all --check`,
+   `cargo clippy --all-targets -- -D warnings`, `cargo test --workspace`, the
+   core-isolation check (`cargo tree -p agent-desktop-core` names no platform
+   crate), the binary size ceiling, `scripts/check-rust-file-size.sh`,
+   `scripts/check-no-phase-references.sh` and the e2e contract gate, on
+   `windows-latest` and `windows-11-arm`.
+4. **Run the live Windows suite locally**, under the exclusive `DesktopLease`, via
+   `scripts/run-windows-e2e-ci.ps1`. There is no CI lane for it: the live lane was
+   retired on the owner's decision because a self-hosted runner's labels are
+   reachable from every `pull_request`-triggered workflow, so a fork PR editing any
+   of them would be code execution on the owner's interactive desktop. Both
+   headless and `--headed` modes. Reckon with the load sensitivity this suite is
+   known for (`A28-6`): a failure that wanders between unrelated modules and passes
+   in isolation is not a regression, and a single stash A/B cannot attribute it.
+5. **Run the macOS suite.** `main` is the macOS GA line for the whole platform
+   phase, and the integration branch changes `agent-desktop-core`, which macOS
+   consumes. The macOS CI lane plus the macOS e2e harness.
+6. **Take both performance baselines.** macOS uses
+   `bash scripts/perf-baseline-compare.sh` against the merge base. That script is
+   structurally macOS-bound — it opens the `.app` fixture bundle — so Windows uses
+   the probe corpus cost methodology instead: min-of-seven with the warm-up
+   discarded, reported as min with median and max beside it (`A15-13`, applied at
+   `A18-7`). The macOS baseline that §2.15 could not take is owed here.
+7. **Multi-agent review of the assembled branch**, one reviewer per subsystem, as
+   §2.15 ran it. Every finding takes exactly one of *fixed here* with a named
+   invert-verified test, *owned elsewhere* with the receiving work written into this
+   document in the same PR, or *accepted* with a stated reason.
+8. **Settle the cross-platform contract items §2.15 recorded** and that are still
+   open at promotion time, so no decision is inherited by Phase 3 unstated.
+9. **Triage the orphaned ledger rows.** Roughly twenty `DEFERRED` rows in
+   `probes/windows/FINDINGS.md` still name sub-phases that have already merged —
+   13 at `2.12`, 3 at `2.4`, and singles at `2.8`, `2.10`, `2.14` and `2.15`
+   (`A30-3`). §2.16 closed only the four rows that named it and deliberately left
+   the rest visible rather than absorbing them. Each remaining row gets exactly one
+   of: genuinely closed by work that has since shipped, genuinely out of reach for
+   this phase and re-pointed to `post-phase-2`, or real work that needs a home in
+   this document. A row left naming a merged sub-phase after this step is a defect.
+10. **Merge as one `feat!` commit** with a release note stating that Windows is
+    now supported, and the platform claims the adapter actually meets — not the
+    surface it names. Until this merge lands, `main` ships macOS only and makes no
+    Windows claim.
+11. **Record what is knowingly unverified.** Mixed-DPI overlay mapping is unit-
+    tested but was never exercised on a live multi-monitor rig, and any other
+    measurement ratified as out of reach travels into the release note rather than
+    into a reader's assumption.
+
 **Exit criteria:** `cursor-overlay enable` on Windows draws the overlay and the response reports rendering true through §2.15's field; the overlay's cursor reaches its destination before the action dispatches, measured on Windows the way #145 measured it on macOS; the overlay never takes the foreground, asserted by observation of the foreground window across an overlaid action; `cursor-overlay disable` and session teardown leave no residual window, timer or thread, verified by independent observation; the per-platform contract is stated in `skills/agent-desktop-windows/` and the README; the dogfood gate in its strict form, with every finding carrying exactly one of *fixed here*, *owned elsewhere* or *accepted*; and a written, ordered **promotion checklist** a later session can execute without reading this sub-phase's plan. The checklist must also triage the roughly twenty `DEFERRED` ledger rows that still name sub-phases which have already merged - 13 at `2.12`, 3 at `2.4`, and singles at `2.8`, `2.10`, `2.14` and `2.15` (`A30-3`). Each is either genuinely closed, genuinely out of reach and re-pointed to `post-phase-2`, or real work that needs a home; this sub-phase closed only the four rows that named it, and says so rather than absorbing the rest silently or leaving them unnamed. The promotion itself — `feat/windows-adapter` merged to `main` as one release-noted `feat!` — runs that checklist afterwards and is what closes the phase.
 
 **Est. PR size:** ~4k LOC across twenty implementation units — ten defect fixes and the `text` contract, five renderer units, then teardown, docs, e2e and the dogfood. **This exceeds the ~2,000-LOC sub-phase cap, on the owner's direction to ship the sub-phase as one branch and one PR.** The mitigation is commit topology rather than scope: every unit is its own commit with its own invert-verified test, so the PR reviews incrementally even though it does not land incrementally. The original `~1.5k LOC` estimate counted the renderer alone and predated the nine inherited findings, the four probe closures and the contract decision this sub-phase also carries.
