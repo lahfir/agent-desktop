@@ -378,14 +378,14 @@ jobs:
       - name: Windows example tests
         run: cargo test --locked -p agent-desktop-windows --examples
 
-      # The cursor-overlay teardown tests live in this target and stage an
-      # on-screen renderer, so they need the same staging opt-in the --lib
-      # steps carry. Without it they skip and report ok, which made them the
-      # sole coverage for the Windows renderer and executed by nothing.
+      # The cursor-overlay teardown tests in this target need a composited
+      # desktop they can read back with BitBlt, which this runner does not
+      # have - UI Automation works here, pixels do not. They skip, and
+      # scripts/run-windows-e2e-ci.ps1 runs them under the desktop lease
+      # alongside the rest of the live suite, which is where every other live
+      # Windows check on this project already lives.
       - name: Binary command tests
         run: cargo test --locked -p agent-desktop
-        env:
-          AGENT_DESKTOP_LIVE_WPF: "1"
 
       # The FFI crate ships integration harnesses under crates/ffi/tests/ that a
       # --lib run skips, and the Windows-gated reachability coverage landing there

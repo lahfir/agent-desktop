@@ -18,195 +18,13 @@
 #[path = "screen_sample.rs"]
 mod screen_sample;
 
-use std::path::PathBuf;
-use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard, OnceLock};
-use std::time::{Duration, Instant};
+#[path = "windows_cursor_overlay_support.rs"]
+mod support;
 
-/// The overlay needs a desktop to draw on, and staging one is the same opt-in
-/// the other on-screen suites use rather than a second variable to discover.
-const LIVE_STAGE_VARIABLE: &str = "AGENT_DESKTOP_LIVE_WPF";
-
-/// A colour nothing else on the desktop paints, so counting exact matches is
-/// evidence instead of noise.
-const ORACLE: (u8, u8, u8) = (0xFF, 0x00, 0xFF);
-const ORACLE_HEX: &str = "#FF00FF";
-
-const SETTLE: Duration = Duration::from_secs(6);
-
-static SCRATCH_ID: AtomicU64 = AtomicU64::new(1);
-
-/// These tests share one desktop, one oracle colour and one process table,
-/// so they cannot run beside each other: one overlay's pixels satisfy
-/// another's "still painted" wait and defeat its "torn down" wait. libtest
-/// runs a target's tests concurrently by default, so the serialization has to
-/// be here rather than assumed from a runner flag.
-fn desktop() -> MutexGuard<'static, ()> {
-    static DESKTOP: OnceLock<Mutex<()>> = OnceLock::new();
-    match DESKTOP.get_or_init(|| Mutex::new(())).lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    }
-}
-
-struct Scratch {
-    root: PathBuf,
-    session: Mutex<Option<String>>,
-    _desktop: MutexGuard<'static, ()>,
-}
-
-impl Scratch {
-    fn create(label: &str) -> Self {
-        let id = SCRATCH_ID.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!(
-            "agent-desktop-overlay-{label}-{}-{id}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&root).expect("create scratch state root");
-        Self {
-            root,
-            session: Mutex::new(None),
-            _desktop: desktop(),
-        }
-    }
-
-    /// Remembered so teardown reaps this test's own renderer and nothing
-    /// else. An unscoped reap matches every overlay on the machine, including
-    /// one a developer is looking at.
-    fn owns(&self, session: &str) {
-        if let Ok(mut held) = self.session.lock() {
-            *held = Some(session.to_owned());
-        }
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let session = self
-            .session
-            .lock()
-            .ok()
-            .and_then(|held| held.clone())
-            .unwrap_or_default();
-        if session.is_empty() {
-            let _ = std::fs::remove_dir_all(&self.root);
-            return;
-        }
-        for id in overlay_children(&session) {
-            let _ = Command::new("taskkill")
-                .args(["/PID", &id.to_string(), "/F"])
-                .output();
-        }
-        let _ = std::fs::remove_dir_all(&self.root);
-    }
-}
-
-fn skip_unless_live_staging(reason: &str) -> bool {
-    if std::env::var_os(LIVE_STAGE_VARIABLE).is_none() {
-        eprintln!(
-            "skip {reason}: {LIVE_STAGE_VARIABLE} is unset here, so no on-screen staging was \
-             authorised; the Test (Windows) CI lane sets it and owns executing this"
-        );
-        return true;
-    }
-    false
-}
-
-fn run(scratch: &Scratch, args: &[&str]) -> serde_json::Value {
-    let output = Command::new(env!("CARGO_BIN_EXE_agent-desktop"))
-        .args(args)
-        .env("AGENT_DESKTOP_HOME", &scratch.root)
-        .output()
-        .expect("the binary starts");
-    serde_json::from_slice(&output.stdout).unwrap_or_else(|error| {
-        panic!(
-            "`{}` did not answer one JSON envelope ({error}): {}",
-            args.join(" "),
-            String::from_utf8_lossy(&output.stdout)
-        )
-    })
-}
-
-fn start_session(scratch: &Scratch) -> String {
-    let envelope = run(scratch, &["session", "start"]);
-    assert_eq!(envelope["ok"], true, "the session must start: {envelope}");
-    let id = envelope["data"]["session_id"]
-        .as_str()
-        .expect("a session id")
-        .to_owned();
-    scratch.owns(&id);
-    id
-}
-
-fn enable(scratch: &Scratch, session: &str) -> serde_json::Value {
-    run(
-        scratch,
-        &[
-            "cursor-overlay",
-            "enable",
-            "--session",
-            session,
-            "--fill",
-            ORACLE_HEX,
-            "--rim",
-            ORACLE_HEX,
-        ],
-    )
-}
-
-/// The renderer carries its session id in argv precisely so it can be found
-/// from outside: it is a detached process with no console, no taskbar entry
-/// and no window title to match on.
-fn overlay_children(session: &str) -> Vec<u32> {
-    let script = format!(
-        "Get-CimInstance Win32_Process -Filter \"Name='agent-desktop.exe'\" | \
-         Where-Object {{ $_.CommandLine -like '*--cursor-overlay-child*{session}*' }} | \
-         ForEach-Object {{ $_.ProcessId }}"
-    );
-    let output = Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .output()
-        .expect("powershell enumerates processes");
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| line.trim().parse::<u32>().ok())
-        .collect()
-}
-
-/// Panics rather than answering zero when the screen cannot be read. A
-/// capture fault reported as "no pixels" would satisfy every teardown wait on
-/// its first poll, which is the failure this whole file exists to rule out.
-fn oracle_pixels() -> usize {
-    screen_sample::pixels_matching(ORACLE.0, ORACLE.1, ORACLE.2)
-        .expect("the screen must be readable; a failed capture is not an empty screen")
-}
-
-/// Well inside one 1500ms idle tick, so the session watch cannot satisfy
-/// these observations on the disable path's behalf.
-///
-/// The watch needs two consecutive readings and so reclaims in three to four
-/// seconds; a budget of one whole tick would sit on its luckiest boundary
-/// rather than clear of it. Measured at 26-62ms, so this is an order of
-/// magnitude of headroom and still decisive.
-const PROMPTLY: Duration = Duration::from_millis(600);
-
-/// Waits for a condition instead of sleeping a fixed span and hoping. A
-/// failure seen after a fixed sleep is a race, not a finding.
-fn wait_until(what: &str, settled: impl FnMut() -> bool) {
-    wait_within(SETTLE, what, settled);
-}
-
-fn wait_within(budget: Duration, what: &str, mut settled: impl FnMut() -> bool) {
-    let deadline = Instant::now() + budget;
-    while Instant::now() < deadline {
-        if settled() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(120));
-    }
-    panic!("{what} did not happen within {budget:?}");
-}
+use support::{
+    PROMPTLY, Scratch, enable, oracle_pixels, overlay_children, run, skip_unless_live_staging,
+    start_session, wait_until, wait_within,
+};
 
 #[test]
 fn disabling_leaves_no_process_no_held_name_and_no_pixels() {
@@ -218,6 +36,10 @@ fn disabling_leaves_no_process_no_held_name_and_no_pixels() {
 
     let enabled = enable(&scratch, &session);
     assert_eq!(enabled["ok"], true, "the overlay must enable: {enabled}");
+    assert_eq!(
+        enabled["data"]["rendered"], true,
+        "the renderer must acknowledge before any pixel is waited on, or a renderer that never started is reported as an overlay that never painted: {enabled}"
+    );
     wait_until("the overlay painted its oracle colour", || {
         oracle_pixels() > 0
     });
@@ -278,6 +100,10 @@ fn ending_the_session_through_the_cli_also_takes_the_overlay_down() {
 
     let enabled = enable(&scratch, &session);
     assert_eq!(enabled["ok"], true, "the overlay must enable: {enabled}");
+    assert_eq!(
+        enabled["data"]["rendered"], true,
+        "the renderer must acknowledge before any pixel is waited on, or a renderer that never started is reported as an overlay that never painted: {enabled}"
+    );
     wait_until("the overlay painted its oracle colour", || {
         oracle_pixels() > 0
     });
@@ -312,6 +138,10 @@ fn a_session_ended_out_of_band_reclaims_its_abandoned_renderer() {
 
     let enabled = enable(&scratch, &session);
     assert_eq!(enabled["ok"], true, "the overlay must enable: {enabled}");
+    assert_eq!(
+        enabled["data"]["rendered"], true,
+        "the renderer must acknowledge before any pixel is waited on, or a renderer that never started is reported as an overlay that never painted: {enabled}"
+    );
     wait_until("the overlay painted its oracle colour", || {
         oracle_pixels() > 0
     });
@@ -354,6 +184,10 @@ fn a_disable_for_another_session_leaves_this_overlay_alone() {
 
     let enabled = enable(&scratch, &mine);
     assert_eq!(enabled["ok"], true, "the overlay must enable: {enabled}");
+    assert_eq!(
+        enabled["data"]["rendered"], true,
+        "the renderer must acknowledge before any pixel is waited on, or a renderer that never started is reported as an overlay that never painted: {enabled}"
+    );
     wait_until("the overlay painted its oracle colour", || {
         oracle_pixels() > 0
     });
