@@ -44,6 +44,10 @@ windows-sys = { version = "0.61", features = [
   "Win32_System_Threading",
   "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_DataExchange",
+  # Gates the declarations of ReadFile, WriteFile and ConnectNamedPipe, whose
+  # signatures take an OVERLAPPED pointer whether or not a caller passes one.
+  # Win32_Storage_FileSystem does not imply it, and no overlapped I/O ships
+  # here - removing this feature fails the build.
   "Win32_System_IO",
   "Win32_System_Memory",
   "Win32_System_Pipes",
