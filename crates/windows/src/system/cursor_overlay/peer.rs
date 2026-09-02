@@ -22,9 +22,22 @@
 //! run under any image — an FFI host is one — so clients are authenticated by
 //! user alone. A server may not: the renderer is only ever forked from this
 //! tool's own binary, so the server's image is checked too.
+//!
+//! That server-side image check is against the file stem, so any same-user
+//! `agent-desktop.exe` at any path passes it. Deliberate, and settled here so
+//! the question is not re-filed. The only strengthening that is not theatre —
+//! demanding the server's full image path equal the client's `current_exe()` —
+//! breaks two things that are not misuse. A debug build legitimately reaches a
+//! renderer a release build started, which is the ordinary shape of working on
+//! this code; and under an FFI host `current_exe()` is the host process, so
+//! the comparison could never pass at all. It also closes nothing: the
+//! adversary it would exclude is a same-user process, and a same-user process
+//! can simply run the genuine binary, which both draws and acknowledges. A
+//! check that costs the development workflow and the FFI host while an
+//! attacker steps around it by using the real thing is not a check.
 
 #[cfg(target_os = "windows")]
-pub(crate) use imp::{peer_is_this_user, server_is_this_user};
+pub(crate) use imp::{peer_is_this_user, server_is_this_user, terminate_pipe_server};
 
 #[cfg(not(target_os = "windows"))]
 pub(crate) fn peer_is_this_user(_pipe: isize) -> bool {
@@ -33,6 +46,11 @@ pub(crate) fn peer_is_this_user(_pipe: isize) -> bool {
 
 #[cfg(not(target_os = "windows"))]
 pub(crate) fn server_is_this_user(_pipe: isize) -> bool {
+    false
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn terminate_pipe_server(_pipe: isize) -> bool {
     false
 }
 
@@ -47,8 +65,9 @@ mod imp {
         GetNamedPipeClientProcessId, GetNamedPipeServerProcessId,
     };
     use windows_sys::Win32::System::Threading::{
-        GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
-        QueryFullProcessImageNameW,
+        GetCurrentProcess, GetCurrentProcessId, OpenProcess, OpenProcessToken,
+        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, QueryFullProcessImageNameW,
+        TerminateProcess,
     };
 
     /// Closes on every path out of a check, including the ones that give up
@@ -97,6 +116,46 @@ mod imp {
             return false;
         };
         runs_as_this_user(&process) && runs_our_image(&process)
+    }
+
+    /// Ends the process serving this pipe, when it is one of ours, and reports
+    /// whether it did.
+    ///
+    /// This is not belt-and-braces behind a polite shutdown. A renderer on a
+    /// generation this build no longer speaks exists precisely because the wire
+    /// format changed, so it may be unable to decode the `Disable` that would
+    /// have ended it politely — and what it leaves on screen is a topmost,
+    /// click-through window with no taskbar entry that no control can address.
+    /// Ending the process is what removes it: the OS destroys the layered
+    /// window with its owner.
+    ///
+    /// Guarded by the same two questions a client asks of any server it found,
+    /// asked once, of the single handle the terminate is issued on. Resolving
+    /// the id twice would leave a window in which it could be reused by an
+    /// unrelated process between the check and the kill. The caller reaches
+    /// here only for a name it derived for this exact session and a generation
+    /// it has retired, so nothing else is in range to begin with.
+    pub(crate) fn terminate_pipe_server(pipe: isize) -> bool {
+        let mut process_id = 0u32;
+        let resolved = unsafe { GetNamedPipeServerProcessId(pipe as HANDLE, &mut process_id) };
+        if resolved == 0 || process_id == unsafe { GetCurrentProcessId() } {
+            return false;
+        }
+        let handle = unsafe {
+            OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                0,
+                process_id,
+            )
+        };
+        if handle.is_null() {
+            return false;
+        }
+        let process = OwnedProcess(handle);
+        if !runs_as_this_user(&process) || !runs_our_image(&process) {
+            return false;
+        }
+        unsafe { TerminateProcess(process.0, 0) != 0 }
     }
 
     fn open_for_inspection(process_id: u32) -> Option<OwnedProcess> {
