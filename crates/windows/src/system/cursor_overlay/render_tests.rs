@@ -298,3 +298,73 @@ fn composing_a_travel_frame_leaves_most_of_the_display_frame_unspent() {
          sampled once per display frame, so a compose near the interval makes it step"
     );
 }
+
+/// The highlight is the only part of a frame whose cost is set by what the
+/// caller clicked rather than by the cursor: outlining a scroll container
+/// spans a surface a hundred times the area of a button's. Composing is
+/// sampled once per display frame, so a large target that overran the
+/// interval would make every motion toward it visibly step - and the sizes
+/// below are ordinary application furniture, not a contrived worst case.
+///
+/// Measured the way the probe corpus measures cost: min of seven with the
+/// warm-up discarded, printed always and asserted only where wall-clock
+/// numbers mean something.
+#[test]
+fn composing_frames_around_large_targets_fits_inside_a_display_frame() {
+    let style = CursorOverlayStyle::default();
+    let mut slowest = std::time::Duration::ZERO;
+    for (width, height) in [(220.0, 44.0), (600.0, 400.0), (1200.0, 800.0)] {
+        let target = Rect {
+            x: 380.0,
+            y: 280.0,
+            width,
+            height,
+        };
+        let around_target = || Frame {
+            tip: Point {
+                x: target.x + target.width / 2.0,
+                y: target.y + target.height / 2.0,
+            },
+            style: &style,
+            ripple_phase: 0.5,
+            target: Some(target),
+            highlight_opacity: 1.0,
+            label: Some("Click the Submit button"),
+            screen: screen(),
+        };
+
+        let mut samples = Vec::new();
+        let mut surface = (0, 0);
+        for run in 0..8 {
+            let started = std::time::Instant::now();
+            let composed = compose(&around_target());
+            let elapsed = started.elapsed();
+            assert!(painted_pixels(&composed) > 0, "the frame actually drew");
+            surface = (composed.surface.width, composed.surface.height);
+            if run > 0 {
+                samples.push(elapsed);
+            }
+        }
+        let best = samples.iter().min().copied().unwrap_or_default();
+        let worst = samples.iter().max().copied().unwrap_or_default();
+        eprintln!(
+            "target {width}x{height} -> surface {}x{} -> min {best:?} max {worst:?}",
+            surface.0, surface.1
+        );
+        slowest = slowest.max(best);
+    }
+
+    if !budget_is_enforced() {
+        return;
+    }
+    assert!(
+        slowest < budget(20),
+        "the slowest large-target compose took {slowest:?} at best. This bound is deliberately \
+         looser than the two above, and it is not policing a margin: outlining an element the \
+         size of a window measured 13ms against a 15.6ms interval, so a bound at the interval \
+         itself would fail on ordinary run-to-run spread and teach whoever met it to widen the \
+         bound. What it exists to catch is the regression that produced it - a full-rectangle \
+         walk over the outline's interior, which measured 339ms - and any regression of even \
+         half that size still crosses this"
+    );
+}

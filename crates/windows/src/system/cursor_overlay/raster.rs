@@ -7,12 +7,14 @@
 //! else: an anti-aliased edge and a soft ring need per-pixel coverage, which
 //! is the very thing being destroyed.
 //!
-//! So the glyph, the ripple and the highlight are composited here instead,
-//! with coverage computed rather than approximated. GDI draws only the label
-//! text, onto a bubble body this module has already made opaque - and even
-//! there the alpha byte is written directly as the glyphs are copied back,
-//! rather than forced across a rectangle afterwards, so the bubble's rounded
-//! corners are never in reach of it.
+//! So every shape the overlay draws is composited here instead, with coverage
+//! computed rather than approximated: the surface, the coverage walk and the
+//! blend live in this module, the glyph and the ripple with them, and the two
+//! rounded rectangles in `rounded` alongside. GDI draws only the label text,
+//! onto a bubble body that has already been made opaque - and even there the
+//! alpha byte is written directly as the glyphs are copied back, rather than
+//! forced across a rectangle afterwards, so the bubble's rounded corners are
+//! never in reach of it.
 //!
 //! Being pure is the other half of the point: the alpha behaviour that makes
 //! this necessary is assertable without a window.
@@ -30,9 +32,9 @@ pub(crate) struct Surface {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct Paint {
-    pub(crate) rgb: [f64; 3],
-    pub(crate) alpha: f64,
+pub(super) struct Paint {
+    pub(super) rgb: [f64; 3],
+    pub(super) alpha: f64,
 }
 
 impl Surface {
@@ -133,9 +135,44 @@ fn coverage(x: i32, y: i32, inside: impl Fn(f64, f64) -> bool) -> f64 {
     f64::from(hits) / f64::from(SAMPLES * SAMPLES)
 }
 
-fn fill_region(
+/// A skip rectangle that excludes nothing, for the shapes that are solid
+/// rather than hollow. Its negative extent cannot enclose any pixel's cell.
+const NOTHING_SKIPPED: Rect = Rect {
+    x: 0.0,
+    y: 0.0,
+    width: -1.0,
+    height: -1.0,
+};
+
+pub(super) fn fill_region(
     surface: &mut Surface,
     bounds: &Rect,
+    paint: &Paint,
+    inside: impl Fn(f64, f64) -> bool,
+) {
+    fill_region_outside(surface, bounds, &NOTHING_SKIPPED, paint, inside);
+}
+
+/// The same walk, with a rectangle the caller has established the predicate
+/// is false across left unvisited.
+///
+/// A hollow shape is the reason this exists. An outline's bounding rectangle
+/// is almost entirely interior, and testing that interior costs a coverage
+/// probe per pixel to learn it is empty - which grows with the area of the
+/// element being outlined rather than with the outline, so a large panel's
+/// highlight overran a whole display frame while a button's did not.
+///
+/// `skip` is honoured per pixel rather than per rectangle so no pixel is
+/// visited twice: painting the border as four overlapping strips would blend
+/// the corners a second time, and blending is not idempotent. A pixel is
+/// dropped only when its whole cell lies inside `skip`, where the predicate
+/// is false at every sample, so `coverage` would return zero and `blend`
+/// would do nothing. Skipping it is therefore the same bytes, not an
+/// approximation of them.
+pub(super) fn fill_region_outside(
+    surface: &mut Surface,
+    bounds: &Rect,
+    skip: &Rect,
     paint: &Paint,
     inside: impl Fn(f64, f64) -> bool,
 ) {
@@ -147,10 +184,22 @@ fn fill_region(
     let y1 = (bounds.y + bounds.height)
         .ceil()
         .min(f64::from(surface.height)) as i32;
+    let skip_x0 = skip.x.ceil().max(f64::from(x0)) as i32;
+    let skip_x1 = (skip.x + skip.width).floor().min(f64::from(x1)) as i32;
+    let skip_y0 = skip.y.ceil().max(f64::from(y0)) as i32;
+    let skip_y1 = (skip.y + skip.height).floor().min(f64::from(y1)) as i32;
+    let hollow = skip_x0 < skip_x1 && skip_y0 < skip_y1;
     for y in y0..y1 {
-        for x in x0..x1 {
-            let value = coverage(x, y, &inside);
-            surface.blend(x, y, paint, value);
+        if hollow && y >= skip_y0 && y < skip_y1 {
+            for x in (x0..skip_x0).chain(skip_x1..x1) {
+                let value = coverage(x, y, &inside);
+                surface.blend(x, y, paint, value);
+            }
+        } else {
+            for x in x0..x1 {
+                let value = coverage(x, y, &inside);
+                surface.blend(x, y, paint, value);
+            }
         }
     }
 }
@@ -193,23 +242,48 @@ fn distance_to_segment(a: (f64, f64), b: (f64, f64), x: f64, y: f64) -> f64 {
     (x - (ax + t * dx)).hypot(y - (ay + t * dy))
 }
 
+/// How screen coordinates land on the surface: where the surface's top-left
+/// sits in screen space, and the size the session's style asks every shape to
+/// be drawn at.
+///
+/// Every primitive takes both and neither is meaningful alone - a scale
+/// without the origin draws the right shape in the wrong place - so they
+/// travel together rather than as two more arguments each.
+#[derive(Clone)]
+pub(crate) struct SurfaceMapping {
+    pub(crate) origin: Point,
+    pub(crate) scale: f64,
+}
+
+impl SurfaceMapping {
+    /// A screen-space rectangle in surface coordinates.
+    pub(super) fn to_local(&self, rect: &Rect) -> Rect {
+        Rect {
+            x: rect.x - self.origin.x,
+            y: rect.y - self.origin.y,
+            width: rect.width,
+            height: rect.height,
+        }
+    }
+}
+
 /// The cursor glyph: a rimmed dart, its tip on the pose point.
 pub(crate) fn draw_glyph(
     surface: &mut Surface,
-    origin: &Point,
+    mapping: &SurfaceMapping,
     tip: &Point,
-    scale: f64,
     fill: [f64; 3],
     rim: [f64; 3],
 ) {
-    let rect = geometry::glyph_rect(tip, scale);
+    let scale = mapping.scale;
+    let rect = mapping.to_local(&geometry::glyph_rect(tip, scale));
     let points: Vec<(f64, f64)> = geometry::DART
         .iter()
-        .map(|(x, y)| (rect.x - origin.x + x * scale, rect.y - origin.y + y * scale))
+        .map(|(x, y)| (rect.x + x * scale, rect.y + y * scale))
         .collect();
     let local = Rect {
-        x: rect.x - origin.x - geometry::GLYPH_RIM_WIDTH * scale,
-        y: rect.y - origin.y - geometry::GLYPH_RIM_WIDTH * scale,
+        x: rect.x - geometry::GLYPH_RIM_WIDTH * scale,
+        y: rect.y - geometry::GLYPH_RIM_WIDTH * scale,
         width: rect.width + geometry::GLYPH_RIM_WIDTH * scale * 2.0,
         height: rect.height + geometry::GLYPH_RIM_WIDTH * scale * 2.0,
     };
@@ -244,22 +318,16 @@ pub(crate) fn draw_glyph(
 /// ripple's phase advances.
 pub(crate) fn draw_ripple(
     surface: &mut Surface,
-    origin: &Point,
+    mapping: &SurfaceMapping,
     tip: &Point,
-    scale: f64,
     phase: f64,
     accent: [f64; 3],
 ) {
     if phase <= 0.0 || phase > 1.0 {
         return;
     }
-    let rect = geometry::ripple_rect(tip, scale);
-    let local = Rect {
-        x: rect.x - origin.x,
-        y: rect.y - origin.y,
-        width: rect.width,
-        height: rect.height,
-    };
+    let scale = mapping.scale;
+    let local = mapping.to_local(&geometry::ripple_rect(tip, scale));
     let centre_x = local.x + local.width / 2.0;
     let centre_y = local.y + local.height / 2.0;
     let fade = 1.0 - phase;
@@ -289,98 +357,6 @@ pub(crate) fn draw_ripple(
             distance <= ring && distance >= ring - thickness
         },
     );
-}
-
-/// The outline around the element being acted on, at the opacity its own
-/// curve reports.
-pub(crate) fn draw_highlight(
-    surface: &mut Surface,
-    origin: &Point,
-    target: &Rect,
-    scale: f64,
-    opacity: f64,
-    accent: [f64; 3],
-) {
-    if opacity <= 0.0 {
-        return;
-    }
-    let rect = geometry::highlight_rect(target, scale);
-    let local = Rect {
-        x: rect.x - origin.x,
-        y: rect.y - origin.y,
-        width: rect.width,
-        height: rect.height,
-    };
-    let radius = geometry::HIGHLIGHT_CORNER_RADIUS * scale;
-    let border = geometry::HIGHLIGHT_BORDER_WIDTH * scale;
-    let outer = local;
-    let inner = Rect {
-        x: local.x + border,
-        y: local.y + border,
-        width: (local.width - border * 2.0).max(0.0),
-        height: (local.height - border * 2.0).max(0.0),
-    };
-    fill_region(
-        surface,
-        &outer,
-        &Paint {
-            rgb: accent,
-            alpha: opacity,
-        },
-        |x, y| {
-            in_rounded_rect(&outer, radius, x, y)
-                && !in_rounded_rect(&inner, (radius - border).max(0.0), x, y)
-        },
-    );
-}
-
-/// The label bubble's body: an opaque rounded rectangle with a rim, drawn
-/// per-pixel so its corners keep their coverage. GDI writes the text on top.
-pub(crate) fn draw_bubble(surface: &mut Surface, rect: &Rect, fill: [f64; 3], rim: [f64; 3]) {
-    let radius = geometry::BUBBLE_CORNER_RADIUS;
-    let border = geometry::BUBBLE_BORDER_WIDTH;
-    let inner = Rect {
-        x: rect.x + border,
-        y: rect.y + border,
-        width: (rect.width - border * 2.0).max(0.0),
-        height: (rect.height - border * 2.0).max(0.0),
-    };
-    let outer = *rect;
-    fill_region(
-        surface,
-        &outer,
-        &Paint {
-            rgb: rim,
-            alpha: 1.0,
-        },
-        |x, y| in_rounded_rect(&outer, radius, x, y),
-    );
-    fill_region(
-        surface,
-        &inner,
-        &Paint {
-            rgb: fill,
-            alpha: 1.0,
-        },
-        |x, y| in_rounded_rect(&inner, (radius - border).max(0.0), x, y),
-    );
-}
-
-fn in_rounded_rect(rect: &Rect, radius: f64, x: f64, y: f64) -> bool {
-    if rect.width <= 0.0 || rect.height <= 0.0 {
-        return false;
-    }
-    let radius = radius.min(rect.width / 2.0).min(rect.height / 2.0).max(0.0);
-    let left = rect.x + radius;
-    let right = rect.x + rect.width - radius;
-    let top = rect.y + radius;
-    let bottom = rect.y + rect.height - radius;
-    if x < rect.x || y < rect.y || x > rect.x + rect.width || y > rect.y + rect.height {
-        return false;
-    }
-    let nearest_x = x.clamp(left, right);
-    let nearest_y = y.clamp(top, bottom);
-    (x - nearest_x).hypot(y - nearest_y) <= radius
 }
 
 #[cfg(test)]
