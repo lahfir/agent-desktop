@@ -6,8 +6,8 @@
 
 use agent_desktop_core::{CursorOverlayStyle, Point, Rect, place_label};
 
-use super::geometry;
-use super::raster::{self, Surface};
+use super::raster::{self, Surface, SurfaceMapping};
+use super::{geometry, rounded};
 
 /// Everything a frame needs, resolved from the control and the clock before
 /// any pixel is touched.
@@ -47,9 +47,12 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
         label_rect.as_ref(),
         highlight_rect.as_ref(),
     );
-    let origin = Point {
-        x: bounds.x.floor(),
-        y: bounds.y.floor(),
+    let mapping = SurfaceMapping {
+        origin: Point {
+            x: bounds.x.floor(),
+            y: bounds.y.floor(),
+        },
+        scale,
     };
     let mut surface = Surface::transparent(
         bounds.width.ceil() as i32 + 1,
@@ -57,11 +60,10 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
     );
 
     if let Some(highlight) = frame.target.as_ref().filter(|_| highlight_rect.is_some()) {
-        raster::draw_highlight(
+        rounded::draw_highlight(
             &mut surface,
-            &origin,
+            &mapping,
             highlight,
-            scale,
             frame.highlight_opacity,
             frame.style.accent_rgb(),
         );
@@ -69,22 +71,16 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
     if frame.style.ripple() {
         raster::draw_ripple(
             &mut surface,
-            &origin,
+            &mapping,
             &frame.tip,
-            scale,
             frame.ripple_phase,
             frame.style.accent_rgb(),
         );
     }
 
     let text_rect = label_rect.map(|rect| {
-        let local = Rect {
-            x: rect.x - origin.x,
-            y: rect.y - origin.y,
-            width: rect.width,
-            height: rect.height,
-        };
-        raster::draw_bubble(
+        let local = mapping.to_local(&rect);
+        rounded::draw_bubble(
             &mut surface,
             &local,
             frame.style.fill_rgb(),
@@ -101,15 +97,14 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
 
     raster::draw_glyph(
         &mut surface,
-        &origin,
+        &mapping,
         &frame.tip,
-        scale,
         frame.style.fill_rgb(),
         frame.style.rim_rgb(),
     );
 
     Composed {
-        origin,
+        origin: mapping.origin,
         surface,
         text_rect,
     }

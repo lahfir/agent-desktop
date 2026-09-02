@@ -1,5 +1,8 @@
 use super::super::geometry;
-use super::{Surface, draw_bubble, draw_glyph, draw_highlight, draw_ripple};
+use super::{
+    Paint, Surface, SurfaceMapping, distance_to_polygon, draw_glyph, draw_ripple, fill_region,
+    point_in_polygon,
+};
 use agent_desktop_core::{Point, Rect};
 
 const FILL: [f64; 3] = [1.0, 1.0, 1.0];
@@ -10,8 +13,11 @@ fn surface() -> Surface {
     Surface::transparent(200, 200)
 }
 
-fn origin() -> Point {
-    Point { x: 0.0, y: 0.0 }
+fn mapping(scale: f64) -> SurfaceMapping {
+    SurfaceMapping {
+        origin: Point { x: 0.0, y: 0.0 },
+        scale,
+    }
 }
 
 fn edge_alphas(surface: &Surface) -> Vec<u8> {
@@ -45,9 +51,8 @@ fn the_glyph_carries_full_alpha_inside_and_partial_alpha_at_its_edge() {
 
     draw_glyph(
         &mut surface,
-        &origin(),
+        &mapping(1.0),
         &Point { x: 40.0, y: 40.0 },
-        1.0,
         FILL,
         RIM,
     );
@@ -72,13 +77,47 @@ fn the_glyphs_tip_is_painted_where_the_pose_points() {
     let mut surface = surface();
     let tip = Point { x: 60.0, y: 60.0 };
 
-    draw_glyph(&mut surface, &origin(), &tip, 1.0, FILL, RIM);
+    draw_glyph(&mut surface, &mapping(1.0), &tip, FILL, RIM);
 
     let near_tip = surface.alpha_at(tip.x as i32, tip.y as i32);
     assert!(
         near_tip > 0,
         "the dart's tip lands on the pose point, not the corner of its box"
     );
+}
+
+/// The mapping is the surface's whole relationship to the screen, so an
+/// origin that were ignored would draw the right shape in the wrong place -
+/// which is exactly what bundling it with the scale is meant to make hard.
+#[test]
+fn the_mappings_origin_shifts_what_is_drawn_by_that_much() {
+    let tip = Point { x: 90.0, y: 90.0 };
+    let mut at_zero = surface();
+    let mut shifted = surface();
+
+    draw_glyph(&mut at_zero, &mapping(1.0), &tip, FILL, RIM);
+    draw_glyph(
+        &mut shifted,
+        &SurfaceMapping {
+            origin: Point { x: 30.0, y: 20.0 },
+            scale: 1.0,
+        },
+        &tip,
+        FILL,
+        RIM,
+    );
+
+    let painted = |surface: &Surface| surface.pixels.iter().filter(|pixel| **pixel != 0).count();
+    assert!(painted(&at_zero) > 0 && painted(&at_zero) == painted(&shifted));
+    for y in 20..200 {
+        for x in 30..200 {
+            assert_eq!(
+                at_zero.pixel_at(x, y),
+                shifted.pixel_at(x - 30, y - 20),
+                "the glyph moved by something other than the origin at {x},{y}"
+            );
+        }
+    }
 }
 
 /// A ripple that never fades would be a solid disc rather than an effect.
@@ -88,8 +127,8 @@ fn the_ripple_expands_and_fades_across_its_phase() {
     let mut early = surface();
     let mut late = surface();
 
-    draw_ripple(&mut early, &origin(), &tip, 1.0, 0.15, ACCENT);
-    draw_ripple(&mut late, &origin(), &tip, 1.0, 0.9, ACCENT);
+    draw_ripple(&mut early, &mapping(1.0), &tip, 0.15, ACCENT);
+    draw_ripple(&mut late, &mapping(1.0), &tip, 0.9, ACCENT);
 
     let radius_of = |surface: &Surface| {
         let mut furthest = 0.0_f64;
@@ -119,118 +158,13 @@ fn a_ripple_outside_its_phase_paints_nothing() {
 
     draw_ripple(
         &mut surface,
-        &origin(),
+        &mapping(1.0),
         &Point { x: 100.0, y: 100.0 },
-        1.0,
         0.0,
         ACCENT,
     );
 
     assert!(surface.pixels.iter().all(|pixel| *pixel == 0));
-}
-
-/// The highlight is an outline, not a filled box: the element underneath has
-/// to stay visible through it.
-#[test]
-fn the_highlight_is_an_outline_with_its_centre_untouched() {
-    let mut surface = surface();
-    let target = Rect {
-        x: 60.0,
-        y: 60.0,
-        width: 80.0,
-        height: 60.0,
-    };
-
-    draw_highlight(&mut surface, &origin(), &target, 1.0, 1.0, ACCENT);
-
-    assert_eq!(
-        surface.alpha_at(100, 90),
-        0,
-        "the middle of the element stays clear, or the highlight hides what it points at"
-    );
-    assert!(
-        surface.alpha_at(target.x as i32 - 3, 90) > 0,
-        "the outline is painted just outside the element's edge"
-    );
-}
-
-/// The curve is what keeps the cue from blinking on and off; a static outline
-/// would paint identically at every opacity.
-#[test]
-fn the_highlights_opacity_follows_its_curve() {
-    let mut faint = surface();
-    let mut full = surface();
-    let target = Rect {
-        x: 60.0,
-        y: 60.0,
-        width: 80.0,
-        height: 60.0,
-    };
-
-    draw_highlight(&mut faint, &origin(), &target, 1.0, 0.2, ACCENT);
-    draw_highlight(&mut full, &origin(), &target, 1.0, 1.0, ACCENT);
-
-    let peak = |surface: &Surface| {
-        (0..surface.height)
-            .flat_map(|y| (0..surface.width).map(move |x| (x, y)))
-            .map(|(x, y)| surface.alpha_at(x, y))
-            .max()
-            .unwrap_or(0)
-    };
-
-    assert!(peak(&faint) < peak(&full));
-    assert!(peak(&faint) > 0, "a faint highlight is still drawn");
-}
-
-#[test]
-fn a_highlight_at_zero_opacity_paints_nothing() {
-    let mut surface = surface();
-
-    draw_highlight(
-        &mut surface,
-        &origin(),
-        &Rect {
-            x: 60.0,
-            y: 60.0,
-            width: 80.0,
-            height: 60.0,
-        },
-        1.0,
-        0.0,
-        ACCENT,
-    );
-
-    assert!(surface.pixels.iter().all(|pixel| *pixel == 0));
-}
-
-/// The bubble's corners are why its body is composited rather than
-/// alpha-forced across its bounding rectangle: forcing would paint opaque
-/// square corners and the bubble would read unlike the reference.
-#[test]
-fn the_bubbles_corners_are_rounded_rather_than_squared_off() {
-    let mut surface = surface();
-    let rect = Rect {
-        x: 10.0,
-        y: 10.0,
-        width: geometry::BUBBLE_WIDTH.min(180.0),
-        height: geometry::BUBBLE_HEIGHT,
-    };
-
-    draw_bubble(&mut surface, &rect, FILL, RIM);
-
-    assert_eq!(
-        surface.alpha_at(rect.x as i32, rect.y as i32),
-        0,
-        "the very corner of the bounding rectangle is outside a rounded bubble"
-    );
-    assert_eq!(
-        surface.alpha_at(
-            (rect.x + rect.width / 2.0) as i32,
-            (rect.y + rect.height / 2.0) as i32
-        ),
-        255,
-        "the bubble's body is opaque, which is what lets GDI draw text onto it"
-    );
 }
 
 #[test]
@@ -239,23 +173,142 @@ fn nothing_is_written_outside_the_surface() {
 
     draw_glyph(
         &mut surface,
-        &origin(),
+        &mapping(4.0),
         &Point { x: 500.0, y: 500.0 },
-        4.0,
         FILL,
         RIM,
     );
     draw_ripple(
         &mut surface,
-        &origin(),
+        &mapping(4.0),
         &Point {
             x: -400.0,
             y: -400.0,
         },
-        4.0,
         0.5,
         ACCENT,
     );
 
     assert_eq!(surface.pixels.len(), 24 * 24);
+}
+
+/// The glyph as it was drawn before the origin and the scale were bundled:
+/// the same arithmetic, spelled with two loose arguments. Bundling is a
+/// refactor, so it owes the same debt an optimization does - the same pixels
+/// - and this is what that is checked against.
+fn reference_glyph(surface: &mut Surface, origin: &Point, tip: &Point, scale: f64) {
+    let rect = geometry::glyph_rect(tip, scale);
+    let points: Vec<(f64, f64)> = geometry::DART
+        .iter()
+        .map(|(x, y)| (rect.x - origin.x + x * scale, rect.y - origin.y + y * scale))
+        .collect();
+    let local = Rect {
+        x: rect.x - origin.x - geometry::GLYPH_RIM_WIDTH * scale,
+        y: rect.y - origin.y - geometry::GLYPH_RIM_WIDTH * scale,
+        width: rect.width + geometry::GLYPH_RIM_WIDTH * scale * 2.0,
+        height: rect.height + geometry::GLYPH_RIM_WIDTH * scale * 2.0,
+    };
+    let rim_width = geometry::GLYPH_RIM_WIDTH * scale * 0.5;
+
+    let rim_points = points.clone();
+    fill_region(
+        surface,
+        &local,
+        &Paint {
+            rgb: RIM,
+            alpha: 1.0,
+        },
+        |x, y| {
+            point_in_polygon(&rim_points, x, y)
+                || distance_to_polygon(&rim_points, x, y) <= rim_width
+        },
+    );
+    let fill_points = points;
+    fill_region(
+        surface,
+        &local,
+        &Paint {
+            rgb: FILL,
+            alpha: 1.0,
+        },
+        |x, y| point_in_polygon(&fill_points, x, y),
+    );
+}
+
+/// The ripple as it was drawn before the bundling, for the same reason.
+fn reference_ripple(surface: &mut Surface, origin: &Point, tip: &Point, scale: f64, phase: f64) {
+    if phase <= 0.0 || phase > 1.0 {
+        return;
+    }
+    let rect = geometry::ripple_rect(tip, scale);
+    let local = Rect {
+        x: rect.x - origin.x,
+        y: rect.y - origin.y,
+        width: rect.width,
+        height: rect.height,
+    };
+    let centre_x = local.x + local.width / 2.0;
+    let centre_y = local.y + local.height / 2.0;
+    let fade = 1.0 - phase;
+
+    let core = geometry::RIPPLE_CORE_RADIUS * scale * (1.0 - phase * 0.4);
+    fill_region(
+        surface,
+        &local,
+        &Paint {
+            rgb: ACCENT,
+            alpha: 0.55 * fade,
+        },
+        |x, y| (x - centre_x).hypot(y - centre_y) <= core,
+    );
+
+    let ring = (geometry::RIPPLE_SIZE * 0.5 - geometry::RIPPLE_RING_INSET) * scale * phase;
+    let thickness = 3.0 * scale;
+    fill_region(
+        surface,
+        &local,
+        &Paint {
+            rgb: ACCENT,
+            alpha: 0.85 * fade,
+        },
+        |x, y| {
+            let distance = (x - centre_x).hypot(y - centre_y);
+            distance <= ring && distance >= ring - thickness
+        },
+    );
+}
+
+#[test]
+fn bundling_the_origin_and_the_scale_left_every_pixel_where_it_was() {
+    for (x, y) in [(0.0, 0.0), (11.4, 6.6), (-8.25, 13.75)] {
+        for scale in [0.6, 1.0, 1.35, 2.0] {
+            for phase in [0.2, 0.75] {
+                let origin = Point { x, y };
+                let tip = Point {
+                    x: 96.3 + x,
+                    y: 88.7 + y,
+                };
+                let mapping = SurfaceMapping {
+                    origin: origin.clone(),
+                    scale,
+                };
+
+                let mut bundled = surface();
+                draw_ripple(&mut bundled, &mapping, &tip, phase, ACCENT);
+                draw_glyph(&mut bundled, &mapping, &tip, FILL, RIM);
+                let mut loose = surface();
+                reference_ripple(&mut loose, &origin, &tip, scale, phase);
+                reference_glyph(&mut loose, &origin, &tip, scale);
+
+                assert!(
+                    bundled.pixels.iter().any(|pixel| *pixel != 0),
+                    "origin {x},{y} scale {scale} drew nothing to compare"
+                );
+                assert_eq!(
+                    bundled.pixels, loose.pixels,
+                    "origin {x},{y} scale {scale} phase {phase} moved a pixel"
+                );
+            }
+        }
+    }
 }
