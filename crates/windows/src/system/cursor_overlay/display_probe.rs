@@ -85,14 +85,28 @@ mod imp {
         }
     }
 
+    /// The monitors this desktop presents, or an empty list.
+    ///
+    /// An enumeration that fails surfaces here as the empty list, not as a
+    /// distinct value: the caller treats an empty list as "keep the topology
+    /// you already had" rather than as "no monitors are attached", so the
+    /// overlay never repositions itself off a failed read. The failure is
+    /// traced so a machine that returns empty for a real reason can be told
+    /// apart in a log from one whose call simply failed.
     pub(crate) fn monitors() -> Vec<OverlayMonitor> {
         let mut collected: Vec<OverlayMonitor> = Vec::new();
-        unsafe {
+        let enumerated = unsafe {
             EnumDisplayMonitors(
                 std::ptr::null_mut(),
                 std::ptr::null(),
                 Some(collect),
                 &mut collected as *mut Vec<OverlayMonitor> as LPARAM,
+            )
+        };
+        if enumerated == 0 {
+            tracing::debug!(
+                collected = collected.len(),
+                "the overlay's monitor enumeration did not complete; the caller keeps its previous topology"
             );
         }
         collected
