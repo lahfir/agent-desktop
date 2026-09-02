@@ -91,7 +91,7 @@ mod imp {
 
         if !crate::system::cursor_overlay::peer::server_is_this_user(handle.0 as isize) {
             return ReachOutcome::Unreachable(AdapterError::internal(
-                "The cursor overlay pipe is served by another user's process",
+                "The cursor overlay pipe is not served by this user's overlay renderer",
             ));
         }
 
@@ -193,10 +193,13 @@ mod imp {
                         std::ptr::null_mut(),
                     )
                 };
-                if ok == 0 || read != 1 || byte[0] != framing::ACKNOWLEDGEMENT {
+                if ok == 0 {
                     return Err(win32_error(
-                        "The cursor overlay renderer answered something other than an acknowledgement",
+                        "The cursor overlay acknowledgement could not be read",
                     ));
+                }
+                if read != 1 || byte[0] != framing::ACKNOWLEDGEMENT {
+                    return Err(unexpected_answer(read, byte[0]));
                 }
                 return Ok(());
             }
@@ -208,6 +211,28 @@ mod imp {
             }
             std::thread::sleep(POLL_INTERVAL);
         }
+    }
+
+    /// A read that succeeded and answered the wrong thing is a framing
+    /// failure, not an OS failure, so the detail names what came back rather
+    /// than `GetLastError` — which after a successful `ReadFile` is zero or a
+    /// leftover from some earlier call, and reads as "Win32 error 0".
+    ///
+    /// The byte is only quoted when a byte was actually read; otherwise the
+    /// detail would report the buffer's initialiser as the renderer's answer.
+    pub(super) fn unexpected_answer(read: u32, byte: u8) -> AdapterError {
+        let detail = if read == 1 {
+            format!(
+                "read 1 byte 0x{byte:02x}, expected the acknowledgement 0x{:02x}",
+                framing::ACKNOWLEDGEMENT
+            )
+        } else {
+            format!("read {read} bytes, expected exactly 1 acknowledgement byte")
+        };
+        AdapterError::internal(
+            "The cursor overlay renderer answered something other than an acknowledgement",
+        )
+        .with_platform_detail(detail)
     }
 
     fn win32_error(message: &str) -> AdapterError {

@@ -16,6 +16,7 @@ pub(crate) mod child;
 pub(crate) mod display_probe;
 pub(crate) mod framing;
 pub(crate) mod geometry;
+pub(crate) mod image_identity;
 pub(crate) mod monitors;
 pub(crate) mod peer;
 pub(crate) mod pipe_name;
