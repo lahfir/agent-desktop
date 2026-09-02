@@ -61,12 +61,12 @@ const _: () = assert!(size_of::<TOKEN_USER>() == TOKEN_USER_SIZE);
 /// in every token's groups.
 const SE_GROUP_OWNER: u32 = 0x0000_0008;
 
-pub(super) struct SidBuffer {
+pub(crate) struct SidBuffer {
     storage: Vec<u64>,
 }
 
 impl SidBuffer {
-    pub(super) fn copied_from_valid(sid: PSID) -> std::io::Result<Self> {
+    pub(crate) fn copied_from_valid(sid: PSID) -> std::io::Result<Self> {
         if sid.is_null() || unsafe { IsValidSid(sid) } == 0 {
             return Err(std::io::Error::new(
                 ErrorKind::InvalidData,
@@ -95,7 +95,7 @@ impl SidBuffer {
         self.storage.as_ptr().cast::<core::ffi::c_void>().cast_mut()
     }
 
-    pub(super) fn matches(&self, other: &SidBuffer) -> bool {
+    pub(crate) fn matches(&self, other: &SidBuffer) -> bool {
         unsafe { EqualSid(self.as_psid(), other.as_psid()) != 0 }
     }
 }
