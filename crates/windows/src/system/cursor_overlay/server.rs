@@ -5,6 +5,18 @@
 //! before any window exists. `PIPE_REJECT_REMOTE_CLIENTS` keeps the channel
 //! local, and every accepted connection is checked against this user before
 //! its payload is read.
+//!
+//! Accepting happens on a worker thread, and the reason is that
+//! `ConnectNamedPipe` on a synchronous pipe does not return until a client
+//! arrives. A main loop calling it directly could never notice anything else
+//! — not a window message, not the end of its own session — so its idle
+//! branch would exist without ever being reachable. The worker blocks; the
+//! thread that owns the window stays free to tick.
+//!
+//! Acknowledging and disconnecting stay on the main thread, after the frame
+//! has been drawn. A worker that acknowledged would race the process exit a
+//! `Disable` triggers, and a teardown that had in fact succeeded would report
+//! a broken pipe to the caller waiting on it.
 
 #[cfg(target_os = "windows")]
 pub(crate) use imp::{Accepted, ClaimError, Listener};
@@ -13,13 +25,13 @@ pub(crate) use imp::{Accepted, ClaimError, Listener};
 mod imp {
     use crate::system::cursor_overlay::{framing, peer};
     use agent_desktop_core::{AdapterError, CursorOverlayControl};
+    use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel};
     use std::time::{Duration, Instant};
     use windows_sys::Win32::Foundation::{
-        CloseHandle, ERROR_ACCESS_DENIED, ERROR_PIPE_CONNECTED, GetLastError, HANDLE,
-        INVALID_HANDLE_VALUE,
+        ERROR_ACCESS_DENIED, ERROR_PIPE_CONNECTED, GetLastError, HANDLE, INVALID_HANDLE_VALUE,
     };
     use windows_sys::Win32::Storage::FileSystem::{
-        FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_DUPLEX, ReadFile, WriteFile,
+        FILE_FLAG_FIRST_PIPE_INSTANCE, FlushFileBuffers, PIPE_ACCESS_DUPLEX, ReadFile, WriteFile,
     };
     use windows_sys::Win32::System::Pipes::{
         ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_READMODE_BYTE,
@@ -27,6 +39,11 @@ mod imp {
     };
 
     const POLL: Duration = Duration::from_millis(8);
+
+    /// How long a connected client is given to put its control on the wire
+    /// before the connection is abandoned. A client that connects and writes
+    /// nothing died mid-call; it is not a reason to stop serving.
+    const PAYLOAD_WAIT: Duration = Duration::from_millis(250);
 
     pub(crate) enum ClaimError {
         /// Another renderer already serves this session. Withdrawing here,
@@ -36,41 +53,45 @@ mod imp {
     }
 
     pub(crate) enum Accepted {
-        Control(Connection, CursorOverlayControl),
-        /// A connection from another user, closed before its payload was
-        /// read.
-        Refused,
+        Control(CursorOverlayControl),
         /// Nothing arrived within the tick.
         Idle,
         Broken(AdapterError),
+    }
+
+    /// The pipe handle as it crosses to the accept thread. Only the blocking
+    /// connect and the read use it there; ownership and closing stay with the
+    /// `Listener`.
+    #[derive(Clone, Copy)]
+    struct SharedHandle(isize);
+
+    unsafe impl Send for SharedHandle {}
+
+    impl SharedHandle {
+        fn get(self) -> HANDLE {
+            self.0 as HANDLE
+        }
     }
 
     fn wide(value: &str) -> Vec<u16> {
         value.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
+    /// Owns the pipe for the life of the renderer, and deliberately has no
+    /// `Drop`.
+    ///
+    /// The accept thread is parked inside a blocking `ConnectNamedPipe` on
+    /// this handle, and closing a handle another thread is waiting on does
+    /// not wake that thread — it hangs the closer. A renderer that did close
+    /// it stopped clearing its overlay and never exited, which only stayed
+    /// hidden while an earlier design ended the process without running any
+    /// destructor. The listener lives exactly as long as the process, and
+    /// every way out of the serve loop ends that process, so letting teardown
+    /// reclaim the handle is both correct and the only thing that terminates.
     pub(crate) struct Listener {
         handle: HANDLE,
-    }
-
-    pub(crate) struct Connection {
-        handle: HANDLE,
-    }
-
-    impl Connection {
-        pub(crate) fn acknowledge(&self) {
-            let byte = [framing::ACKNOWLEDGEMENT];
-            let mut written = 0u32;
-            unsafe {
-                WriteFile(
-                    self.handle,
-                    byte.as_ptr(),
-                    1,
-                    &mut written,
-                    std::ptr::null_mut(),
-                );
-            }
-        }
+        arrivals: Receiver<CursorOverlayControl>,
+        release: SyncSender<()>,
     }
 
     impl Listener {
@@ -98,103 +119,131 @@ mod imp {
                         .with_platform_detail(format!("Win32 error {code}")),
                 ));
             }
-            Ok(Self { handle })
+
+            let (arrival_tx, arrivals) = sync_channel::<CursorOverlayControl>(0);
+            let (release, release_rx) = sync_channel::<()>(0);
+            let shared = SharedHandle(handle as isize);
+            std::thread::spawn(move || accept_loop(shared, &arrival_tx, &release_rx));
+
+            Ok(Self {
+                handle,
+                arrivals,
+                release,
+            })
         }
 
-        /// Waits up to `tick` for a client, reads one control, and hands back
-        /// the connection so the caller can decide whether to acknowledge.
-        pub(crate) fn accept_next(&self, tick: Duration) -> Accepted {
-            let deadline = Instant::now() + tick;
-            loop {
-                let connected = unsafe { ConnectNamedPipe(self.handle, std::ptr::null_mut()) };
-                let code = unsafe { GetLastError() };
-                if connected != 0 || code == ERROR_PIPE_CONNECTED {
-                    break;
-                }
-                if Instant::now() >= deadline {
-                    return Accepted::Idle;
-                }
-                std::thread::sleep(POLL);
+        /// Waits up to `tick` for the worker to hand over a control. An
+        /// `Idle` return is a real tick of quiet, which is what lets the
+        /// caller pump its window and re-read its session.
+        pub(crate) fn next_control(&self, tick: Duration) -> Accepted {
+            match self.arrivals.recv_timeout(tick) {
+                Ok(control) => Accepted::Control(control),
+                Err(RecvTimeoutError::Timeout) => Accepted::Idle,
+                Err(RecvTimeoutError::Disconnected) => Accepted::Broken(AdapterError::internal(
+                    "The cursor overlay stopped accepting controls",
+                )),
             }
-
-            if !peer::peer_is_this_user(self.handle as isize) {
-                self.disconnect();
-                return Accepted::Refused;
-            }
-
-            let outcome = match self.read_control(deadline) {
-                Ok(Some(control)) => {
-                    return Accepted::Control(
-                        Connection {
-                            handle: self.handle,
-                        },
-                        control,
-                    );
-                }
-                Ok(None) => Accepted::Idle,
-                Err(error) => Accepted::Broken(error),
-            };
-            self.disconnect();
-            outcome
         }
 
-        pub(crate) fn disconnect(&self) {
+        /// Writes the acknowledgement and waits for the client to take it.
+        ///
+        /// The flush is not tidiness. Disconnecting discards whatever the
+        /// client has not read, and the one control that acknowledges and
+        /// then immediately tears down is `Disable` - so without this, the
+        /// caller waiting on a teardown that did succeed would see a broken
+        /// pipe. It is bounded by the client process: if that goes, the pipe
+        /// breaks and the wait ends.
+        pub(crate) fn acknowledge(&self) {
+            let byte = [framing::ACKNOWLEDGEMENT];
+            let mut written = 0u32;
+            unsafe {
+                WriteFile(
+                    self.handle,
+                    byte.as_ptr(),
+                    1,
+                    &mut written,
+                    std::ptr::null_mut(),
+                );
+                FlushFileBuffers(self.handle);
+            }
+        }
+
+        /// Releases the connection and lets the worker wait for the next
+        /// client. Without the disconnect the pipe stays bound to a departed
+        /// client and no second control is ever accepted.
+        pub(crate) fn finish(&self) {
             unsafe { DisconnectNamedPipe(self.handle) };
+            let _ = self.release.send(());
         }
+    }
 
-        fn read_control(
-            &self,
-            deadline: Instant,
-        ) -> Result<Option<CursorOverlayControl>, AdapterError> {
-            loop {
-                let mut available = 0u32;
-                let peeked = unsafe {
-                    PeekNamedPipe(
-                        self.handle,
-                        std::ptr::null_mut(),
-                        0,
-                        std::ptr::null_mut(),
-                        &mut available,
-                        std::ptr::null_mut(),
-                    )
-                };
-                if peeked == 0 {
-                    return Ok(None);
-                }
-                if available > 0 {
-                    let mut buffer = vec![0u8; framing::MAX_CONTROL_BYTES];
-                    let mut read = 0u32;
-                    let ok = unsafe {
-                        ReadFile(
-                            self.handle,
-                            buffer.as_mut_ptr(),
-                            available.min(framing::MAX_CONTROL_BYTES as u32),
-                            &mut read,
-                            std::ptr::null_mut(),
-                        )
-                    };
-                    if ok == 0 || read == 0 {
-                        return Ok(None);
-                    }
-                    buffer.truncate(read as usize);
-                    return framing::decode(&buffer).map(Some);
-                }
-                if Instant::now() >= deadline.max(Instant::now()) && available == 0 {
-                    std::thread::sleep(POLL);
-                }
-                if Instant::now() >= deadline + Duration::from_millis(200) {
-                    return Ok(None);
-                }
+    fn accept_loop(
+        shared: SharedHandle,
+        arrivals: &SyncSender<CursorOverlayControl>,
+        release: &Receiver<()>,
+    ) {
+        let handle = shared.get();
+        loop {
+            let connected = unsafe { ConnectNamedPipe(handle, std::ptr::null_mut()) };
+            if connected == 0 && unsafe { GetLastError() } != ERROR_PIPE_CONNECTED {
+                return;
+            }
+            if !peer::peer_is_this_user(handle as isize) {
+                unsafe { DisconnectNamedPipe(handle) };
+                continue;
+            }
+            let Some(control) = read_control(handle) else {
+                unsafe { DisconnectNamedPipe(handle) };
+                continue;
+            };
+            if arrivals.send(control).is_err() || release.recv().is_err() {
+                return;
             }
         }
     }
 
-    impl Drop for Listener {
-        fn drop(&mut self) {
-            unsafe {
-                DisconnectNamedPipe(self.handle);
-                CloseHandle(self.handle);
+    /// One control from a connected client, or `None` when it wrote nothing
+    /// legible inside its window. The connection is left open for the caller
+    /// to close, so the decision to disconnect lives in one place.
+    fn read_control(handle: HANDLE) -> Option<CursorOverlayControl> {
+        let deadline = Instant::now() + PAYLOAD_WAIT;
+        loop {
+            let mut available = 0u32;
+            let peeked = unsafe {
+                PeekNamedPipe(
+                    handle,
+                    std::ptr::null_mut(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut available,
+                    std::ptr::null_mut(),
+                )
+            };
+            if peeked == 0 {
+                return None;
             }
+            if available > 0 {
+                let mut buffer = vec![0u8; framing::MAX_CONTROL_BYTES];
+                let mut read = 0u32;
+                let ok = unsafe {
+                    ReadFile(
+                        handle,
+                        buffer.as_mut_ptr(),
+                        available.min(framing::MAX_CONTROL_BYTES as u32),
+                        &mut read,
+                        std::ptr::null_mut(),
+                    )
+                };
+                if ok == 0 || read == 0 {
+                    return None;
+                }
+                buffer.truncate(read as usize);
+                return framing::decode(&buffer).ok();
+            }
+            if Instant::now() >= deadline {
+                return None;
+            }
+            std::thread::sleep(POLL);
         }
     }
 }
