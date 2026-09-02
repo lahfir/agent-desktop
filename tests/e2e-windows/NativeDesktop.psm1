@@ -213,6 +213,84 @@ function Wait-NativeForegroundToSettle {
     return $false
 }
 
+$script:ScreenCaptureTypeName = 'AgentDesktopE2E.ScreenCapture'
+
+function Initialize-E2EScreenCapture {
+    <#
+    .SYNOPSIS
+        Loads the GDI screen-capture P/Invoke surface once - a separate
+        Add-Type from NativeTypes.psm1's shared Native class (which is
+        already at the 400-line cap) rather than an extension of it, the
+        same way ChromiumNative.psm1/LibShell.psm1 each carry their own
+        small compiled surface beside the shared one.
+    #>
+    [CmdletBinding()]
+    param()
+    if ($script:ScreenCaptureTypeName -as [type]) { return }
+    Add-Type -Namespace AgentDesktopE2E -Name ScreenCapture -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern System.IntPtr GetDC(System.IntPtr hwnd);
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern int ReleaseDC(System.IntPtr hwnd, System.IntPtr hdc);
+[System.Runtime.InteropServices.DllImport("gdi32.dll")]
+public static extern System.IntPtr CreateCompatibleDC(System.IntPtr hdc);
+[System.Runtime.InteropServices.DllImport("gdi32.dll")]
+public static extern System.IntPtr CreateCompatibleBitmap(System.IntPtr hdc, int w, int h);
+[System.Runtime.InteropServices.DllImport("gdi32.dll")]
+public static extern System.IntPtr SelectObject(System.IntPtr hdc, System.IntPtr obj);
+[System.Runtime.InteropServices.DllImport("gdi32.dll")]
+public static extern bool DeleteObject(System.IntPtr obj);
+[System.Runtime.InteropServices.DllImport("gdi32.dll")]
+public static extern bool DeleteDC(System.IntPtr hdc);
+[System.Runtime.InteropServices.DllImport("gdi32.dll", SetLastError = true)]
+public static extern bool BitBlt(System.IntPtr dst, int x, int y, int w, int h, System.IntPtr src, int sx, int sy, uint rop);
+[System.Runtime.InteropServices.DllImport("gdi32.dll")]
+public static extern uint GetPixel(System.IntPtr hdc, int x, int y);
+'@
+}
+
+function Get-NativeScreenPixel {
+    <#
+    .SYNOPSIS
+        The COLORREF (0x00bbggrr) at screen point (X, Y), read through a
+        screen-DC BitBlt into a 1x1 memory bitmap and GetPixel - never a
+        direct GetPixel on the screen DC. KTD8/A29-4: a layered window
+        carrying WS_EX_TRANSPARENT is invisible to hit-testing
+        (WindowFromPoint), so "is the overlay on screen" has to be a real
+        painted pixel; BitBlt with CAPTUREBLT is what makes that read
+        include a layered window's composited output at all - without the
+        flag the desktop compositor's own composited surface is what a
+        plain screen-DC read returns, and a layered window is silently
+        missing from it. Mirrors probes/windows/29-cursor-overlay.ps1's own
+        SampleScreenPixel, which proved this in both directions (A29-3).
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][int]$X, [Parameter(Mandatory = $true)][int]$Y)
+    Initialize-E2EScreenCapture
+    $srcCopy = 0x00CC0020
+    $captureBlt = 0x40000000
+    $screenDc = [AgentDesktopE2E.ScreenCapture]::GetDC([IntPtr]::Zero)
+    if ($screenDc -eq [IntPtr]::Zero) { throw 'Get-NativeScreenPixel: GetDC(NULL) failed' }
+    try {
+        $memDc = [AgentDesktopE2E.ScreenCapture]::CreateCompatibleDC($screenDc)
+        $bitmap = [AgentDesktopE2E.ScreenCapture]::CreateCompatibleBitmap($screenDc, 1, 1)
+        $previous = [AgentDesktopE2E.ScreenCapture]::SelectObject($memDc, $bitmap)
+        try {
+            $ok = [AgentDesktopE2E.ScreenCapture]::BitBlt($memDc, 0, 0, 1, 1, $screenDc, $X, $Y, ($srcCopy -bor $captureBlt))
+            if (-not $ok) {
+                throw "Get-NativeScreenPixel: BitBlt failed: Win32 error $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+            }
+            return [uint32]([AgentDesktopE2E.ScreenCapture]::GetPixel($memDc, 0, 0))
+        } finally {
+            [void][AgentDesktopE2E.ScreenCapture]::SelectObject($memDc, $previous)
+            [void][AgentDesktopE2E.ScreenCapture]::DeleteObject($bitmap)
+            [void][AgentDesktopE2E.ScreenCapture]::DeleteDC($memDc)
+        }
+    } finally {
+        [void][AgentDesktopE2E.ScreenCapture]::ReleaseDC([IntPtr]::Zero, $screenDc)
+    }
+}
+
 function ConvertTo-NativeWindowHandle {
     <#
     .SYNOPSIS
@@ -240,5 +318,6 @@ Export-ModuleMember -Function @(
     'Get-NativeWindowRect',
     'Set-NativeForegroundWindow',
     'Wait-NativeForegroundToSettle',
-    'ConvertTo-NativeWindowHandle'
+    'ConvertTo-NativeWindowHandle',
+    'Get-NativeScreenPixel'
 )

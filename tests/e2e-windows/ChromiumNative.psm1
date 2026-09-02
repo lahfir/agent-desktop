@@ -115,6 +115,25 @@ function Invoke-ChromiumNativeRightClick {
     [AgentDeskChromium.Native]::mouse_event($MOUSEEVENTF_RIGHTUP, 0, 0, 0, [UIntPtr]::Zero)
 }
 
+function Invoke-ChromiumNativeLeftClick {
+    <# A real left-button click via `SetCursorPos` + `mouse_event` - the same
+       hardware-level injection family as Invoke-ChromiumNativeRightClick,
+       never a message posted directly into a window's queue and never an
+       agent-desktop command. CursorOverlay.ps1's click-through leg needs
+       exactly this: a click synthesized independently of the product, so a
+       WS_EX_TRANSPARENT regression on the overlay window would actually be
+       caught rather than papered over by the product's own input path. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][int]$X, [Parameter(Mandatory = $true)][int]$Y)
+    Initialize-ChromiumNative
+    $MOUSEEVENTF_LEFTDOWN = 0x0002; $MOUSEEVENTF_LEFTUP = 0x0004
+    [void][AgentDeskChromium.Native]::SetCursorPos($X, $Y)
+    Start-Sleep -Milliseconds 60
+    [AgentDeskChromium.Native]::mouse_event($MOUSEEVENTF_LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 60
+    [AgentDeskChromium.Native]::mouse_event($MOUSEEVENTF_LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
+}
+
 function Invoke-ChromiumNativeEscape {
     [CmdletBinding()]
     param()
@@ -131,5 +150,6 @@ Export-ModuleMember -Function @(
     'Get-ChromiumNativeClassicMenuMode',
     'Invoke-ChromiumNativeAltTap',
     'Invoke-ChromiumNativeRightClick',
+    'Invoke-ChromiumNativeLeftClick',
     'Invoke-ChromiumNativeEscape'
 )
