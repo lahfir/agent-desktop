@@ -41,6 +41,11 @@ pub(crate) fn classify(raw: Option<std::io::Result<String>>) -> SessionReading {
     }
 }
 
+/// A disabled overlay is the config default, and the manifest does not
+/// serialize defaults - so switching the overlay off REMOVES the
+/// `cursor_overlay` key rather than setting it to false. Reading an absent
+/// key as "still enabled" is what made that whole teardown condition unable
+/// to fire.
 fn classify_body(body: &str) -> SessionReading {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
         return SessionReading::Unknown;
@@ -48,13 +53,13 @@ fn classify_body(body: &str) -> SessionReading {
     if value.get("ended_at").is_some_and(|ended| !ended.is_null()) {
         return SessionReading::Finished;
     }
-    let overlay_enabled = value
-        .get("cursor_overlay")
-        .and_then(|overlay| overlay.get("enabled"))
-        .and_then(serde_json::Value::as_bool);
-    match overlay_enabled {
-        Some(false) => SessionReading::Finished,
-        _ => SessionReading::Live,
+    match value.get("cursor_overlay") {
+        None => SessionReading::Finished,
+        Some(overlay) => match overlay.get("enabled").and_then(serde_json::Value::as_bool) {
+            Some(true) => SessionReading::Live,
+            Some(false) => SessionReading::Finished,
+            None => SessionReading::Unknown,
+        },
     }
 }
 
