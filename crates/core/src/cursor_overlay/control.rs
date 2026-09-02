@@ -31,10 +31,19 @@ pub enum CursorOverlayControl {
 }
 
 impl CursorOverlayControl {
-    pub fn enable(session_id: String, style: CursorOverlayStyle) -> Self {
+    /// The first frame of an overlay, carrying the caller's own label when
+    /// they gave one.
+    ///
+    /// `None` falls back to the greeting, which is what an overlay enabled
+    /// with nothing to say announces itself with. A caller who did supply a
+    /// label must see it: silently replacing their words with the greeting
+    /// makes the first thing anyone reads on screen a joke about a computer
+    /// rather than what the agent is about to do, and no output tells them
+    /// their label went nowhere.
+    pub fn enable(session_id: String, label: Option<String>, style: CursorOverlayStyle) -> Self {
         Self::Enable {
             session_id,
-            label: CURSOR_OVERLAY_GREETING.into(),
+            label: label.unwrap_or_else(|| CURSOR_OVERLAY_GREETING.into()),
             style,
         }
     }

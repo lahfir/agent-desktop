@@ -48,7 +48,11 @@ fn show_default_cursor(adapter: &dyn PlatformAdapter, value: &mut Value) -> Resu
         return Ok(());
     };
     let config = CursorOverlayConfig::enabled(None, 6)?;
-    let control = CursorOverlayControl::enable(id.clone(), config.style().clone());
+    let control = CursorOverlayControl::enable(
+        id.clone(),
+        config.label().map(str::to_owned),
+        config.style().clone(),
+    );
     let enabled =
         cursor_overlay::execute(&id, cursor_overlay::CursorOverlayAction::Enable(config))?;
     if let Some(overlay) = enabled.get("cursor_overlay").cloned()

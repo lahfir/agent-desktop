@@ -556,7 +556,10 @@ Behaviour:
 - Travel is a human path, 90 to 320 ms. The cursor never rotates or resizes.
 - The action waits for the cursor to land, capped at 900 ms. A slow renderer never blocks it.
 - A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
-- The card shows the label. With no label there is no card.
+- The card shows the label — the one passed to `enable`, and thereafter the
+  one carried by each action. Enabling without a label shows a short greeting
+  instead of nothing, so an overlay that has just come up is visible before
+  any action has run.
 - Idle for 6 s it fades out; the next command restores it.
 - `disable` removes it and stops the renderer. Ending the session is not needed.
   A session that ends without a `disable` — a crash, `session gc` — is
