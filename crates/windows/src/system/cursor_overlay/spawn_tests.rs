@@ -78,19 +78,38 @@ fn an_enable_refuses_from_a_test_binary_for_the_same_reason() {
 /// Counts processes carrying the overlay's argv token, which is how anything
 /// outside the child finds it: a process's environment block is not readable
 /// from outside, and this child's command line would otherwise be bare.
+///
+/// `wmic` is gone on Windows 11 24H2 and Server 2025 - `Command` still
+/// answers `Ok` with empty stdout there, which made the old implementation
+/// silently count zero on every machine that lacks it. `Get-CimInstance` is
+/// its replacement, and a failure to enumerate panics rather than returning
+/// zero, because a count that cannot tell "none running" from "could not
+/// look" is the same defect class this helper exists to avoid.
 fn renderer_count() -> usize {
     #[cfg(target_os = "windows")]
     {
-        let output = std::process::Command::new("cmd")
-            .args([
-                "/c",
-                "wmic process where \"name='agent-desktop.exe'\" get commandline 2>nul",
-            ])
-            .output();
-        let Ok(output) = output else { return 0 };
+        let script = format!(
+            "Get-CimInstance Win32_Process -Filter \"Name='agent-desktop.exe'\" | \
+             Where-Object {{ $_.CommandLine -like '*{flag}*' }} | \
+             ForEach-Object {{ $_.ProcessId }}",
+            flag = super::pipe_name::CHILD_ARGV_FLAG
+        );
+        let output = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .output()
+            .unwrap_or_else(|error| {
+                panic!("powershell could not be launched to enumerate renderers: {error}")
+            });
+        if !output.status.success() {
+            panic!(
+                "powershell exited with {:?} enumerating renderers: {}",
+                output.status.code(),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
         String::from_utf8_lossy(&output.stdout)
             .lines()
-            .filter(|line| line.contains(super::pipe_name::CHILD_ARGV_FLAG))
+            .filter_map(|line| line.trim().parse::<u32>().ok())
             .count()
     }
     #[cfg(not(target_os = "windows"))]

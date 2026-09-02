@@ -21,6 +21,7 @@ mod screen_sample;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 /// The overlay needs a desktop to draw on, and staging one is the same opt-in
@@ -36,8 +37,23 @@ const SETTLE: Duration = Duration::from_secs(6);
 
 static SCRATCH_ID: AtomicU64 = AtomicU64::new(1);
 
+/// These tests share one desktop, one oracle colour and one process table,
+/// so they cannot run beside each other: one overlay's pixels satisfy
+/// another's "still painted" wait and defeat its "torn down" wait. libtest
+/// runs a target's tests concurrently by default, so the serialization has to
+/// be here rather than assumed from a runner flag.
+fn desktop() -> MutexGuard<'static, ()> {
+    static DESKTOP: OnceLock<Mutex<()>> = OnceLock::new();
+    match DESKTOP.get_or_init(|| Mutex::new(())).lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
 struct Scratch {
     root: PathBuf,
+    session: Mutex<Option<String>>,
+    _desktop: MutexGuard<'static, ()>,
 }
 
 impl Scratch {
@@ -48,13 +64,36 @@ impl Scratch {
             std::process::id()
         ));
         std::fs::create_dir_all(&root).expect("create scratch state root");
-        Self { root }
+        Self {
+            root,
+            session: Mutex::new(None),
+            _desktop: desktop(),
+        }
+    }
+
+    /// Remembered so teardown reaps this test's own renderer and nothing
+    /// else. An unscoped reap matches every overlay on the machine, including
+    /// one a developer is looking at.
+    fn owns(&self, session: &str) {
+        if let Ok(mut held) = self.session.lock() {
+            *held = Some(session.to_owned());
+        }
     }
 }
 
 impl Drop for Scratch {
     fn drop(&mut self) {
-        for id in overlay_children("") {
+        let session = self
+            .session
+            .lock()
+            .ok()
+            .and_then(|held| held.clone())
+            .unwrap_or_default();
+        if session.is_empty() {
+            let _ = std::fs::remove_dir_all(&self.root);
+            return;
+        }
+        for id in overlay_children(&session) {
             let _ = Command::new("taskkill")
                 .args(["/PID", &id.to_string(), "/F"])
                 .output();
@@ -92,10 +131,12 @@ fn run(scratch: &Scratch, args: &[&str]) -> serde_json::Value {
 fn start_session(scratch: &Scratch) -> String {
     let envelope = run(scratch, &["session", "start"]);
     assert_eq!(envelope["ok"], true, "the session must start: {envelope}");
-    envelope["data"]["session_id"]
+    let id = envelope["data"]["session_id"]
         .as_str()
         .expect("a session id")
-        .to_owned()
+        .to_owned();
+    scratch.owns(&id);
+    id
 }
 
 fn enable(scratch: &Scratch, session: &str) -> serde_json::Value {
@@ -133,16 +174,22 @@ fn overlay_children(session: &str) -> Vec<u32> {
         .collect()
 }
 
+/// Panics rather than answering zero when the screen cannot be read. A
+/// capture fault reported as "no pixels" would satisfy every teardown wait on
+/// its first poll, which is the failure this whole file exists to rule out.
 fn oracle_pixels() -> usize {
     screen_sample::pixels_matching(ORACLE.0, ORACLE.1, ORACLE.2)
+        .expect("the screen must be readable; a failed capture is not an empty screen")
 }
 
-/// Tighter than the session watch's own reclaim, which needs two 1500ms idle
-/// ticks. A teardown asserted only within `SETTLE` would pass on that watch
-/// even with the disable path entirely broken, so the observations that
-/// belong to `disable` are held to a budget the watch cannot meet. Measured
-/// at 26-62ms, so this is generous without being undiscriminating.
-const PROMPTLY: Duration = Duration::from_millis(1_500);
+/// Well inside one 1500ms idle tick, so the session watch cannot satisfy
+/// these observations on the disable path's behalf.
+///
+/// The watch needs two consecutive readings and so reclaims in three to four
+/// seconds; a budget of one whole tick would sit on its luckiest boundary
+/// rather than clear of it. Measured at 26-62ms, so this is an order of
+/// magnitude of headroom and still decisive.
+const PROMPTLY: Duration = Duration::from_millis(600);
 
 /// Waits for a condition instead of sleeping a fixed span and hoping. A
 /// failure seen after a fixed sleep is a race, not a finding.

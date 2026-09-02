@@ -22,18 +22,17 @@ fn frame<'a>(style: &'a CursorOverlayStyle, label: Option<&'a str>) -> Frame<'a>
     }
 }
 
-/// The frame budgets describe the binary that ships. An unoptimised build
-/// composes several times slower, so asserting there would fail for a reason
-/// that tells nobody anything — the measurement is still printed, because a
-/// developer watching that number climb is the point of having it.
-fn skip_unoptimised(what: &str) -> bool {
-    if cfg!(debug_assertions) {
-        eprintln!(
-            "skip the budget for {what}: measured, but asserted only against an optimised build"
-        );
-        return true;
-    }
-    false
+/// Scales a shipped-binary frame budget to the profile actually running.
+///
+/// An earlier version skipped the assertion entirely on an unoptimised
+/// build. Nothing in CI runs `cargo test --release`, so that skip meant
+/// these budgets were never enforced anywhere - a bound that cannot fire,
+/// which is the shape these tests exist to catch. An unoptimised build
+/// measures about 2.5x slower here, so the budget is widened rather than
+/// dropped and the assertion runs on every lane.
+fn budget(release_millis: u64) -> std::time::Duration {
+    let scale = if cfg!(debug_assertions) { 3 } else { 1 };
+    std::time::Duration::from_millis(release_millis * scale)
 }
 
 fn painted_pixels(composed: &super::Composed) -> usize {
@@ -228,11 +227,8 @@ fn composing_the_busiest_frame_fits_well_inside_a_display_frame() {
     let worst = samples.iter().max().copied().unwrap_or_default();
     eprintln!("busiest frame: min {best:?} max {worst:?}");
 
-    if skip_unoptimised("the busiest frame") {
-        return;
-    }
     assert!(
-        best < std::time::Duration::from_millis(9),
+        best < budget(9),
         "composing the busiest frame took {best:?} at best and {worst:?} at worst; 60Hz is the \
          refresh the schedule falls back to, and its 16.6ms has to cover this compose and the \
          layered present that follows it"
@@ -277,11 +273,8 @@ fn composing_a_travel_frame_leaves_most_of_the_display_frame_unspent() {
     let worst = samples.iter().max().copied().unwrap_or_default();
     eprintln!("travel frame: min {best:?} max {worst:?}");
 
-    if skip_unoptimised("a travel frame") {
-        return;
-    }
     assert!(
-        best < std::time::Duration::from_millis(5),
+        best < budget(5),
         "composing a travel frame took {best:?} at best and {worst:?} at worst; the motion is \
          sampled once per display frame, so a compose near the interval makes it step"
     );
