@@ -12,6 +12,7 @@ use agent_desktop_core::{AdapterError, CursorOverlayControl, ErrorCode};
 
 use super::framing;
 use super::pipe_name;
+use super::retire;
 use super::transport::{self, ReachOutcome};
 
 /// Matches the arrival ceiling core already imposes on a travel, and is what
@@ -23,11 +24,20 @@ const ENABLE_BUDGET: Duration =
 /// the window to be gone rather than for a frame to land.
 const TEARDOWN_BUDGET: Duration = Duration::from_secs(4);
 
+/// The stale-generation sweep runs here — on an `Enable`, before the reach on
+/// the current name — rather than on the spawn path below. A sweep further
+/// down would miss the case that motivates it: both generations alive at once,
+/// the current one answering, so the reach returns `Delivered` and the spawn
+/// path is never taken while the earlier generation's window is still drawn.
 pub(crate) fn update(control: &CursorOverlayControl) -> Result<(), AdapterError> {
     control.validate()?;
     let root = state_root()?;
     let name = pipe_name::pipe_name(&root, control.session_id());
     let budget = budget_for(control);
+
+    if control.is_enable() {
+        retire::sweep(&root, control.session_id());
+    }
 
     match transport::reach(&name, control, budget) {
         ReachOutcome::Delivered => return Ok(()),

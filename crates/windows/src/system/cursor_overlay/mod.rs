@@ -23,6 +23,7 @@ pub(crate) mod peer;
 pub(crate) mod pipe_name;
 pub(crate) mod raster;
 pub(crate) mod render;
+pub(crate) mod retire;
 pub(crate) mod reveal;
 pub(crate) mod rounded;
 pub(crate) mod schedule;
