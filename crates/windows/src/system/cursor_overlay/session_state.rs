@@ -82,11 +82,16 @@ impl EndWatch {
     }
 }
 
+/// Reads the manifest as bytes rather than through core's typed reader,
+/// which routes every non-`NotFound` error and every parse failure into the
+/// same `Ok(None)` a deleted session produces. The path comes from core so
+/// this cannot drift from where the manifest actually lives.
 #[cfg(target_os = "windows")]
 pub(crate) fn read_manifest(session_id: &str) -> Option<std::io::Result<String>> {
-    let root = agent_desktop_core::session::agent_desktop_dir().ok()?;
-    let path = root.join("sessions").join(session_id).join("manifest.json");
-    Some(std::fs::read_to_string(path))
+    let directory = agent_desktop_core::session::session_dir(session_id).ok()?;
+    Some(std::fs::read_to_string(
+        directory.join(agent_desktop_core::session::SESSION_MANIFEST_FILE),
+    ))
 }
 
 #[cfg(not(target_os = "windows"))]
