@@ -108,7 +108,7 @@ try {
     # desktop at all, so holding the lease would only lengthen it.
     Write-Host 'run-windows-e2e-ci.ps1: enforcing the cursor-overlay frame budgets'
     $env:AGENT_DESKTOP_PERF_BUDGET = '1'
-    & cargo test -p agent-desktop-windows --locked --release --lib cursor_overlay::render -- --nocapture
+    & cargo test -p agent-desktop-windows --locked --release --lib cursor_overlay::render -- --nocapture --test-threads=1
     $frameBudgetExitCode = $LASTEXITCODE
     Remove-Item Env:\AGENT_DESKTOP_PERF_BUDGET -ErrorAction SilentlyContinue
     if ($frameBudgetExitCode -ne 0) { throw "the cursor-overlay frame budgets failed with exit code $frameBudgetExitCode" }
