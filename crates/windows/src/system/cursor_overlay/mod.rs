@@ -14,6 +14,7 @@
 pub(crate) mod child;
 #[cfg(target_os = "windows")]
 pub(crate) mod display_probe;
+pub(crate) mod fade;
 pub(crate) mod framing;
 pub(crate) mod geometry;
 pub(crate) mod image_identity;
@@ -22,6 +23,7 @@ pub(crate) mod peer;
 pub(crate) mod pipe_name;
 pub(crate) mod raster;
 pub(crate) mod render;
+pub(crate) mod reveal;
 pub(crate) mod rounded;
 pub(crate) mod schedule;
 #[cfg(target_os = "windows")]

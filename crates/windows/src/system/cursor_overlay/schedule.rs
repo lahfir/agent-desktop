@@ -66,3 +66,32 @@ pub(crate) fn highlight_progress(elapsed_ms: u64, hold_ms: u64) -> f64 {
 #[cfg(test)]
 #[path = "schedule_tests.rs"]
 mod tests;
+
+/// The label card's opacity as it appears, on an ease-out curve.
+///
+/// A card that blinked to full strength reads as a glitch rather than as
+/// something arriving; macOS ramps its opacity over the same span with Core
+/// Animation's ease-out, and `1 - (1 - t)^3` is that curve closely enough to
+/// be indistinguishable at this duration. The card reads as fully present once the reveal is
+/// over, so a caller can drive the whole life of the card from one number
+/// and stop asking after it settles.
+pub(crate) fn reveal_progress(elapsed_ms: u64, duration_ms: u64) -> f64 {
+    if duration_ms == 0 || elapsed_ms >= duration_ms {
+        return 1.0;
+    }
+    let remaining = 1.0 - (elapsed_ms as f64 / duration_ms as f64);
+    1.0 - remaining * remaining * remaining
+}
+
+/// The opacity of the whole overlay at one step of the rest fade.
+///
+/// Linear, matching the reference, which steps its window alpha down in even
+/// hops rather than easing. Easing the disappearance would draw attention to
+/// it, which is the opposite of what resting is for.
+pub(crate) fn rest_fade(step: u32, steps: u32) -> f64 {
+    if steps == 0 {
+        return 0.0;
+    }
+    let remaining = steps.saturating_sub(step);
+    f64::from(remaining) / f64::from(steps)
+}

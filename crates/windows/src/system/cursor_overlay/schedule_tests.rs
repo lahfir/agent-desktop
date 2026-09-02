@@ -1,4 +1,6 @@
-use super::{clamp_refresh, frame_interval, has_arrived, highlight_progress};
+use super::{
+    clamp_refresh, frame_interval, has_arrived, highlight_progress, rest_fade, reveal_progress,
+};
 use std::time::Duration;
 
 /// A29-7 measured the obvious refresh call failing on this host and leaving
@@ -70,4 +72,54 @@ fn the_highlight_never_leaves_the_unit_range() {
 #[test]
 fn a_zero_hold_never_shows_the_highlight() {
     assert_eq!(highlight_progress(0, 0), 0.0);
+}
+
+/// The reveal starts at nothing, ends at full, and decelerates - an ease-out
+/// covers more of its distance early, which is what stops a card reading as
+/// though it snapped.
+#[test]
+fn the_label_reveal_eases_out_rather_than_arriving_linearly() {
+    assert_eq!(reveal_progress(0, 180), 0.0);
+    assert_eq!(reveal_progress(180, 180), 1.0);
+    assert_eq!(reveal_progress(500, 180), 1.0);
+
+    let halfway = reveal_progress(90, 180);
+    assert!(
+        halfway > 0.5,
+        "an ease-out is past halfway at the midpoint, not at it: {halfway}"
+    );
+    assert!(halfway < 1.0);
+
+    let early = reveal_progress(45, 180);
+    let late = reveal_progress(135, 180);
+    assert!(
+        early - 0.0 > 1.0 - late,
+        "more of the distance is covered in the first quarter than the last: {early} then {late}"
+    );
+}
+
+#[test]
+fn a_reveal_with_no_duration_is_simply_present() {
+    assert_eq!(reveal_progress(0, 0), 1.0);
+}
+
+/// The rest fade runs to nothing and starts from full, or the overlay either
+/// never disappears or vanishes without fading.
+#[test]
+fn the_rest_fade_runs_from_full_to_nothing() {
+    assert_eq!(rest_fade(0, 13), 1.0);
+    assert_eq!(rest_fade(13, 13), 0.0);
+    assert!(rest_fade(20, 13) == 0.0, "past the end stays gone");
+
+    let mut previous = 2.0;
+    for step in 0..=13 {
+        let value = rest_fade(step, 13);
+        assert!(value < previous, "step {step} did not descend: {value}");
+        previous = value;
+    }
+}
+
+#[test]
+fn a_fade_with_no_steps_is_already_gone() {
+    assert_eq!(rest_fade(0, 0), 0.0);
 }
