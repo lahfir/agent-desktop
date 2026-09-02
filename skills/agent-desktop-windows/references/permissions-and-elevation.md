@@ -93,3 +93,51 @@ against the same desktop. An inherited-handle mode
 (`AGENT_DESKTOP_INTERACTION_LEASE_HANDLE`) lets a parent pass its lease to a
 child after re-verifying identity and exclusivity. If acquisition fails, wait
 for the other process to finish rather than bypassing the lease.
+
+## The Cursor Overlay's Control Pipe
+
+The cursor overlay is a detached renderer process driven over a named pipe.
+Know its posture before you enable it on a host you share.
+
+**What is protected:**
+
+- **Remote clients are rejected.** The pipe is created with
+  `PIPE_REJECT_REMOTE_CLIENTS`, so it is reachable only from this machine.
+- **A different user cannot reach it.** Every connection is resolved to its
+  peer process and that process's token user SID is compared against this
+  one's before any payload is read. Another user's process is refused, in both
+  directions.
+- **The renderer must be this tool's own image.** Before it writes a control,
+  the client resolves the pipe server's process and checks its executable
+  name, so controls are not handed to a stranger that happens to answer. A
+  mismatch closes the handle and `enable` reports `rendered: false`. This is a
+  file-name comparison (`agent-desktop`, case-insensitively, with or without
+  `.exe`) — not a signature check.
+- **Only one renderer per session.** The name is claimed with
+  `FILE_FLAG_FIRST_PIPE_INSTANCE`, so a second renderer loses the race and
+  exits before it creates a window.
+
+**What is not protected — a same-user process on the same machine.** The pipe
+carries no security descriptor, and its name is a deterministic function of
+the state root, the session id and the protocol generation, so any process
+running as you can compute it without a lookup file, a registry entry or a
+pid. Two consequences follow, and they are different:
+
+- **Squatting.** A same-user process that claims the name first is refused by
+  the image check above, so it cannot impersonate the renderer — but it does
+  hold the name, and `enable` then answers `rendered: false` for as long as it
+  does. The failure mode is a missing overlay, not a fake one.
+- **Driving.** A same-user process that connects to a live renderer passes the
+  client check, because clients are authenticated by user alone — an FFI host
+  legitimately runs under its own image and must still be able to reach the
+  renderer it started. Such a process can move the presented cursor and put
+  arbitrary text in the topmost label card. A same-user process whose
+  executable is itself named `agent-desktop` also passes the server-side image
+  check.
+
+This is a deliberate, accepted trade-off for single-user hosts, which is what
+every agent host this adapter targets is. The overlay is presentation-only —
+it never performs an action, never fails one, and carries no credential — so
+the exposure is what is drawn on the screen, not what is done to the desktop.
+On a host where other people run processes as your account, do not treat what
+the overlay draws as trustworthy, and prefer to leave it disabled.

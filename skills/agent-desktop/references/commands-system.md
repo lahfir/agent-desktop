@@ -518,20 +518,24 @@ Sessions are on-disk containers under `<state root>/sessions/<id>/` with a `sess
 
 ### cursor-overlay enable / disable
 
+`session start` prints the id in `data.session_id`; capture it rather than
+retyping it, so the sequence runs as written.
+
 ```bash
-agent-desktop session start --cursor                 # session + default cursor in one command
-agent-desktop --session <id> cursor-overlay enable --label "Opening menu" --accent "#FF3B7B"
-export AGENT_DESKTOP_SESSION=<id>
+SESSION=$(agent-desktop session start --cursor | jq -r .data.session_id)
+agent-desktop --session "$SESSION" cursor-overlay enable --label "Opening menu" --accent "#FF3B7B"
+export AGENT_DESKTOP_SESSION="$SESSION"    # or keep passing --session on each command
 agent-desktop cursor-overlay disable
 ```
 
 The same sequence in PowerShell, which is the default shell on Windows —
-`export` is not a command there, so the block above cannot be pasted as written:
+`export` and `jq` are not commands there, so the block above cannot be pasted
+as written:
 
 ```powershell
-agent-desktop session start --cursor
-agent-desktop --session <id> cursor-overlay enable --label "Opening menu" --accent "#FF3B7B"
-$env:AGENT_DESKTOP_SESSION = "<id>"
+$session = (agent-desktop session start --cursor | ConvertFrom-Json).data.session_id
+agent-desktop --session $session cursor-overlay enable --label "Opening menu" --accent "#FF3B7B"
+$env:AGENT_DESKTOP_SESSION = $session      # or keep passing --session on each command
 agent-desktop cursor-overlay disable
 ```
 
