@@ -79,6 +79,20 @@ try {
     $fixtureOutput | ForEach-Object { Write-Host $_ }
     if ($fixtureExitCode -ne 0) { throw "the E2E fixture build failed with exit code $fixtureExitCode" }
 
+    # The cursor-overlay teardown tests need a composited desktop they can read
+    # back with BitBlt, which a hosted CI runner does not have: it has a window
+    # station enough for UI Automation, so a WPF fixture stages fine there while
+    # a layered overlay reads as zero pixels. They therefore belong to this
+    # operator-run suite, under the same exclusive lease, rather than to a lane
+    # that would fail for a reason that says nothing about the renderer.
+    Write-Host 'run-windows-e2e-ci.ps1: running the cursor-overlay teardown tests under the lease'
+    $env:AGENT_DESKTOP_LIVE_WPF = '1'
+    & cargo test -p agent-desktop --locked --release --test windows_cursor_overlay_teardown -- --test-threads=1
+    $overlayExitCode = $LASTEXITCODE
+    Remove-Item Env:\AGENT_DESKTOP_LIVE_WPF -ErrorAction SilentlyContinue
+    if ($overlayExitCode -ne 0) { throw "the cursor-overlay teardown tests failed with exit code $overlayExitCode" }
+    Write-Host 'run-windows-e2e-ci.ps1: cursor-overlay teardown tests passed'
+
     Write-Host 'run-windows-e2e-ci.ps1: releasing the desktop lease so the U6 self-test tier can manage its own lease lifecycle'
     Exit-DesktopLease
     $leaseHeld = $false
