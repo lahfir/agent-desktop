@@ -97,6 +97,23 @@ try {
     Exit-DesktopLease
     $leaseHeld = $false
 
+    # The cursor-overlay frame budgets are wall-clock numbers, and a wall-clock
+    # budget describes hardware. Asserting them on every lane was tried and a
+    # hosted ARM64 runner failed on timing alone, which is how a real budget
+    # gets loosened into one that can no longer fire. They are enforced here
+    # instead - the quiesced, operator-controlled host this suite already
+    # requires - and reported without assertion everywhere else. Release,
+    # because the numbers state what a shipped binary does; and outside the
+    # desktop lease, because these compose pixels into memory and need no
+    # desktop at all, so holding the lease would only lengthen it.
+    Write-Host 'run-windows-e2e-ci.ps1: enforcing the cursor-overlay frame budgets'
+    $env:AGENT_DESKTOP_PERF_BUDGET = '1'
+    & cargo test -p agent-desktop-windows --locked --release --lib cursor_overlay::render -- --nocapture
+    $frameBudgetExitCode = $LASTEXITCODE
+    Remove-Item Env:\AGENT_DESKTOP_PERF_BUDGET -ErrorAction SilentlyContinue
+    if ($frameBudgetExitCode -ne 0) { throw "the cursor-overlay frame budgets failed with exit code $frameBudgetExitCode" }
+    Write-Host 'run-windows-e2e-ci.ps1: cursor-overlay frame budgets passed'
+
     Write-Host 'run-windows-e2e-ci.ps1: running the U6 harness-core self-test tier before the live suite'
     $u6Result = Invoke-BoundedProcess -FilePath 'powershell.exe' `
         -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $u6SelfTestScript, '-AgentDesktopBinary', $releaseBinary) `
