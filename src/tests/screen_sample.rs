@@ -19,20 +19,29 @@ use windows_sys::Win32::Graphics::Gdi::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
 
-/// How many pixels of the primary screen are exactly this colour.
-pub fn pixels_matching(red: u8, green: u8, blue: u8) -> usize {
+/// How many pixels of the primary screen are exactly this colour, or `None`
+/// when the screen could not be read at all.
+///
+/// The distinction is the whole point. A sampler that answered `0` for a
+/// failed capture would satisfy every "the overlay is gone" wait on its first
+/// poll, so a transient GDI fault — a desktop switch, handle pressure under
+/// load — would read as a successful teardown. That is the same
+/// cannot-distinguish-success-from-failure shape this module's header warns
+/// about for `CAPTUREBLT`, and returning a count for something never looked at
+/// would reintroduce it one layer up.
+pub fn pixels_matching(red: u8, green: u8, blue: u8) -> Option<usize> {
     let width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
     let height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
     if width <= 0 || height <= 0 {
-        return 0;
+        return None;
     }
-    let Some(pixels) = capture(width, height) else {
-        return 0;
-    };
-    pixels
-        .chunks_exact(4)
-        .filter(|pixel| pixel[0] == blue && pixel[1] == green && pixel[2] == red)
-        .count()
+    let pixels = capture(width, height)?;
+    Some(
+        pixels
+            .chunks_exact(4)
+            .filter(|pixel| pixel[0] == blue && pixel[1] == green && pixel[2] == red)
+            .count(),
+    )
 }
 
 fn capture(width: i32, height: i32) -> Option<Vec<u8>> {

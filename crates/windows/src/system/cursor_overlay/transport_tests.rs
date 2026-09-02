@@ -37,8 +37,10 @@ fn an_absent_renderer_answers_well_inside_the_budget() {
     );
 
     assert!(
-        started.elapsed() < Duration::from_millis(400),
-        "a not-found answer is immediate; waiting out the budget would mean the caller pays \
-         for a renderer that was never there"
+        started.elapsed() < Duration::from_millis(50),
+        "a not-found answer is immediate. The bound sits far below the 400ms budget on \
+         purpose: the regression it guards against is falling into the busy-retry loop, \
+         which runs to the deadline, so a bound equal to the budget would be a coin flip \
+         against itself"
     );
 }

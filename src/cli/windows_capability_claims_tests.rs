@@ -2,11 +2,16 @@ use super::*;
 
 const WINDOWS_SKILL_DOC: &str = include_str!("../../skills/agent-desktop-windows/SKILL.md");
 
-/// The one command the Windows table still documents as unavailable that no
-/// Windows adapter behaviour backs: core records the session setting and
-/// nothing renders, so the pin below keeps the skill's row honest instead of
-/// a refusal code.
-const MUST_STAY_UNAVAILABLE_ON_WINDOWS: &[&str] = &["cursor-overlay"];
+/// Commands the Windows table documents as unavailable that a Windows
+/// adapter behaviour backs with a refusal, pinned so the row and the
+/// behaviour cannot drift apart.
+///
+/// `cursor-overlay` was listed here while nothing rendered on Windows. It
+/// renders now, so the entry is gone - and its removal is the point: the
+/// row buckets on the status cell reading "Works", and the prose that
+/// briefly replaced that word made this list certify the opposite of what
+/// the skill documented, silently.
+const MUST_STAY_UNAVAILABLE_ON_WINDOWS: &[&str] = &[];
 
 /// Commands the Windows table documents as unavailable that no adapter method
 /// backs: core refuses them on every platform before dispatch reaches an

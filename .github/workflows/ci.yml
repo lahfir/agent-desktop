@@ -378,8 +378,22 @@ jobs:
       - name: Windows example tests
         run: cargo test --locked -p agent-desktop-windows --examples
 
+      # The overlay frame budgets describe the binary that ships, and the
+      # bound that catches a real regression only bites against optimised
+      # code - an unoptimised build is slow enough that the same bound would
+      # flake. They assert on every profile, scaled, but this step is where
+      # the shipped-binary number is actually held to.
+      - name: Windows overlay frame budgets (release)
+        run: cargo test --locked --release -p agent-desktop-windows --lib cursor_overlay::render
+
+      # The cursor-overlay teardown tests live in this target and stage an
+      # on-screen renderer, so they need the same staging opt-in the --lib
+      # steps carry. Without it they skip and report ok, which made them the
+      # sole coverage for the Windows renderer and executed by nothing.
       - name: Binary command tests
         run: cargo test --locked -p agent-desktop
+        env:
+          AGENT_DESKTOP_LIVE_WPF: "1"
 
       # The FFI crate ships integration harnesses under crates/ffi/tests/ that a
       # --lib run skips, and the Windows-gated reachability coverage landing there
