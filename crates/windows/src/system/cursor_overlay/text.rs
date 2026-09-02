@@ -33,8 +33,8 @@ mod imp {
         ANTIALIASED_QUALITY, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CLIP_DEFAULT_PRECIS,
         CreateCompatibleDC, CreateDIBSection, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH,
         DIB_RGB_COLORS, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteDC,
-        DeleteObject, DrawTextW, FW_NORMAL, GetDC, OUT_DEFAULT_PRECIS, ReleaseDC, SelectObject,
-        SetBkMode, SetTextColor, TRANSPARENT,
+        DeleteObject, DrawTextW, FW_NORMAL, GdiFlush, GetDC, OUT_DEFAULT_PRECIS, ReleaseDC,
+        SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
     };
 
     fn wide(value: &str) -> Vec<u16> {
@@ -44,6 +44,18 @@ mod imp {
     fn colorref(rgb: [f64; 3]) -> u32 {
         let channel = |value: f64| (value.clamp(0.0, 1.0) * 255.0).round() as u32;
         channel(rgb[0]) | (channel(rgb[1]) << 8) | (channel(rgb[2]) << 16)
+    }
+
+    /// Not optional. GDI batches drawing calls, so `DrawTextW` returning is
+    /// no guarantee its output has reached the DIB section's bits yet.
+    /// `GdiFlush` is the documented way to force that before the buffer is
+    /// read directly; without it the read below can come back blank or
+    /// partial, non-deterministically, with no error and no way to tell a
+    /// successful draw from an unflushed one.
+    fn flush_before_reading_bits() {
+        unsafe {
+            GdiFlush();
+        }
     }
 
     pub(crate) fn draw_label(
@@ -147,6 +159,8 @@ mod imp {
                 DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS,
             );
         }
+
+        flush_before_reading_bits();
 
         for y in 0..height {
             for x in 0..width {
