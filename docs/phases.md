@@ -1558,6 +1558,23 @@ branch**, not a series of sub-phase merges, and it is what closes Phase 2.
    the probe corpus cost methodology instead: min-of-seven with the warm-up
    discarded, reported as min with median and max beside it (`A15-13`, applied at
    `A18-7`). The macOS baseline that §2.15 could not take is owed here.
+6a. **Settle the overlay label card's placement, with both adapters in review.**
+   Three findings from this sub-phase's dogfood share one cause and none is
+   Windows-specific: `crates/core/src/cursor_overlay/` owns where the card is
+   placed and both renderers follow it. (1) The card is anchored beside the
+   cursor, and the cursor is on the element being acted on, so at the moment
+   of a click on a menu the card covers the menu that just opened - the
+   overlay hides the result of the action it is narrating. (2) At `--size 4.0`
+   the card flips to the left of the cursor and lands flush against x=0 with
+   no margin, while most of the screen sits empty to the right; the flip is an
+   overflow rule but the result reads as an accident. (3) The default fill is
+   white, so on a white application the card is separated from it only by a
+   hairline border. Each is a cross-platform design decision - a change alters
+   macOS, the GA line - which is why it belongs at the one gate where both
+   adapters are reviewed together rather than inside a Windows sub-phase.
+   **Evidence:** `docs/dogfood-reports/2026-09-02-001-windows-2-16-cursor-overlay-dogfood.md`
+   findings D3, D4 and D5.
+
 7. **Multi-agent review of the assembled branch**, one reviewer per subsystem, as
    §2.15 ran it. Every finding takes exactly one of *fixed here* with a named
    invert-verified test, *owned elsewhere* with the receiving work written into this
