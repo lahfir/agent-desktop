@@ -12,9 +12,11 @@ description: >
   sessions and tracing. Documents the shell surface: open-system-surface,
   per-process list-surfaces, snapshot --surface kinds, and the Action Center
   notification commands with their foreground requirement and verified
-  mutations. Names the honest gaps explicitly: quick-settings is absent on
-  pre-Windows-11 builds (the refusal names action-center), and cursor-overlay
-  enable returns rendered: false while nothing renders.
+  mutations. Documents the cursor overlay, which renders on Windows for
+  headless semantic actions. Names the honest gaps explicitly: quick-settings
+  is absent on pre-Windows-11 builds (the refusal names action-center), and
+  the cursor overlay's mixed-DPI monitor mapping is unit-tested but
+  unverified on a live multi-monitor rig.
   Covers UIPI elevation boundaries, Chromium/Electron first-contact settle
   behavior, and Windows-specific troubleshooting.
   Triggers on: "windows desktop automation", "UIA tree", "automate Windows app",
@@ -47,17 +49,17 @@ Requires Windows 10 1809+ / Windows Server 2019+ (x64 or ARM64).
 | Clipboard | `clipboard-get`, `clipboard-set`, `clipboard-clear` | Works; typed text and image content |
 | Wait | `wait` | Works for ms, `--element`, `--window`, `--text`, `--menu`, `--menu-closed`, `--event`, and `--notification` predicates |
 | Notifications | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` | Works over the Action Center; the commands that raise shell chrome take the foreground, so pass `--headed` when the center is closed |
-| Cursor overlay | `cursor-overlay` | `cursor-overlay enable` returns `data.rendered` (`true` if drawn, `false` if unsupported; Windows reports `false` as no renderer ships yet); `cursor-overlay disable` carries no `rendered` field |
+| Cursor overlay | `cursor-overlay` | Works; `enable` renders a click-through overlay and `data.rendered` is the renderer's own pipe acknowledgement, not merely a spawned process. `disable` carries no `rendered` field. See Cursor Overlay below |
 | System | `status`, `permissions`, `version`, `batch`, `skills`, `session`, `trace` | Works |
 
 ## First Contact
 
-- **Quote every ref in PowerShell.** PowerShell reads a bare `@token` as its
-  splatting operator and *deletes the argument* before the binary sees it, so
-  `set-value @s8f3k2p9:e1 hi` arrives with no ref and fails `INVALID_ARGS`.
-  Write `set-value '@s8f3k2p9:e1' hi`. This bites first because PowerShell is
-  the default shell on Windows and the CLI's own examples are written
-  unquoted for POSIX shells. cmd.exe and bash need no quoting.
+- **Quote every ref in PowerShell.** PowerShell reads a bare `@token` as its
+  splatting operator and *deletes the argument* before the binary sees it, so
+  `set-value @s8f3k2p9:e1 hi` arrives with no ref and fails `INVALID_ARGS`.
+  Write `set-value '@s8f3k2p9:e1' hi`. This bites first because PowerShell is
+  the default shell on Windows and the CLI's own examples are written
+  unquoted for POSIX shells. cmd.exe and bash need no quoting.
 - **A window merely behind another window is fully drivable - a minimized one
   is not.** Being backgrounded costs nothing: with the terminal frontmost and
   Notepad behind it, `set-value` and a File-menu `expand` both succeed
@@ -93,12 +95,9 @@ Requires Windows 10 1809+ / Windows Server 2019+ (x64 or ARM64).
   scheduled task, a CI job — is far less reliable than the same command from an
   interactive session, and the envelope reports `delivered_unverified` because
   the synthesis API cannot confirm delivery.
-- **`cursor-overlay enable` reports whether drawing occurred.**
-  `cursor-overlay enable` returns `data.rendered`, a boolean saying whether the
-  overlay was actually drawn. It is `true` on an adapter that implements the
-  overlay and `false` on one that does not — Windows currently reports `false`,
-  because no Windows renderer ships yet. `cursor-overlay disable` carries no
-  `rendered` field, because a disable has nothing to render.
+- **`cursor-overlay enable` renders on Windows.** See Cursor Overlay below for
+  what `data.rendered` means, why the overlay draws only for headless
+  semantic actions, and where it deliberately differs from macOS.
 - **Commands that raise shell chrome take the foreground.** See Shell Surfaces
   and Notifications below; a strict-headless call is refused before anything
   is raised.
@@ -195,6 +194,64 @@ empty-state shape when none are, and a top-level `ClearAllButton`.
   ordinary output for the driving agent, so a caller routing it onward should
   treat it as sensitive.
 
+## Cursor Overlay
+
+`cursor-overlay enable` renders on Windows: a detached renderer process paints
+a presentation-only cursor as a click-through, topmost, non-activating
+layered window.
+
+```powershell
+$env:AGENT_DESKTOP_HOME = "$env:TEMP\ad-scratch"
+$start = agent-desktop session start --cursor | ConvertFrom-Json
+$env:AGENT_DESKTOP_SESSION = $start.data.session_id
+agent-desktop cursor-overlay enable --label "Opening menu" --accent "#FF3B7B"
+agent-desktop cursor-overlay disable
+```
+
+- **`data.rendered` is the renderer's own acknowledgement, not proof that a
+  process merely started.** `enable` returns `true` only once a renderer has
+  connected to the session's control pipe and acknowledged the control
+  message; it returns `false` if a renderer could not be reached, refused to
+  spawn, or never acknowledged within its budget. `disable` carries no
+  `rendered` field, because a disable has nothing to render. `session start
+  --cursor` is a second enable path through the same adapter call and emits
+  no `rendered` field either — its own JSON only echoes `cursor_overlay`.
+- **Semantic actions present the cursor only when headless.** A `--headed`
+  action sends real pointer input, which moves the real cursor, so the
+  per-action travel and click flourish are skipped for it — seeing no cursor
+  animation around a `--headed` click is expected, not a bug. An explicit
+  `cursor-overlay enable` still paints the resting cursor either way, so a
+  headed session that enabled the overlay does show one: measured, `enable
+  --headed` reports `rendered: true` and paints.
+- **It draws above the shell's own topmost chrome, including the taskbar**
+  (A29-3): a destination near the taskbar is not clipped by shell surfaces.
+- **It does not collapse when the OS "Show animations in Windows"
+  accessibility preference is off.** This is a deliberate difference from
+  macOS, whose renderer collapses to a still pose under the OS's reduce-motion
+  signal. On Windows the one API surface for this disagrees with itself, and
+  reports animations disabled by default on a stock, unconfigured Windows
+  Server host (A29-7, A29-8) — honouring it unconditionally would silently
+  drop the travel animation on hosts nobody set that preference on for
+  accessibility reasons. The overlay only ever draws because a caller
+  explicitly enabled it on a session, so that opt-in is treated as the
+  accessibility signal instead of the OS setting. The honest cost: a caller
+  who reduced motion on Windows for genuine accessibility reasons still sees
+  the full travel animation, where macOS would collapse it.
+- **Mixed-DPI, multi-monitor coordinate mapping is unit-tested but not
+  verified live.** The host this was measured on presented a single display,
+  so the monitor-selection and coordinate-mapping logic has no live
+  observation behind it on a scaled or multi-monitor desktop (A29-6).
+- **The transport cost per action is negligible.** A named-pipe connect, the
+  control write, and the acknowledgement read cost a minimum of 0.252 ms
+  (median 0.259 ms) from an already-running renderer (A29-5). The cost that
+  matters is the travel animation and its 900 ms arrival ceiling, not the
+  pipe roundtrip.
+- **Teardown.** `cursor-overlay disable` ends the renderer process for its
+  session. A session that ends out of band — a crash, `session gc`, an
+  operator who simply stops — is reclaimed by the renderer itself on its next
+  idle-tick reads, bounded at two ticks of 1500 ms each, so reclaim completes
+  within 3000 ms even with no `disable` ever sent.
+
 ## Hosted (UWP) Window Identity
 
 An `ApplicationFrameHost`-hosted application is reported through its frame:
@@ -214,38 +271,38 @@ menus — a DOM menu inside the application's own window that neither other
 source can see (A26-12). WinUI3/MSIX hosts are unevaluated. Read "no menu is
 open" from an app in an uncovered family as "not detected there", not as
 proof the menu is closed.
-
-## Saving a document, headless, without keyboard input
-
-No `save` command exists — saving is a menu path plus a dialog, and the whole
-chain is semantic, so it works with no `--headed` and no keystrokes. The shape
-generalises to any app whose save flow is File → Save As.
-
-```bash
-agent-desktop restore --app notepad.exe               # only if minimized; behind is fine
-agent-desktop snapshot --app notepad.exe              # keep the snapshot_id
-agent-desktop set-value '@<snap>:e1' "the document body"
-agent-desktop expand '@<snap>:e13'                    # the File menu item
-agent-desktop snapshot --app notepad.exe --surface menu   # the open menu is its own surface
-agent-desktop click '@<menu>:e4'                      # Save As...
-agent-desktop list-windows --app notepad.exe          # the dialog is a new window
-agent-desktop find --name "File name" --window-id <dialog-id>
-agent-desktop set-value '@<found>:e2' 'C:\\out.txt'    # full path goes in the name field
-agent-desktop find --role button --name "Save" --window-id <dialog-id>
-agent-desktop click '@<found>:e1'
-```
-
-Two things that surprise a first-time caller:
-
-- **`find --name "File name"` returns three matches** — a `statictext` label, a
-  `combobox`, and the `textfield` inside the combobox. The textfield is the one
-  that accepts `set-value`; match on `role` as well as name.
-- **Setting the full path into the name field is what selects the directory.**
-  There is no separate folder-navigation step, and navigating the file list by
-  ref is far more fragile than writing the path.
-
-The dialog's Save button returns `delivered_unverified` — a synthesized invoke
-cannot confirm what the shell dialog did with it. Verify by reading the file
+
+## Saving a document, headless, without keyboard input
+
+No `save` command exists — saving is a menu path plus a dialog, and the whole
+chain is semantic, so it works with no `--headed` and no keystrokes. The shape
+generalises to any app whose save flow is File → Save As.
+
+```bash
+agent-desktop restore --app notepad.exe               # only if minimized; behind is fine
+agent-desktop snapshot --app notepad.exe              # keep the snapshot_id
+agent-desktop set-value '@<snap>:e1' "the document body"
+agent-desktop expand '@<snap>:e13'                    # the File menu item
+agent-desktop snapshot --app notepad.exe --surface menu   # the open menu is its own surface
+agent-desktop click '@<menu>:e4'                      # Save As...
+agent-desktop list-windows --app notepad.exe          # the dialog is a new window
+agent-desktop find --name "File name" --window-id <dialog-id>
+agent-desktop set-value '@<found>:e2' 'C:\\out.txt'    # full path goes in the name field
+agent-desktop find --role button --name "Save" --window-id <dialog-id>
+agent-desktop click '@<found>:e1'
+```
+
+Two things that surprise a first-time caller:
+
+- **`find --name "File name"` returns three matches** — a `statictext` label, a
+  `combobox`, and the `textfield` inside the combobox. The textfield is the one
+  that accepts `set-value`; match on `role` as well as name.
+- **Setting the full path into the name field is what selects the directory.**
+  There is no separate folder-navigation step, and navigating the file list by
+  ref is far more fragile than writing the path.
+
+The dialog's Save button returns `delivered_unverified` — a synthesized invoke
+cannot confirm what the shell dialog did with it. Verify by reading the file
 back from disk, not from the envelope.
 Three focused references, loaded as needed:
 
