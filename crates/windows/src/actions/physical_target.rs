@@ -161,8 +161,33 @@ fn host_window_handle(
     };
     match crate::tree::hit_test::corroborate::first_native_hwnd(element, &walker, deadline) {
         Ok(hwnd) => Ok(hwnd.map(|value| value as crate::system::window_enum::WindowHandle)),
-        Err(_) => Err(deadline.timeout_error()),
+        Err(_) => Err(incomplete_climb_error(deadline)),
     }
+}
+
+/// The climb refuses with one value for three causes - an exhausted budget, a
+/// faulted handle read and a faulted parent step - and only the first of them
+/// is a timeout. Answering `TIMEOUT` for the other two handed the caller the
+/// recovery for a slow desktop: wait and retry the same ref, against an
+/// element whose read had just failed. A fault needs a fresh snapshot
+/// instead, so it keeps its own code.
+///
+/// The deadline is the discriminator because it is the one cause the climb
+/// also tests, so a deadline that is still open proves the refusal came from
+/// a read rather than from the budget. A deadline that expired between the
+/// fault and this check reports a timeout, which is the honest reading of a
+/// budget that has in fact run out.
+#[cfg(target_os = "windows")]
+fn incomplete_climb_error(deadline: Deadline) -> AdapterError {
+    if deadline.is_expired() {
+        return deadline.timeout_error();
+    }
+    AdapterError::new(
+        ErrorCode::StaleRef,
+        "The window hosting the physical input target could not be read",
+    )
+    .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+    .with_disposition(DeliverySemantics::not_delivered())
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -184,3 +209,7 @@ pub(crate) fn host_window_handle_for_test(
 ) -> Result<Option<crate::system::window_enum::WindowHandle>, AdapterError> {
     host_window_handle(element, deadline)
 }
+
+#[cfg(test)]
+#[path = "physical_target_tests.rs"]
+mod tests;
