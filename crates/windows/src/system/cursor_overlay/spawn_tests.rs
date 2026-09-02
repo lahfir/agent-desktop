@@ -1,8 +1,9 @@
-use super::update;
+use super::{ReachOutcome, retry_until_reached, update};
 use agent_desktop_core::{
     CursorOverlayConfig, CursorOverlayControl, CursorOverlayInstruction, CursorOverlayStyle,
     CursorPhase, ErrorCode, Point,
 };
+use std::time::{Duration, Instant};
 
 fn session() -> String {
     format!("s{:07}", std::process::id() % 10_000_000)
@@ -115,4 +116,92 @@ fn renderer_count() -> usize {
     }
     #[cfg(not(target_os = "windows"))]
     0
+}
+
+/// Every attempt gets what is left of the budget, never the budget again.
+///
+/// Re-issuing the full ceiling per attempt is how a caller promised one
+/// arrival timeout waits two: a first reach that spends its ceiling on a
+/// renderer that never came up is followed by another with the same ceiling.
+#[test]
+fn each_retry_is_handed_what_is_left_of_the_budget_not_the_whole_budget_again() {
+    let budget = Duration::from_millis(200);
+    let handed = std::cell::RefCell::new(Vec::new());
+    let started = Instant::now();
+
+    let error = retry_until_reached(started + budget, |remaining| {
+        handed.borrow_mut().push(remaining);
+        std::thread::sleep(Duration::from_millis(20));
+        ReachOutcome::NoRenderer
+    })
+    .expect_err("nothing ever answers, so the loop must end in a timeout");
+
+    let handed = handed.into_inner();
+    assert!(handed.len() > 1, "the loop must actually retry");
+    assert!(
+        handed[0] <= budget,
+        "the first attempt cannot be given more than the whole budget"
+    );
+    assert!(
+        handed.windows(2).all(|pair| pair[1] < pair[0]),
+        "each attempt must be given strictly less than the one before it, got {handed:?}"
+    );
+    assert_eq!(error.code, ErrorCode::Timeout);
+    assert!(
+        error.message.contains("did not come up within its budget"),
+        "an exhausted start-up budget must read as one, got {}",
+        error.message
+    );
+    assert!(
+        started.elapsed() < budget + Duration::from_millis(150),
+        "the whole loop stays inside its budget rather than a multiple of it"
+    );
+}
+
+/// A budget too nearly spent to be worth a reach must leave by the start-up
+/// timeout, not by handing the last sliver to a reach. That reach would report
+/// whatever it happened to give up in - an acknowledgement timeout for a
+/// renderer that was about to answer, or a `WaitNamedPipeW` of zero
+/// milliseconds, which Win32 reads as "use the server's own default" and so
+/// parks past the deadline rather than inside it.
+///
+/// A few milliseconds left rather than none, so this asks a real question: a
+/// guard that only caught an exactly-expired deadline would let this through.
+#[test]
+fn a_budget_too_nearly_spent_to_reach_with_reports_the_start_up_timeout() {
+    let mut reached = false;
+
+    let error = retry_until_reached(Instant::now() + Duration::from_millis(4), |_| {
+        reached = true;
+        ReachOutcome::Delivered
+    })
+    .expect_err("a budget with nothing usable left cannot be waited out");
+
+    assert!(
+        !reached,
+        "a reach with less left than a round trip needs is worse than not reaching at all"
+    );
+    assert_eq!(error.code, ErrorCode::Timeout);
+    assert!(error.message.contains("did not come up within its budget"));
+}
+
+/// The loop still exits on success, and stops reaching once it has one.
+#[test]
+fn a_renderer_that_answers_on_a_later_attempt_ends_the_loop() {
+    let mut attempts = 0usize;
+
+    retry_until_reached(Instant::now() + Duration::from_secs(2), |_| {
+        attempts += 1;
+        if attempts < 3 {
+            ReachOutcome::NoRenderer
+        } else {
+            ReachOutcome::Delivered
+        }
+    })
+    .expect("the renderer answered");
+
+    assert_eq!(
+        attempts, 3,
+        "the loop stops at the answer, it does not run on"
+    );
 }
