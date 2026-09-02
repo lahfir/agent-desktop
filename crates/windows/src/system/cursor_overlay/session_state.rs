@@ -65,6 +65,12 @@ fn classify_body(body: &str) -> SessionReading {
 
 /// Tracks consecutive readings so one unreadable tick cannot end a live
 /// overlay.
+///
+/// `Unknown` resets the count rather than passing over it. Without the reset
+/// the rule was "two finished readings, ever", so a finished reading, an
+/// unreadable tick and a second finished reading tore the overlay down - and
+/// an unreadable tick is exactly what a manifest being rewritten mid-session
+/// produces, which is the case the rule exists to survive.
 #[derive(Default)]
 pub(crate) struct EndWatch {
     consecutive_finished: u8,
@@ -82,26 +88,62 @@ impl EndWatch {
                 self.consecutive_finished = 0;
                 false
             }
-            SessionReading::Unknown => false,
+            SessionReading::Unknown => {
+                self.consecutive_finished = 0;
+                false
+            }
         }
     }
 }
 
-/// Reads the manifest as bytes rather than through core's typed reader,
-/// which routes every non-`NotFound` error and every parse failure into the
-/// same `Ok(None)` a deleted session produces. The path comes from core so
-/// this cannot drift from where the manifest actually lives.
+/// The manifest's bytes, or the error that stopped them being read.
+///
+/// It does not use core's typed reader, which routes every non-`NotFound`
+/// error and every parse failure into the same `Ok(None)` a deleted session
+/// produces. The path comes from core so this cannot drift from where the
+/// manifest actually lives, and a path that cannot be resolved is reported as
+/// an error rather than as a missing manifest: a state root that is
+/// momentarily unreadable is not a session that ended.
+///
+/// The bytes come through this crate's hardened private-file read - no-follow
+/// leaf open, owner check, size cap - so a symlink planted in the state root
+/// cannot redirect the poll and an oversized `session.json` cannot balloon
+/// the renderer. The trade-off is real and worth stating: a hardened read
+/// that fails classifies as `Unknown`, so on a misconfigured state root - one
+/// owned by another principal, or with a reparse point on the manifest - this
+/// renderer never self-reclaims and keeps drawing. That is the safe direction
+/// (it will not tear down a live session over a file it could not read) but
+/// it is a genuine stuck-overlay mode, ended only by `cursor-overlay disable`
+/// or by killing the renderer.
 #[cfg(target_os = "windows")]
 pub(crate) fn read_manifest(session_id: &str) -> Option<std::io::Result<String>> {
-    let directory = agent_desktop_core::session::session_dir(session_id).ok()?;
-    Some(std::fs::read_to_string(
-        directory.join(agent_desktop_core::session::SESSION_MANIFEST_FILE),
-    ))
+    const MANIFEST_READ_LIMIT: u64 = 64 * 1024;
+
+    let directory = match agent_desktop_core::session::session_dir(session_id) {
+        Ok(directory) => directory,
+        Err(error) => return Some(Err(std::io::Error::other(error.to_string()))),
+    };
+    let path = directory.join(agent_desktop_core::session::SESSION_MANIFEST_FILE);
+    Some(
+        crate::system::private_file::read_private_bounded_path(&path, MANIFEST_READ_LIMIT)
+            .and_then(decode_manifest),
+    )
 }
 
+#[cfg(target_os = "windows")]
+fn decode_manifest(bytes: Vec<u8>) -> std::io::Result<String> {
+    String::from_utf8(bytes)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+}
+
+/// There is no renderer off Windows, so this answers "nothing was read"
+/// rather than "the session ended" - the same side of the rule the live
+/// reader takes, so a stub can never be the thing that tears an overlay down.
 #[cfg(not(target_os = "windows"))]
 pub(crate) fn read_manifest(_session_id: &str) -> Option<std::io::Result<String>> {
-    None
+    Some(Err(std::io::Error::other(
+        "the session manifest is only read on the platform that renders the overlay",
+    )))
 }
 
 #[cfg(test)]
