@@ -45,3 +45,42 @@ fn an_absent_renderer_answers_well_inside_the_budget() {
          against itself"
     );
 }
+
+/// A `ReadFile` that succeeded and returned the wrong payload is a framing
+/// failure. Reporting it through `GetLastError` printed "Win32 error 0",
+/// which names no cause at all and sends a reader looking for an OS fault
+/// that never happened.
+#[cfg(target_os = "windows")]
+#[test]
+fn an_unexpected_answer_is_described_by_what_was_read_not_by_an_errno() {
+    let short = super::imp::unexpected_answer(0, 0);
+    let wrong = super::imp::unexpected_answer(1, 0x5a);
+
+    for error in [&short, &wrong] {
+        assert_eq!(error.code, agent_desktop_core::ErrorCode::Internal);
+        let detail = error
+            .platform_detail
+            .as_deref()
+            .expect("a framing failure says what came back");
+        assert!(
+            !detail.contains("Win32 error"),
+            "a successful read that answered wrongly is not an OS error: {detail}"
+        );
+    }
+
+    let short_detail = short.platform_detail.as_deref().unwrap_or_default();
+    assert!(
+        short_detail.contains("read 0 bytes"),
+        "the byte count is what went wrong when nothing was read: {short_detail}"
+    );
+    assert!(
+        !short_detail.contains("0x00"),
+        "no byte was read, so no byte value may be quoted as the answer: {short_detail}"
+    );
+
+    let wrong_detail = wrong.platform_detail.as_deref().unwrap_or_default();
+    assert!(
+        wrong_detail.contains("0x5a"),
+        "the byte that came back is the whole finding: {wrong_detail}"
+    );
+}

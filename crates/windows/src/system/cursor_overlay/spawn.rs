@@ -76,6 +76,7 @@ fn start_renderer(
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{ENABLE_BUDGET, pipe_name, transport};
+    use crate::system::cursor_overlay::image_identity;
     use agent_desktop_core::{AdapterError, CursorOverlayControl, ErrorCode};
     use std::time::{Duration, Instant};
     use transport::ReachOutcome;
@@ -92,20 +93,22 @@ mod imp {
     /// The refusal is an `Err` rather than macOS's `Ok(())`, because
     /// dispatch turns `Ok` into `rendered: true` - which would claim an
     /// overlay that was never started.
+    ///
+    /// The image test is the one a client applies to a pipe server it found,
+    /// so what may be forked and what may be trusted cannot drift apart.
     fn executable() -> Result<std::path::PathBuf, AdapterError> {
         let path = std::env::current_exe().map_err(|error| {
             AdapterError::internal("The running executable could not be resolved")
                 .with_platform_detail(error.to_string())
         })?;
-        let stem = path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or_default();
-        if stem != "agent-desktop" {
-            return Err(AdapterError::not_supported("update_cursor_overlay")
-                .with_platform_detail(format!(
-                    "the overlay renderer is only started from the agent-desktop image, not '{stem}'"
-                )));
+        if !image_identity::is_agent_desktop_image(&path) {
+            let stem = image_identity::image_stem(&path).unwrap_or_default();
+            let wanted = image_identity::IMAGE_STEM;
+            return Err(
+                AdapterError::not_supported("update_cursor_overlay").with_platform_detail(format!(
+                    "the overlay renderer is only started from the {wanted} image, not '{stem}'"
+                )),
+            );
         }
         Ok(path)
     }
