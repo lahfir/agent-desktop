@@ -61,6 +61,19 @@ mod imp {
         serve(&listener, &mut host, session_id)
     }
 
+    /// The connection is released before anything that only has to look right
+    /// is drawn.
+    ///
+    /// A control is answered as soon as what its sender waits for is true, and
+    /// the pipe is disconnected immediately after, so the next client is
+    /// already being accepted while the card is still easing in and the click
+    /// flourish is still playing. Holding the connection for the whole
+    /// animation left a second overlaid action connecting to a busy pipe for
+    /// the better part of a second - longer than the budget it had - and
+    /// reporting that nothing had rendered.
+    ///
+    /// A `Disable` never settles: the process is about to exit, and there is
+    /// nothing left to draw onto.
     fn serve(
         listener: &server::Listener,
         host: &mut surface_host::SurfaceHost,
@@ -79,6 +92,9 @@ mod imp {
                     listener.finish();
                     if ours && control.is_disable() {
                         return Ok(());
+                    }
+                    if ours {
+                        host.settle(&control, &|| listener.control_waiting());
                     }
                 }
                 server::Accepted::Idle => {

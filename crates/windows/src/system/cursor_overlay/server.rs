@@ -25,6 +25,8 @@ pub(crate) use imp::{Accepted, ClaimError, Listener};
 mod imp {
     use crate::system::cursor_overlay::{framing, peer};
     use agent_desktop_core::{AdapterError, CursorOverlayControl};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel};
     use std::time::{Duration, Instant};
     use windows_sys::Win32::Foundation::{
@@ -96,6 +98,7 @@ mod imp {
         handle: HANDLE,
         arrivals: Receiver<CursorOverlayControl>,
         release: SyncSender<()>,
+        waiting: Arc<AtomicBool>,
     }
 
     impl Listener {
@@ -127,12 +130,15 @@ mod imp {
             let (arrival_tx, arrivals) = sync_channel::<CursorOverlayControl>(0);
             let (release, release_rx) = sync_channel::<()>(0);
             let shared = SharedHandle(handle as isize);
-            std::thread::spawn(move || accept_loop(shared, &arrival_tx, &release_rx));
+            let waiting = Arc::new(AtomicBool::new(false));
+            let accepted = Arc::clone(&waiting);
+            std::thread::spawn(move || accept_loop(shared, &arrival_tx, &release_rx, &accepted));
 
             Ok(Self {
                 handle,
                 arrivals,
                 release,
+                waiting,
             })
         }
 
@@ -141,7 +147,10 @@ mod imp {
         /// caller pump its window and re-read its session.
         pub(crate) fn next_control(&self, tick: Duration) -> Accepted {
             match self.arrivals.recv_timeout(tick) {
-                Ok(control) => Accepted::Control(control),
+                Ok(control) => {
+                    self.waiting.store(false, Ordering::Release);
+                    Accepted::Control(control)
+                }
                 Err(RecvTimeoutError::Timeout) => Accepted::Idle,
                 Err(RecvTimeoutError::Disconnected) => Accepted::Broken(AdapterError::internal(
                     "The cursor overlay stopped accepting controls",
@@ -205,12 +214,32 @@ mod imp {
             unsafe { DisconnectNamedPipe(self.handle) };
             let _ = self.release.send(());
         }
+
+        /// Whether a control has already been read off the wire and is
+        /// waiting to be served.
+        ///
+        /// What it exists for is the animation that plays after a control has
+        /// been answered: a flourish holds the renderer for the better part of
+        /// a second, and the sender of the next control has less than that
+        /// before it gives up. So the flourish asks whether anything is
+        /// waiting and gives way when there is, rather than the newer action
+        /// spending its whole arrival budget on a pipe that is busy drawing
+        /// the last one.
+        pub(crate) fn control_waiting(&self) -> bool {
+            self.waiting.load(Ordering::Acquire)
+        }
     }
 
+    /// `waiting` is raised before the rendezvous hand-over rather than after
+    /// it, so it is already true for the whole time the serving thread spends
+    /// finishing the previous control. Raising it after the hand-over would
+    /// make it true only once the serving thread had already taken the
+    /// control, which is exactly when nothing needs to know.
     fn accept_loop(
         shared: SharedHandle,
         arrivals: &SyncSender<CursorOverlayControl>,
         release: &Receiver<()>,
+        waiting: &AtomicBool,
     ) {
         let handle = shared.get();
         loop {
@@ -226,6 +255,7 @@ mod imp {
                 unsafe { DisconnectNamedPipe(handle) };
                 continue;
             };
+            waiting.store(true, Ordering::Release);
             if arrivals.send(control).is_err() || release.recv().is_err() {
                 return;
             }
@@ -235,8 +265,16 @@ mod imp {
     /// One control from a connected client, or `None` when it wrote nothing
     /// legible inside its window. The connection is left open for the caller
     /// to close, so the decision to disconnect lives in one place.
+    ///
+    /// Bytes accumulate across polls. This is a byte-mode pipe, so a payload
+    /// the client wrote in one call can still arrive in two reads, and
+    /// decoding whichever half turned up first threw away a control its
+    /// sender then waited out its whole budget for. A prefix of JSON cannot
+    /// decode, so retrying the decode on every poll can never accept a
+    /// half-written control as a whole one.
     fn read_control(handle: HANDLE) -> Option<CursorOverlayControl> {
         let deadline = Instant::now() + PAYLOAD_WAIT;
+        let mut payload: Vec<u8> = Vec::new();
         loop {
             let mut available = 0u32;
             let peeked = unsafe {
@@ -253,13 +291,17 @@ mod imp {
                 return None;
             }
             if available > 0 {
-                let mut buffer = vec![0u8; framing::MAX_CONTROL_BYTES];
+                let room = framing::MAX_CONTROL_BYTES.saturating_sub(payload.len());
+                if room == 0 {
+                    return None;
+                }
+                let mut chunk = vec![0u8; room];
                 let mut read = 0u32;
                 let ok = unsafe {
                     ReadFile(
                         handle,
-                        buffer.as_mut_ptr(),
-                        available.min(framing::MAX_CONTROL_BYTES as u32),
+                        chunk.as_mut_ptr(),
+                        (available as usize).min(room) as u32,
                         &mut read,
                         std::ptr::null_mut(),
                     )
@@ -267,13 +309,37 @@ mod imp {
                 if ok == 0 || read == 0 {
                     return None;
                 }
-                buffer.truncate(read as usize);
-                return framing::decode(&buffer).ok();
+                chunk.truncate(read as usize);
+                payload.extend_from_slice(&chunk);
+                if let Ok(control) = framing::decode(&payload) {
+                    return accepted(control);
+                }
             }
             if Instant::now() >= deadline {
                 return None;
             }
             std::thread::sleep(POLL);
+        }
+    }
+
+    /// A decoded control still has to pass the checks core defines for it
+    /// before it is drawn.
+    ///
+    /// Decoding proves only that the bytes were the shape of a control. The
+    /// session id is a path component and the destination is a coordinate the
+    /// renderer maps onto a monitor, and both arrive from another process, so
+    /// what the sending side validated before it wrote is validated again by
+    /// the side that reads.
+    fn accepted(control: CursorOverlayControl) -> Option<CursorOverlayControl> {
+        match control.validate() {
+            Ok(()) => Some(control),
+            Err(error) => {
+                tracing::debug!(
+                    code = %error.code.as_str(),
+                    "a cursor overlay control was refused by its own validation"
+                );
+                None
+            }
         }
     }
 }
