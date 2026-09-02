@@ -15,6 +15,10 @@
 #[cfg(target_os = "windows")]
 pub(crate) use imp::draw_label;
 
+#[cfg(all(test, target_os = "windows"))]
+#[path = "text_tests.rs"]
+mod tests;
+
 #[cfg(not(target_os = "windows"))]
 pub(crate) fn draw_label(
     _surface: &mut super::raster::Surface,
