@@ -137,17 +137,28 @@ fn oracle_pixels() -> usize {
     screen_sample::pixels_matching(ORACLE.0, ORACLE.1, ORACLE.2)
 }
 
+/// Tighter than the session watch's own reclaim, which needs two 1500ms idle
+/// ticks. A teardown asserted only within `SETTLE` would pass on that watch
+/// even with the disable path entirely broken, so the observations that
+/// belong to `disable` are held to a budget the watch cannot meet. Measured
+/// at 26-62ms, so this is generous without being undiscriminating.
+const PROMPTLY: Duration = Duration::from_millis(1_500);
+
 /// Waits for a condition instead of sleeping a fixed span and hoping. A
 /// failure seen after a fixed sleep is a race, not a finding.
-fn wait_until(what: &str, mut settled: impl FnMut() -> bool) {
-    let deadline = Instant::now() + SETTLE;
+fn wait_until(what: &str, settled: impl FnMut() -> bool) {
+    wait_within(SETTLE, what, settled);
+}
+
+fn wait_within(budget: Duration, what: &str, mut settled: impl FnMut() -> bool) {
+    let deadline = Instant::now() + budget;
     while Instant::now() < deadline {
         if settled() {
             return;
         }
         std::thread::sleep(Duration::from_millis(120));
     }
-    panic!("{what} did not happen within {SETTLE:?}");
+    panic!("{what} did not happen within {budget:?}");
 }
 
 #[test]
@@ -177,10 +188,10 @@ fn disabling_leaves_no_process_no_held_name_and_no_pixels() {
     );
     assert_eq!(disabled["ok"], true, "the overlay must disable: {disabled}");
 
-    wait_until("the renderer process ended", || {
+    wait_within(PROMPTLY, "the renderer process ended", || {
         overlay_children(&session).is_empty()
     });
-    wait_until("the overlay pixels left the screen", || {
+    wait_within(PROMPTLY, "the overlay pixels left the screen", || {
         oracle_pixels() == 0
     });
 

@@ -50,6 +50,35 @@ fn a_session_whose_overlay_is_switched_off_reads_finished() {
     );
 }
 
+/// The shape `cursor-overlay disable` actually leaves behind, taken from a
+/// real manifest rather than written by hand.
+///
+/// A disabled overlay is the config's default and defaults are not
+/// serialized, so switching it off **removes** the key — the manifest never
+/// contains `"enabled": false` at all. The hand-written fixture above is a
+/// shape the product does not produce, which is why it passed for a condition
+/// that could not fire. `manifest_omits_a_disabled_cursor_overlay` in core
+/// pins the serialization this relies on.
+#[test]
+fn a_manifest_with_the_overlay_key_removed_reads_finished() {
+    let body = r#"{"id":"s0000001","created_at":1788312770975,"trace":"on","artifacts":"events"}"#;
+
+    assert_eq!(
+        classify(Some(Ok(body.to_owned()))),
+        SessionReading::Finished
+    );
+}
+
+/// An overlay object whose `enabled` is present but not a boolean is a
+/// malformed read, not a switched-off session, so it must not tear anything
+/// down.
+#[test]
+fn an_overlay_with_an_unreadable_enabled_flag_reads_unknown() {
+    let body = r#"{"id":"s0000001","cursor_overlay":{"enabled":"yes"}}"#;
+
+    assert_eq!(classify(Some(Ok(body.to_owned()))), SessionReading::Unknown);
+}
+
 /// The distinction this module exists for. Core's reader folds both of these
 /// into the same value a deleted session produces, so polling it would end a
 /// live overlay on a transient file error - a fault read as a fact, which is
