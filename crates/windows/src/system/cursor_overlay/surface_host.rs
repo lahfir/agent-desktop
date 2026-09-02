@@ -171,8 +171,21 @@ mod imp {
             self.window.pump();
         }
 
+        /// One quiet tick: pump the window, and re-read the display
+        /// topology.
+        ///
+        /// The monitors and refresh rate are sampled when the renderer starts
+        /// and would otherwise stay fixed for its whole life, so a resolution
+        /// change, a scale change or a monitor plugged in mid-session would
+        /// leave every later frame mapped against a desktop that no longer
+        /// exists. Re-probing on the idle tick is how that is noticed: the
+        /// window procedure is a plain `DefWindowProcW` and handles no
+        /// topology message, and a message handler could not reach this state
+        /// anyway without sharing it across the callback boundary.
         pub(crate) fn rest(&mut self) {
             self.window.pump();
+            self.monitors = super::super::display_probe::monitors();
+            self.refresh_hz = super::super::display_probe::refresh_hz();
         }
 
         /// True once the session has read finished twice running.

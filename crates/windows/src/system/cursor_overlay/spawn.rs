@@ -79,7 +79,7 @@ mod imp {
     use agent_desktop_core::{AdapterError, CursorOverlayControl, ErrorCode};
     use std::time::{Duration, Instant};
     use transport::ReachOutcome;
-    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError};
     use windows_sys::Win32::System::Threading::{
         CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, CreateProcessW, DETACHED_PROCESS,
         PROCESS_INFORMATION, STARTUPINFOW,
@@ -159,9 +159,11 @@ mod imp {
             )
         };
         if started == 0 {
-            return Err(AdapterError::internal(
-                "The cursor overlay renderer could not be started",
-            ));
+            let code = unsafe { GetLastError() };
+            return Err(
+                AdapterError::internal("The cursor overlay renderer could not be started")
+                    .with_platform_detail(format!("Win32 error {code}")),
+            );
         }
         unsafe {
             CloseHandle(information.hThread);

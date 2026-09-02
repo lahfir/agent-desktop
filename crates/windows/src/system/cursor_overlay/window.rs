@@ -8,9 +8,11 @@
 //! that question is answered by a pixel.
 //!
 //! `UpdateLayeredWindow` takes the whole surface at once, so no `WM_PAINT`
-//! is needed; the message loop exists for `WM_DPICHANGED` and
-//! `WM_DISPLAYCHANGE`, and is pumped without blocking so the control loop
-//! keeps its own pace.
+//! is needed; the message loop exists so the window keeps answering the
+//! system rather than being marked hung, and is pumped without blocking so
+//! the control loop keeps its own pace. `overlay_proc` handles nothing
+//! itself — topology changes such as a DPI or display change are picked up
+//! by re-probing on the idle tick, not by handling a message here.
 
 #[cfg(target_os = "windows")]
 pub(crate) use imp::OverlayWindow;

@@ -45,6 +45,10 @@ mod imp {
     /// nothing died mid-call; it is not a reason to stop serving.
     const PAYLOAD_WAIT: Duration = Duration::from_millis(250);
 
+    /// How long the renderer will wait for a client to take its
+    /// acknowledgement before carrying on without it.
+    const ACKNOWLEDGEMENT_BUDGET: Duration = Duration::from_millis(250);
+
     pub(crate) enum ClaimError {
         /// Another renderer already serves this session. Withdrawing here,
         /// before a window exists, is what keeps a duplicate from drawing.
@@ -151,8 +155,7 @@ mod imp {
         /// client has not read, and the one control that acknowledges and
         /// then immediately tears down is `Disable` - so without this, the
         /// caller waiting on a teardown that did succeed would see a broken
-        /// pipe. It is bounded by the client process: if that goes, the pipe
-        /// breaks and the wait ends.
+        /// pipe. The waiting is bounded, for the reason the helper gives.
         pub(crate) fn acknowledge(&self) {
             let byte = [framing::ACKNOWLEDGEMENT];
             let mut written = 0u32;
@@ -164,8 +167,35 @@ mod imp {
                     &mut written,
                     std::ptr::null_mut(),
                 );
-                FlushFileBuffers(self.handle);
             }
+            self.wait_for_the_client_to_read();
+        }
+
+        /// Waits for the acknowledgement to be taken, but never past the
+        /// budget.
+        ///
+        /// `FlushFileBuffers` on a pipe server returns only once the client
+        /// has read everything, and it takes no timeout — so calling it on
+        /// this thread hands a client the ability to park the renderer
+        /// forever simply by not reading. A suspended parent is enough: a
+        /// debugger break, a harness that suspends its children. Parked here,
+        /// the window is never pumped, no further control is ever accepted,
+        /// and the session watch never runs — which produces exactly the
+        /// thing this module exists to prevent, a topmost click-through
+        /// window with no console, no taskbar entry and no Alt-Tab presence
+        /// that nothing in the product can remove.
+        ///
+        /// So the wait happens on a thread that is allowed to be abandoned.
+        /// Giving up costs only the acknowledgement, which the client is
+        /// already prepared to time out on.
+        fn wait_for_the_client_to_read(&self) {
+            let shared = SharedHandle(self.handle as isize);
+            let (done, taken) = sync_channel::<()>(1);
+            std::thread::spawn(move || {
+                unsafe { FlushFileBuffers(shared.get()) };
+                let _ = done.send(());
+            });
+            let _ = taken.recv_timeout(ACKNOWLEDGEMENT_BUDGET);
         }
 
         /// Releases the connection and lets the worker wait for the next
