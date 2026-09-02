@@ -22,6 +22,19 @@
 //! run under any image — an FFI host is one — so clients are authenticated by
 //! user alone. A server may not: the renderer is only ever forked from this
 //! tool's own binary, so the server's image is checked too.
+//!
+//! That server-side image check is against the file stem, so any same-user
+//! `agent-desktop.exe` at any path passes it. Deliberate, and settled here so
+//! the question is not re-filed. The only strengthening that is not theatre —
+//! demanding the server's full image path equal the client's `current_exe()` —
+//! breaks two things that are not misuse. A debug build legitimately reaches a
+//! renderer a release build started, which is the ordinary shape of working on
+//! this code; and under an FFI host `current_exe()` is the host process, so
+//! the comparison could never pass at all. It also closes nothing: the
+//! adversary it would exclude is a same-user process, and a same-user process
+//! can simply run the genuine binary, which both draws and acknowledges. A
+//! check that costs the development workflow and the FFI host while an
+//! attacker steps around it by using the real thing is not a check.
 
 #[cfg(target_os = "windows")]
 pub(crate) use imp::{peer_is_this_user, server_is_this_user, terminate_pipe_server};
