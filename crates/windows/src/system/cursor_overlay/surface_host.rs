@@ -5,6 +5,13 @@
 //! milliseconds, so this samples a clock rather than counting frames — a
 //! dropped frame changes smoothness and never the instant the cursor lands,
 //! which is the instant the action is waiting on.
+//!
+//! A control is served in two halves. `apply` does only what has to be true
+//! before its sender is answered: the style and the caption are adopted, and
+//! a travel puts the cursor at its destination. `settle` plays what nothing
+//! waits on — the card easing in, the click flourish — after the answer has
+//! gone out and the connection has been released, so the next control is
+//! already being read while the last one is still finishing on screen.
 
 #[cfg(target_os = "windows")]
 pub(crate) use imp::SurfaceHost;
@@ -12,8 +19,8 @@ pub(crate) use imp::SurfaceHost;
 #[cfg(target_os = "windows")]
 mod imp {
     use crate::system::cursor_overlay::{
-        fade, geometry, monitors, render, reveal::Reveal, schedule, session_state, text,
-        window::OverlayWindow,
+        animation, fade, geometry, label, monitors, render, reveal::Reveal, schedule,
+        session_state, text, topology::DisplayTopology, window::OverlayWindow,
     };
     use agent_desktop_core::{
         CURSOR_HIGHLIGHT_HOLD_MS, CURSOR_IDLE_REST_MS, CURSOR_REST_FADE_MS, CursorMotion,
@@ -24,27 +31,6 @@ mod imp {
     /// Thirteen hops, matching the reference, which is enough that the fade
     /// reads as continuous without costing a frame per pixel row.
     const REST_FADE_STEPS: u32 = 13;
-
-    /// The monitor list and refresh rate read together from one display
-    /// probe.
-    ///
-    /// They are invalidated as a pair: a resolution change, a scale change,
-    /// or a monitor hot-plug makes both stale at once. `SurfaceHost::create`
-    /// reads them together and `SurfaceHost::rest` re-reads them together on
-    /// every idle tick for that reason.
-    struct DisplayTopology {
-        monitors: Vec<monitors::OverlayMonitor>,
-        refresh_hz: u32,
-    }
-
-    impl DisplayTopology {
-        fn probe() -> Self {
-            Self {
-                monitors: super::super::display_probe::monitors(),
-                refresh_hz: super::super::display_probe::refresh_hz(),
-            }
-        }
-    }
 
     /// The three things a frame is composed from, plus when the card began
     /// appearing.
@@ -82,7 +68,7 @@ mod imp {
         pub(crate) fn create(session_id: String) -> Result<Self, agent_desktop_core::AdapterError> {
             let topology = DisplayTopology::probe();
             let pose =
-                monitors::resting_point(&topology.monitors).unwrap_or(Point { x: 0.0, y: 0.0 });
+                monitors::resting_point(topology.monitors()).unwrap_or(Point { x: 0.0, y: 0.0 });
             Ok(Self {
                 window: OverlayWindow::create()?,
                 session_id,
@@ -105,6 +91,10 @@ mod imp {
             Duration::from_millis(CURSOR_IDLE_REST_MS / 4)
         }
 
+        /// Everything that must be true before the control's sender is
+        /// answered, and nothing else. A travel is here because the action
+        /// dispatches the moment its acknowledgement arrives, so the cursor
+        /// has to already be where the click will land.
         pub(crate) fn apply(&mut self, control: &CursorOverlayControl) {
             self.rest.resting = false;
             self.rest.quiet_since = Instant::now();
@@ -113,78 +103,108 @@ mod imp {
             }
             self.adopt_label(control);
             match control {
-                CursorOverlayControl::Enable { .. } => {
+                CursorOverlayControl::Enable { .. } | CursorOverlayControl::Show { .. } => {
                     self.begin_reveal();
                     self.draw(0.0, None, 0.0);
-                    self.play_reveal(None);
                 }
                 CursorOverlayControl::Hide { .. } | CursorOverlayControl::Disable { .. } => {
                     self.clear();
                 }
-                CursorOverlayControl::Show { .. } => {
-                    self.begin_reveal();
-                    self.draw(0.0, None, 0.0);
-                    self.play_reveal(None);
-                }
                 CursorOverlayControl::Present { instruction, .. } => {
-                    let destination = instruction.destination().clone();
-                    let target = instruction.target().cloned();
-                    match instruction.phase() {
-                        CursorPhase::Travel => self.travel(destination, target),
-                        CursorPhase::Effect => {
-                            self.effect(destination, target, instruction.is_click())
-                        }
+                    if instruction.phase() == CursorPhase::Travel {
+                        self.travel(
+                            instruction.destination().clone(),
+                            instruction.target().cloned(),
+                        );
                     }
                 }
             }
         }
 
+        /// Everything nothing waits on, played after the sender has been
+        /// answered and the connection released.
+        ///
+        /// `interrupt` reports that a newer control is already on the wire.
+        /// Honouring it keeps a flourish from spending its hold on an action
+        /// that has already been superseded, and keeps the sender of that
+        /// newer control from spending its arrival budget on a busy pipe.
+        pub(crate) fn settle(
+            &mut self,
+            control: &CursorOverlayControl,
+            interrupt: &dyn Fn() -> bool,
+        ) {
+            match control {
+                CursorOverlayControl::Enable { .. } | CursorOverlayControl::Show { .. } => {
+                    self.play_reveal(None, interrupt);
+                }
+                CursorOverlayControl::Present { instruction, .. } => {
+                    let target = instruction.target().cloned();
+                    match instruction.phase() {
+                        CursorPhase::Travel => self.play_reveal(target.as_ref(), interrupt),
+                        CursorPhase::Effect => self.effect(
+                            instruction.destination().clone(),
+                            target,
+                            instruction.is_click(),
+                            interrupt,
+                        ),
+                    }
+                }
+                CursorOverlayControl::Hide { .. } | CursorOverlayControl::Disable { .. } => {}
+            }
+        }
+
         /// Plays the motion core computed, then leaves the cursor at its
-        /// destination. The caller acknowledges after this returns, which is
-        /// what makes arrival-before-dispatch true rather than hoped for.
+        /// destination. Deliberately unstoppable: this is the one loop an
+        /// action is blocked on, so giving it up for a newer control would
+        /// dispatch a click at wherever the cursor had got to.
         fn travel(&mut self, destination: Point, target: Option<Rect>) {
             let motion = CursorMotion::new(self.presentation.pose.clone(), destination.clone())
                 .with_impact(false)
                 .with_ripple(false);
-            let interval = schedule::frame_interval(self.topology.refresh_hz);
-            let started = Instant::now();
+            let frames = animation::Frames::at(self.topology.refresh_hz());
             loop {
-                let elapsed = started.elapsed().as_millis() as u64;
-                let pose = motion.pose(elapsed);
-                self.presentation.pose = pose.point.clone();
+                let elapsed = frames.elapsed_ms();
+                self.presentation.pose = motion.pose(elapsed).point;
                 self.draw(0.0, target.as_ref(), 0.0);
                 if schedule::has_arrived(elapsed, motion.duration_ms()) {
                     break;
                 }
-                std::thread::sleep(interval);
+                frames.wait();
             }
             self.presentation.pose = destination;
             self.draw(0.0, target.as_ref(), 0.0);
             self.begin_reveal();
-            self.play_reveal(target.as_ref());
         }
 
         /// The click flourish and the outline, after dispatch has already
-        /// confirmed. Fire-and-forget by contract, so nothing waits on it.
-        fn effect(&mut self, destination: Point, target: Option<Rect>, click: bool) {
+        /// confirmed. Fire-and-forget by contract, so nothing waits on it and
+        /// anything newer takes it over.
+        fn effect(
+            &mut self,
+            destination: Point,
+            target: Option<Rect>,
+            click: bool,
+            interrupt: &dyn Fn() -> bool,
+        ) {
             self.presentation.pose = destination.clone();
             self.begin_reveal();
             let motion = CursorMotion::new(destination.clone(), destination)
                 .with_impact(click)
                 .with_ripple(self.presentation.style.ripple());
-            let interval = schedule::frame_interval(self.topology.refresh_hz);
-            let started = Instant::now();
+            let frames = animation::Frames::at(self.topology.refresh_hz());
             loop {
-                let elapsed = started.elapsed().as_millis() as u64;
+                let elapsed = frames.elapsed_ms();
                 let pose = motion.pose(elapsed);
                 let opacity = schedule::highlight_progress(elapsed, CURSOR_HIGHLIGHT_HOLD_MS);
                 self.draw(pose.ripple, target.as_ref(), opacity);
                 if elapsed >= motion.total_ms().max(CURSOR_HIGHLIGHT_HOLD_MS) {
-                    break;
+                    self.draw(0.0, None, 0.0);
+                    return;
                 }
-                std::thread::sleep(interval);
+                if frames.wait_unless(interrupt) == animation::Continuation::Stop {
+                    return;
+                }
             }
-            self.draw(0.0, None, 0.0);
         }
 
         /// One frame at full strength, with the card at whatever point of
@@ -202,6 +222,12 @@ mod imp {
         /// the glyphs onto transparency and then force them back to full
         /// strength - a card that appears to arrive complete while only its
         /// border catches up.
+        ///
+        /// The two monitor lookups are not one lookup done twice. The first
+        /// asks which screen the cursor is on, to lay the card out inside its
+        /// work area; the second asks which screen the composed surface's own
+        /// corner falls on, to place the window in that monitor's physical
+        /// pixels. A card near an edge routinely straddles the two.
         fn paint(
             &self,
             ripple_phase: f64,
@@ -210,7 +236,7 @@ mod imp {
             overlay_opacity: f64,
         ) {
             let screen =
-                monitors::monitor_for_point(&self.topology.monitors, &self.presentation.pose)
+                monitors::monitor_for_point(self.topology.monitors(), &self.presentation.pose)
                     .map(|monitor| monitor.work_area)
                     .unwrap_or(Rect {
                         x: 0.0,
@@ -243,7 +269,7 @@ mod imp {
                 fade::dim_region(&mut composed.surface, &card, self.card_opacity());
             }
             fade::dim_surface(&mut composed.surface, overlay_opacity);
-            let placement = monitors::monitor_for_point(&self.topology.monitors, &composed.origin)
+            let placement = monitors::monitor_for_point(self.topology.monitors(), &composed.origin)
                 .map_or(composed.origin.clone(), |monitor| {
                     monitors::to_physical(monitor, &composed.origin)
                 });
@@ -263,17 +289,6 @@ mod imp {
             self.window.pump();
         }
 
-        /// One quiet tick: pump the window, and re-read the display
-        /// topology.
-        ///
-        /// The monitors and refresh rate are sampled when the renderer starts
-        /// and would otherwise stay fixed for its whole life, so a resolution
-        /// change, a scale change or a monitor plugged in mid-session would
-        /// leave every later frame mapped against a desktop that no longer
-        /// exists. Re-probing on the idle tick is how that is noticed: the
-        /// window procedure is a plain `DefWindowProcW` and handles no
-        /// topology message, and a message handler could not reach this state
-        /// anyway without sharing it across the callback boundary.
         /// One quiet tick: pump the window, re-read the display topology, and
         /// fade the overlay away once it has been quiet long enough.
         ///
@@ -283,10 +298,11 @@ mod imp {
         /// leave every later frame mapped against a desktop that no longer
         /// exists. Re-probing on the idle tick is how that is noticed: the
         /// window procedure is a plain `DefWindowProcW` and handles no
-        /// topology message.
+        /// topology message, and a message handler could not reach this state
+        /// anyway without sharing it across the callback boundary.
         pub(crate) fn rest(&mut self) {
             self.window.pump();
-            self.topology = DisplayTopology::probe();
+            self.topology.reprobe();
             if self.rest.resting {
                 return;
             }
@@ -324,7 +340,9 @@ mod imp {
         /// how a card goes away - and left alone by the rest. It used to be
         /// assigned only when a control carried one, so the first label ever
         /// set stayed on screen for the life of the renderer and every later
-        /// action was narrated by a stale caption.
+        /// action was narrated by a stale caption. It is bounded on the way
+        /// in because this is the reading side of a pipe: what arrives has
+        /// passed the transport's frame cap and nothing else.
         fn adopt_label(&mut self, control: &CursorOverlayControl) {
             if !matches!(
                 control,
@@ -332,7 +350,7 @@ mod imp {
             ) {
                 return;
             }
-            let next = control.label().map(str::to_owned);
+            let next = control.label().and_then(label::clamp);
             if next != self.presentation.label {
                 self.presentation.reveal = Reveal::for_label(next.as_deref());
             }
@@ -346,12 +364,14 @@ mod imp {
 
         /// Draws frames until the card has finished appearing. Nothing waits
         /// on this - the cursor has already arrived and the action has
-        /// already been acknowledged.
-        fn play_reveal(&mut self, target: Option<&Rect>) {
-            let interval = schedule::frame_interval(self.topology.refresh_hz);
+        /// already been acknowledged - so a newer control takes it over.
+        fn play_reveal(&mut self, target: Option<&Rect>, interrupt: &dyn Fn() -> bool) {
+            let frames = animation::Frames::at(self.topology.refresh_hz());
             while self.presentation.reveal.is_playing() {
                 self.draw(0.0, target, 0.0);
-                std::thread::sleep(interval);
+                if frames.wait_unless(interrupt) == animation::Continuation::Stop {
+                    return;
+                }
             }
             self.draw(0.0, target, 0.0);
         }

@@ -11,6 +11,7 @@
 //! is what lets a mixed-DPI arrangement this rig cannot present be covered by
 //! a test.
 
+pub(crate) mod animation;
 pub(crate) mod child;
 #[cfg(target_os = "windows")]
 pub(crate) mod display_probe;
@@ -18,6 +19,7 @@ pub(crate) mod fade;
 pub(crate) mod framing;
 pub(crate) mod geometry;
 pub(crate) mod image_identity;
+pub(crate) mod label;
 pub(crate) mod monitors;
 pub(crate) mod peer;
 pub(crate) mod pipe_name;
@@ -33,6 +35,7 @@ pub(crate) mod spawn;
 #[cfg(target_os = "windows")]
 pub(crate) mod surface_host;
 pub(crate) mod text;
+pub(crate) mod topology;
 pub(crate) mod transport;
 #[cfg(target_os = "windows")]
 pub(crate) mod window;
