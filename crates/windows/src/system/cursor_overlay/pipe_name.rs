@@ -12,11 +12,25 @@
 
 use std::path::Path;
 
-/// Bumped whenever the control wire format or the acknowledgement contract
-/// changes. A child whose marker names a different generation refuses to
-/// serve, and its pipe name differs, so a stale renderer is unreachable
-/// rather than subtly wrong.
-pub(crate) const PROTOCOL_GENERATION: &str = "w1";
+/// Every generation this control protocol has ever had, oldest first, with the
+/// one this build speaks last.
+///
+/// Changing the wire format or the acknowledgement contract means appending
+/// here, and an append moves the outgoing generation into the retired set in
+/// the same edit. That is the point of the ledger: a maintainer cannot bump
+/// the generation without also handing the previous one to the retirement
+/// sweep, so a renderer still drawing under it cannot be forgotten.
+///
+/// One element today, so the retired set is empty and the sweep is a no-op.
+/// That is the correct state for a protocol that has never changed, and it is
+/// said out loud rather than left to be discovered: the sweep costs nothing
+/// until the first append and does its work from the moment there is one.
+pub(crate) const PROTOCOL_GENERATIONS: [&str; 1] = ["w1"];
+
+/// The generation this build speaks. A child whose marker names a different
+/// one refuses to serve, and its pipe name differs, so a stale renderer is
+/// unreachable rather than subtly wrong.
+pub(crate) const PROTOCOL_GENERATION: &str = PROTOCOL_GENERATIONS[PROTOCOL_GENERATIONS.len() - 1];
 
 /// The environment marker that turns an ordinary invocation of this binary
 /// into the overlay child. Read before argument parsing, so the child never
@@ -24,9 +38,13 @@ pub(crate) const PROTOCOL_GENERATION: &str = "w1";
 pub(crate) const CHILD_MARKER: &str = "AGENT_DESKTOP_CURSOR_OVERLAY_CHILD";
 
 /// The argv token the child carries beside the marker. The environment block
-/// of another process is not readable from outside, so anything that needs to
-/// find this child — the end-to-end suite's reaper, the retirement pass that
-/// disables a stale generation — matches on the command line instead.
+/// of another process is not readable from outside, so anything that has to
+/// recognise this child by inspection — the end-to-end suite's reaper — matches
+/// on the command line instead.
+///
+/// Retiring a stale generation is not such a consumer: it derives that
+/// generation's pipe name and speaks to whoever answers it, which needs no
+/// command line at all.
 pub(crate) const CHILD_ARGV_FLAG: &str = "--cursor-overlay-child";
 
 pub(crate) fn pipe_name(root: &Path, session_id: &str) -> String {
@@ -40,9 +58,20 @@ pub(crate) fn pipe_name_for_generation(root: &Path, session_id: &str, generation
     )
 }
 
+/// The generations a renderer may still be drawing under that this build can
+/// no longer talk to: every entry of the ledger but the last.
+///
+/// Takes the ledger rather than reading the shipped one, so the promotion rule
+/// — appending retires the entry it displaces — is provable against a ledger
+/// with more than one generation in it, which the shipped one does not yet
+/// have.
+pub(crate) fn retired_generations<'a>(ledger: &'a [&'static str]) -> &'a [&'static str] {
+    ledger.split_last().map_or(&[], |(_, earlier)| earlier)
+}
+
 /// The argv the child is spawned with: the flag, its session, and its
 /// generation. Carried as arguments rather than only in the environment so a
-/// later process can enumerate command lines and find it.
+/// process that cannot read the child's environment can still recognise it.
 pub(crate) fn child_arguments(session_id: &str) -> Vec<String> {
     vec![
         CHILD_ARGV_FLAG.to_owned(),
