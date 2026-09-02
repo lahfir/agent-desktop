@@ -23,6 +23,15 @@ agent-desktop-windows = { path = "../crates/windows" }
 [target.'cfg(target_os = "linux")'.dependencies]
 agent-desktop-linux = { path = "../crates/linux" }
 
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Pipes",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
 [[bin]]
 name = "agent-desktop"
 path = "main.rs"
@@ -42,6 +51,10 @@ path = "tests/cli_process.rs"
 [[test]]
 name = "windows_private_file_install"
 path = "tests/windows_private_file_install.rs"
+
+[[test]]
+name = "windows_cursor_overlay_teardown"
+path = "tests/windows_cursor_overlay_teardown.rs"
 
 [lints]
 workspace = true
