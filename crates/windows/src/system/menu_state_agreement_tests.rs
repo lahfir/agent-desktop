@@ -98,7 +98,8 @@ fn every_detector_source_is_either_locatable_or_named_as_not() {
     let detector = include_str!("menu_state.rs");
     let locator = include_str!("menu_state_locate.rs");
 
-    let sources = sources_called_by(body_of(detector, "pub(crate) fn menu_is_open("));
+    let detector_body = body_of(detector, "pub(crate) fn menu_is_open(");
+    let sources = sources_called_by(&detector_body);
     for expected in [
         "classic_menu_mode_active",
         "uia_menu_reachable",
@@ -192,18 +193,24 @@ fn sources_called_by(body: &str) -> Vec<&str> {
 /// The text of one function, from its signature to the first line that closes
 /// it at column zero. Enough to tell a call inside a body from a mention
 /// elsewhere in the file, which is the distinction the tests above need.
-fn body_of<'a>(source: &'a str, signature: &str) -> &'a str {
+///
+/// Carriage returns are stripped first. The source arrives through
+/// `include_str!`, so it carries whatever the checkout has — LF where this
+/// was written, CRLF on a Windows CI checkout — and a signature spanning a
+/// line, or a closing brace matched as `\n}`, finds neither reliably.
+/// Skipping this passed here and failed both Windows lanes, on a test whose
+/// subject has nothing to do with line endings.
+fn body_of(source: &str, signature: &str) -> String {
+    let source: String = source
+        .chars()
+        .filter(|character| *character != '\r')
+        .collect();
     let start = source
         .find(signature)
         .unwrap_or_else(|| panic!("{signature} still exists"));
     let rest = &source[start..];
-    let end = rest
-        .find(
-            "
-}",
-        )
-        .map_or(rest.len(), |offset| offset + 2);
-    &rest[..end]
+    let end = rest.find("\n}").map_or(rest.len(), |offset| offset + 2);
+    rest[..end].to_owned()
 }
 
 /// At rest the two predicates agree, in both directions, against a real
