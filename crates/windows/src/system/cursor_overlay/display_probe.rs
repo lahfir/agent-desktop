@@ -55,7 +55,7 @@ mod imp {
         let mut info: MONITORINFO = unsafe { std::mem::zeroed() };
         info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
         if unsafe { GetMonitorInfoW(monitor, &mut info) } == 0 {
-            return 1;
+            return 0;
         }
         let mut dpi_x = 0u32;
         let mut dpi_y = 0u32;
@@ -93,6 +93,11 @@ mod imp {
     /// overlay never repositions itself off a failed read. The failure is
     /// traced so a machine that returns empty for a real reason can be told
     /// apart in a log from one whose call simply failed.
+    ///
+    /// A monitor whose info cannot be read stops the walk rather than being
+    /// skipped, so "empty" covers that case too - a shorter list is the same
+    /// defect as a wrong one, because the monitor that dropped out is exactly
+    /// the one a cursor standing on it would need.
     pub(crate) fn monitors() -> Vec<OverlayMonitor> {
         let mut collected: Vec<OverlayMonitor> = Vec::new();
         let enumerated = unsafe {
@@ -103,12 +108,33 @@ mod imp {
                 &mut collected as *mut Vec<OverlayMonitor> as LPARAM,
             )
         };
-        if enumerated == 0 {
-            tracing::debug!(
-                collected = collected.len(),
-                "the overlay's monitor enumeration did not complete; the caller keeps its previous topology"
-            );
+        completed(enumerated, collected)
+    }
+
+    /// A partial monitor list is discarded rather than returned.
+    ///
+    /// The callback stops the walk when a monitor's info cannot be read, so a
+    /// failed enumeration can leave real monitors already collected. Handing
+    /// those back would place the overlay against a desktop missing whichever
+    /// monitor failed - a cursor on it would map to the fallback screen and
+    /// draw somewhere else entirely, silently. An empty list is the caller's
+    /// signal to keep the topology it already had, which is the only reading
+    /// that is true of a walk that did not finish.
+    pub(super) fn completed(
+        enumerated: i32,
+        collected: Vec<OverlayMonitor>,
+    ) -> Vec<OverlayMonitor> {
+        if enumerated != 0 {
+            return collected;
         }
-        collected
+        tracing::debug!(
+            discarded = collected.len(),
+            "the overlay's monitor enumeration did not complete; the caller keeps its previous topology"
+        );
+        Vec::new()
     }
 }
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "display_probe_tests.rs"]
+mod tests;
