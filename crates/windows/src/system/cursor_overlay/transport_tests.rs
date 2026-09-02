@@ -7,7 +7,8 @@ use std::time::Duration;
 /// only state from which spawning is correct.
 #[test]
 fn a_name_nobody_serves_reports_no_renderer_rather_than_an_error() {
-    let control = CursorOverlayControl::enable("s0000001".into(), CursorOverlayStyle::default());
+    let control =
+        CursorOverlayControl::enable("s0000001".into(), None, CursorOverlayStyle::default());
 
     let outcome = reach(
         r"\\.\pipe\agent-desktop-cursor-nothing-serves-this",

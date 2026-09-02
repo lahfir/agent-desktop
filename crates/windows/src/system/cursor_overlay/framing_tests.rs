@@ -28,7 +28,7 @@ fn a_control_round_trips_unchanged() {
 #[test]
 fn every_variant_round_trips() {
     for control in [
-        CursorOverlayControl::enable(session(), CursorOverlayStyle::default()),
+        CursorOverlayControl::enable(session(), None, CursorOverlayStyle::default()),
         CursorOverlayControl::present(session(), instruction(false, CursorPhase::Effect)),
         CursorOverlayControl::hide(session()),
         CursorOverlayControl::show(session()),
@@ -61,6 +61,7 @@ fn a_payload_that_is_not_a_control_is_refused() {
 fn the_controls_a_caller_waits_on_are_the_ones_that_answer_something() {
     assert!(is_acknowledged(&CursorOverlayControl::enable(
         session(),
+        None,
         CursorOverlayStyle::default()
     )));
     assert!(is_acknowledged(&CursorOverlayControl::disable(session())));
@@ -88,6 +89,7 @@ fn the_controls_a_caller_waits_on_are_the_ones_that_answer_something() {
 fn only_an_enable_or_a_present_may_bring_a_renderer_into_existence() {
     assert!(may_spawn(&CursorOverlayControl::enable(
         session(),
+        None,
         CursorOverlayStyle::default()
     )));
     assert!(may_spawn(&CursorOverlayControl::present(

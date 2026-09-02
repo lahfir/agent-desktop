@@ -68,6 +68,7 @@ fn a_control_that_may_spawn_refuses_from_a_test_binary_rather_than_claiming_succ
 fn an_enable_refuses_from_a_test_binary_for_the_same_reason() {
     let error = update(&CursorOverlayControl::enable(
         session(),
+        None,
         CursorOverlayStyle::default(),
     ))
     .expect_err("a test binary is not the agent-desktop image");
