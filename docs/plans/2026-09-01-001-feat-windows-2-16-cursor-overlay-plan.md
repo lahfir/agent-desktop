@@ -770,8 +770,8 @@ flowchart TB
 - After `session end`, the same three observations hold.
 - A disable for a different session id does not tear down this session's renderer.
 - **Ending a session out-of-band** — the manifest marked ended without a `disable` ever being sent — leaves no child and no overlay pixel within **two** idle ticks, the bound KTD22's two-reading rule implies.
-- A single unreadable-manifest tick does **not** tear down a live overlay — the fault-versus-absence distinction KTD22 exists to preserve.
-- A `Present` that raced an acknowledged `Disable` and spawned a fresh renderer is reclaimed by the disabled-config condition within the same bound.
+- A single unreadable-manifest tick does **not** tear down a live overlay — the fault-versus-absence distinction KTD22 exists to preserve. Pinned by the `EndWatch` and `classify` unit tests rather than staged live: suspending a detached process’s manifest read at a chosen instant is not something this harness can do deterministically, and a racy live test would be worse than the unit one.
+- A `Present` that raced an acknowledged `Disable` and spawned a fresh renderer is reclaimed by the disabled-config condition within the same bound. Pinned the same way and for the same reason. **That condition is an *absent* `cursor_overlay` key, not `"enabled": false`** — the config default is not serialized, so switching the overlay off removes the key entirely; a fixture written the other way asserts a shape the product never produces, which is exactly how this condition shipped unable to fire.
 - The foreground window is unchanged across the overlay's destroy and the child's exit, read before and after — R13's fifth moment, which the create/show/paint/move observations do not cover.
 - Invert check: skipping the window destroy makes the pixel observation fail.
 
