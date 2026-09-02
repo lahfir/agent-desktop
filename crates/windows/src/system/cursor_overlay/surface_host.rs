@@ -20,6 +20,27 @@ mod imp {
     };
     use std::time::{Duration, Instant};
 
+    /// The monitor list and refresh rate read together from one display
+    /// probe.
+    ///
+    /// They are invalidated as a pair: a resolution change, a scale change,
+    /// or a monitor hot-plug makes both stale at once. `SurfaceHost::create`
+    /// reads them together and `SurfaceHost::rest` re-reads them together on
+    /// every idle tick for that reason.
+    struct DisplayTopology {
+        monitors: Vec<monitors::OverlayMonitor>,
+        refresh_hz: u32,
+    }
+
+    impl DisplayTopology {
+        fn probe() -> Self {
+            Self {
+                monitors: super::super::display_probe::monitors(),
+                refresh_hz: super::super::display_probe::refresh_hz(),
+            }
+        }
+    }
+
     pub(crate) struct SurfaceHost {
         window: OverlayWindow,
         session_id: String,
@@ -27,15 +48,14 @@ mod imp {
         pose: Point,
         label: Option<String>,
         watch: session_state::EndWatch,
-        monitors: Vec<monitors::OverlayMonitor>,
-        refresh_hz: u32,
+        topology: DisplayTopology,
     }
 
     impl SurfaceHost {
         pub(crate) fn create(session_id: String) -> Result<Self, agent_desktop_core::AdapterError> {
-            let monitors = super::super::display_probe::monitors();
-            let refresh_hz = super::super::display_probe::refresh_hz();
-            let pose = monitors::resting_point(&monitors).unwrap_or(Point { x: 0.0, y: 0.0 });
+            let topology = DisplayTopology::probe();
+            let pose =
+                monitors::resting_point(&topology.monitors).unwrap_or(Point { x: 0.0, y: 0.0 });
             Ok(Self {
                 window: OverlayWindow::create()?,
                 session_id,
@@ -43,8 +63,7 @@ mod imp {
                 pose,
                 label: None,
                 watch: session_state::EndWatch::default(),
-                monitors,
-                refresh_hz,
+                topology,
             })
         }
 
@@ -85,7 +104,7 @@ mod imp {
             let motion = CursorMotion::new(self.pose.clone(), destination.clone())
                 .with_impact(false)
                 .with_ripple(false);
-            let interval = schedule::frame_interval(self.refresh_hz);
+            let interval = schedule::frame_interval(self.topology.refresh_hz);
             let started = Instant::now();
             loop {
                 let elapsed = started.elapsed().as_millis() as u64;
@@ -108,7 +127,7 @@ mod imp {
             let motion = CursorMotion::new(destination.clone(), destination)
                 .with_impact(click)
                 .with_ripple(self.style.ripple());
-            let interval = schedule::frame_interval(self.refresh_hz);
+            let interval = schedule::frame_interval(self.topology.refresh_hz);
             let started = Instant::now();
             loop {
                 let elapsed = started.elapsed().as_millis() as u64;
@@ -124,7 +143,7 @@ mod imp {
         }
 
         fn draw(&self, ripple_phase: f64, target: Option<&Rect>, highlight_opacity: f64) {
-            let screen = monitors::monitor_for_point(&self.monitors, &self.pose)
+            let screen = monitors::monitor_for_point(&self.topology.monitors, &self.pose)
                 .map(|monitor| monitor.work_area)
                 .unwrap_or(Rect {
                     x: 0.0,
@@ -151,7 +170,7 @@ mod imp {
                     geometry::BUBBLE_FONT_POINTS * self.style.size(),
                 );
             }
-            let placement = monitors::monitor_for_point(&self.monitors, &composed.origin)
+            let placement = monitors::monitor_for_point(&self.topology.monitors, &composed.origin)
                 .map_or(composed.origin.clone(), |monitor| {
                     monitors::to_physical(monitor, &composed.origin)
                 });
@@ -184,8 +203,7 @@ mod imp {
         /// anyway without sharing it across the callback boundary.
         pub(crate) fn rest(&mut self) {
             self.window.pump();
-            self.monitors = super::super::display_probe::monitors();
-            self.refresh_hz = super::super::display_probe::refresh_hz();
+            self.topology = DisplayTopology::probe();
         }
 
         /// True once the session has read finished twice running.
