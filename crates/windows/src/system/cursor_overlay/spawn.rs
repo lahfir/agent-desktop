@@ -60,6 +60,51 @@ fn budget_for(control: &CursorOverlayControl) -> Duration {
     }
 }
 
+/// How long a reach must have left to be worth making at all.
+///
+/// A reach handed what is nearly nothing does not fail fast — it connects,
+/// writes, and then gives up waiting for the acknowledgement a renderer that
+/// has just come up is about to send, reporting an acknowledgement timeout for
+/// what is really an exhausted start-up budget. `WaitNamedPipeW` is worse
+/// still: a wait of zero milliseconds means "use the server's own default",
+/// so a remaining budget that rounds to zero would park past the deadline
+/// instead of inside it.
+const MINIMUM_REACH: Duration = Duration::from_millis(16);
+
+const RETRY_INTERVAL: Duration = Duration::from_millis(8);
+
+/// Reaches until a renderer answers or the budget is gone, handing each
+/// attempt what is actually left rather than the full budget again.
+///
+/// Re-issuing the whole budget per attempt is not a rounding error: one reach
+/// that spends its ceiling waiting on a renderer that never came up is
+/// followed by another with the same ceiling, so a caller told `rendered:
+/// false` has waited roughly twice the arrival timeout core promised it.
+///
+/// The loop always leaves by the start-up timeout rather than by a transport
+/// error, because "the renderer did not come up" is what a caller can act on;
+/// which Win32 call the last doomed attempt happened to give up in is not.
+fn retry_until_reached(
+    deadline: std::time::Instant,
+    mut reach: impl FnMut(Duration) -> ReachOutcome,
+) -> Result<(), AdapterError> {
+    loop {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining < MINIMUM_REACH {
+            return Err(AdapterError::new(
+                ErrorCode::Timeout,
+                "The cursor overlay renderer did not come up within its budget",
+            ));
+        }
+        match reach(remaining) {
+            ReachOutcome::Delivered => return Ok(()),
+            ReachOutcome::Unreachable(error) => return Err(error),
+            ReachOutcome::NoRenderer => {}
+        }
+        std::thread::sleep(RETRY_INTERVAL);
+    }
+}
+
 fn state_root() -> Result<std::path::PathBuf, AdapterError> {
     agent_desktop_core::session::agent_desktop_dir()
         .map_err(|error| AdapterError::new(ErrorCode::InvalidArgs, error.to_string()))
@@ -85,11 +130,10 @@ fn start_renderer(
 
 #[cfg(target_os = "windows")]
 mod imp {
-    use super::{ENABLE_BUDGET, pipe_name, transport};
+    use super::{pipe_name, transport};
     use crate::system::cursor_overlay::image_identity;
-    use agent_desktop_core::{AdapterError, CursorOverlayControl, ErrorCode};
+    use agent_desktop_core::{AdapterError, CursorOverlayControl};
     use std::time::{Duration, Instant};
-    use transport::ReachOutcome;
     use windows_sys::Win32::Foundation::{CloseHandle, GetLastError};
     use windows_sys::Win32::System::Threading::{
         CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, CreateProcessW, DETACHED_PROCESS,
@@ -219,21 +263,9 @@ mod imp {
         control: &CursorOverlayControl,
         budget: Duration,
     ) -> Result<(), AdapterError> {
-        let deadline = Instant::now() + budget;
-        loop {
-            match transport::reach(name, control, ENABLE_BUDGET) {
-                ReachOutcome::Delivered => return Ok(()),
-                ReachOutcome::Unreachable(error) => return Err(error),
-                ReachOutcome::NoRenderer => {}
-            }
-            if Instant::now() >= deadline {
-                return Err(AdapterError::new(
-                    ErrorCode::Timeout,
-                    "The cursor overlay renderer did not come up within its budget",
-                ));
-            }
-            std::thread::sleep(Duration::from_millis(8));
-        }
+        super::retry_until_reached(Instant::now() + budget, |remaining| {
+            transport::reach(name, control, remaining)
+        })
     }
 }
 #[cfg(test)]
