@@ -40,7 +40,7 @@ fn run(_session_id: &str) -> Result<(), AdapterError> {
 #[cfg(target_os = "windows")]
 mod imp {
     use super::pipe_name;
-    use crate::system::cursor_overlay::{framing, server, session_state, surface_host};
+    use crate::system::cursor_overlay::{framing, server, surface_host};
     use agent_desktop_core::{AdapterError, ErrorCode};
 
     pub(super) fn run(session_id: &str) -> Result<(), AdapterError> {
@@ -57,33 +57,8 @@ mod imp {
         };
 
         let mut host = surface_host::SurfaceHost::create(session_id.to_owned())?;
-        watch_session(session_id.to_owned());
 
         serve(&listener, &mut host, session_id)
-    }
-
-    /// Ends the renderer when its session does, whether or not a `Disable`
-    /// ever arrives.
-    ///
-    /// It runs on its own thread because the accept below blocks until a
-    /// client connects - which is correct for a server waiting for work and
-    /// useless as a place to notice that the work will never come. A crashed
-    /// agent, a `session gc`, or an operator who simply stops would otherwise
-    /// leave a topmost animated window with nothing in the product able to
-    /// remove it.
-    fn watch_session(session_id: String) {
-        std::thread::spawn(move || {
-            let mut watch = session_state::EndWatch::default();
-            loop {
-                std::thread::sleep(std::time::Duration::from_millis(
-                    agent_desktop_core::CURSOR_IDLE_REST_MS,
-                ));
-                let reading = session_state::classify(session_state::read_manifest(&session_id));
-                if watch.observe(reading) {
-                    std::process::exit(0);
-                }
-            }
-        });
     }
 
     fn serve(
@@ -92,21 +67,20 @@ mod imp {
         session_id: &str,
     ) -> Result<(), AdapterError> {
         loop {
-            match listener.accept_next(host.idle_tick()) {
-                server::Accepted::Control(connection, control) => {
-                    if control.session_id() != session_id {
-                        continue;
+            match listener.next_control(host.idle_tick()) {
+                server::Accepted::Control(control) => {
+                    let ours = control.session_id() == session_id;
+                    if ours {
+                        host.apply(&control);
+                        if framing::is_acknowledged(&control) {
+                            listener.acknowledge();
+                        }
                     }
-                    let disabling = control.is_disable();
-                    host.apply(&control);
-                    if framing::is_acknowledged(&control) {
-                        connection.acknowledge();
-                    }
-                    if disabling {
+                    listener.finish();
+                    if ours && control.is_disable() {
                         return Ok(());
                     }
                 }
-                server::Accepted::Refused => {}
                 server::Accepted::Idle => {
                     host.rest();
                     if host.session_finished() {
