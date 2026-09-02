@@ -28,6 +28,11 @@ pub(crate) struct Composed {
     /// one. The caller draws into it and then forces it opaque, which is the
     /// only region GDI is allowed to touch.
     pub(crate) text_rect: Option<Rect>,
+    /// The whole card, in surface coordinates, when there is one. The text
+    /// rectangle above is only its inset interior; a caller fading the card
+    /// in has to dim the body and its border with the text, or the card
+    /// arrives already drawn with only its writing catching up.
+    pub(crate) card_rect: Option<Rect>,
 }
 
 pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
@@ -78,8 +83,10 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
         );
     }
 
+    let mut card_rect = None;
     let text_rect = label_rect.map(|rect| {
         let local = mapping.to_local(&rect);
+        card_rect = Some(local);
         rounded::draw_bubble(
             &mut surface,
             &local,
@@ -107,6 +114,7 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
         origin: mapping.origin,
         surface,
         text_rect,
+        card_rect,
     }
 }
 

@@ -263,6 +263,25 @@ agent-desktop cursor-overlay disable
   namespace where a session-scoped action cannot see it - the ref then fails
   `SNAPSHOT_NOT_FOUND` no matter how fresh it is. `session start`, then
   `cursor-overlay enable`, then `snapshot`, then act.
+- **The card appears only when there is something to say.** `enable` with no
+  `--label` greets itself once, and from then on the card is drawn only for
+  an action that carries a description - an unlabelled click draws the
+  cursor, the ripple and the element outline, and no card. The card is
+  replaced wholesale by each `enable` and each action, so it never narrates
+  one step with the caption from the last.
+- **What animates, and what does not.** The card eases in over 180 ms once
+  the cursor has landed, rather than during the travel, so it is read after
+  the eye has followed the cursor. After 6 s with no instruction the whole
+  overlay fades out over about 150 ms and leaves the screen; the next
+  command brings it straight back at full strength, with no fade in. That
+  asymmetry is deliberate and matches macOS: a disappearance should not draw
+  attention, and a reappearance should not delay the action behind it.
+- **`session end` closes the overlay and stops the trace.** It tears the
+  renderer down without needing `cursor-overlay disable` first, and an ended
+  session stops accumulating trace - a command run against it afterwards
+  writes no further segment. The one segment written as the session closes
+  is the `session end` command recording itself, which is part of the
+  record rather than a leak.
 - **A harness that contains its children takes the overlay with them.** The
   renderer is a detached process, and it outlives the CLI invocation that
   started it - but not a job object carrying `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`,
