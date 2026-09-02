@@ -40,7 +40,7 @@ $scenariosDir = Join-Path $PSScriptRoot 'scenarios'
 . (Join-Path $scenariosDir 'NonInterference.ps1')
 . (Join-Path $scenariosDir 'Interaction.ps1')
 <#
-    U10's four files - Acceptance.ps1 is dot-sourced before Surfaces.ps1
+    Acceptance.ps1 is dot-sourced before Surfaces.ps1
     deliberately: Surfaces.ps1's Invoke-SheetLifecycleLeg calls
     Get-MainFixtureWindowId, which Acceptance.ps1 defines and Surfaces.ps1
     does not redefine, so the load order is load-bearing.
@@ -58,6 +58,13 @@ $scenariosDir = Join-Path $PSScriptRoot 'scenarios'
 . (Join-Path $scenariosDir 'TracePerformance.ps1')
 . (Join-Path $scenariosDir 'Chromium.ps1')
 . (Join-Path $scenariosDir 'SplitIntegrity.ps1')
+<#
+    Registered last: it reaps its own renderer by session id in its
+    own finally, but running after every other scenario keeps its (rare,
+    force-killed-on-failure) leaks from ever being able to shadow an
+    earlier scenario's own process/window observations.
+#>
+. (Join-Path $scenariosDir 'CursorOverlay.ps1')
 
 $FixtureAppName = 'AgentDeskFixture.exe'
 
@@ -86,6 +93,7 @@ function Invoke-ScenarioSequence {
         @{ Name = 'TracePerformance'; Body = { Invoke-TracePerformanceScenario -App $App } }
         @{ Name = 'Chromium'; Body = { Invoke-ChromiumScenario } }
         @{ Name = 'SplitIntegrity'; Body = { Invoke-SplitIntegrityScenario -App $App } }
+        @{ Name = 'CursorOverlay'; Body = { Invoke-CursorOverlayScenario -App $App } }
     )
     foreach ($scenario in $sequence) {
         if (-not (Test-FixtureProcessIdentity -Identity $FixtureIdentity)) {
