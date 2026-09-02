@@ -525,6 +525,16 @@ export AGENT_DESKTOP_SESSION=<id>
 agent-desktop cursor-overlay disable
 ```
 
+The same sequence in PowerShell, which is the default shell on Windows —
+`export` is not a command there, so the block above cannot be pasted as written:
+
+```powershell
+agent-desktop session start --cursor
+agent-desktop --session <id> cursor-overlay enable --label "Opening menu" --accent "#FF3B7B"
+$env:AGENT_DESKTOP_SESSION = "<id>"
+agent-desktop cursor-overlay disable
+```
+
 No flags gives the default look: white body, near-black rim, blue ripple, blue element outline.
 
 `enable` answers with `data.rendered`, a boolean saying whether anything was 

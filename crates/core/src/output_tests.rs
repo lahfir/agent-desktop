@@ -60,6 +60,24 @@ fn snapshot_not_found_payload_carries_snapshot_recovery() {
     );
 }
 
+/// The suggestion has to name the namespace rule, because the one workflow
+/// that reliably produces this error is a snapshot taken outside a session
+/// and acted on inside one — and "re-run a snapshot and retry" sends that
+/// caller round the same loop forever. Enabling the cursor overlay is what
+/// drags a session into an otherwise session-free workflow, which is how a
+/// stranger met this.
+#[test]
+fn snapshot_not_found_tells_the_caller_that_snapshots_are_session_scoped() {
+    let err = AppError::Adapter(AdapterError::snapshot_not_found("snap-abc"));
+    let payload = ErrorPayload::from_app_error(&err);
+
+    let suggestion = payload.suggestion.as_deref().unwrap_or_default();
+    assert!(
+        suggestion.contains("session"),
+        "the suggestion must name sessions, or a caller whose snapshot is in the wrong          namespace is told only to do the thing that already failed: {suggestion}"
+    );
+}
+
 #[test]
 fn policy_denied_payload_carries_policy_recovery() {
     let err = AppError::Adapter(AdapterError::policy_denied("blocked by policy"));

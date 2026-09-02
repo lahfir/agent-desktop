@@ -1,6 +1,6 @@
 ---
 name: agent-desktop-windows
-version: 0.8.3
+version: 0.8.4
 tags: windows-automation, accessibility, uia, ai-agent, gui-automation, cli
 requirements:
   - agent-desktop
@@ -241,11 +241,28 @@ agent-desktop cursor-overlay disable
   verified live.** The host this was measured on presented a single display,
   so the monitor-selection and coordinate-mapping logic has no live
   observation behind it on a scaled or multi-monitor desktop (A29-6).
-- **The transport cost per action is negligible.** A named-pipe connect, the
-  control write, and the acknowledgement read cost a minimum of 0.252 ms
-  (median 0.259 ms) from an already-running renderer (A29-5). The cost that
-  matters is the travel animation and its 900 ms arrival ceiling, not the
-  pipe roundtrip.
+- **The overlay costs about a third of a second per action, and that is the
+  travel, not the plumbing.** The control roundtrip is 0.252 ms (A29-5). The
+  figure that matters is end to end: a headless `click` cost 427 ms with no
+  overlay and 782 ms with one, a delta of **+355 ms** per action, measured
+  min-of-seven with the warm-up discarded (A30-5). Enabling costs a one-time
+  49.9 ms for the renderer process and its window. Budget accordingly - a
+  hundred overlaid clicks buys roughly 35 seconds of animation.
+- **It rests at the centre of the primary monitor's work area** until an
+  action moves it, so that is where the first frame appears - not over the
+  application you are driving.
+- **The first frame lands shortly after `enable` returns**, not before it. The
+  command returns once the renderer acknowledges; poll for the pixels rather
+  than screenshotting immediately.
+- **`--fill` and `--rim` colour the label card too.** The card body takes
+  `--fill` and its text takes `--rim`, so a fill matching the application
+  behind it leaves the card nearly invisible. The default white fill against a
+  white window is exactly that case.
+- **Start the session before you take the snapshot.** Enabling the overlay
+  requires a session, and a snapshot taken outside one lands in the global
+  namespace where a session-scoped action cannot see it - the ref then fails
+  `SNAPSHOT_NOT_FOUND` no matter how fresh it is. `session start`, then
+  `cursor-overlay enable`, then `snapshot`, then act.
 - **Teardown.** `cursor-overlay disable` ends the renderer process for its
   session. A session that ends out of band — a crash, `session gc`, an
   operator who simply stops — is reclaimed by the renderer itself on its next
