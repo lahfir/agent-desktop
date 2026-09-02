@@ -61,7 +61,7 @@ function Invoke-CursorOverlayScenario {
     param([Parameter(Mandatory = $true)][string]$App)
     $legs = @(
         'cursor-overlay-paints', 'cursor-overlay-no-foreground-steal', 'cursor-overlay-click-through',
-        'cursor-overlay-arrival-precedes-dispatch', 'cursor-overlay-teardown-clean'
+        'cursor-overlay-at-destination-after-bounded-action', 'cursor-overlay-teardown-clean'
     )
     Register-Legs -Names $legs
 
@@ -78,7 +78,7 @@ function Invoke-CursorOverlayScenario {
 
         Invoke-CursorOverlayForegroundLeg -App $App
         Invoke-CursorOverlayClickThroughLeg -App $App
-        Invoke-CursorOverlayArrivalLeg -App $App
+        Invoke-CursorOverlayAtDestinationLeg -App $App
         Invoke-CursorOverlayTeardownLeg -App $App
     } finally {
         <# Safety net, not the authoritative check: the teardown leg's own
@@ -245,10 +245,11 @@ function Invoke-CursorOverlayClickThroughLeg {
     }
 }
 
-function Invoke-CursorOverlayArrivalLeg {
-    <# 'cursor-overlay-arrival-precedes-dispatch': a black-box CLI harness
-       cannot race the overlay's internal ack-then-dispatch ordering inside
-       one synchronous invocation (rule10 allows the staged binary to be
+function Invoke-CursorOverlayAtDestinationLeg {
+    <# 'cursor-overlay-at-destination-after-bounded-action': the leg is named
+       for what it proves and not for the ordering it cannot see. A black-box
+       CLI harness cannot race the overlay's internal ack-then-dispatch
+       ordering inside one synchronous invocation (rule10 allows the staged binary to be
        invoked only through Invoke-GuardedAgent, so no concurrent sampling
        during the call is possible either). What IS externally observable,
        proved in both directions: before the command runs, the destination
@@ -316,9 +317,9 @@ function Invoke-CursorOverlayArrivalLeg {
                 throw "the overlaid action took $($clock.Elapsed.TotalMilliseconds)ms - the arrival wait is supposed to be bounded, not indefinite"
             }
         }
-        Add-Pass -Leg 'cursor-overlay-arrival-precedes-dispatch'
+        Add-Pass -Leg 'cursor-overlay-at-destination-after-bounded-action'
     } catch {
-        Add-Fail -Leg 'cursor-overlay-arrival-precedes-dispatch' -Reason $_.Exception.Message
+        Add-Fail -Leg 'cursor-overlay-at-destination-after-bounded-action' -Reason $_.Exception.Message
     }
 }
 
