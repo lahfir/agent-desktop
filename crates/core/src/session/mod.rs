@@ -16,7 +16,14 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const SESSION_MANIFEST_FILE: &str = "session.json";
+/// The manifest's filename inside a session directory.
+///
+/// Public because a platform crate that has to read the manifest without
+/// core's typed reader — to keep a fault distinguishable from a genuine
+/// absence, which `read_manifest` deliberately collapses — must not restate
+/// the name. One that guessed it read a file that never existed and treated
+/// every session as ended.
+pub const SESSION_MANIFEST_FILE: &str = "session.json";
 const MAX_SESSION_MANIFEST_BYTES: u64 = 64 * 1024;
 pub(super) const TRACE_LIVENESS_WINDOW: Duration = Duration::from_secs(300);
 static SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -298,6 +305,10 @@ pub(super) fn now_millis() -> u64 {
 #[cfg(test)]
 #[path = "session_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "manifest_location_tests.rs"]
+mod manifest_location_tests;
 
 #[cfg(test)]
 #[path = "session_gc_tests.rs"]
