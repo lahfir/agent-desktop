@@ -46,11 +46,20 @@ mod imp {
         /// evidence is not a monitor being unplugged, so the last list that
         /// was actually observed stands.
         pub(crate) fn reprobe(&mut self) {
-            let probed = Self::probe();
+            self.adopt(Self::probe());
+        }
+
+        fn adopt(&mut self, probed: Self) {
             self.refresh_hz = probed.refresh_hz;
             if !probed.monitors.is_empty() {
                 self.monitors = probed.monitors;
             }
         }
     }
+
+    /// Reached through the inline module, so the path is relative to it
+    /// rather than to this file.
+    #[cfg(test)]
+    #[path = "../../topology_tests.rs"]
+    mod tests;
 }
