@@ -8,13 +8,20 @@
 
 use agent_desktop_core::{Point, Rect};
 
-/// The cursor glyph's box, and the four-point dart drawn inside it. The path
-/// is in the same box-relative coordinates the macOS layer uses, with the tip
-/// at the first point — which is what the pose's position names.
+/// The cursor glyph's box, and the four-point dart drawn inside it, with the
+/// tip at the first point — which is what the pose's position names.
+///
+/// The dart is the macOS path **flipped vertically**, not copied. Core
+/// Graphics authors that path in a y-up space where the tip's `35.0` sits
+/// near the top of a 40-unit box; this surface is a top-down DIB where the
+/// same number is near the bottom, so carrying the coordinates across
+/// unchanged draws the pointer upside down. Flipping once here is what keeps
+/// every consumer — the glyph rectangle and the rasterizer both — in one
+/// space.
 pub(crate) const GLYPH_WIDTH: f64 = 32.0;
 pub(crate) const GLYPH_HEIGHT: f64 = 40.0;
 pub(crate) const GLYPH_RIM_WIDTH: f64 = 6.5;
-pub(crate) const DART: [(f64, f64); 4] = [(1.0, 35.0), (29.6, 17.5), (12.7, 16.3), (4.2, 1.6)];
+pub(crate) const DART: [(f64, f64); 4] = [(1.0, 5.0), (29.6, 22.5), (12.7, 23.7), (4.2, 38.4)];
 
 /// The ripple's full extent, and the solid disc at its centre.
 pub(crate) const RIPPLE_SIZE: f64 = 108.0;
