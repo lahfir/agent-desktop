@@ -21,6 +21,12 @@ mod screen_sample;
 #[path = "windows_cursor_overlay_support.rs"]
 mod support;
 
+/// Back-to-back dispatch shares this target rather than claiming one of its
+/// own, because the suite that stages a readable desktop names its test
+/// targets one by one: a new target would build and never run.
+#[path = "windows_cursor_overlay_dispatch.rs"]
+mod dispatch;
+
 use support::{
     PROMPTLY, Scratch, enable, oracle_pixels, overlay_children, run, skip_unless_live_staging,
     start_session, wait_until, wait_within,
