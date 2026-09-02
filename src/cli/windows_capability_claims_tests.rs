@@ -118,19 +118,15 @@ fn windows_adapter_still_refuses_what_the_skill_marks_unavailable() {
          capability, got: {detail}"
     );
 
-    let cursor_overlay = SystemOps::update_cursor_overlay(
+    SystemOps::update_cursor_overlay(
         &adapter,
         &CursorOverlayControl::disable("skill-capability-probe".into()),
     )
-    .expect_err(
-        "cursor-overlay must keep core's refusing default on Windows: the skill \
-         documents 'records its session setting, renders nothing', so an \
-         override arriving here needs a capability-table update in the same PR",
-    );
-    assert_eq!(
-        cursor_overlay.code,
-        ErrorCode::PlatformNotSupported,
-        "cursor-overlay changed behaviour; update the Windows skill's capability table"
+    .expect(
+        "cursor-overlay renders on Windows now, and a disable against a session with no \
+         renderer running succeeds without starting one - spawning there would begin a \
+         renderer in order to tell it to stop. The skill's capability table moves with \
+         this, in the same change.",
     );
 }
 

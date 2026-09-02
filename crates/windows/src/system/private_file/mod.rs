@@ -36,7 +36,7 @@
 //! an isolation boundary between administrators.
 
 mod locality;
-mod owner;
+pub(crate) mod owner;
 mod path;
 mod replace;
 

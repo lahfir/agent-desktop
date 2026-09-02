@@ -10,6 +10,17 @@ use agent_desktop_core::{
 use crate::adapter::WindowsAdapter;
 
 impl SystemOps for WindowsAdapter {
+    fn update_cursor_overlay(
+        &self,
+        control: &agent_desktop_core::CursorOverlayControl,
+    ) -> Result<(), AdapterError> {
+        crate::system::cursor_overlay::spawn::update(control)
+    }
+
+    fn run_cursor_overlay_child(&self) -> Option<Result<(), AdapterError>> {
+        crate::system::cursor_overlay::child::entry_from_env()
+    }
+
     /// The cross-process desktop-interaction lease: an exclusive,
     /// token-derived lock file when `AGENT_DESKTOP_INTERACTION_LEASE_HANDLE`
     /// is unset, or adoption of the inherited handle it names - re-verifying

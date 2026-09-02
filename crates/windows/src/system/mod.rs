@@ -14,6 +14,7 @@ pub(crate) mod capture_modern;
 pub(crate) mod capture_window;
 pub(crate) mod close;
 pub(crate) mod com_runtime;
+pub(crate) mod cursor_overlay;
 pub(crate) mod display;
 pub(crate) mod dpi;
 pub(crate) mod frame_identity;
