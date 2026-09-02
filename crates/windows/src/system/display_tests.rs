@@ -266,12 +266,28 @@ fn rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
 #[test]
 fn a_completed_enumeration_is_not_confused_with_a_failed_one() {
     assert_eq!(
-        classify_enumeration(true, false),
+        classify_enumeration(true, false, false),
         EnumerationOutcome::Completed
     );
     assert_eq!(
-        classify_enumeration(false, false),
+        classify_enumeration(false, false, false),
         EnumerationOutcome::EnumerationFailed
+    );
+}
+
+/// A monitor whose `GetMonitorInfoW` fails used to be skipped, so it vanished
+/// from the list and a desktop whose every monitor failed was indistinguishable
+/// from a machine with no displays. It stops the pass and is reported as
+/// itself, exactly as an unreadable DPI already was.
+#[test]
+fn an_unreadable_monitor_info_is_reported_as_itself_rather_than_a_shorter_list() {
+    assert_eq!(
+        classify_enumeration(false, true, false),
+        EnumerationOutcome::MonitorInfoUnreadable
+    );
+    assert_eq!(
+        classify_enumeration(true, true, false),
+        EnumerationOutcome::MonitorInfoUnreadable
     );
 }
 
@@ -280,11 +296,11 @@ fn a_completed_enumeration_is_not_confused_with_a_failed_one() {
 #[test]
 fn an_unreadable_dpi_is_reported_as_itself_rather_than_as_an_enumeration_failure() {
     assert_eq!(
-        classify_enumeration(false, true),
+        classify_enumeration(false, false, true),
         EnumerationOutcome::DpiUnreadable
     );
     assert_eq!(
-        classify_enumeration(true, true),
+        classify_enumeration(true, false, true),
         EnumerationOutcome::DpiUnreadable
     );
 }
