@@ -10,7 +10,7 @@ mod style;
 mod submit;
 mod timing;
 
-pub use config::{CursorOverlayConfig, MAX_CURSOR_LABEL_WORDS};
+pub use config::{CursorOverlayConfig, MAX_CURSOR_LABEL_BYTES, MAX_CURSOR_LABEL_WORDS};
 pub use control::{CURSOR_OVERLAY_GREETING, CursorOverlayControl};
 pub use instruction::CursorOverlayInstruction;
 pub use layout::place_label;
