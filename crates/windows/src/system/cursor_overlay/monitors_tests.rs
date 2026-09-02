@@ -1,22 +1,27 @@
 use super::{OverlayMonitor, monitor_for_point, resting_point, to_physical};
 use agent_desktop_core::{Point, Rect};
 
-fn monitor(x: f64, y: f64, width: f64, height: f64, scale: f64, primary: bool) -> OverlayMonitor {
+/// Takes the bounds as a `Rect` rather than four loose numbers, so a
+/// transposed coordinate in a fixture is a type error rather than a monitor
+/// silently staged somewhere else.
+fn monitor(bounds: Rect, scale: f64, primary: bool) -> OverlayMonitor {
     OverlayMonitor {
-        bounds: Rect {
-            x,
-            y,
-            width,
-            height,
-        },
+        bounds,
         work_area: Rect {
-            x,
-            y,
-            width,
-            height: height - 40.0,
+            height: bounds.height - 40.0,
+            ..bounds
         },
         scale,
         is_primary: primary,
+    }
+}
+
+fn bounds(x: f64, y: f64, width: f64, height: f64) -> Rect {
+    Rect {
+        x,
+        y,
+        width,
+        height,
     }
 }
 
@@ -24,8 +29,8 @@ fn monitor(x: f64, y: f64, width: f64, height: f64, scale: f64, primary: bool) -
 /// one of them scaled. Covered here precisely because it cannot be observed.
 fn scaled_pair() -> Vec<OverlayMonitor> {
     vec![
-        monitor(0.0, 0.0, 1920.0, 1080.0, 1.0, true),
-        monitor(1920.0, 0.0, 1280.0, 800.0, 1.5, false),
+        monitor(bounds(0.0, 0.0, 1920.0, 1080.0), 1.0, true),
+        monitor(bounds(1920.0, 0.0, 1280.0, 800.0), 1.5, false),
     ]
 }
 
@@ -61,8 +66,8 @@ fn a_point_inside_the_primary_selects_the_primary() {
 #[test]
 fn a_monitor_at_a_negative_origin_is_selected_and_mapped_correctly() {
     let monitors = vec![
-        monitor(0.0, 0.0, 1920.0, 1080.0, 1.0, true),
-        monitor(-1280.0, -200.0, 1280.0, 800.0, 2.0, false),
+        monitor(bounds(0.0, 0.0, 1920.0, 1080.0), 1.0, true),
+        monitor(bounds(-1280.0, -200.0, 1280.0, 800.0), 2.0, false),
     ];
 
     let selected = monitor_for_point(&monitors, &Point { x: -600.0, y: 0.0 }).expect("selects");
@@ -79,8 +84,8 @@ fn a_monitor_at_a_negative_origin_is_selected_and_mapped_correctly() {
 #[test]
 fn a_point_in_the_gap_selects_the_nearest_monitor_deterministically() {
     let monitors = vec![
-        monitor(0.0, 0.0, 800.0, 600.0, 1.0, true),
-        monitor(2000.0, 0.0, 800.0, 600.0, 1.0, false),
+        monitor(bounds(0.0, 0.0, 800.0, 600.0), 1.0, true),
+        monitor(bounds(2000.0, 0.0, 800.0, 600.0), 1.0, false),
     ];
     let gap = Point { x: 900.0, y: 300.0 };
 
