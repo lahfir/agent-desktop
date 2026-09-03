@@ -14,6 +14,27 @@ pub(crate) struct LocatorTraversal {
     usage: crate::tree::observation_usage::ObservationUsage,
 }
 
+/// `visit` returns `Ok(None)` for two reasons that the parent must treat
+/// differently. A dropped descendant (deadline-at-entry, node-limit, or an
+/// invalid non-root element) already called `arena.mark_incomplete()` and
+/// must lower the parent's `subtree_complete` so the truncation marker
+/// propagates from the cut to the root. A cycle-skip is deduplication of a
+/// back-edge, not incompleteness, and must leave the parent complete.
+enum VisitOutcome {
+    Subtree(Box<ObservedSubtree>),
+    CycleSkipped,
+    Dropped,
+}
+
+impl VisitOutcome {
+    fn subtree(self) -> Option<ObservedSubtree> {
+        match self {
+            VisitOutcome::Subtree(node) => Some(*node),
+            VisitOutcome::CycleSkipped | VisitOutcome::Dropped => None,
+        }
+    }
+}
+
 impl LocatorTraversal {
     pub(crate) fn new(
         request: &ObservationRequest,
@@ -35,7 +56,7 @@ impl LocatorTraversal {
         source: ObservationSource,
     ) -> Result<(ObservedTree, bool, agent_desktop_core::LocatorStats), AdapterError> {
         self.arena.add_handles(1);
-        let root = self.visit(root, 0, 0)?;
+        let root = self.visit(root, 0, 0)?.subtree();
         let complete = self.arena.structurally_complete;
         let renderer_ready = self.arena.stats.activation.ready;
         let stats = self.arena.finish()?;
@@ -64,24 +85,24 @@ impl LocatorTraversal {
         element: AXElement,
         logical_depth: u8,
         raw_depth: u8,
-    ) -> Result<Option<ObservedSubtree>, AdapterError> {
+    ) -> Result<VisitOutcome, AdapterError> {
         let Some(_) = self.remaining_budget() else {
             self.note_deadline_exhausted();
             self.arena.drop_handles(1);
-            return Ok(None);
+            return Ok(VisitOutcome::Dropped);
         };
         let pointer = element.0 as usize;
         if !self.arena.ancestors.insert(pointer) {
             self.arena.stats.traversal.cycles_skipped += 1;
             self.arena.drop_handles(1);
-            return Ok(None);
+            return Ok(VisitOutcome::CycleSkipped);
         }
         if !self.usage.claim_node() {
             self.arena.stats.traversal.limits.node_hits += 1;
             self.arena.mark_incomplete();
             self.arena.ancestors.remove(&pointer);
             self.arena.drop_handles(1);
-            return Ok(None);
+            return Ok(VisitOutcome::Dropped);
         }
         self.note_visit(logical_depth, raw_depth);
         let requirements = self.request.evidence_for_raw_depth(raw_depth);
@@ -128,7 +149,7 @@ impl LocatorTraversal {
                 .with_details(json!({ "kind": "locator_root_invalid" })));
             }
             self.arena.mark_incomplete();
-            return Ok(None);
+            return Ok(VisitOutcome::Dropped);
         }
         let child_logical_depth = logical_depth + u8::from(!read.web_wrapper);
         if read.web_wrapper {
@@ -160,12 +181,12 @@ impl LocatorTraversal {
         if !subtree_complete {
             self.arena.mark_incomplete();
         }
-        Ok(Some(ObservedSubtree::new(
+        Ok(VisitOutcome::Subtree(Box::new(ObservedSubtree::new(
             read.evidence,
             children,
             subtree_complete,
             children_count,
-        )))
+        ))))
     }
 
     fn visit_children(
@@ -194,16 +215,20 @@ impl LocatorTraversal {
                 break;
             }
             match self.visit(child, depths.0, depths.1.saturating_add(1))? {
-                Some(subtree) => {
+                VisitOutcome::Subtree(subtree) => {
                     complete &= subtree.is_complete();
                     let edge_complete = retained_edge_certainty(&mut predecessors_complete, true);
                     children.push(
-                        subtree
+                        (*subtree)
                             .with_source_child_index(child_index)
                             .with_predecessors_complete(edge_complete),
                     );
                 }
-                None => {
+                VisitOutcome::Dropped => {
+                    complete = false;
+                    retained_edge_certainty(&mut predecessors_complete, false);
+                }
+                VisitOutcome::CycleSkipped => {
                     retained_edge_certainty(&mut predecessors_complete, false);
                 }
             }

@@ -90,7 +90,10 @@ impl ObservedTree {
         }
         let complete = self.structurally_complete;
         let nodes_observed = self.nodes.len();
-        let tree = self.project(self.roots[0] as usize)?;
+        let mut tree = self.project(self.roots[0] as usize)?;
+        if !complete && !tree.subtree_truncated {
+            tree.subtree_truncated = true;
+        }
         Ok((tree, complete, nodes_observed))
     }
 
