@@ -156,7 +156,12 @@ pub(crate) fn observed_tree(
             },
         };
         let children = node.children.into_iter().map(subtree).collect();
-        ObservedSubtree::new(evidence, children, true, node.children_count)
+        ObservedSubtree::new(
+            evidence,
+            children,
+            !node.subtree_truncated,
+            node.children_count,
+        )
     }
 
     ObservedTree::from_roots(

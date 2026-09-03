@@ -202,9 +202,10 @@ fn wait_for_text(
         match snapshot::build(adapter, &opts, app.as_deref(), None, deadline) {
             Ok(mut result) => {
                 let matches = wait_text_match::find(&result.tree, &normalized_text, expected_count);
-                let matched = expected_count
-                    .map(|expected| matches.len() == expected)
-                    .unwrap_or_else(|| !matches.is_empty());
+                let matched = match expected_count {
+                    Some(expected) => result.complete && matches.len() == expected,
+                    None => !matches.is_empty(),
+                };
                 if matched {
                     let store = RefStore::for_session(context.session_id())?;
                     let snapshot_id = store.save_new_snapshot(&result.refmap)?;
