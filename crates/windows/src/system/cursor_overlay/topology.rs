@@ -14,8 +14,8 @@ mod imp {
     use crate::system::cursor_overlay::{display_probe, monitors::OverlayMonitor};
 
     pub(crate) struct DisplayTopology {
-        monitors: Vec<OverlayMonitor>,
-        refresh_hz: u32,
+        pub(super) monitors: Vec<OverlayMonitor>,
+        pub(super) refresh_hz: u32,
     }
 
     impl DisplayTopology {
@@ -49,17 +49,15 @@ mod imp {
             self.adopt(Self::probe());
         }
 
-        fn adopt(&mut self, probed: Self) {
+        pub(super) fn adopt(&mut self, probed: Self) {
             self.refresh_hz = probed.refresh_hz;
             if !probed.monitors.is_empty() {
                 self.monitors = probed.monitors;
             }
         }
     }
-
-    /// Reached through the inline module, so the path is relative to it
-    /// rather than to this file.
-    #[cfg(test)]
-    #[path = "../../topology_tests.rs"]
-    mod tests;
 }
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "topology_tests.rs"]
+mod tests;
