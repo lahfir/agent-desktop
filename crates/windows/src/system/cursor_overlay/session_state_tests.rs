@@ -191,6 +191,49 @@ mod hardened_read {
         }
     }
 
+    /// A manifest that is gone must still read as gone THROUGH the hardened
+    /// path, or the renderer that outlived its session never learns the
+    /// session ended.
+    ///
+    /// The old read was `std::fs::read_to_string`, whose `NotFound` is
+    /// self-evident. Two layers now sit in front of it, and only `NotFound`
+    /// counts as an ended session - every other error is "keep drawing". So a
+    /// hardened read that wrapped a missing file in an error of its own would
+    /// not fail loudly; it would leave a topmost click-through window on
+    /// screen with nothing in the product able to remove it, which is the one
+    /// state this whole watch exists to prevent.
+    #[test]
+    fn a_manifest_that_is_gone_still_reads_as_gone_through_the_hardened_path() {
+        let scratch = Scratch::new("absent");
+        let path = scratch.path().join("session.json");
+
+        let error = read_private_bounded_path(&path, MANIFEST_READ_LIMIT)
+            .expect_err("a file that was never written cannot be read");
+
+        assert_eq!(
+            error.kind(),
+            std::io::ErrorKind::NotFound,
+            "only NotFound is read as an ended session, so a missing manifest must arrive as it"
+        );
+        assert_eq!(classify(Some(Err(error))), SessionReading::Finished);
+    }
+
+    /// The other half: a session directory removed wholesale, which is what
+    /// `session gc` and an operator deleting the state root actually do. On
+    /// Windows that is a different Win32 code from a missing leaf, and it has
+    /// to reach the same reading.
+    #[test]
+    fn a_session_directory_that_is_gone_reads_as_gone_too() {
+        let scratch = Scratch::new("absent-dir");
+        let path = scratch.path().join("removed").join("session.json");
+
+        let error = read_private_bounded_path(&path, MANIFEST_READ_LIMIT)
+            .expect_err("a file under a directory that does not exist cannot be read");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+        assert_eq!(classify(Some(Err(error))), SessionReading::Finished);
+    }
+
     fn read_back(path: &Path) -> String {
         let bytes = read_private_bounded_path(path, MANIFEST_READ_LIMIT)
             .expect("an ordinary file this process owns reads through the hardened path");
