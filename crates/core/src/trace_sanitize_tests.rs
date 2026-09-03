@@ -1,4 +1,4 @@
-use super::sanitize_trace_value;
+use super::{sanitize_trace_value, trace_key_tokens};
 use serde_json::json;
 
 #[test]
@@ -75,4 +75,63 @@ fn trace_keeps_actionability_check_identifier_but_redacts_occluder_name() {
     assert_eq!(value["checks"][1]["check"], "receives_events");
     assert_eq!(value["checks"][1]["occluder"]["role"], "AXSheet");
     assert_eq!(value["checks"][1]["occluder"]["name"]["redacted"], true);
+}
+
+#[test]
+fn trace_redacts_acronym_prefixed_camelcase_keys() {
+    let cases = [
+        "APIToken",
+        "URLValue",
+        "HTMLLabel",
+        "XMLName",
+        "JSONText",
+        "CSSSelector",
+        "HTTPSecret",
+        "URLSecret",
+        "HTMLText",
+        "GUILabel",
+    ];
+    for key in cases {
+        let value = sanitize_trace_value(json!({ key: "leak" }));
+        assert_eq!(
+            value[key]["redacted"], true,
+            "key `{key}` should be redacted - got {value}",
+        );
+    }
+}
+
+#[test]
+fn trace_key_tokens_splits_acronym_boundaries() {
+    assert_eq!(trace_key_tokens("APIToken"), ["api", "token"]);
+    assert_eq!(trace_key_tokens("URLValue"), ["url", "value"]);
+    assert_eq!(trace_key_tokens("HTMLLabel"), ["html", "label"]);
+    assert_eq!(trace_key_tokens("CSSSelector"), ["css", "selector"]);
+    assert_eq!(trace_key_tokens("HTTPSecret"), ["http", "secret"]);
+    assert_eq!(trace_key_tokens("XMLName"), ["xml", "name"]);
+    assert_eq!(trace_key_tokens("JSONText"), ["json", "text"]);
+}
+
+#[test]
+fn trace_key_tokens_preserves_single_uppercase_prefix() {
+    assert_eq!(trace_key_tokens("Url"), ["url"]);
+    assert_eq!(trace_key_tokens("X"), ["x"]);
+    assert_eq!(trace_key_tokens("URL"), ["url"]);
+    assert_eq!(trace_key_tokens("AB"), ["ab"]);
+    assert_eq!(trace_key_tokens("Name"), ["name"]);
+}
+
+#[test]
+fn trace_key_tokens_does_not_redact_non_sensitive_acronym_keys() {
+    let value = sanitize_trace_value(json!({
+        "APIVersion": "1.2.3",
+        "HTTPStatus": 200,
+        "JSONCount": 3,
+        "XMLFlag": true,
+        "CSSRule": "display:block",
+    }));
+    assert_eq!(value["APIVersion"], "1.2.3");
+    assert_eq!(value["HTTPStatus"], 200);
+    assert_eq!(value["JSONCount"], 3);
+    assert_eq!(value["XMLFlag"], true);
+    assert_eq!(value["CSSRule"], "display:block");
 }
