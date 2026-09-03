@@ -267,10 +267,13 @@ agent-desktop --headed drag --from @s8f3k2p9:e1 --to @s8f3k2p9:e5 --drop-delay 8
 | `--duration` | Drag duration in milliseconds (movement from source to destination) |
 | `--drop-delay` | Milliseconds to hold over the destination before releasing; default 500 |
 | `--timeout-ms` | Actionability wait budget in ms before failing with `TIMEOUT`; default 5000 |
+| `--wait-for-scope` | Window a `--wait-for`/`--wait-for-gone` verification polls: `to` (drop target, default) or `from` (pickup). Needed when the confirmation appears only in the destination window of a cross-window drag |
 
 Can mix ref and coordinate sources (e.g., `--from @s8f3k2p9:e1 --to-xy 400,500`).
 
 With `--headed`, a ref-addressed `--from` must focus the source's exact window before mouse-down and fails before delivery if focus cannot be confirmed. The destination app is never pre-focused because raising it could cover the source point. Coordinate-only drags never attempt focus. For cross-app two-ref drags, keep the destination window visible; both endpoints still undergo live visibility, stability, and hit-test checks.
+
+A drag's `--wait-for`/`--wait-for-gone` verification observes one endpoint's window. The default scope is `to` (the drop target, where the drop's effect usually appears); use `--wait-for-scope from` when the confirmation is source-side (e.g. the dragged row leaving the source list). When the chosen endpoint is coordinate-only (`--from-xy`/`--to-xy`, which carry no window identity), the wait falls back to the other endpoint's window, then to the focused window.
 
 macOS drop targets often need the dragged item to dwell over them before they register as the drop destination — too short and the gesture lands as a drag with no drop. The default 500ms dwell suits most targets; raise `--drop-delay` (e.g. 800–1200) for sluggish destinations like list reorders or cross-window drops. The dwell posts continuous drag events over the destination so it stays highlighted, rather than a dead pause.
 
