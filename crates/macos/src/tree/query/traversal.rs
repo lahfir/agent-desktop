@@ -21,7 +21,7 @@ pub(crate) struct LocatorTraversal {
 /// propagates from the cut to the root. A cycle-skip is deduplication of a
 /// back-edge, not incompleteness, and must leave the parent complete.
 enum VisitOutcome {
-    Subtree(ObservedSubtree),
+    Subtree(Box<ObservedSubtree>),
     CycleSkipped,
     Dropped,
 }
@@ -29,7 +29,7 @@ enum VisitOutcome {
 impl VisitOutcome {
     fn subtree(self) -> Option<ObservedSubtree> {
         match self {
-            VisitOutcome::Subtree(node) => Some(node),
+            VisitOutcome::Subtree(node) => Some(*node),
             VisitOutcome::CycleSkipped | VisitOutcome::Dropped => None,
         }
     }
@@ -181,12 +181,12 @@ impl LocatorTraversal {
         if !subtree_complete {
             self.arena.mark_incomplete();
         }
-        Ok(VisitOutcome::Subtree(ObservedSubtree::new(
+        Ok(VisitOutcome::Subtree(Box::new(ObservedSubtree::new(
             read.evidence,
             children,
             subtree_complete,
             children_count,
-        )))
+        ))))
     }
 
     fn visit_children(
@@ -219,7 +219,7 @@ impl LocatorTraversal {
                     complete &= subtree.is_complete();
                     let edge_complete = retained_edge_certainty(&mut predecessors_complete, true);
                     children.push(
-                        subtree
+                        (*subtree)
                             .with_source_child_index(child_index)
                             .with_predecessors_complete(edge_complete),
                     );
