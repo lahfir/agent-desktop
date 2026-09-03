@@ -6,6 +6,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 mod locality_tests;
 #[path = "owner_tests.rs"]
 mod owner_tests;
+
+#[path = "owner_token_tests.rs"]
+mod owner_token_tests;
 #[path = "path_tests.rs"]
 mod path_tests;
 #[path = "replace_tests.rs"]
@@ -81,6 +84,7 @@ fn no_banned_acl_or_ace_symbol_appears_anywhere_in_this_module() {
         ("path_tests.rs", include_str!("path_tests.rs")),
         ("replace_tests.rs", include_str!("replace_tests.rs")),
         ("owner_tests.rs", include_str!("owner_tests.rs")),
+        ("owner_token_tests.rs", include_str!("owner_token_tests.rs")),
         ("locality_tests.rs", include_str!("locality_tests.rs")),
     ];
     let banned_symbols: Vec<String> = [

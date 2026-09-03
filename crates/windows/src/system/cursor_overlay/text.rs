@@ -31,15 +31,14 @@ pub(crate) fn draw_label(
 
 #[cfg(target_os = "windows")]
 mod imp {
+    use crate::system::cursor_overlay::dib::Dib;
     use crate::system::cursor_overlay::raster::Surface;
     use crate::system::cursor_overlay::wide::wide;
     use agent_desktop_core::Rect;
     use windows_sys::Win32::Graphics::Gdi::{
-        ANTIALIASED_QUALITY, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CLIP_DEFAULT_PRECIS,
-        CreateCompatibleDC, CreateDIBSection, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH,
-        DIB_RGB_COLORS, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteDC,
-        DeleteObject, DrawTextW, FW_NORMAL, GdiFlush, GetDC, OUT_DEFAULT_PRECIS, ReleaseDC,
-        SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+        ANTIALIASED_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH,
+        DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, FW_NORMAL,
+        GdiFlush, OUT_DEFAULT_PRECIS, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
     };
 
     fn colorref(rgb: [f64; 3]) -> u32 {
@@ -72,43 +71,11 @@ mod imp {
             return;
         }
 
-        let screen = unsafe { GetDC(std::ptr::null_mut()) };
-        let memory = unsafe { CreateCompatibleDC(screen) };
-        let mut info: BITMAPINFO = unsafe { std::mem::zeroed() };
-        info.bmiHeader = BITMAPINFOHEADER {
-            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-            biWidth: width,
-            biHeight: -height,
-            biPlanes: 1,
-            biBitCount: 32,
-            biCompression: BI_RGB,
-            biSizeImage: 0,
-            biXPelsPerMeter: 0,
-            biYPelsPerMeter: 0,
-            biClrUsed: 0,
-            biClrImportant: 0,
-        };
-        let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
-        let bitmap = unsafe {
-            CreateDIBSection(
-                memory,
-                &info,
-                DIB_RGB_COLORS,
-                &mut bits,
-                std::ptr::null_mut(),
-                0,
-            )
-        };
-        if bitmap.is_null() || bits.is_null() {
-            unsafe {
-                DeleteDC(memory);
-                ReleaseDC(std::ptr::null_mut(), screen);
-            }
+        let Some(mut dib) = Dib::create(width, height) else {
             return;
-        }
-
-        let count = (width as usize) * (height as usize);
-        let scratch = unsafe { std::slice::from_raw_parts_mut(bits.cast::<u32>(), count) };
+        };
+        let memory = dib.dc();
+        let scratch = dib.pixels();
         for y in 0..height {
             for x in 0..width {
                 let source = surface
@@ -118,7 +85,6 @@ mod imp {
             }
         }
 
-        let previous_bitmap = unsafe { SelectObject(memory, bitmap) };
         let face = wide("Segoe UI");
         let font = unsafe {
             CreateFontW(
@@ -183,10 +149,6 @@ mod imp {
         unsafe {
             SelectObject(memory, previous_font);
             DeleteObject(font);
-            SelectObject(memory, previous_bitmap);
-            DeleteObject(bitmap);
-            DeleteDC(memory);
-            ReleaseDC(std::ptr::null_mut(), screen);
         }
     }
 }
