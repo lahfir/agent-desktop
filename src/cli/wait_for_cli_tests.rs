@@ -153,3 +153,66 @@ fn mutation_metadata_distinguishes_read_only_and_file_writing_forms() {
     assert!(!command(&["trace", "show"]).is_mutating());
     assert!(command(&["trace", "export"]).is_mutating());
 }
+
+fn drag_args(arguments: &[&str]) -> crate::cli_args::drag::DragCliArgs {
+    let command = command(arguments);
+    let crate::cli::Commands::Drag(args) = command else {
+        panic!("expected a drag command, got {:?}", command.name());
+    };
+    args
+}
+
+#[test]
+fn wait_for_scope_defaults_absent_and_dispatch_applies_the_destination_default() {
+    let args = drag_args(&["drag", "--from", "@e1", "--to", "@e2"]);
+    assert_eq!(
+        args.wait_for_scope, None,
+        "the flag is optional; the destination default is applied in the dispatch layer",
+    );
+}
+
+#[test]
+fn wait_for_scope_to_and_from_parse_to_the_named_scope() {
+    assert_eq!(
+        drag_args(&[
+            "drag",
+            "--from",
+            "@e1",
+            "--to",
+            "@e2",
+            "--wait-for-scope",
+            "to"
+        ])
+        .wait_for_scope,
+        Some(crate::cli_args::drag::WaitForScopeArg::To),
+    );
+    assert_eq!(
+        drag_args(&[
+            "drag",
+            "--from",
+            "@e1",
+            "--to",
+            "@e2",
+            "--wait-for-scope",
+            "from"
+        ])
+        .wait_for_scope,
+        Some(crate::cli_args::drag::WaitForScopeArg::From),
+    );
+}
+
+#[test]
+fn wait_for_scope_rejects_unknown_values() {
+    let err = Cli::try_parse_from([
+        "agent-desktop",
+        "drag",
+        "--from",
+        "@e1",
+        "--to",
+        "@e2",
+        "--wait-for-scope",
+        "destination",
+    ])
+    .expect_err("an unknown scope value must fail parse");
+    assert_eq!(err.exit_code(), 2);
+}
