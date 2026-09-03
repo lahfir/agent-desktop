@@ -316,6 +316,9 @@ fn timeout_persists_the_last_diagnostic_snapshot() {
     );
 }
 
+#[path = "wait_selector_inherited_deadline_tests.rs"]
+mod inherited_deadline_tests;
+
 #[test]
 fn retryable_app_not_found_swallowed_until_timeout() {
     let _guard = HomeGuard::new();
