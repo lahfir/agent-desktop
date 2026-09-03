@@ -19,6 +19,7 @@ pub(crate) use imp::OverlayWindow;
 
 #[cfg(target_os = "windows")]
 mod imp {
+    use crate::system::cursor_overlay::wide::wide;
     use agent_desktop_core::AdapterError;
     use std::sync::Once;
     use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, WPARAM};
@@ -46,10 +47,6 @@ mod imp {
         l: LPARAM,
     ) -> LRESULT {
         unsafe { DefWindowProcW(window, message, w, l) }
-    }
-
-    fn wide(value: &str) -> Vec<u16> {
-        value.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
     fn last_error(message: &str) -> AdapterError {

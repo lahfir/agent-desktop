@@ -23,6 +23,7 @@ pub(crate) use imp::{Accepted, ClaimError, Listener};
 
 #[cfg(target_os = "windows")]
 mod imp {
+    use crate::system::cursor_overlay::wide::wide;
     use crate::system::cursor_overlay::{framing, peer};
     use agent_desktop_core::{AdapterError, CursorOverlayControl};
     use std::sync::Arc;
@@ -77,10 +78,6 @@ mod imp {
         fn get(self) -> HANDLE {
             self.0 as HANDLE
         }
-    }
-
-    fn wide(value: &str) -> Vec<u16> {
-        value.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
     /// Owns the pipe for the life of the renderer, and deliberately has no

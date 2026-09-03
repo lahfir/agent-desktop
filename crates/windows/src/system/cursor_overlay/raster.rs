@@ -289,7 +289,7 @@ pub(crate) fn draw_glyph(
     };
     let rim_width = geometry::GLYPH_RIM_WIDTH * scale * 0.5;
 
-    let rim_points = points.clone();
+    let rim_points = &points;
     fill_region(
         surface,
         &local,
@@ -298,8 +298,7 @@ pub(crate) fn draw_glyph(
             alpha: 1.0,
         },
         |x, y| {
-            point_in_polygon(&rim_points, x, y)
-                || distance_to_polygon(&rim_points, x, y) <= rim_width
+            point_in_polygon(rim_points, x, y) || distance_to_polygon(rim_points, x, y) <= rim_width
         },
     );
     let fill_points = points;

@@ -39,4 +39,6 @@ pub(crate) mod text;
 pub(crate) mod topology;
 pub(crate) mod transport;
 #[cfg(target_os = "windows")]
+pub(crate) mod wide;
+#[cfg(target_os = "windows")]
 pub(crate) mod window;

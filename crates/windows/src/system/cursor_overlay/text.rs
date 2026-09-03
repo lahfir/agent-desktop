@@ -32,6 +32,7 @@ pub(crate) fn draw_label(
 #[cfg(target_os = "windows")]
 mod imp {
     use crate::system::cursor_overlay::raster::Surface;
+    use crate::system::cursor_overlay::wide::wide;
     use agent_desktop_core::Rect;
     use windows_sys::Win32::Graphics::Gdi::{
         ANTIALIASED_QUALITY, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CLIP_DEFAULT_PRECIS,
@@ -40,10 +41,6 @@ mod imp {
         DeleteObject, DrawTextW, FW_NORMAL, GdiFlush, GetDC, OUT_DEFAULT_PRECIS, ReleaseDC,
         SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
     };
-
-    fn wide(value: &str) -> Vec<u16> {
-        value.encode_utf16().chain(std::iter::once(0)).collect()
-    }
 
     fn colorref(rgb: [f64; 3]) -> u32 {
         let channel = |value: f64| (value.clamp(0.0, 1.0) * 255.0).round() as u32;

@@ -51,6 +51,7 @@ pub(crate) fn reach(
 mod imp {
     use super::{POLL_INTERVAL, ReachOutcome};
     use crate::system::cursor_overlay::framing;
+    use crate::system::cursor_overlay::wide::wide;
     use agent_desktop_core::{AdapterError, ErrorCode};
     use std::time::{Duration, Instant};
     use windows_sys::Win32::Foundation::{
@@ -64,10 +65,6 @@ mod imp {
 
     const GENERIC_READ: u32 = 0x8000_0000;
     const GENERIC_WRITE: u32 = 0x4000_0000;
-
-    fn wide(value: &str) -> Vec<u16> {
-        value.encode_utf16().chain(std::iter::once(0)).collect()
-    }
 
     struct OwnedHandle(HANDLE);
 
