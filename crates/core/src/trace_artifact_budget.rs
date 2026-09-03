@@ -2,6 +2,7 @@ use crate::{
     private_file::read_private_bounded, refs::write_private_file, refs_lock::RefStoreLock,
 };
 use std::path::Path;
+use std::time::Duration;
 
 const SCREENSHOT_BYTE_BUDGET: u64 = 128 * 1024 * 1024;
 const SCREENSHOT_COUNT_BUDGET: u32 = 200;
@@ -9,6 +10,23 @@ const REFMAP_BYTE_BUDGET: u64 = 64 * 1024 * 1024;
 const USAGE_LEDGER_FILE: &str = ".artifact-usage.json";
 const USAGE_LEDGER_MAX_BYTES: u64 = 256;
 const ARTIFACT_LOCK_FILE: &str = ".artifact-budget.lock";
+
+/// Waiting for the artifact ledger lock is observability work, and observability
+/// must never spend the budget of the action it observes. The wait is therefore
+/// bounded by its own fixed window, additionally clamped to whatever the caller
+/// still has left, and a lock that cannot be taken inside that window skips the
+/// capture rather than stalling the action behind it.
+///
+/// 50 ms is deliberate on both sides. An uncontended acquire measured on this
+/// hardware costs 68 us at best, 72 us typically, and 1.8 ms at the worst of two
+/// hundred samples, and a contended acquire re-polls every 10 ms, so 50 ms buys
+/// five attempts. It also clears the 31 ms median span for which a concurrent
+/// 2 MB screenshot write holds the lock, so two simultaneous captures usually
+/// both land and only a tail write costs the loser its capture. On the other
+/// side it is half the dispatch reserve the pre-capture path already withholds,
+/// so losing the wait outright moves the observed action's own budget by less
+/// than the slack that path exists to keep.
+const ARTIFACT_LOCK_WAIT_MS: u64 = 50;
 
 #[derive(Clone, Copy)]
 struct ArtifactLimits {
@@ -99,11 +117,27 @@ pub(crate) fn write_refmap_if_absent(
     Ok(())
 }
 
+/// The refmap copy is handed no deadline of its own, so it takes the same fixed
+/// capture window through `Deadline::after`, which already folds in whatever
+/// command-scope deadline is in force and so clamps the wait to the caller's
+/// remaining time exactly as the screenshot path does.
 fn artifact_lock(trace_dir: &Path) -> Result<RefStoreLock, &'static str> {
-    RefStoreLock::acquire(&trace_dir.join(ARTIFACT_LOCK_FILE)).map_err(|_| "lock_failed")
+    let deadline = crate::Deadline::after(ARTIFACT_LOCK_WAIT_MS).map_err(|_| "lock_failed")?;
+    acquire_artifact_lock(trace_dir, deadline)
 }
 
 fn artifact_lock_with_deadline(
+    trace_dir: &Path,
+    deadline: crate::Deadline,
+) -> Result<RefStoreLock, &'static str> {
+    acquire_artifact_lock(trace_dir, capture_lock_deadline(deadline))
+}
+
+fn capture_lock_deadline(caller: crate::Deadline) -> crate::Deadline {
+    caller.capped(Duration::from_millis(ARTIFACT_LOCK_WAIT_MS))
+}
+
+fn acquire_artifact_lock(
     trace_dir: &Path,
     deadline: crate::Deadline,
 ) -> Result<RefStoreLock, &'static str> {

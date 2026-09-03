@@ -244,3 +244,7 @@ mod more_tests;
 #[cfg(test)]
 #[path = "trace_artifacts_toctou_tests.rs"]
 mod toctou_tests;
+
+#[cfg(test)]
+#[path = "trace_artifacts_dispatch_budget_tests.rs"]
+mod dispatch_budget_tests;

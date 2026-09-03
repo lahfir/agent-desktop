@@ -161,9 +161,7 @@ fn separate_session_directories_have_independent_budgets() {
     crate::trace::ensure_trace_dir(&second.join("screens")).unwrap();
     set_test_limits(100, 1, 100);
 
-    assert!(
-        write_screenshot(&first, &first.join("screens/a.png"), &[1], test_deadline(),).is_ok()
-    );
+    assert!(write_screenshot(&first, &first.join("screens/a.png"), &[1], test_deadline(),).is_ok());
     assert!(
         write_screenshot(
             &second,
@@ -177,4 +175,53 @@ fn separate_session_directories_have_independent_budgets() {
     clear_test_limits();
     std::fs::remove_dir_all(first).unwrap();
     std::fs::remove_dir_all(second).unwrap();
+}
+
+/// Proves the clamp at the deadline it derives rather than on a stopwatch: the
+/// difference between a 10 ms caller and the 50 ms cap is far below what a
+/// loaded shared runner can resolve in wall clock, while `RefStoreLock` is
+/// already covered for honouring whatever deadline it is handed.
+#[test]
+fn the_capture_lock_wait_is_clamped_to_the_callers_remaining_budget() {
+    let short = crate::Deadline::after(10).unwrap();
+    assert!(capture_lock_deadline(short).remaining_ms() <= 10);
+
+    let long = crate::Deadline::after(5_000).unwrap();
+    assert!(capture_lock_deadline(long).remaining_ms() <= ARTIFACT_LOCK_WAIT_MS);
+}
+
+#[test]
+fn a_contended_screenshot_lock_gives_up_inside_the_capture_budget() {
+    let trace = prepare_trace("contended-screenshot");
+    let held = RefStoreLock::acquire(&trace.join(ARTIFACT_LOCK_FILE)).unwrap();
+
+    let started = std::time::Instant::now();
+    let result = write_screenshot(&trace, &trace.join("screens/a.png"), &[1], test_deadline());
+    let elapsed = started.elapsed();
+
+    assert_eq!(result, Err("lock_failed"));
+    assert!(
+        elapsed < Duration::from_millis(500),
+        "a contended capture waited {elapsed:?} of the caller's budget"
+    );
+    drop(held);
+    std::fs::remove_dir_all(trace).unwrap();
+}
+
+#[test]
+fn a_contended_refmap_lock_gives_up_inside_the_capture_budget() {
+    let trace = prepare_trace("contended-refmap");
+    let held = RefStoreLock::acquire(&trace.join(ARTIFACT_LOCK_FILE)).unwrap();
+
+    let started = std::time::Instant::now();
+    let result = write_refmap_if_absent(&trace, &trace.join("refmaps/a.json"), &[1]);
+    let elapsed = started.elapsed();
+
+    assert_eq!(result, Err("lock_failed"));
+    assert!(
+        elapsed < Duration::from_millis(500),
+        "a contended refmap copy waited {elapsed:?} of the caller's budget"
+    );
+    drop(held);
+    std::fs::remove_dir_all(trace).unwrap();
 }
