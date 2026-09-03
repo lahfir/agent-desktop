@@ -50,11 +50,13 @@ fn trace_key_tokens(key: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current = String::new();
     let mut previous_was_lower_or_digit = false;
+    let mut previous_was_uppercase = false;
 
     for ch in key.chars() {
         if !ch.is_ascii_alphanumeric() {
             push_trace_key_token(&mut tokens, &mut current);
             previous_was_lower_or_digit = false;
+            previous_was_uppercase = false;
             continue;
         }
 
@@ -62,8 +64,16 @@ fn trace_key_tokens(key: &str) -> Vec<String> {
             push_trace_key_token(&mut tokens, &mut current);
         }
 
+        if ch.is_ascii_lowercase() && previous_was_uppercase && current.len() > 1 {
+            if let Some(last) = current.pop() {
+                push_trace_key_token(&mut tokens, &mut current);
+                current.push(last);
+            }
+        }
+
         current.push(ch.to_ascii_lowercase());
         previous_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+        previous_was_uppercase = ch.is_ascii_uppercase();
     }
 
     push_trace_key_token(&mut tokens, &mut current);
