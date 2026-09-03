@@ -1608,21 +1608,27 @@ branch**, not a series of sub-phase merges, and it is what closes Phase 2.
     tested but was never exercised on a live multi-monitor rig, and any other
     measurement ratified as out of reach travels into the release note rather than
     into a reader's assumption.
-12. **`contended_artifact_lock_preserves_dispatch_budget` is flaky on the hosted
-    ARM64 lane and needs an owner before promotion.** It holds a real artifact
-    lock and then asserts a 250 ms action budget still dispatches, which is a
-    wall-clock claim about hardware nobody chose. Measured, in both directions,
-    on identical Rust source: it passed on the x64 and ARM64 lanes of run
-    `33698217815` and failed on ARM64 in run `33699894842`, where the only
-    change between the two commits was a CI workflow edit. So the flake is the
-    test's, not a regression's. This is the same class the overlay frame budgets
-    were moved out of CI for - a shared runner is not a timing rig - and the
-    remedy is the same one: either give it a budget a loaded shared runner can
-    meet, or move the assertion to the operator lane that already enforces the
-    frame budgets. It is recorded rather than changed here because it is a core
-    test this sub-phase does not otherwise touch, and loosening someone else's
-    assertion without measuring what it should be is how a real bound becomes
-    one that can no longer fire.
+12. **The ARM64 failure of `contended_artifact_lock_preserves_dispatch_budget`
+    was a product defect, not a flaky bound, and it is fixed.** The test passed
+    both lanes of run `33698217815` and failed ARM64 in run `33699894842` on
+    identical Rust source, which said only that the outcome depended on how fast
+    the machine was. It depended on it because `trace_artifact_budget` handed the
+    artifact lock the observed action's own deadline: a contended lock consumed
+    every millisecond of it except the 100 ms the pre-capture path reserves, so
+    dispatch ran on a margin quick hardware absorbs and a loaded shared runner
+    does not. Tracing may not spend the budget of the action it observes, so the
+    lock wait is now bounded by a fixed 50 ms capture window clamped to the
+    caller's remaining time, and a lock that cannot be taken inside it skips the
+    capture. Measured on the fix's own hardware: an uncontended acquire costs
+    72 us typically and 1.8 ms at worst of two hundred samples, and the action
+    now reaches dispatch with 2,948 ms of a 3,000 ms budget where the unclamped
+    wait left it 1,999 ms. The test proves the property rather than the hardware
+    - it reads the budget dispatch actually received, that the capture was
+    skipped and traced, and that dispatch happened exactly once - with one
+    1,000 ms elapsed bound left, where the capture that runs after dispatch has
+    no other observable, ten times the two waits it covers. What the
+    promotion reviewer inherits is the rule, not the bug: no observability path
+    may wait on a lock for the whole of a caller's deadline.
 
 **Exit criteria:** `cursor-overlay enable` on Windows draws the overlay and the response reports rendering true through §2.15's field; the overlay's cursor reaches its destination before the action dispatches, which on Windows is enforced rather than sampled — the renderer answers a travel only once the cursor is at its destination, and the caller blocks on that answer before dispatching, so the ordering has no window in which to be wrong. What is measured on Windows is that the answer arrives: a travel queued behind a click flourish is acknowledged well inside its arrival budget, and the end-to-end suite observes the cursor at the destination after a bounded overlaid action. No Windows measurement watches the two events race, because a black-box CLI harness cannot sample inside one synchronous invocation; the ordering itself is pinned by core's mock-adapter test, which is platform-independent; the overlay never takes the foreground, asserted by observation of the foreground window across an overlaid action; `cursor-overlay disable` and session teardown leave no residual window, timer or thread, verified by independent observation; the per-platform contract is stated in `skills/agent-desktop-windows/` and the README; the dogfood gate in its strict form, with every finding carrying exactly one of *fixed here*, *owned elsewhere* or *accepted*; and a written, ordered **promotion checklist** a later session can execute without reading this sub-phase's plan. The checklist must also triage the nineteen `DEFERRED` ledger rows that still name sub-phases which have already merged - 13 at `2.12`, 3 at `2.4`, and singles at `2.8`, `2.10` and `2.14`. `A30-3` recorded a row at `2.15` as well; counting the ledger directly at the close of this sub-phase shows none, so that figure is corrected here rather than carried. Each is either genuinely closed, genuinely out of reach and re-pointed to `post-phase-2`, or real work that needs a home; this sub-phase closed only the four rows that named it, and says so rather than absorbing the rest silently or leaving them unnamed. The promotion itself — `feat/windows-adapter` merged to `main` as one release-noted `feat!` — runs that checklist afterwards and is what closes the phase.
 
