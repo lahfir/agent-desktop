@@ -49,13 +49,25 @@ impl RefStore {
     }
 
     pub fn save_new_snapshot(&self, refmap: &RefMap) -> Result<String, AppError> {
-        self.with_write_lock(|| {
-            let snapshot_id = new_snapshot_id();
-            self.save_snapshot_unlocked(&snapshot_id, refmap)?;
-            self.set_latest_unlocked(&snapshot_id)?;
-            self.prune_old_snapshots_unlocked(&snapshot_id)?;
-            Ok(snapshot_id)
-        })
+        self.with_write_lock(|| self.save_new_snapshot_unlocked_with_id(refmap))
+    }
+
+    /// Recovery-path variant of [`save_new_snapshot`]: the ref-store write
+    /// lock is acquired with a deadline detached from any inherited (and
+    /// possibly already-expired) command deadline. Used by post-timeout
+    /// diagnostic persistence, which runs after the operation's own deadline
+    /// has expired and must not collapse to an immediate `lock_timeout` that
+    /// would replace the intended `wait_timeout` envelope.
+    pub(crate) fn save_new_snapshot_detached(&self, refmap: &RefMap) -> Result<String, AppError> {
+        self.with_write_lock_detached(|| self.save_new_snapshot_unlocked_with_id(refmap))
+    }
+
+    fn save_new_snapshot_unlocked_with_id(&self, refmap: &RefMap) -> Result<String, AppError> {
+        let snapshot_id = new_snapshot_id();
+        self.save_snapshot_unlocked(&snapshot_id, refmap)?;
+        self.set_latest_unlocked(&snapshot_id)?;
+        self.prune_old_snapshots_unlocked(&snapshot_id)?;
+        Ok(snapshot_id)
     }
 
     pub fn save_snapshot(&self, snapshot_id: &str, refmap: &RefMap) -> Result<(), AppError> {
@@ -202,6 +214,17 @@ impl RefStore {
 
     fn with_write_lock<T>(&self, f: impl FnOnce() -> Result<T, AppError>) -> Result<T, AppError> {
         let _lock = RefStoreLock::acquire(&self.lock_path())?;
+        f()
+    }
+
+    /// Recovery-path write lock: uses [`RefStoreLock::acquire_detached`] so the
+    /// lock budget survives an inherited command deadline that has already
+    /// expired by the time post-deadline diagnostic work runs.
+    fn with_write_lock_detached<T>(
+        &self,
+        f: impl FnOnce() -> Result<T, AppError>,
+    ) -> Result<T, AppError> {
+        let _lock = RefStoreLock::acquire_detached(&self.lock_path())?;
         f()
     }
 

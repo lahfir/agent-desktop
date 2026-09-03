@@ -131,7 +131,7 @@ fn timeout_response(
 ) -> Result<Value, AppError> {
     if last_built.is_none() {
         let diagnostic_deadline =
-            crate::Deadline::after(DIAGNOSTIC_SNAPSHOT_BUDGET.as_millis() as u64)?;
+            crate::Deadline::detached_after(DIAGNOSTIC_SNAPSHOT_BUDGET.as_millis() as u64)?;
         match snapshot::build(
             adapter,
             &input.opts,
@@ -162,7 +162,7 @@ fn persist_last_built(
         return Ok(None);
     };
     let store = RefStore::for_session(context.session_id())?;
-    let snapshot_id = store.save_new_snapshot(&result.refmap)?;
+    let snapshot_id = store.save_new_snapshot_detached(&result.refmap)?;
     trace_artifacts::copy_refmap_if_full(context, &store, &snapshot_id, &result.refmap)?;
     Ok(Some(snapshot_id))
 }
