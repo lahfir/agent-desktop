@@ -274,9 +274,31 @@ fn read_token_information(
 }
 
 fn read_process_token_user() -> std::io::Result<SidBuffer> {
-    let buffer = read_process_token_information(TokenUser)?;
+    token_user_sid(TokenSource::CurrentProcess)
+}
+
+/// The user a token names, read through the same two-call probe every other
+/// token read here uses.
+///
+/// The buffer is `u64`-backed rather than `u8`-backed on purpose. `TOKEN_USER`
+/// holds a pointer, so reading one out of a byte vector is an unaligned read -
+/// it happens to work while the allocator hands back aligned blocks and is
+/// undefined the moment it does not. Anything in this crate that needs a
+/// token's user calls this rather than repeating the sequence.
+pub(crate) fn token_user_sid(token: TokenSource) -> std::io::Result<SidBuffer> {
+    let buffer = match token {
+        TokenSource::CurrentProcess => read_process_token_information(TokenUser)?,
+        TokenSource::Handle(handle) => read_token_information(handle, TokenUser)?,
+    };
     let user: TOKEN_USER = unsafe { std::ptr::read(buffer.as_ptr().cast()) };
     SidBuffer::copied_from_valid(user.User.Sid)
+}
+
+/// Which token to read: this process's own, or one a caller already opened.
+#[derive(Clone, Copy)]
+pub(crate) enum TokenSource {
+    CurrentProcess,
+    Handle(HANDLE),
 }
 
 #[cfg(test)]

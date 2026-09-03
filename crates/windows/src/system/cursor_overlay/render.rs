@@ -40,11 +40,11 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
     let label_rect = frame
         .label
         .map(|_| place_label(&frame.tip, geometry::bubble_size(scale), &frame.screen));
-    let highlight_rect = frame
+    let highlighted = frame
         .target
         .as_ref()
-        .filter(|_| frame.style.highlight() && frame.highlight_opacity > 0.0)
-        .map(|target| geometry::highlight_rect(target, scale));
+        .filter(|_| frame.style.highlight() && frame.highlight_opacity > 0.0);
+    let highlight_rect = highlighted.map(|target| geometry::highlight_rect(target, scale));
 
     let bounds = geometry::follower_rect(
         &frame.tip,
@@ -64,7 +64,7 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
         bounds.height.ceil() as i32 + 1,
     );
 
-    if let Some(highlight) = frame.target.as_ref().filter(|_| highlight_rect.is_some()) {
+    if let Some(highlight) = highlighted {
         rounded::draw_highlight(
             &mut surface,
             &mapping,
