@@ -238,6 +238,7 @@ jobs:
       contents: read
     outputs:
       lib_tests: ${{ steps.unit_tests.outputs.lib_tests }}
+      lib_suites: ${{ steps.unit_tests.outputs.lib_suites }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -364,12 +365,25 @@ jobs:
           $output = cmd /c "cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib 2>&1"
           $output | ForEach-Object { Write-Host $_ }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Only whole-suite summaries count. Several tests re-execute this
+          # same binary as a child process with a filter, and those children
+          # write to the same console: one of their lines has already landed
+          # in the middle of a parent summary, leaving 'test result: oktest
+          # <name> ... . 1 passed'. Such a line matches nothing, so a lane
+          # silently drops a helper it did run and the parity gate reports a
+          # suite difference that does not exist. A whole-suite run is the one
+          # with nothing filtered out, and there is exactly one per crate.
           $passed = 0
+          $suites = 0
           foreach ($line in @($output)) {
-            if ("$line" -match '^test result: ok\.\s+(\d+) passed') { $passed += [int]$Matches[1] }
+            if ("$line" -match '^test result: ok\.\s+(\d+) passed;.*?(\d+) filtered out' -and [int]$Matches[2] -eq 0) {
+              $passed += [int]$Matches[1]
+              $suites += 1
+            }
           }
-          Write-Host "Total lib tests passed: $passed"
+          Write-Host "Total lib tests passed: $passed across $suites whole-suite runs"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "lib_tests=$passed"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "lib_suites=$suites"
 
       # The census example carries the redaction rule that keeps a real
       # application's text out of a committed capture, and a --lib run does not
@@ -511,6 +525,7 @@ jobs:
       contents: read
     outputs:
       lib_tests: ${{ steps.unit_tests.outputs.lib_tests }}
+      lib_suites: ${{ steps.unit_tests.outputs.lib_suites }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -551,12 +566,25 @@ jobs:
           $output = cmd /c "cargo test --locked -p agent-desktop-core -p agent-desktop-windows --lib 2>&1"
           $output | ForEach-Object { Write-Host $_ }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Only whole-suite summaries count. Several tests re-execute this
+          # same binary as a child process with a filter, and those children
+          # write to the same console: one of their lines has already landed
+          # in the middle of a parent summary, leaving 'test result: oktest
+          # <name> ... . 1 passed'. Such a line matches nothing, so a lane
+          # silently drops a helper it did run and the parity gate reports a
+          # suite difference that does not exist. A whole-suite run is the one
+          # with nothing filtered out, and there is exactly one per crate.
           $passed = 0
+          $suites = 0
           foreach ($line in @($output)) {
-            if ("$line" -match '^test result: ok\.\s+(\d+) passed') { $passed += [int]$Matches[1] }
+            if ("$line" -match '^test result: ok\.\s+(\d+) passed;.*?(\d+) filtered out' -and [int]$Matches[2] -eq 0) {
+              $passed += [int]$Matches[1]
+              $suites += 1
+            }
           }
-          Write-Host "Total lib tests passed: $passed"
+          Write-Host "Total lib tests passed: $passed across $suites whole-suite runs"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "lib_tests=$passed"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "lib_suites=$suites"
 
       - name: Build release binary
         run: cargo build --locked --release -p agent-desktop
@@ -616,6 +644,8 @@ jobs:
         run: |
           X64="${{ needs.test-windows.outputs.lib_tests }}"
           ARM="${{ needs.test-windows-arm.outputs.lib_tests }}"
+          X64_SUITES="${{ needs.test-windows.outputs.lib_suites }}"
+          ARM_SUITES="${{ needs.test-windows-arm.outputs.lib_suites }}"
           echo "x64 lane lib tests: ${X64}; ARM64 lane lib tests: ${ARM}"
           if [ -z "$X64" ] || [ -z "$ARM" ]; then
             echo "FAIL: a lane did not export its lib test count (x64='${X64}', arm64='${ARM}')"
@@ -627,11 +657,19 @@ jobs:
             echo "FAIL: a lane exported zero lib tests (x64='${X64}', arm64='${ARM}') - the count extraction stopped matching cargo's summary line"
             exit 1
           fi
+          # A count is only comparable if it was assembled from the same
+          # number of whole-suite summaries. Without this, a lane that failed
+          # to parse one crate's summary reports a smaller total, which reads
+          # as a missing test rather than as a missing measurement.
+          if [ "$X64_SUITES" != "$ARM_SUITES" ]; then
+            echo "FAIL: the lanes summed different numbers of whole-suite runs (x64='${X64_SUITES}', arm64='${ARM_SUITES}') - one lane's summary line was not parsed, so the totals are not comparable"
+            exit 1
+          fi
           if [ "$X64" != "$ARM" ]; then
             echo "FAIL: ARM64 executed ${ARM} lib tests against the x64 lane's ${X64}"
             exit 1
           fi
-          echo "OK: both Windows lanes executed ${X64} lib tests"
+          echo "OK: both Windows lanes executed ${X64} lib tests across ${X64_SUITES} whole-suite runs"
 
   ffi-python-smoke:
     name: FFI Python Smoke
