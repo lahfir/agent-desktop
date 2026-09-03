@@ -191,6 +191,28 @@ fn partial_projection_returns_the_observed_subtree_instead_of_discarding_it() {
 }
 
 #[test]
+fn dropped_descendant_budget_path_leaves_no_boundary_marker() {
+    let retained = subtree("group", "Retained", Vec::new());
+    let root = subtree("window", "Fixture", vec![retained]);
+    let tree = ObservedTree::from_roots(vec![root], source(), Default::default(), false).unwrap();
+
+    assert!(!tree.is_complete());
+
+    let (projected, complete, _nodes_observed) = tree.into_accessibility_tree_partial().unwrap();
+
+    assert!(!complete, "global completeness reflects the arena mark");
+    assert_eq!(projected.children.len(), 1);
+
+    let any_truncated =
+        projected.subtree_truncated || projected.children.iter().any(|c| c.subtree_truncated);
+    assert!(
+        any_truncated,
+        "contract: a dropped descendant must surface a subtree_truncated marker \
+         that propagates to an ancestor so a reader can walk from the root to the cut"
+    );
+}
+
+#[test]
 fn partial_projection_reports_completeness_when_the_walk_finished() {
     let tree = ObservedTree::from_roots(
         vec![subtree(
