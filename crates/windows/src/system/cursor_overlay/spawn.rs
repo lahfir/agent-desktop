@@ -132,6 +132,7 @@ fn start_renderer(
 mod imp {
     use super::{pipe_name, transport};
     use crate::system::cursor_overlay::image_identity;
+    use crate::system::cursor_overlay::wide::wide;
     use agent_desktop_core::{AdapterError, CursorOverlayControl};
     use std::time::{Duration, Instant};
     use windows_sys::Win32::Foundation::{CloseHandle, GetLastError};
@@ -165,10 +166,6 @@ mod imp {
             );
         }
         Ok(path)
-    }
-
-    fn wide(value: &str) -> Vec<u16> {
-        value.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
     /// Starts the renderer with **no inherited handles at all**.

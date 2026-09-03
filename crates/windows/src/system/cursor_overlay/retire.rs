@@ -74,6 +74,7 @@ fn terminate_server_of(_name: &str) {}
 mod imp {
     use super::RETIREMENT_BUDGET;
     use crate::system::cursor_overlay::peer;
+    use crate::system::cursor_overlay::wide::wide;
     use std::time::Instant;
     use windows_sys::Win32::Foundation::{
         CloseHandle, ERROR_PIPE_BUSY, GetLastError, HANDLE, INVALID_HANDLE_VALUE,
@@ -91,10 +92,6 @@ mod imp {
         fn drop(&mut self) {
             unsafe { CloseHandle(self.0) };
         }
-    }
-
-    fn wide(value: &str) -> Vec<u16> {
-        value.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
     /// Opens the pipe only to learn who serves it, so read access is enough:
