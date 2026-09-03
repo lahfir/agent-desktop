@@ -14,6 +14,8 @@
 pub(crate) mod animation;
 pub(crate) mod child;
 #[cfg(target_os = "windows")]
+pub(crate) mod dib;
+#[cfg(target_os = "windows")]
 pub(crate) mod display_probe;
 pub(crate) mod fade;
 pub(crate) mod framing;

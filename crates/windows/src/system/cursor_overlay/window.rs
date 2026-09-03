@@ -19,15 +19,12 @@ pub(crate) use imp::OverlayWindow;
 
 #[cfg(target_os = "windows")]
 mod imp {
+    use crate::system::cursor_overlay::dib::Dib;
     use crate::system::cursor_overlay::wide::wide;
     use agent_desktop_core::AdapterError;
     use std::sync::Once;
     use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, WPARAM};
-    use windows_sys::Win32::Graphics::Gdi::{
-        AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
-        CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC,
-        ReleaseDC, SelectObject,
-    };
+    use windows_sys::Win32::Graphics::Gdi::{AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION};
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, HWND_TOPMOST, MSG,
@@ -130,50 +127,13 @@ mod imp {
             if width <= 0 || height <= 0 || pixels.len() < (width as usize) * (height as usize) {
                 return Ok(());
             }
-            let screen = unsafe { GetDC(std::ptr::null_mut()) };
-            let memory = unsafe { CreateCompatibleDC(screen) };
-            let mut info: BITMAPINFO = unsafe { std::mem::zeroed() };
-            info.bmiHeader = BITMAPINFOHEADER {
-                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: width,
-                biHeight: -height,
-                biPlanes: 1,
-                biBitCount: 32,
-                biCompression: BI_RGB,
-                biSizeImage: 0,
-                biXPelsPerMeter: 0,
-                biYPelsPerMeter: 0,
-                biClrUsed: 0,
-                biClrImportant: 0,
-            };
-            let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
-            let bitmap = unsafe {
-                CreateDIBSection(
-                    memory,
-                    &info,
-                    DIB_RGB_COLORS,
-                    &mut bits,
-                    std::ptr::null_mut(),
-                    0,
-                )
-            };
-            if bitmap.is_null() || bits.is_null() {
-                unsafe {
-                    DeleteDC(memory);
-                    ReleaseDC(std::ptr::null_mut(), screen);
-                }
+            let Some(mut dib) = Dib::create(width, height) else {
                 return Err(last_error(
                     "The overlay's drawing surface could not be made",
                 ));
-            }
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    pixels.as_ptr(),
-                    bits.cast::<u32>(),
-                    (width as usize) * (height as usize),
-                );
-            }
-            let previous = unsafe { SelectObject(memory, bitmap) };
+            };
+            dib.pixels()[..(width as usize) * (height as usize)]
+                .copy_from_slice(&pixels[..(width as usize) * (height as usize)]);
 
             let position = windows_sys::Win32::Foundation::POINT { x, y };
             let source = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
@@ -190,10 +150,10 @@ mod imp {
             let updated = unsafe {
                 UpdateLayeredWindow(
                     self.handle,
-                    screen,
+                    dib.screen_dc(),
                     &position,
                     &size,
-                    memory,
+                    dib.dc(),
                     &source,
                     0,
                     &blend,
@@ -205,12 +165,6 @@ mod imp {
             } else {
                 None
             };
-            unsafe {
-                SelectObject(memory, previous);
-                DeleteObject(bitmap);
-                DeleteDC(memory);
-                ReleaseDC(std::ptr::null_mut(), screen);
-            }
             match error {
                 Some(error) => Err(error),
                 None => Ok(()),

@@ -123,15 +123,22 @@ fn renderer_count() -> usize {
 /// Re-issuing the full ceiling per attempt is how a caller promised one
 /// arrival timeout waits two: a first reach that spends its ceiling on a
 /// renderer that never came up is followed by another with the same ceiling.
+///
+/// What is asserted is the sequence handed out, not how long the loop took.
+/// An elapsed-time bound was tried and is a claim about the scheduler rather
+/// than about this code: it failed on a machine busy driving another suite,
+/// while the code was correct. The doubling this exists to catch shows up in
+/// the sequence anyway - a re-issued ceiling is not smaller than the one
+/// before it - so the wall clock adds a way to fail without adding a way to
+/// notice the defect.
 #[test]
 fn each_retry_is_handed_what_is_left_of_the_budget_not_the_whole_budget_again() {
-    let budget = Duration::from_millis(200);
+    let budget = Duration::from_millis(1_000);
     let handed = std::cell::RefCell::new(Vec::new());
     let started = Instant::now();
 
     let error = retry_until_reached(started + budget, |remaining| {
         handed.borrow_mut().push(remaining);
-        std::thread::sleep(Duration::from_millis(20));
         ReachOutcome::NoRenderer
     })
     .expect_err("nothing ever answers, so the loop must end in a timeout");
@@ -151,10 +158,6 @@ fn each_retry_is_handed_what_is_left_of_the_budget_not_the_whole_budget_again() 
         error.message.contains("did not come up within its budget"),
         "an exhausted start-up budget must read as one, got {}",
         error.message
-    );
-    assert!(
-        started.elapsed() < budget + Duration::from_millis(150),
-        "the whole loop stays inside its budget rather than a multiple of it"
     );
 }
 
