@@ -57,10 +57,10 @@ pub(crate) fn terminate_pipe_server(_pipe: isize) -> bool {
 #[cfg(target_os = "windows")]
 mod imp {
     use crate::system::cursor_overlay::image_identity;
-    use crate::system::private_file::owner::SidBuffer;
+    use crate::system::private_file::owner::{self, SidBuffer};
     use std::os::windows::ffi::OsStringExt;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows_sys::Win32::Security::{GetTokenInformation, TOKEN_QUERY, TOKEN_USER, TokenUser};
+    use windows_sys::Win32::Security::TOKEN_QUERY;
     use windows_sys::Win32::System::Pipes::{
         GetNamedPipeClientProcessId, GetNamedPipeServerProcessId,
     };
@@ -208,7 +208,7 @@ mod imp {
         if opened == 0 {
             return None;
         }
-        let sid = user_sid_of_token(token);
+        let sid = owner::token_user_sid(owner::TokenSource::Handle(token)).ok();
         unsafe { CloseHandle(token) };
         sid
     }
@@ -219,33 +219,8 @@ mod imp {
         if opened == 0 {
             return None;
         }
-        let sid = user_sid_of_token(token);
+        let sid = owner::token_user_sid(owner::TokenSource::Handle(token)).ok();
         unsafe { CloseHandle(token) };
         sid
-    }
-
-    fn user_sid_of_token(token: HANDLE) -> Option<SidBuffer> {
-        let mut needed = 0u32;
-        unsafe {
-            GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut needed);
-        }
-        if needed == 0 {
-            return None;
-        }
-        let mut buffer = vec![0u8; needed as usize];
-        let ok = unsafe {
-            GetTokenInformation(
-                token,
-                TokenUser,
-                buffer.as_mut_ptr().cast(),
-                needed,
-                &mut needed,
-            )
-        };
-        if ok == 0 {
-            return None;
-        }
-        let user = unsafe { &*(buffer.as_ptr() as *const TOKEN_USER) };
-        SidBuffer::copied_from_valid(user.User.Sid).ok()
     }
 }
