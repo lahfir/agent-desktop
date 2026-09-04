@@ -9,12 +9,9 @@ use crate::{
 };
 use serde_json::Value;
 
-pub const DEFAULT_ACTION_TIMEOUT_MS: u64 = 5000;
-
-/// Config struct bundling the caller-supplied inputs to `execute` /
-/// `execute_with_timeout`, keeping both functions within the 5-parameter
-/// limit (mirrors the `RefArgs`/`ActionRequest` config-struct pattern used
-/// elsewhere in this module).
+/// Config struct bundling the caller-supplied inputs to `execute_with_timeout`,
+/// keeping it within the 5-parameter limit (mirrors the `RefArgs`/
+/// `ActionRequest` config-struct pattern used elsewhere in this module).
 pub struct ExecuteByRefArgs<'a> {
     pub ref_id: &'a str,
     pub snapshot_id: Option<&'a str>,
@@ -34,14 +31,6 @@ pub struct ExecuteByRefArgs<'a> {
 /// action's base policy. Semantic actions, including `TypeText`, are strict
 /// headless; explicit `PressKey` permits focus without cursor movement. FFI
 /// callers may opt in to `focus_fallback` or `headed`.
-pub fn execute(
-    args: ExecuteByRefArgs<'_>,
-    adapter: &dyn PlatformAdapter,
-    context: &CommandContext,
-) -> Result<Value, AppError> {
-    execute_with_timeout(args, DEFAULT_ACTION_TIMEOUT_MS, adapter, context)
-}
-
 pub fn execute_with_timeout(
     args: ExecuteByRefArgs<'_>,
     timeout_ms: u64,
