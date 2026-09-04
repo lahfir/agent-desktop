@@ -132,18 +132,6 @@ impl ObservationOps for StubAdapter {
         self.resolve_calls.fetch_add(1, Ordering::SeqCst);
         Ok(NativeHandle::new(DropProbe(Arc::clone(&self.drops))))
     }
-
-    fn get_subtree(
-        &self,
-        _handle: &NativeHandle,
-        _opts: &TreeOptions,
-        _deadline: crate::Deadline,
-    ) -> Result<AccessibilityNode, AdapterError> {
-        if let Some(error) = &self.subtree_error {
-            return Err(error.clone());
-        }
-        Ok(self.subtree.clone())
-    }
 }
 
 impl ActionOps for StubAdapter {

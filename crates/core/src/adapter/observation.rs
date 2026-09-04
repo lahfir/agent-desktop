@@ -92,15 +92,6 @@ pub trait ObservationOps: Send + Sync {
         Err(AdapterError::not_supported("resolve_locator_anchor"))
     }
 
-    fn get_subtree(
-        &self,
-        _handle: &NativeHandle,
-        _opts: &TreeOptions,
-        _deadline: Deadline,
-    ) -> Result<AccessibilityNode, AdapterError> {
-        Err(AdapterError::not_supported("get_subtree"))
-    }
-
     fn list_surfaces(
         &self,
         _process: crate::ProcessIdentity,
