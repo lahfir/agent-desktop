@@ -148,7 +148,10 @@ unsafe fn read_file_urls_inner(pb: Id, deadline: Deadline) -> Result<Vec<String>
 }
 
 pub(crate) fn file_url_to_path(url_string: &str) -> Option<String> {
-    if !url_string.starts_with("file:///") || url_string.contains('\0') || url_string.contains("%00") {
+    if !url_string.starts_with("file:///")
+        || url_string.contains('\0')
+        || url_string.contains("%00")
+    {
         return None;
     }
     let value = CFString::new(url_string);
