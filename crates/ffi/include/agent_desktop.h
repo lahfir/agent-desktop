@@ -1346,7 +1346,7 @@ void ad_app_list_free(struct AdAppList *list);
  * Policy: semantic actions, including `TypeText`, default to strict
  * `headless`. Explicit `PressKey` defaults to `focus_fallback`. A policy
  * discriminant may elevate to focus fallback or headed. Base and elevation
- * are computed by `agent_desktop_core::commands::execute_by_ref::execute` via
+ * are computed by `agent_desktop_core::commands::execute_by_ref::execute_with_timeout` via
  * `Action::base_interaction_policy` + `InteractionPolicy::join`, so CLI and
  * FFI share a single source of policy truth.
  *
@@ -1363,7 +1363,7 @@ void ad_app_list_free(struct AdAppList *list);
  * focus without cursor movement. `Headed (2)` opts in to physical cursor and
  * keyboard delivery.
  *
- * Uses a fixed 5000ms auto-wait budget (`DEFAULT_ACTION_TIMEOUT_MS`) before
+ * Uses a fixed 5000ms auto-wait budget before
  * the actionability preflight, matching the CLI default. Call
  * `ad_execute_by_ref_timeout` with an explicit `timeout_ms` (-1 = default,
  * 0 = single-shot with no auto-wait) to control this.
