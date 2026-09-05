@@ -1629,6 +1629,33 @@ branch**, not a series of sub-phase merges, and it is what closes Phase 2.
     no other observable, ten times the two waits it covers. What the
     promotion reviewer inherits is the rule, not the bug: no observability path
     may wait on a lock for the whole of a caller's deadline.
+13. **A menu item's advertised affordances are not stable under concurrent UIA
+    load, and the defect is unowned.** `the_live_walk_reproduces_the_same_vocabulary_across_three_runs`
+    caught the same `menuitem` reporting `["Expand", "Collapse", "SetFocus"]` on
+    one complete walk and `["Click", "Expand", "Collapse", "SetFocus"]` on
+    another, of one unchanged window. Both walks were complete, so this is not
+    truncation: `into_accessibility_tree` refuses an incomplete tree outright.
+    The extra `Click` is emitted before `Expand`, which places its source at
+    `IsInvokePatternAvailable` rather than at the `LegacyDefaultAction` gate
+    that pushes later. Measured against the fixture in isolation, that property
+    reads `Known(false)` on 40 of 40 live reads and the full walk reports no
+    `Click` on 30 of 30 runs, so the true answer is stable and the divergent
+    read is the anomaly; it appears only while the rest of the suite is driving
+    UIA, roughly one run in three, and never on either hosted CI lane.
+    This matters beyond a flaky test. `available_actions` is what an agent
+    consults to decide what it may do, and an element earns a ref *because* it
+    advertises an action, so an affordance that comes and goes makes both the
+    affordance list and ref allocation nondeterministic for an unchanged
+    element. The reading path compounds it: `ElementProperties::is_true` maps a
+    failed read and a genuine "unavailable" onto the same `false`, so nothing
+    downstream can tell a provider that has no Invoke from a read that did not
+    land. **It is filed rather than fixed here because none of the code
+    involved - `tree/actions.rs`, `tree/cache.rs`, `tree/walker_source.rs` - is
+    touched by §2.16, and changing what an unread affordance means has blast
+    radius across every snapshot and every ref.** The receiving owner needs to
+    settle whether a failed availability read may be reported as an absent
+    affordance at all, and the test now names the diverging node and affordance
+    on failure so the next occurrence is actionable without log archaeology.
 
 **Exit criteria:** `cursor-overlay enable` on Windows draws the overlay and the response reports rendering true through §2.15's field; the overlay's cursor reaches its destination before the action dispatches, which on Windows is enforced rather than sampled — the renderer answers a travel only once the cursor is at its destination, and the caller blocks on that answer before dispatching, so the ordering has no window in which to be wrong. What is measured on Windows is that the answer arrives: a travel queued behind a click flourish is acknowledged well inside its arrival budget, and the end-to-end suite observes the cursor at the destination after a bounded overlaid action. No Windows measurement watches the two events race, because a black-box CLI harness cannot sample inside one synchronous invocation; the ordering itself is pinned by core's mock-adapter test, which is platform-independent; the overlay never takes the foreground, asserted by observation of the foreground window across an overlaid action; `cursor-overlay disable` and session teardown leave no residual window, timer or thread, verified by independent observation; the per-platform contract is stated in `skills/agent-desktop-windows/` and the README; the dogfood gate in its strict form, with every finding carrying exactly one of *fixed here*, *owned elsewhere* or *accepted*; and a written, ordered **promotion checklist** a later session can execute without reading this sub-phase's plan. The checklist must also triage the nineteen `DEFERRED` ledger rows that still name sub-phases which have already merged - 13 at `2.12`, 3 at `2.4`, and singles at `2.8`, `2.10` and `2.14`. `A30-3` recorded a row at `2.15` as well; counting the ledger directly at the close of this sub-phase shows none, so that figure is corrected here rather than carried. Each is either genuinely closed, genuinely out of reach and re-pointed to `post-phase-2`, or real work that needs a home; this sub-phase closed only the four rows that named it, and says so rather than absorbing the rest silently or leaving them unnamed. The promotion itself — `feat/windows-adapter` merged to `main` as one release-noted `feat!` — runs that checklist afterwards and is what closes the phase.
 
