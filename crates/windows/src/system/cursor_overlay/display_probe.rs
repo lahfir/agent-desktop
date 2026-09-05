@@ -27,7 +27,7 @@ pub(crate) fn refresh_hz() -> u32 {
 #[cfg(target_os = "windows")]
 mod imp {
     use crate::system::cursor_overlay::monitors::OverlayMonitor;
-    use agent_desktop_core::Rect;
+    use crate::system::win_rect::rect_of;
     use windows_sys::Win32::Foundation::{LPARAM, RECT};
     use windows_sys::Win32::Graphics::Gdi::{
         EnumDisplayMonitors, GetDC, GetDeviceCaps, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
@@ -74,15 +74,6 @@ mod imp {
             is_primary: info.dwFlags & MONITORINFOF_PRIMARY != 0,
         });
         1
-    }
-
-    fn rect_of(rect: &RECT) -> Rect {
-        Rect {
-            x: f64::from(rect.left),
-            y: f64::from(rect.top),
-            width: f64::from(rect.right - rect.left),
-            height: f64::from(rect.bottom - rect.top),
-        }
     }
 
     /// The monitors this desktop presents, or an empty list.

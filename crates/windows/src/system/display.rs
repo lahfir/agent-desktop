@@ -62,12 +62,7 @@ pub(crate) fn list_displays_live(deadline: Deadline) -> Result<Vec<DisplayInfo>,
             };
             state.displays.push(DisplayInfo {
                 id: format!("monitor-{}", monitor as usize),
-                bounds: Rect {
-                    x: info.rcMonitor.left as f64,
-                    y: info.rcMonitor.top as f64,
-                    width: (info.rcMonitor.right - info.rcMonitor.left) as f64,
-                    height: (info.rcMonitor.bottom - info.rcMonitor.top) as f64,
-                },
+                bounds: crate::system::win_rect::rect_of(&info.rcMonitor),
                 is_primary: primary,
                 scale,
             });

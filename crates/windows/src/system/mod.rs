@@ -56,6 +56,7 @@ pub(crate) mod test_support;
 #[cfg(target_os = "windows")]
 pub(crate) mod thread_walk;
 pub(crate) mod wait;
+pub(crate) mod win_rect;
 pub(crate) mod window_activate;
 pub(crate) mod window_enum;
 pub(crate) mod window_identity;
