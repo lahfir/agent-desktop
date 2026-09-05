@@ -1758,6 +1758,30 @@ Integration-level tests (Explorer/Notepad/Settings snapshots, click/type/clipboa
 - [x] Windows permissions section: UIA needs no grant for same-integrity targets; elevated targets need an elevated agent (UIPI); unsigned-binary execution controls documented (SmartScreen browser-download warning, antivirus quarantine, Smart App Control)
 - [x] "From source" section updated with Windows build requirements (Rust + MSVC)
 
+
+### 2.17 — Multi-Agent Sessions & Per-Agent Cursors
+
+**Goal:** Make a session something several agents can work inside at once, and give each of them a cursor of its own.
+
+**Sequencing:** After the Windows promotion, and not Windows-only despite its number. The session model is core and the overlay ships on both adapters, so the contract is cross-platform; only the overlay's identity axis is implemented per platform, which is why it waits until Windows is on `main` and both adapters can move together.
+
+**What already exists, and what does not.** Concurrent writers were designed for and the evidence is structural rather than intended: trace segments are per OS process (`<session>/trace/<pid>-<procStartTs>.jsonl`) and `trace show` merges them deterministically by `(ts_ms, writer pid, in-file position)`; `RefStore` writes take a file lock (`crates/core/src/refs_store.rs`). Nobody builds a per-pid segment format and a multi-writer merge key for a single-writer system. What a session does **not** carry is agent identity, ownership, or arbitration — `CONCEPTS.md` defines it as an on-disk container owning refmaps, a trace directory and a manifest, and that is exactly what it is. This sub-phase adds the coordination, not the storage.
+
+- **`latest_snapshot_id` is a shared mutable pointer, and under concurrency it is a defect rather than a limitation.** There is one per namespace (`crates/core/src/refs_store.rs`). Two agents in one session clobber each other's, so an agent that takes a snapshot and then issues a bare-ref action can resolve against the *other* agent's tree — a wrong-element action that reports success, which is the failure class this product refuses everywhere else. `CONCEPTS.md` already calls qualified refs "the deterministic path for pinned actions"; that is advice today and has to become a requirement that something enforces. Decide one of: a per-agent latest pointer inside the namespace, a refusal of bare-ref actions once a session has more than one writer, or mandatory qualified refs with an error rather than a doc sentence behind them. **This hazard exists now, before any of the rest of this sub-phase ships**, and does not need the identity axis settled to be closed.
+
+- **`session start` returns an id but activates nothing.** Every agent process is handed `--session <id>` or `AGENT_DESKTOP_SESSION` explicitly. Whether a multi-agent session needs a join/leave step is undecided, and it is not cosmetic: the second option above needs the session to know how many writers it has, which nothing records today.
+
+- **The cursor is per session, not per agent.** The pipe name hashes the state root, the session id and the protocol generation and nothing finer (`crates/windows/src/system/cursor_overlay/pipe_name.rs`), and a renderer ignores every control whose session id is not its own (`crates/windows/src/system/cursor_overlay/child.rs`). Agents sharing a session therefore share one cursor and overwrite each other's position and label on every `Present`.
+
+- **Session-per-agent is not a free workaround, and the code says why.** Separate sessions do produce separate renderers — different pipe names, each claiming its own first-instance lock — but the overlay raises its window on every painted frame (`crates/windows/src/system/cursor_overlay/surface_host.rs`), so two overlays would thrash z-order against each other continuously, and both idle at the same `monitors::resting_point`. Arbitration is required whichever identity axis is chosen, so choosing session-per-agent avoids none of the work.
+
+**Decisions this sub-phase must settle before implementing.**
+1. **The identity axis** — an agent id below session, carried in the pipe name and in the overlay's manifest config, versus session-per-agent with overlay arbitration. This drives every other item and is settled first.
+2. **Z-order and rest** — whether raise-per-frame becomes raise-on-change, and how simultaneous overlays share resting points without stacking.
+3. **Attribution** — a viewer must be able to tell which agent a cursor belongs to without reading its caption. Labels exist; style and colour are per-session configuration today.
+
+**Exit criteria:** two agents in one session complete interleaved observe-act loops with no cross-talk, each acting only on refs it took, verified by observation rather than by each command's own `ok`; the merged trace timeline attributes every event to its writer; each agent's cursor is independently positioned and visually attributable; and the `latest_snapshot_id` hazard has a test that fails if it regresses.
+
 ---
 
 ## Phase 3 — Linux Adapter
