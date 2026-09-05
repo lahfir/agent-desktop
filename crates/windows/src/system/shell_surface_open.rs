@@ -1,7 +1,8 @@
 ﻿#![allow(dead_code)]
 
 use agent_desktop_core::{
-    AdapterError, Deadline, DeliverySemantics, InteractionPolicy, SnapshotSurface, WindowInfo,
+    AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionPolicy, SnapshotSurface,
+    WindowInfo,
 };
 
 use super::permissions::ensure_budget;
@@ -148,6 +149,7 @@ pub(super) fn close_row(row: &SurfaceKindRow, deadline: Deadline) -> Result<(), 
             )?;
             poll_until_gone(row, deadline)
         }
+        SurfaceDismiss::RaiseThenEscape => raise_then_escape(row, deadline),
         SurfaceDismiss::Toggle => {
             if let SurfaceRaise::Accelerator { modifiers, key } = row.raise {
                 super::shell_surface_raise::send_chord(modifiers, key, deadline)?;
@@ -155,6 +157,129 @@ pub(super) fn close_row(row: &SurfaceKindRow, deadline: Deadline) -> Result<(), 
             poll_until_gone(row, deadline)
         }
     }
+}
+
+/// How long a re-raise is given to have been a toggle before the dismissal
+/// falls through to Escape, and how long the surface is then given to take
+/// the foreground that Escape needs. Both are short because both are the
+/// shell's own response to a raise it accepted - measured landing inside one
+/// 100ms poll - and the caller's deadline still bounds them.
+#[cfg(target_os = "windows")]
+const RAISE_SETTLE: std::time::Duration = std::time::Duration::from_millis(750);
+#[cfg(target_os = "windows")]
+const FOREGROUND_SETTLE: std::time::Duration = std::time::Duration::from_millis(1_500);
+
+/// Escape with the precondition Escape silently depends on. A synthesized
+/// Escape is delivered to whichever window owns the foreground, so sending
+/// one at a surface that does not own it neither dismisses the surface nor
+/// leaves the desktop alone - it goes into whatever the operator is using.
+/// Re-running the shell's own raise settles both states the surface can be
+/// in: it toggles a properly presented surface closed outright, and it
+/// activates one left visible without activation, so the Escape that follows
+/// reaches the surface rather than a bystander. A surface that stays up
+/// without ever taking the foreground is refused by name instead of burning
+/// the deadline, because no Escape this path could send would arrive.
+#[cfg(target_os = "windows")]
+fn raise_then_escape(row: &SurfaceKindRow, deadline: Deadline) -> Result<(), AdapterError> {
+    super::shell_surface_raise::raise_row(row, deadline)?;
+    if settles_absent(row, deadline)? {
+        return Ok(());
+    }
+    await_foreground(row, deadline)?;
+    super::shell_surface_raise::send_chord(&[], super::shell_surface_kinds::VK_ESCAPE, deadline)?;
+    poll_until_gone(row, deadline)
+}
+
+#[cfg(target_os = "windows")]
+fn settles_absent(row: &SurfaceKindRow, deadline: Deadline) -> Result<bool, AdapterError> {
+    let start = std::time::Instant::now();
+    loop {
+        ensure_budget(deadline)?;
+        if !surface_presented(row, deadline)? {
+            return Ok(true);
+        }
+        let left = RAISE_SETTLE
+            .saturating_sub(start.elapsed())
+            .min(deadline.remaining());
+        if left.is_zero() {
+            return Ok(false);
+        }
+        std::thread::sleep(left.min(std::time::Duration::from_millis(50)));
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn await_foreground(row: &SurfaceKindRow, deadline: Deadline) -> Result<(), AdapterError> {
+    let start = std::time::Instant::now();
+    loop {
+        ensure_budget(deadline)?;
+        if surface_owns_foreground(row, deadline)? {
+            return Ok(());
+        }
+        let left = FOREGROUND_SETTLE
+            .saturating_sub(start.elapsed())
+            .min(deadline.remaining());
+        if left.is_zero() {
+            return Err(foreground_declined_error(row));
+        }
+        std::thread::sleep(left.min(std::time::Duration::from_millis(50)));
+    }
+}
+
+/// Whether a keystroke synthesized now would land in this surface. The
+/// foreground window can be a descendant of the surface rather than the
+/// surface itself - the Start overlay's foreground is the search input's own
+/// window inside it (A26-9) - so ownership is read at the foreground window's
+/// root rather than by equality with it.
+#[cfg(target_os = "windows")]
+fn surface_owns_foreground(row: &SurfaceKindRow, deadline: Deadline) -> Result<bool, AdapterError> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, GetForegroundWindow};
+
+    let Some(top) = surface_top_handle(row, deadline)? else {
+        return Ok(false);
+    };
+    let foreground = unsafe { GetForegroundWindow() };
+    if foreground.is_null() {
+        return Ok(false);
+    }
+    Ok(unsafe { GetAncestor(foreground, GA_ROOT) } == top)
+}
+
+#[cfg(target_os = "windows")]
+fn surface_top_handle(
+    row: &SurfaceKindRow,
+    deadline: Deadline,
+) -> Result<Option<super::window_enum::WindowHandle>, AdapterError> {
+    match &row.family {
+        SurfaceFamily::Win32Class(chain) => Ok(super::shell_surface::class_chain_top_handle(chain)),
+        SurfaceFamily::Immersive { .. } => Ok(super::shell_surface::resolve_row(row, deadline)?
+            .map(|info| super::window_ops::parse_handle(&info.id))
+            .filter(|handle| !handle.is_null())),
+    }
+}
+
+/// The answer for a surface that is up but unreachable by keystroke. It is
+/// not a timeout: waiting longer cannot change it, because the surface never
+/// took the foreground the dismissal needs and the deadline is not what is
+/// short. Naming the state lets a caller act on it instead of retrying.
+#[cfg(target_os = "windows")]
+fn foreground_declined_error(row: &SurfaceKindRow) -> AdapterError {
+    AdapterError::new(
+        ErrorCode::ActionFailed,
+        format!(
+            "the '{}' shell surface stayed up without taking the foreground, \
+             so a dismissal keystroke cannot reach it",
+            kebab(row.kind)
+        ),
+    )
+    .with_suggestion(
+        "Activate the surface - click it, or raise it again from the shell - then retry the close",
+    )
+    .with_details(serde_json::json!({
+        "kind": "shell_surface_declined_foreground",
+        "retryable": true
+    }))
+    .with_disposition(DeliverySemantics::not_delivered())
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -219,3 +344,7 @@ fn timeout_error(row: &SurfaceKindRow, outcome: &str, kind: &'static str) -> Ada
 #[cfg(all(test, target_os = "windows"))]
 #[path = "shell_surface_command_live_tests.rs"]
 mod command_live_tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "shell_surface_close_tests.rs"]
+mod close_tests;
