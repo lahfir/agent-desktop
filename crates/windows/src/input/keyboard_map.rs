@@ -72,12 +72,56 @@ const _: () = {
     assert!(VK_F12 == win32::VK_F12);
 };
 
-pub(crate) fn key_name_to_vk(key: &str) -> Result<u16, AdapterError> {
-    if let Some(vk) = named_key_vk(key) {
-        return Ok(vk);
+/// A key name resolved to the virtual key that produces it, together with
+/// the modifiers the *active layout* requires to produce it.
+///
+/// The layout half is what `VkKeyScanW` reports in its high byte and what
+/// a caller cannot know: on AZERTY the digit row needs Shift, so pressing
+/// the bare virtual key for `5` yields the unshifted glyph instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ResolvedKey {
+    pub(crate) vk: u16,
+    pub(crate) layout_shift: bool,
+    pub(crate) layout_control: bool,
+    pub(crate) layout_alt: bool,
+}
+
+impl ResolvedKey {
+    fn bare(vk: u16) -> Self {
+        Self {
+            vk,
+            layout_shift: false,
+            layout_control: false,
+            layout_alt: false,
+        }
     }
-    if let Some(vk) = character_key_vk(key) {
-        return Ok(vk);
+
+    pub(crate) fn layout_modifier_vks(self) -> Vec<u16> {
+        let mut vks = Vec::new();
+        if self.layout_shift {
+            vks.push(VK_SHIFT);
+        }
+        if self.layout_control {
+            vks.push(VK_CONTROL);
+        }
+        if self.layout_alt {
+            vks.push(VK_MENU);
+        }
+        vks
+    }
+}
+
+/// Bit positions `VkKeyScanW` uses in its high byte.
+const LAYOUT_SHIFT: u8 = 0x01;
+const LAYOUT_CONTROL: u8 = 0x02;
+const LAYOUT_ALT: u8 = 0x04;
+
+pub(crate) fn resolve_key(key: &str) -> Result<ResolvedKey, AdapterError> {
+    if let Some(vk) = named_key_vk(key) {
+        return Ok(ResolvedKey::bare(vk));
+    }
+    if let Some(resolved) = character_key(key) {
+        return Ok(resolved);
     }
     Err(unknown_key_error(key))
 }
@@ -119,7 +163,7 @@ fn named_key_vk(key: &str) -> Option<u16> {
     Some(vk)
 }
 
-fn character_key_vk(key: &str) -> Option<u16> {
+fn character_key(key: &str) -> Option<ResolvedKey> {
     let mut chars = key.chars();
     let character = chars.next()?;
     if chars.next().is_some() {
@@ -128,11 +172,28 @@ fn character_key_vk(key: &str) -> Option<u16> {
     if !(character.is_ascii_lowercase() || character.is_ascii_digit()) {
         return None;
     }
-    Some(resolve_character_vk(character))
+    Some(resolve_character(character))
 }
 
-fn resolve_character_vk(character: char) -> u16 {
-    imp::vk_key_scan(character).unwrap_or_else(|| fallback_ascii_vk(character))
+pub(crate) fn resolve_character(character: char) -> ResolvedKey {
+    match imp::vk_key_scan(character) {
+        Some(scan) => resolved_from_scan(scan),
+        None => ResolvedKey::bare(fallback_ascii_vk(character)),
+    }
+}
+
+/// `VkKeyScanW` packs the virtual key in the low byte and the modifiers
+/// the layout needs in the high byte. Keeping only the low byte presses
+/// the key without the shift the layout requires, which produces the
+/// wrong character rather than a failure.
+pub(crate) fn resolved_from_scan(scan: i16) -> ResolvedKey {
+    let state = ((scan as u16) >> 8) as u8;
+    ResolvedKey {
+        vk: (scan as u16) & 0x00FF,
+        layout_shift: state & LAYOUT_SHIFT != 0,
+        layout_control: state & LAYOUT_CONTROL != 0,
+        layout_alt: state & LAYOUT_ALT != 0,
+    }
 }
 
 fn fallback_ascii_vk(character: char) -> u16 {
@@ -150,19 +211,19 @@ fn unknown_key_error(key: &str) -> AdapterError {
 mod imp {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::VkKeyScanW;
 
-    pub(super) fn vk_key_scan(character: char) -> Option<u16> {
+    pub(super) fn vk_key_scan(character: char) -> Option<i16> {
         let code_unit = character as u16;
         let result = unsafe { VkKeyScanW(code_unit) };
         if result == -1 {
             return None;
         }
-        Some((result as u16) & 0x00FF)
+        Some(result)
     }
 }
 
 #[cfg(not(target_os = "windows"))]
 mod imp {
-    pub(super) fn vk_key_scan(_character: char) -> Option<u16> {
+    pub(super) fn vk_key_scan(_character: char) -> Option<i16> {
         None
     }
 }

@@ -1482,7 +1482,7 @@ System tray interaction is built from scratch here.
 
 **Goal:** Make `cursor-overlay` render on Windows, so the command's answer is true and not merely honest.
 
-**Sequencing:** the last sub-phase. It follows §2.15 because it implements against the response-shape decision §2.15 takes, and Phase 2 promotes to `main` when this merges.
+**Sequencing:** the last sub-phase. It follows §2.15 because it implements against the response-shape decision §2.15 takes. **It delivers the promotion checklist, not the promotion.** The merge of `feat/windows-adapter` into `main` is a separate, later, release-noted `feat!` that runs that checklist once this sub-phase has merged into the integration branch — a sub-phase PR into `main` is forbidden, so the phase cannot close inside this one.
 
 **Inherited findings from §2.15's full-branch review, each with what was already measured about it.** §2.15 reviewed the assembled `feat/windows-adapter` branch — 1,161 files, ~193k insertions — one reviewer per subsystem, and fixed what it could fix with a named invert-verified test. The filtered `dismiss-all` defect this section previously carried is **fixed and no longer owed**: a filtered dismissal now re-reads the live surface on each captured target's own turn and matches by app, title and body rather than reusing a handle or an index the virtualized list has since recycled, and a per-entry invoke error surfaces as that entry's failure line instead of being discarded. The findings below are the ones this sub-phase receives, written so they can be acted on without reading §2.15's report.
 
@@ -1504,7 +1504,9 @@ System tray interaction is built from scratch here.
 
 - **`get --property text` and `--property value` are byte-identical reads, and the documented meaning of `text` is unimplemented.** Both arms in `crates/core/src/commands/get.rs` resolve `get_live_value` and fall back to `entry.identity.value`; the accessible name is reachable only through `--property title`. Measured on a real control: a button whose accessible name is `Close` answers empty for `text` and empty for `value`, and `Close` for `title`. `text` is the **default** property, so it is the first thing a caller reaches for and the first thing that disappoints them.
   The shipped reference previously described `text` as the accessible name or label. §2.15 corrected the documentation to describe what ships rather than changing what ships, and pinned the current behaviour with `text_reads_the_value_and_title_reads_the_name_as_the_reference_states` so the two cannot drift apart again — making `text` name-preferring fails that test, which forces the wording to move with the code.
-  **The contract decision is this sub-phase's.** Either `text` becomes name-preferring, or name-then-value, or it is retired as an alias for `value`. Each is a change to a generally available command on both adapters: name-preferring flips every named textfield's `text` from its content to its label, which is a bigger behavioural change than any normalization §2.15 shipped, on a defect no dogfood and no stranger run ever hit — a reviewer found it by reading. State the macOS delta whichever way it lands.
+  **The contract decision is settled here: `text` becomes role-conditional.** It returns the value for the roles whose value *is* the content a human reads — `textfield`, `combobox`, `listbox`, `datefield` and `timefield` — and the accessible name for every other role, falling back across when the preferred one is empty. The three candidates the question was originally framed around were each rejected on the same ground: name-preferring and name-then-value both flip a labelled textfield's default property from its content to its label, and retiring `text` as an alias for `value` leaves the default property empty on every button.
+  The predicate is written for this question rather than borrowed. `is_mutable_value_role` answers a *volatility* question — its own doc comment says roles whose value "changes during normal interaction and must not be treated as stable ref identity" — and its true-branch includes `checkbox`, `radiobutton`, `switch`, `slider` and `incrementor`, so reusing it would make a checked checkbox named "Show hidden files" answer `1` and a slider named "Volume" answer a number: the same disappointment, relocated to a role class at least as common. The new predicate is an exhaustive match over `Role`, so a role added later fails to compile until it is classified.
+  **macOS delta: none, and that is what makes it a breaking change.** `get` is a core command with no platform branch, so both adapters change identically and every existing caller of the default property is affected. The implementing commit carries a `BREAKING CHANGE:` footer, which under the pre-1.0 policy cuts a minor.
 **Accepted in §2.15, recorded here so this sub-phase does not re-litigate them.** A duplicate-identity notification makes `entry_gone` report a successful dismiss as failed, because identity is deliberately app-plus-title-plus-body to tolerate mutable control values and this shell exposes no per-instance axis to add. A session cleanup failure replaces an operation's success with the cleanup's error, which is intentional and pinned by its own test. The window hang probe examines the first sixteen top-level windows of a process, a bounded probe cost. `gated_number`'s converse divergence — a boolean answer to a documented-integer property — is unmeasured, and this corpus measures before it builds.
 
 **Scope:** Phase 2 otherwise leaves the overlay in a state no other capability is left in — it renders on macOS and silently does nothing on Windows. `update_cursor_overlay` has a macOS override (`crates/macos/src/system/adapter.rs`) and no Windows one, so the adapter returns core's default; both call sites then discard that answer — `src/dispatch/cursor_overlay.rs` logs a `tracing::warn!` and falls through to success, and `crates/core/src/cursor_overlay/submit.rs` does the same. `cursor-overlay enable` therefore returns `ok: true` on Windows and draws nothing.
@@ -1512,16 +1514,152 @@ System tray interaction is built from scratch here.
 - **§2.15 owns the honesty half; this sub-phase owns the rendering half.** §2.15 shipped that half: `SystemOps::update_cursor_overlay`'s default now refuses instead of returning `Ok(())`, and `cursor-overlay enable` carries the adapter's answer as **`data.rendered`**, a boolean sibling of `session_id` and `cursor_overlay`. `cursor-overlay disable` carries no such field, because a disable has nothing to render. **This sub-phase makes `data.rendered` report `true` on Windows and does not invent a second field.** The per-action path (`crates/core/src/cursor_overlay/submit.rs`) is fail-soft by contract and must stay so: an adapter that cannot draw a cursor never fails an action.
 - **The Windows renderer.** The macOS implementation is the reference for behaviour, not necessarily for mechanism. A layered click-through window is the likely Windows shape, and whether it can satisfy arrival-before-dispatch without stealing focus is the first thing to measure rather than assume — the overlay must never take the foreground from the target it is drawing over.
 - **Behavioural parity with what #145 shipped.** `crates/core/src/cursor_overlay/` is thirteen modules covering pose, motion, hand path, timing, layout, style and phase, rebuilt with a 3D click flourish, human-shaped motion, session-global style and arrival-before-dispatch sequencing. Windows matches the observable behaviour; it does not fork the contract.
-- **Cleanup and session scoping.** `session start --cursor` and `cursor-overlay disable` must leave no residual window, timer or thread on either adapter, verified by observation after teardown rather than by the disable call returning `ok`.
-- **What the overlay may draw over.** §2.14 measured the Windows shell surfaces as `WS_EX_TOOLWINDOW` chrome deliberately outside the agent window inventory (§2.14 KTD1). Whether the overlay draws over them is a question this sub-phase answers and records, not one it assumes either way.
+- **Cleanup and session scoping.** `session start --cursor` and `cursor-overlay disable` must leave no residual window, timer or thread on either adapter, verified by observation after teardown rather than by the disable call returning `ok`. The three Windows observations — the screen pixel under the overlay, the child process, and the pipe name a fresh server can reclaim — need a composited desktop that can be read back with `BitBlt`, which a hosted runner does not have: it has window station enough for UI Automation, so a layered overlay reads there as zero pixels. **`scripts/run-windows-e2e-ci.ps1` is therefore the authoritative gate for them.** The hosted lanes skip those observations rather than running them, so a green hosted lane is not evidence that overlay teardown works; the evidence is an operator run of that script under its exclusive desktop lease. The same script is where the overlay's frame budgets are asserted, for the neighbouring reason that a wall-clock budget describes hardware and a shared runner is not hardware anyone chose.
+- **What the overlay may draw over — answered by measurement.** §2.14 measured the Windows shell surfaces as `WS_EX_TOOLWINDOW` chrome deliberately outside the agent window inventory (§2.14 KTD1). **The overlay does draw over them, and its teardown restores the screen exactly** (`A29-3`): a screen-DC `BitBlt` with `CAPTUREBLT` at the taskbar's own centre read one colour before the overlay, the overlay's colour while a topmost `SWP_NOACTIVATE` surface was painted there, and the original colour again after it was destroyed — without the overlay taking the foreground at any point. So a cursor travelling to a taskbar-adjacent destination is not clipped by shell chrome, and the same pixel reading is the independent oracle the teardown criterion needs, since it is a fact about the screen rather than about the disable call's own return.
+- **What the overlay does about the OS animation preference: nothing, deliberately.** The macOS renderer collapses its motion when the OS reports reduce-motion. Windows offers `SPI_GETCLIENTAREAANIMATION`, and on a stock Windows Server host it reports animations **disabled** while `SPI_GETUIEFFECTS` reports effects enabled, measured on a **console** session (`SM_REMOTESESSION` is 0), so the reading is a best-performance default rather than a remote-bandwidth artifact and rather than an accessibility choice — and no API separates those cases (`A29-7`, `A29-8`). Honouring it would disable the feature by default on an entire class of host, including the one this phase's own dogfood runs on. The overlay is drawn only because a caller enabled it on a session, so the opt-in is the preference, and `CursorOverlayStyle` already carries per-session `ripple` and `highlight` knobs. **The cost of that choice is stated in the shipped docs rather than only here: a user who turned the setting off for genuine motion-sensitivity reasons still sees the full animation.**
 
 **Key APIs:** layered window (`WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`) with `UpdateLayeredWindow`, or a per-monitor DPI-aware GDI+/Direct2D surface — chosen by measurement against the arrival-before-dispatch and no-focus-steal constraints, not in advance.
 
 **Depends on:** 2.15's response-shape decision (this sub-phase consumes it), and 2.9/2.8 for the window and input primitives the renderer sits beside.
 
-**Exit criteria:** `cursor-overlay enable` on Windows draws the overlay and the response reports rendering true through §2.15's field; the overlay's cursor reaches its destination before the action dispatches, measured on Windows the way #145 measured it on macOS; the overlay never takes the foreground, asserted by observation of the foreground window across an overlaid action; `cursor-overlay disable` and session teardown leave no residual window, timer or thread, verified by independent observation; the per-platform contract is stated in `skills/agent-desktop-windows/` and the README; the dogfood gate in its strict form, with every finding carrying exactly one of *fixed here*, *owned elsewhere* or *accepted*; and the Phase 2 promotion itself — `feat/windows-adapter` merged to `main` as one release-noted `feat!`, which is what closes the phase.
+**Promotion checklist — the ordered steps that merge `feat/windows-adapter` into `main`.**
 
-**Est. PR size:** ~1.5k LOC
+This is not run by this sub-phase. It is run once, later, by whoever carries the
+promotion, and it is written to be executable without reading any sub-phase plan.
+The promotion is **one release-noted `feat!` merge of the whole integration
+branch**, not a series of sub-phase merges, and it is what closes Phase 2.
+
+1. **Confirm the branch is complete.** Every sub-phase 2.0 through 2.16 has merged
+   into `feat/windows-adapter`, and the branch is even with or ahead of `main` with
+   no sub-phase work outstanding. A sub-phase still open means the promotion waits.
+2. **Merge `main` into `feat/windows-adapter`** — never the reverse, and never a
+   rebase of the integration branch onto `main`. Resolve conflicts on the
+   integration branch, where they can be tested on the platform they affect.
+3. **Run the non-desktop gates on both hosted runners.** `cargo fmt --all --check`,
+   `cargo clippy --all-targets -- -D warnings`, `cargo test --workspace`, the
+   core-isolation check (`cargo tree -p agent-desktop-core` names no platform
+   crate), the binary size ceiling, `scripts/check-rust-file-size.sh`,
+   `scripts/check-no-phase-references.sh` and the e2e contract gate, on
+   `windows-latest` and `windows-11-arm`.
+4. **Run the live Windows suite locally**, under the exclusive `DesktopLease`, via
+   `scripts/run-windows-e2e-ci.ps1`. There is no CI lane for it: the live lane was
+   retired on the owner's decision because a self-hosted runner's labels are
+   reachable from every `pull_request`-triggered workflow, so a fork PR editing any
+   of them would be code execution on the owner's interactive desktop. Both
+   headless and `--headed` modes. Reckon with the load sensitivity this suite is
+   known for (`A28-6`): a failure that wanders between unrelated modules and passes
+   in isolation is not a regression, and a single stash A/B cannot attribute it.
+5. **Run the macOS suite.** `main` is the macOS GA line for the whole platform
+   phase, and the integration branch changes `agent-desktop-core`, which macOS
+   consumes. The macOS CI lane plus the macOS e2e harness.
+6. **Take both performance baselines.** macOS uses
+   `bash scripts/perf-baseline-compare.sh` against the merge base. That script is
+   structurally macOS-bound — it opens the `.app` fixture bundle — so Windows uses
+   the probe corpus cost methodology instead: min-of-seven with the warm-up
+   discarded, reported as min with median and max beside it (`A15-13`, applied at
+   `A18-7`). The macOS baseline that §2.15 could not take is owed here.
+6a. **Settle the overlay label card's placement, with both adapters in review.**
+   Three findings from this sub-phase's dogfood share one cause and none is
+   Windows-specific: `crates/core/src/cursor_overlay/` owns where the card is
+   placed and both renderers follow it. (1) The card is anchored beside the
+   cursor, and the cursor is on the element being acted on, so at the moment
+   of a click on a menu the card covers the menu that just opened - the
+   overlay hides the result of the action it is narrating. (2) At `--size 4.0`
+   the card flips to the left of the cursor and lands flush against x=0 with
+   no margin, while most of the screen sits empty to the right; the flip is an
+   overflow rule but the result reads as an accident. (3) The default fill is
+   white, so on a white application the card is separated from it only by a
+   hairline border. Each is a cross-platform design decision - a change alters
+   macOS, the GA line - which is why it belongs at the one gate where both
+   adapters are reviewed together rather than inside a Windows sub-phase.
+   **Evidence:** `docs/dogfood-reports/2026-09-02-001-windows-2-16-cursor-overlay-dogfood.md`
+   findings D3, D4 and D5.
+
+7. **Multi-agent review of the assembled branch**, one reviewer per subsystem, as
+   §2.15 ran it. Every finding takes exactly one of *fixed here* with a named
+   invert-verified test, *owned elsewhere* with the receiving work written into this
+   document in the same PR, or *accepted* with a stated reason.
+8. **Settle the cross-platform contract items §2.15 recorded** and that are still
+   open at promotion time, so no decision is inherited by Phase 3 unstated.
+9. **Triage the orphaned ledger rows.** Nineteen `DEFERRED` rows in
+   `probes/windows/FINDINGS.md` still name sub-phases that have already merged —
+   13 at `2.12`, 3 at `2.4`, and singles at `2.8`, `2.10` and `2.14`. Two further
+   rows correctly name `post-phase-2` and are not orphaned. §2.16 closed only the four rows that named it and deliberately left
+   the rest visible rather than absorbing them. Each remaining row gets exactly one
+   of: genuinely closed by work that has since shipped, genuinely out of reach for
+   this phase and re-pointed to `post-phase-2`, or real work that needs a home in
+   this document. A row left naming a merged sub-phase after this step is a defect.
+10. **Merge as one `feat!` commit** with a release note stating that Windows is
+    now supported, and the platform claims the adapter actually meets — not the
+    surface it names. Until this merge lands, `main` ships macOS only and makes no
+    Windows claim.
+    **Carry every `BREAKING CHANGE:` footer from the integration branch's history
+    into this commit's message.** release-please never reads branch history — it
+    sees only the one promotion commit — so a footer left behind on a sub-phase
+    commit is silently dropped from the release, and consumers get a breaking
+    change with no note. Collect them with
+    `git log main..feat/windows-adapter --format='%h %s%n%b' | grep -n 'BREAKING CHANGE'`
+    before writing the message. As of §2.16 there is exactly one: `get --property
+    text` became role-conditional, returning the element's value for `textfield`,
+    `combobox`, `listbox`, `datefield` and `timefield` and its accessible name for
+    every other role, where it previously returned the value for all of them. It is
+    a core change with no platform branch, so it lands on macOS too.
+11. **Record what is knowingly unverified.** Mixed-DPI overlay mapping is unit-
+    tested but was never exercised on a live multi-monitor rig, and any other
+    measurement ratified as out of reach travels into the release note rather than
+    into a reader's assumption.
+12. **The ARM64 failure of `contended_artifact_lock_preserves_dispatch_budget`
+    was a product defect, not a flaky bound, and it is fixed.** The test passed
+    both lanes of run `33698217815` and failed ARM64 in run `33699894842` on
+    identical Rust source, which said only that the outcome depended on how fast
+    the machine was. It depended on it because `trace_artifact_budget` handed the
+    artifact lock the observed action's own deadline: a contended lock consumed
+    every millisecond of it except the 100 ms the pre-capture path reserves, so
+    dispatch ran on a margin quick hardware absorbs and a loaded shared runner
+    does not. Tracing may not spend the budget of the action it observes, so the
+    lock wait is now bounded by a fixed 50 ms capture window clamped to the
+    caller's remaining time, and a lock that cannot be taken inside it skips the
+    capture. Measured on the fix's own hardware: an uncontended acquire costs
+    72 us typically and 1.8 ms at worst of two hundred samples, and the action
+    now reaches dispatch with 2,948 ms of a 3,000 ms budget where the unclamped
+    wait left it 1,999 ms. The test proves the property rather than the hardware
+    - it reads the budget dispatch actually received, that the capture was
+    skipped and traced, and that dispatch happened exactly once - with one
+    1,000 ms elapsed bound left, where the capture that runs after dispatch has
+    no other observable, ten times the two waits it covers. What the
+    promotion reviewer inherits is the rule, not the bug: no observability path
+    may wait on a lock for the whole of a caller's deadline.
+13. **A menu item's advertised affordances are not stable under concurrent UIA
+    load, and the defect is unowned.** `the_live_walk_reproduces_the_same_vocabulary_across_three_runs`
+    caught the same `menuitem` reporting `["Expand", "Collapse", "SetFocus"]` on
+    one complete walk and `["Click", "Expand", "Collapse", "SetFocus"]` on
+    another, of one unchanged window. Both walks were complete, so this is not
+    truncation: `into_accessibility_tree` refuses an incomplete tree outright.
+    The extra `Click` is emitted before `Expand`, which places its source at
+    `IsInvokePatternAvailable` rather than at the `LegacyDefaultAction` gate
+    that pushes later. Measured against the fixture in isolation, that property
+    reads `Known(false)` on 40 of 40 live reads and the full walk reports no
+    `Click` on 30 of 30 runs, so the true answer is stable and the divergent
+    read is the anomaly; it appears only while the rest of the suite is driving
+    UIA, roughly one run in three, and never on either hosted CI lane.
+    This matters beyond a flaky test. `available_actions` is what an agent
+    consults to decide what it may do, and an element earns a ref *because* it
+    advertises an action, so an affordance that comes and goes makes both the
+    affordance list and ref allocation nondeterministic for an unchanged
+    element. The reading path compounds it: `ElementProperties::is_true` maps a
+    failed read and a genuine "unavailable" onto the same `false`, so nothing
+    downstream can tell a provider that has no Invoke from a read that did not
+    land. **It is filed rather than fixed here because none of the code
+    involved - `tree/actions.rs`, `tree/cache.rs`, `tree/walker_source.rs` - is
+    touched by §2.16, and changing what an unread affordance means has blast
+    radius across every snapshot and every ref.** The receiving owner needs to
+    settle whether a failed availability read may be reported as an absent
+    affordance at all, and the test now names the diverging node and affordance
+    on failure so the next occurrence is actionable without log archaeology.
+
+**Exit criteria:** `cursor-overlay enable` on Windows draws the overlay and the response reports rendering true through §2.15's field; the overlay's cursor reaches its destination before the action dispatches, which on Windows is enforced rather than sampled — the renderer answers a travel only once the cursor is at its destination, and the caller blocks on that answer before dispatching, so the ordering has no window in which to be wrong. What is measured on Windows is that the answer arrives: a travel queued behind a click flourish is acknowledged well inside its arrival budget, and the end-to-end suite observes the cursor at the destination after a bounded overlaid action. No Windows measurement watches the two events race, because a black-box CLI harness cannot sample inside one synchronous invocation; the ordering itself is pinned by core's mock-adapter test, which is platform-independent; the overlay never takes the foreground, asserted by observation of the foreground window across an overlaid action; `cursor-overlay disable` and session teardown leave no residual window, timer or thread, verified by independent observation; the per-platform contract is stated in `skills/agent-desktop-windows/` and the README; the dogfood gate in its strict form, with every finding carrying exactly one of *fixed here*, *owned elsewhere* or *accepted*; and a written, ordered **promotion checklist** a later session can execute without reading this sub-phase's plan. The checklist must also triage the nineteen `DEFERRED` ledger rows that still name sub-phases which have already merged - 13 at `2.12`, 3 at `2.4`, and singles at `2.8`, `2.10` and `2.14`. `A30-3` recorded a row at `2.15` as well; counting the ledger directly at the close of this sub-phase shows none, so that figure is corrected here rather than carried. Each is either genuinely closed, genuinely out of reach and re-pointed to `post-phase-2`, or real work that needs a home; this sub-phase closed only the four rows that named it, and says so rather than absorbing the rest silently or leaving them unnamed. The promotion itself — `feat/windows-adapter` merged to `main` as one release-noted `feat!` — runs that checklist afterwards and is what closes the phase.
+
+**Est. PR size:** ~4k LOC across twenty implementation units — ten defect fixes and the `text` contract, five renderer units, then teardown, docs, e2e and the dogfood. **This exceeds the ~2,000-LOC sub-phase cap, on the owner's direction to ship the sub-phase as one branch and one PR.** The mitigation is commit topology rather than scope: every unit is its own commit with its own invert-verified test, so the PR reviews incrementally even though it does not land incrementally. The original `~1.5k LOC` estimate counted the renderer alone and predated the nine inherited findings, the four probe closures and the contract decision this sub-phase also carries.
 
 
 ### Minimum OS Requirements
@@ -1585,7 +1723,9 @@ windows-sys = { version = "0.61", features = [
   "Win32_System_Threading",
   "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_DataExchange",
+  "Win32_System_IO",
   "Win32_System_Memory",
+  "Win32_System_Pipes",
   "Win32_Graphics_Gdi",
   "Win32_Graphics_Dwm",
   "Win32_UI_Input_KeyboardAndMouse",
@@ -1644,6 +1784,30 @@ Integration-level tests (Explorer/Notepad/Settings snapshots, click/type/clipboa
 - [x] Windows installation instructions: npm (same command); direct `.tar.gz` download from GitHub Releases with checksums.txt verification and `gh attestation verify`; from source requires MSVC
 - [x] Windows permissions section: UIA needs no grant for same-integrity targets; elevated targets need an elevated agent (UIPI); unsigned-binary execution controls documented (SmartScreen browser-download warning, antivirus quarantine, Smart App Control)
 - [x] "From source" section updated with Windows build requirements (Rust + MSVC)
+
+
+### 2.17 — Multi-Agent Sessions & Per-Agent Cursors
+
+**Goal:** Make a session something several agents can work inside at once, and give each of them a cursor of its own.
+
+**Sequencing:** After the Windows promotion, and not Windows-only despite its number. The session model is core and the overlay ships on both adapters, so the contract is cross-platform; only the overlay's identity axis is implemented per platform, which is why it waits until Windows is on `main` and both adapters can move together.
+
+**What already exists, and what does not.** Concurrent writers were designed for and the evidence is structural rather than intended: trace segments are per OS process (`<session>/trace/<pid>-<procStartTs>.jsonl`) and `trace show` merges them deterministically by `(ts_ms, writer pid, in-file position)`; `RefStore` writes take a file lock (`crates/core/src/refs_store.rs`). Nobody builds a per-pid segment format and a multi-writer merge key for a single-writer system. What a session does **not** carry is agent identity, ownership, or arbitration — `CONCEPTS.md` defines it as an on-disk container owning refmaps, a trace directory and a manifest, and that is exactly what it is. This sub-phase adds the coordination, not the storage.
+
+- **`latest_snapshot_id` is a shared mutable pointer, and under concurrency it is a defect rather than a limitation.** There is one per namespace (`crates/core/src/refs_store.rs`). Two agents in one session clobber each other's, so an agent that takes a snapshot and then issues a bare-ref action can resolve against the *other* agent's tree — a wrong-element action that reports success, which is the failure class this product refuses everywhere else. `CONCEPTS.md` already calls qualified refs "the deterministic path for pinned actions"; that is advice today and has to become a requirement that something enforces. Decide one of: a per-agent latest pointer inside the namespace, a refusal of bare-ref actions once a session has more than one writer, or mandatory qualified refs with an error rather than a doc sentence behind them. **This hazard exists now, before any of the rest of this sub-phase ships**, and does not need the identity axis settled to be closed.
+
+- **`session start` returns an id but activates nothing.** Every agent process is handed `--session <id>` or `AGENT_DESKTOP_SESSION` explicitly. Whether a multi-agent session needs a join/leave step is undecided, and it is not cosmetic: the second option above needs the session to know how many writers it has, which nothing records today.
+
+- **The cursor is per session, not per agent.** The pipe name hashes the state root, the session id and the protocol generation and nothing finer (`crates/windows/src/system/cursor_overlay/pipe_name.rs`), and a renderer ignores every control whose session id is not its own (`crates/windows/src/system/cursor_overlay/child.rs`). Agents sharing a session therefore share one cursor and overwrite each other's position and label on every `Present`.
+
+- **Session-per-agent is not a free workaround, and the code says why.** Separate sessions do produce separate renderers — different pipe names, each claiming its own first-instance lock — but the overlay raises its window on every painted frame (`crates/windows/src/system/cursor_overlay/surface_host.rs`), so two overlays would thrash z-order against each other continuously, and both idle at the same `monitors::resting_point`. Arbitration is required whichever identity axis is chosen, so choosing session-per-agent avoids none of the work.
+
+**Decisions this sub-phase must settle before implementing.**
+1. **The identity axis** — an agent id below session, carried in the pipe name and in the overlay's manifest config, versus session-per-agent with overlay arbitration. This drives every other item and is settled first.
+2. **Z-order and rest** — whether raise-per-frame becomes raise-on-change, and how simultaneous overlays share resting points without stacking.
+3. **Attribution** — a viewer must be able to tell which agent a cursor belongs to without reading its caption. Labels exist; style and colour are per-session configuration today.
+
+**Exit criteria:** two agents in one session complete interleaved observe-act loops with no cross-talk, each acting only on refs it took, verified by observation rather than by each command's own `ok`; the merged trace timeline attributes every event to its writer; each agent's cursor is independently positioned and visually attributable; and the `latest_snapshot_id` hazard has a test that fails if it regresses.
 
 ---
 

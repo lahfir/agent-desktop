@@ -103,7 +103,7 @@ fn instruction_rejects_invalid_destination() {
 
 #[test]
 fn control_protocol_carries_the_session_lifecycle() {
-    let enable = CursorOverlayControl::enable("run-1".into(), CursorOverlayStyle::default());
+    let enable = CursorOverlayControl::enable("run-1".into(), None, CursorOverlayStyle::default());
     let disable = CursorOverlayControl::disable("run-1".into());
 
     assert_eq!(enable.session_id(), "run-1");
@@ -203,4 +203,36 @@ fn a_clicked_target_rect_reaches_the_renderer() {
 
     assert_eq!(instruction.target(), Some(&bounds));
     assert_eq!(degenerate.target(), None);
+}
+
+/// A caller who supplies a label must see it on the overlay's first frame.
+///
+/// The label was dropped on the way to the control and every overlay
+/// announced itself with the greeting instead, no matter what was asked for.
+/// Nothing in the output said so: the envelope echoed the caller's own label
+/// back while the screen showed something else, which is the worst shape a
+/// defect can take.
+#[test]
+fn an_enable_carries_the_callers_label_rather_than_the_greeting() {
+    let enable = CursorOverlayControl::enable(
+        "run-1".into(),
+        Some("Opening the file menu".into()),
+        CursorOverlayStyle::default(),
+    );
+
+    assert_eq!(enable.label(), Some("Opening the file menu"));
+    assert_ne!(
+        enable.label(),
+        Some(CURSOR_OVERLAY_GREETING),
+        "the greeting must not survive a caller who said what they were doing"
+    );
+}
+
+/// The greeting is what an overlay with nothing to say announces itself with,
+/// so it stays the fallback rather than being deleted along with the defect.
+#[test]
+fn an_enable_with_no_label_still_greets() {
+    let enable = CursorOverlayControl::enable("run-1".into(), None, CursorOverlayStyle::default());
+
+    assert_eq!(enable.label(), Some(CURSOR_OVERLAY_GREETING));
 }

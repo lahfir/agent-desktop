@@ -250,7 +250,9 @@ agent-desktop session end [id]                                      # Seal manif
 agent-desktop session list                                          # List session manifests
 agent-desktop session gc [--older-than SECS] [--ended]              # Reclaim ended/stale sessions
 agent-desktop --session <id> cursor-overlay enable [--label TEXT] [--max-words N] [--fill HEX] [--rim HEX] [--accent HEX] [--size N] [--no-ripple] [--no-highlight]
-export AGENT_DESKTOP_SESSION=<id>
+                                                                    # Carrying the session in the environment instead of --session:
+                                                                    #   sh/bash/zsh: export AGENT_DESKTOP_SESSION=<id>
+                                                                    #   PowerShell:  $env:AGENT_DESKTOP_SESSION = "<id>"
 agent-desktop cursor-overlay disable                                # Remove the overlay and stop its renderer
 agent-desktop trace show [--limit N] [--event PREFIX]               # Merge trace segments (default tail 500; 0 = all)
 agent-desktop trace export [--out path.html] [--limit N]            # Self-contained HTML viewer (default tail 5000)

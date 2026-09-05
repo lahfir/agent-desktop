@@ -119,7 +119,9 @@ pub(crate) fn execute_chain(
 ) -> Result<Vec<ActionStep>, AdapterError> {
     let mut steps = Vec::new();
     for rung in rungs.iter_mut() {
-        ensure_budget(deadline)?;
+        if let Err(expiry) = ensure_budget(deadline) {
+            return Err(expiry.with_disposition(exhaustion_disposition(&steps)));
+        }
         if !rung_allowed(rung, policy) {
             continue;
         }
@@ -187,3 +189,10 @@ pub(crate) fn record_step_outcome(
 #[cfg(test)]
 #[path = "chain_tests.rs"]
 mod tests;
+
+/// Split from `chain_tests.rs`: this module owns the budget-expiry cases,
+/// which assert what an expiry reports rather than what a rung does, and are
+/// the only chain tests that depend on wall-clock time.
+#[cfg(test)]
+#[path = "chain_budget_tests.rs"]
+mod budget_tests;

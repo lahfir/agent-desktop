@@ -187,7 +187,10 @@ impl AdapterError {
         )
         .with_suggestion(
             "Re-run a snapshot and retry with the returned snapshot_id \
-             (CLI: snapshot, then pass --snapshot <id>; FFI: ad_snapshot then supply snapshot_id to ad_execute_by_ref)",
+             (CLI: snapshot, then pass --snapshot <id>; FFI: ad_snapshot then supply snapshot_id to ad_execute_by_ref). \
+             Snapshots are scoped to the session that took them, so take the snapshot under the same --session \
+             or AGENT_DESKTOP_SESSION you act with: one taken outside a session is not visible to a session-scoped \
+             action, and re-running it outside the session will fail the same way",
         )
         .with_disposition(DeliverySemantics::not_delivered())
     }

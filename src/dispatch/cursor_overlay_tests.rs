@@ -158,3 +158,86 @@ fn disable_never_carries_a_rendered_field() {
         dispatch(disable_args(), &rendering_adapter, &context).expect("disable succeeds");
     assert!(rendering_value.get("rendered").is_none());
 }
+
+/// Records the control the adapter was actually handed, which is the only
+/// place the caller's label can be checked: the response envelope echoes the
+/// label back from the session config whether or not the renderer ever
+/// received it, so asserting on the envelope would pass with the label
+/// dropped.
+#[derive(Default)]
+struct RecordingAdapter {
+    seen: Mutex<Vec<agent_desktop_core::CursorOverlayControl>>,
+}
+
+impl ObservationOps for RecordingAdapter {}
+impl ActionOps for RecordingAdapter {}
+impl InputOps for RecordingAdapter {}
+
+impl SystemOps for RecordingAdapter {
+    fn update_cursor_overlay(
+        &self,
+        control: &agent_desktop_core::CursorOverlayControl,
+    ) -> Result<(), AdapterError> {
+        if let Ok(mut seen) = self.seen.lock() {
+            seen.push(control.clone());
+        }
+        Ok(())
+    }
+}
+
+fn labelled_enable_args(label: &str) -> CursorOverlayArgs {
+    CursorOverlayArgs {
+        action: CursorOverlayAction::Enable(CursorOverlayEnableArgs {
+            label: Some(label.to_owned()),
+            max_words: None,
+            style: CursorOverlayStyleArgs::default(),
+        }),
+    }
+}
+
+/// The label the caller passed has to reach the renderer, not merely the
+/// session config. It did not: this call site built the control from the
+/// style alone, so every overlay drew the greeting while the envelope
+/// reported the caller's own words back to them.
+#[test]
+fn the_callers_label_reaches_the_adapter_rather_than_only_the_envelope() {
+    let home = IsolatedHome::enter();
+    let session_id = home.start_session();
+    let context = CommandContext::new(Some(session_id), None, false).expect("context");
+    let adapter = RecordingAdapter::default();
+
+    let value = dispatch(
+        labelled_enable_args("Opening the file menu"),
+        &adapter,
+        &context,
+    )
+    .expect("enable succeeds");
+
+    assert_eq!(value["rendered"], true);
+    let seen = adapter.seen.lock().expect("recorded controls");
+    let enable = seen.first().expect("the adapter was handed a control");
+    assert_eq!(
+        enable.label(),
+        Some("Opening the file menu"),
+        "the control handed to the renderer must carry what the caller asked to display"
+    );
+}
+
+/// A caller who said nothing still gets the greeting, so the fix above did
+/// not quietly remove the overlay's own announcement.
+#[test]
+fn an_enable_without_a_label_still_hands_the_renderer_the_greeting() {
+    let home = IsolatedHome::enter();
+    let session_id = home.start_session();
+    let context = CommandContext::new(Some(session_id), None, false).expect("context");
+    let adapter = RecordingAdapter::default();
+
+    dispatch(enable_args(), &adapter, &context).expect("enable succeeds");
+
+    let seen = adapter.seen.lock().expect("recorded controls");
+    let enable = seen.first().expect("the adapter was handed a control");
+    assert_eq!(
+        enable.label(),
+        Some(agent_desktop_core::CURSOR_OVERLAY_GREETING)
+    );
+}

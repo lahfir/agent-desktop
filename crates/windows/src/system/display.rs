@@ -27,11 +27,13 @@ pub(crate) fn list_displays_live(deadline: Deadline) -> Result<Vec<DisplayInfo>,
 
         struct DisplayEnumState {
             displays: Vec<DisplayInfo>,
+            info_read_failed: bool,
             dpi_read_failed: bool,
         }
 
         let mut state = DisplayEnumState {
             displays: Vec::new(),
+            info_read_failed: false,
             dpi_read_failed: false,
         };
         let capture = &mut state as *mut DisplayEnumState;
@@ -47,7 +49,8 @@ pub(crate) fn list_displays_live(deadline: Deadline) -> Result<Vec<DisplayInfo>,
                 ..Default::default()
             };
             if unsafe { GetMonitorInfoW(monitor, &mut info) } == 0 {
-                return 1;
+                state.info_read_failed = true;
+                return 0;
             }
             let primary = info.dwFlags & 1 != 0;
             let mut dpi_x: u32 = 0;
@@ -59,30 +62,38 @@ pub(crate) fn list_displays_live(deadline: Deadline) -> Result<Vec<DisplayInfo>,
             };
             state.displays.push(DisplayInfo {
                 id: format!("monitor-{}", monitor as usize),
-                bounds: Rect {
-                    x: info.rcMonitor.left as f64,
-                    y: info.rcMonitor.top as f64,
-                    width: (info.rcMonitor.right - info.rcMonitor.left) as f64,
-                    height: (info.rcMonitor.bottom - info.rcMonitor.top) as f64,
-                },
+                bounds: crate::system::win_rect::rect_of(&info.rcMonitor),
                 is_primary: primary,
                 scale,
             });
             1
         }
 
-        unsafe {
+        let enumerated = unsafe {
             EnumDisplayMonitors(
                 std::ptr::null_mut(),
                 std::ptr::null(),
                 Some(callback),
                 capture as isize,
-            );
-        }
-        if state.dpi_read_failed {
-            return Err(AdapterError::internal(
-                "Could not read a monitor's effective DPI",
-            ));
+            )
+        };
+        match classify_enumeration(
+            enumerated != 0,
+            state.info_read_failed,
+            state.dpi_read_failed,
+        ) {
+            EnumerationOutcome::Completed => {}
+            EnumerationOutcome::MonitorInfoUnreadable => {
+                return Err(AdapterError::internal(
+                    "Could not read a monitor's bounds and primary flag",
+                ));
+            }
+            EnumerationOutcome::DpiUnreadable => {
+                return Err(AdapterError::internal(
+                    "Could not read a monitor's effective DPI",
+                ));
+            }
+            EnumerationOutcome::EnumerationFailed => return Err(enumeration_failed()),
         }
         primaries_first(&mut state.displays);
         Ok(state.displays)
@@ -91,6 +102,58 @@ pub(crate) fn list_displays_live(deadline: Deadline) -> Result<Vec<DisplayInfo>,
     {
         Ok(Vec::new())
     }
+}
+
+/// What an enumeration pass actually established, kept separate from the
+/// Win32 call so the three outcomes can be told apart in a test on any
+/// host - the shape `classify_dpi_awareness_call` already uses next door.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EnumerationOutcome {
+    Completed,
+    MonitorInfoUnreadable,
+    DpiUnreadable,
+    EnumerationFailed,
+}
+
+/// `EnumDisplayMonitors` returning zero is a failure, not an empty desktop.
+/// Reading it as an empty success made every caller report "no displays
+/// attached" for what was an API failure, which is the one answer a caller
+/// cannot recover from because it looks like a fact about the machine.
+///
+/// A monitor whose info cannot be read is the same collapse one monitor
+/// down: continuing the enumeration dropped that monitor from the list
+/// silently, so a desktop whose every monitor failed answered the same empty
+/// success a display-less machine answers. Either unreadable read stops the
+/// pass and is reported as itself.
+///
+/// The callback returns zero on the first failing read, so at most one of the
+/// two flags is ever set; the info read runs first, so it is checked first.
+pub(crate) fn classify_enumeration(
+    enumerated: bool,
+    info_read_failed: bool,
+    dpi_read_failed: bool,
+) -> EnumerationOutcome {
+    if info_read_failed {
+        return EnumerationOutcome::MonitorInfoUnreadable;
+    }
+    if dpi_read_failed {
+        return EnumerationOutcome::DpiUnreadable;
+    }
+    if !enumerated {
+        return EnumerationOutcome::EnumerationFailed;
+    }
+    EnumerationOutcome::Completed
+}
+
+/// An enumeration that fails returns zero, which is not an empty desktop.
+/// Reporting it as an empty success made every caller say "no displays
+/// attached" for what was an API failure.
+#[cfg(target_os = "windows")]
+fn enumeration_failed() -> AdapterError {
+    let code = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+    AdapterError::internal("The attached displays could not be enumerated")
+        .with_platform_detail(format!("EnumDisplayMonitors Win32 error {code}"))
+        .with_suggestion("Retry once the session has an interactive desktop attached")
 }
 
 pub(crate) fn display_at(index: usize, deadline: Deadline) -> Result<DisplayInfo, AdapterError> {

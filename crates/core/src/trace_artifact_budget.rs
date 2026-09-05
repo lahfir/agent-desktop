@@ -2,6 +2,7 @@ use crate::{
     private_file::read_private_bounded, refs::write_private_file, refs_lock::RefStoreLock,
 };
 use std::path::Path;
+use std::time::Duration;
 
 const SCREENSHOT_BYTE_BUDGET: u64 = 128 * 1024 * 1024;
 const SCREENSHOT_COUNT_BUDGET: u32 = 200;
@@ -9,6 +10,23 @@ const REFMAP_BYTE_BUDGET: u64 = 64 * 1024 * 1024;
 const USAGE_LEDGER_FILE: &str = ".artifact-usage.json";
 const USAGE_LEDGER_MAX_BYTES: u64 = 256;
 const ARTIFACT_LOCK_FILE: &str = ".artifact-budget.lock";
+
+/// Waiting for the artifact ledger lock is observability work, and observability
+/// must never spend the budget of the action it observes. The wait is therefore
+/// bounded by its own fixed window, additionally clamped to whatever the caller
+/// still has left, and a lock that cannot be taken inside that window skips the
+/// capture rather than stalling the action behind it.
+///
+/// 50 ms is deliberate on both sides. An uncontended acquire measured on this
+/// hardware costs 68 us at best, 72 us typically, and 1.8 ms at the worst of two
+/// hundred samples, and a contended acquire re-polls every 10 ms, so 50 ms buys
+/// five attempts. It also clears the 31 ms median span for which a concurrent
+/// 2 MB screenshot write holds the lock, so two simultaneous captures usually
+/// both land and only a tail write costs the loser its capture. On the other
+/// side it is half the dispatch reserve the pre-capture path already withholds,
+/// so losing the wait outright moves the observed action's own budget by less
+/// than the slack that path exists to keep.
+const ARTIFACT_LOCK_WAIT_MS: u64 = 50;
 
 #[derive(Clone, Copy)]
 struct ArtifactLimits {
@@ -99,11 +117,27 @@ pub(crate) fn write_refmap_if_absent(
     Ok(())
 }
 
+/// The refmap copy is handed no deadline of its own, so it takes the same fixed
+/// capture window through `Deadline::after`, which already folds in whatever
+/// command-scope deadline is in force and so clamps the wait to the caller's
+/// remaining time exactly as the screenshot path does.
 fn artifact_lock(trace_dir: &Path) -> Result<RefStoreLock, &'static str> {
-    RefStoreLock::acquire(&trace_dir.join(ARTIFACT_LOCK_FILE)).map_err(|_| "lock_failed")
+    let deadline = crate::Deadline::after(ARTIFACT_LOCK_WAIT_MS).map_err(|_| "lock_failed")?;
+    acquire_artifact_lock(trace_dir, deadline)
 }
 
 fn artifact_lock_with_deadline(
+    trace_dir: &Path,
+    deadline: crate::Deadline,
+) -> Result<RefStoreLock, &'static str> {
+    acquire_artifact_lock(trace_dir, capture_lock_deadline(deadline))
+}
+
+fn capture_lock_deadline(caller: crate::Deadline) -> crate::Deadline {
+    caller.capped(Duration::from_millis(ARTIFACT_LOCK_WAIT_MS))
+}
+
+fn acquire_artifact_lock(
     trace_dir: &Path,
     deadline: crate::Deadline,
 ) -> Result<RefStoreLock, &'static str> {
@@ -190,185 +224,5 @@ fn limits() -> ArtifactLimits {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn temp_dir(name: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!(
-            "agent-desktop-artifact-budget-{name}-{}",
-            std::process::id()
-        ))
-    }
-
-    fn prepare_trace(name: &str) -> std::path::PathBuf {
-        let trace = temp_dir(name);
-        let _ = std::fs::remove_dir_all(&trace);
-        crate::trace::ensure_trace_dir(&trace.join("screens")).unwrap();
-        crate::trace::ensure_trace_dir(&trace.join("refmaps")).unwrap();
-        trace
-    }
-
-    fn test_deadline() -> crate::Deadline {
-        crate::Deadline::standard().unwrap()
-    }
-
-    #[test]
-    fn artifact_writes_scan_once_then_use_the_private_ledger() {
-        let trace = prepare_trace("scan-once");
-        reset_test_scan_count();
-        set_test_limits(100, 10, 100);
-
-        write_screenshot(
-            &trace,
-            &trace.join("screens/a.png"),
-            &[1, 2],
-            test_deadline(),
-        )
-        .unwrap();
-        assert_eq!(test_scan_count(), 2);
-        write_screenshot(&trace, &trace.join("screens/b.png"), &[3], test_deadline()).unwrap();
-        write_refmap_if_absent(&trace, &trace.join("refmaps/a.json"), &[4, 5]).unwrap();
-        write_refmap_if_absent(&trace, &trace.join("refmaps/b.json"), &[6]).unwrap();
-
-        assert_eq!(test_scan_count(), 2);
-        let ledger =
-            read_private_bounded(&trace.join(USAGE_LEDGER_FILE), USAGE_LEDGER_MAX_BYTES).unwrap();
-        assert_eq!(decode_usage(&ledger), Some((3, 2, 3)));
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            assert_eq!(
-                std::fs::metadata(trace.join(USAGE_LEDGER_FILE))
-                    .unwrap()
-                    .permissions()
-                    .mode()
-                    & 0o777,
-                0o600
-            );
-        }
-
-        clear_test_limits();
-        std::fs::remove_dir_all(trace).unwrap();
-    }
-
-    #[test]
-    fn missing_and_corrupt_ledgers_are_repaired_from_artifacts() {
-        let trace = prepare_trace("repair");
-        set_test_limits(100, 10, 100);
-        write_screenshot(&trace, &trace.join("screens/a.png"), &[1], test_deadline()).unwrap();
-
-        std::fs::remove_file(trace.join(USAGE_LEDGER_FILE)).unwrap();
-        reset_test_scan_count();
-        write_screenshot(&trace, &trace.join("screens/b.png"), &[2], test_deadline()).unwrap();
-        assert_eq!(test_scan_count(), 2);
-        write_private_file(&trace.join(USAGE_LEDGER_FILE), b"invalid").unwrap();
-        reset_test_scan_count();
-        write_refmap_if_absent(&trace, &trace.join("refmaps/a.json"), &[3]).unwrap();
-
-        assert_eq!(test_scan_count(), 2);
-        let ledger =
-            read_private_bounded(&trace.join(USAGE_LEDGER_FILE), USAGE_LEDGER_MAX_BYTES).unwrap();
-        assert_eq!(decode_usage(&ledger), Some((2, 2, 1)));
-        clear_test_limits();
-        std::fs::remove_dir_all(trace).unwrap();
-    }
-
-    #[test]
-    fn failed_artifact_write_rolls_back_its_reservation() {
-        let trace = prepare_trace("rollback");
-        let blocked = trace.join("screens/blocked.png");
-        std::fs::create_dir(&blocked).unwrap();
-        set_test_limits(1, 1, 100);
-
-        assert_eq!(
-            write_screenshot(&trace, &blocked, &[1], test_deadline()),
-            Err("write_failed")
-        );
-        std::fs::remove_dir(&blocked).unwrap();
-        assert!(
-            write_screenshot(&trace, &trace.join("screens/ok.png"), &[1], test_deadline(),).is_ok()
-        );
-
-        clear_test_limits();
-        std::fs::remove_dir_all(trace).unwrap();
-    }
-
-    #[test]
-    fn reserved_usage_without_an_artifact_remains_fail_safe() {
-        let trace = prepare_trace("reserved");
-        persist_usage(&trace, (1, 1, 0)).unwrap();
-        set_test_limits(1, 1, 100);
-
-        assert_eq!(
-            write_screenshot(
-                &trace,
-                &trace.join("screens/next.png"),
-                &[1],
-                test_deadline(),
-            ),
-            Err("count_budget")
-        );
-
-        clear_test_limits();
-        std::fs::remove_dir_all(trace).unwrap();
-    }
-
-    #[test]
-    fn ambiguous_write_failure_with_a_file_keeps_the_reservation() {
-        let trace = prepare_trace("ambiguous-failure");
-        let path = trace.join("screens/maybe-written.png");
-        write_private_file(&path, &[1]).unwrap();
-        persist_usage(&trace, (1, 1, 0)).unwrap();
-
-        rollback_reservation_if_absent(&trace, &path, (0, 0, 0));
-
-        let ledger =
-            read_private_bounded(&trace.join(USAGE_LEDGER_FILE), USAGE_LEDGER_MAX_BYTES).unwrap();
-        assert_eq!(decode_usage(&ledger), Some((1, 1, 0)));
-        std::fs::remove_dir_all(trace).unwrap();
-    }
-
-    #[test]
-    fn preexisting_files_consume_the_persisted_session_budget() {
-        let trace = temp_dir("persisted");
-        let screens = trace.join("screens");
-        let _ = std::fs::remove_dir_all(&trace);
-        crate::trace::ensure_trace_dir(&screens).unwrap();
-        std::fs::write(screens.join("existing.png"), [1]).unwrap();
-        set_test_limits(100, 1, 100);
-
-        let result = write_screenshot(&trace, &screens.join("next.png"), &[2], test_deadline());
-
-        assert_eq!(result, Err("count_budget"));
-        clear_test_limits();
-        std::fs::remove_dir_all(trace).unwrap();
-    }
-
-    #[test]
-    fn separate_session_directories_have_independent_budgets() {
-        let first = temp_dir("first");
-        let second = temp_dir("second");
-        let _ = std::fs::remove_dir_all(&first);
-        let _ = std::fs::remove_dir_all(&second);
-        crate::trace::ensure_trace_dir(&first.join("screens")).unwrap();
-        crate::trace::ensure_trace_dir(&second.join("screens")).unwrap();
-        set_test_limits(100, 1, 100);
-
-        assert!(
-            write_screenshot(&first, &first.join("screens/a.png"), &[1], test_deadline(),).is_ok()
-        );
-        assert!(
-            write_screenshot(
-                &second,
-                &second.join("screens/a.png"),
-                &[1],
-                test_deadline(),
-            )
-            .is_ok()
-        );
-
-        clear_test_limits();
-        std::fs::remove_dir_all(first).unwrap();
-        std::fs::remove_dir_all(second).unwrap();
-    }
-}
+#[path = "trace_artifact_budget_tests.rs"]
+mod tests;

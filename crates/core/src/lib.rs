@@ -121,6 +121,7 @@ pub mod resolve_errors;
 mod retry_disposition;
 mod retryability;
 mod role;
+pub mod role_text;
 pub mod roles;
 pub mod screenshot_target;
 pub(crate) mod search_text;
@@ -177,9 +178,9 @@ pub use containment_predicate::ContainmentPredicate;
 pub use context::{CommandContext, WaitSelector};
 pub use cursor_overlay::{
     CURSOR_ARRIVAL_TIMEOUT_MS, CURSOR_HIGHLIGHT_HOLD_MS, CURSOR_IDLE_REST_MS,
-    CURSOR_OVERLAY_GREETING, CursorMotion, CursorOverlayConfig, CursorOverlayControl,
-    CursorOverlayInstruction, CursorOverlayStyle, CursorPhase, CursorPose, MAX_CURSOR_LABEL_WORDS,
-    place_label,
+    CURSOR_LABEL_REVEAL_MS, CURSOR_OVERLAY_GREETING, CURSOR_REST_FADE_MS, CursorMotion,
+    CursorOverlayConfig, CursorOverlayControl, CursorOverlayInstruction, CursorOverlayStyle,
+    CursorPhase, CursorPose, MAX_CURSOR_LABEL_BYTES, MAX_CURSOR_LABEL_WORDS, place_label,
 };
 pub use deadline::{DEFAULT_OPERATION_TIMEOUT_MS, Deadline};
 pub use delivery_disposition::DeliveryDisposition;

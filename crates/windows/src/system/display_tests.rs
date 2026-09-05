@@ -1,7 +1,7 @@
 use super::{
-    capture_selection, capture_selection_in, display_at, display_identity_matches,
-    intersection_area, list_displays_live, primaries_first, scale_for_bounds, scale_for_bounds_in,
-    verify_display_identity,
+    EnumerationOutcome, capture_selection, capture_selection_in, classify_enumeration, display_at,
+    display_identity_matches, intersection_area, list_displays_live, primaries_first,
+    scale_for_bounds, scale_for_bounds_in, verify_display_identity,
 };
 use agent_desktop_core::{Deadline, DisplayInfo, ErrorCode, Rect};
 
@@ -257,4 +257,50 @@ fn rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
         width,
         height,
     }
+}
+
+/// The three outcomes an enumeration pass can reach, told apart on any host.
+/// Before this split a failed enumeration and a genuinely display-less machine
+/// were the same empty success, and only the second of those is a fact a
+/// caller can act on.
+#[test]
+fn a_completed_enumeration_is_not_confused_with_a_failed_one() {
+    assert_eq!(
+        classify_enumeration(true, false, false),
+        EnumerationOutcome::Completed
+    );
+    assert_eq!(
+        classify_enumeration(false, false, false),
+        EnumerationOutcome::EnumerationFailed
+    );
+}
+
+/// A monitor whose `GetMonitorInfoW` fails used to be skipped, so it vanished
+/// from the list and a desktop whose every monitor failed was indistinguishable
+/// from a machine with no displays. It stops the pass and is reported as
+/// itself, exactly as an unreadable DPI already was.
+#[test]
+fn an_unreadable_monitor_info_is_reported_as_itself_rather_than_a_shorter_list() {
+    assert_eq!(
+        classify_enumeration(false, true, false),
+        EnumerationOutcome::MonitorInfoUnreadable
+    );
+    assert_eq!(
+        classify_enumeration(true, true, false),
+        EnumerationOutcome::MonitorInfoUnreadable
+    );
+}
+
+/// An unreadable DPI outranks the enumeration's own return, because the pass
+/// stopped early and its zero says nothing about the monitors themselves.
+#[test]
+fn an_unreadable_dpi_is_reported_as_itself_rather_than_as_an_enumeration_failure() {
+    assert_eq!(
+        classify_enumeration(false, false, true),
+        EnumerationOutcome::DpiUnreadable
+    );
+    assert_eq!(
+        classify_enumeration(true, false, true),
+        EnumerationOutcome::DpiUnreadable
+    );
 }

@@ -16,3 +16,13 @@ pub use system::com_runtime::{
 };
 #[cfg(target_os = "windows")]
 pub use system::private_file::WindowsPrivateFile;
+
+/// The argv token the overlay's renderer carries.
+///
+/// Published because recognising that process is necessarily out-of-process
+/// work: it is detached, holds no console and no window this crate can be
+/// asked about, so anything reaping a stray one enumerates command lines from
+/// outside this crate entirely. A second copy of the string would drift in
+/// silence, and the way it would announce itself is a reaper that matches
+/// nothing and leaves a topmost overlay on screen.
+pub use system::cursor_overlay::pipe_name::CHILD_ARGV_FLAG as CURSOR_OVERLAY_CHILD_FLAG;

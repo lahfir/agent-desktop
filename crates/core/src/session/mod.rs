@@ -16,7 +16,14 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const SESSION_MANIFEST_FILE: &str = "session.json";
+/// The manifest's filename inside a session directory.
+///
+/// Public because a platform crate that has to read the manifest without
+/// core's typed reader — to keep a fault distinguishable from a genuine
+/// absence, which `read_manifest` deliberately collapses — must not restate
+/// the name. One that guessed it read a file that never existed and treated
+/// every session as ended.
+pub const SESSION_MANIFEST_FILE: &str = "session.json";
 const MAX_SESSION_MANIFEST_BYTES: u64 = 64 * 1024;
 pub(super) const TRACE_LIVENESS_WINDOW: Duration = Duration::from_secs(300);
 static SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -141,6 +148,13 @@ pub fn cursor_overlay_for_session(
     }
 }
 
+/// Whether a session should still be accumulating trace.
+///
+/// The ended-session check is not visible here: `SessionManifest::trace_enabled`
+/// owns it, so this and the trace-directory resolution in `CommandContext` can
+/// never disagree about when a session stops recording. A reader looking only at
+/// this line has concluded the check is missing and gone hunting for a leak that
+/// does not exist.
 pub fn trace_enabled_for_session(session_id: &str) -> Result<bool, AppError> {
     Ok(read_manifest(session_id)?.is_some_and(|manifest| manifest.trace_enabled()))
 }
@@ -298,6 +312,10 @@ pub(super) fn now_millis() -> u64 {
 #[cfg(test)]
 #[path = "session_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "manifest_location_tests.rs"]
+mod manifest_location_tests;
 
 #[cfg(test)]
 #[path = "session_gc_tests.rs"]

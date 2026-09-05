@@ -49,7 +49,12 @@ pub(crate) fn surface_root(
                 .ok_or_else(|| {
                     AdapterError::new(
                         ErrorCode::WindowNotFound,
-                        "No open menu was found for this application",
+                        "No menu this surface can root was found for this application",
+                    )
+                    .with_suggestion(
+                        "A classic Win32 menu can be open without exposing an element to \
+                         root at, so a menu wait can succeed where this refuses. Read the \
+                         owning window's own surface instead.",
                     )
                 })?;
             root_from_hwnd(location.root_handle(), deadline)

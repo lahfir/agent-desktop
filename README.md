@@ -211,9 +211,15 @@ agent-desktop session end "$AGENT_DESKTOP_SESSION"
 agent-desktop session gc
 ```
 
-### Agent cursor overlay (macOS)
+### Agent cursor overlay
 
-A presentation-only cursor that shows what the agent is about to do. Off by default.
+A presentation-only cursor that shows what the agent is about to do. Off by
+default. Renders on macOS and Windows; other platforms record the setting
+without drawing. On Windows the overlay draws only for headless semantic
+actions — a `--headed` command sends real pointer input and the overlay is
+suppressed for the rest of that session — and it does not collapse under the
+OS's reduce-motion accessibility preference the way macOS does, a deliberate
+difference documented with its cost in `skills/agent-desktop-windows/SKILL.md`.
 
 ```bash
 session_id=$(agent-desktop session start --cursor | jq -r '.data.session_id')
@@ -249,11 +255,17 @@ export AGENT_DESKTOP_SESSION="$session_id"
 - The action waits for it to land, so a window never closes before the cursor arrives. The wait is capped at 900 ms and never blocks an action.
 - A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
 - Idle for 6 s, it fades out. The next command brings it back.
-- `cursor-overlay disable` removes it now. You do not have to end the session.
+- `cursor-overlay disable` removes it now and stops the renderer. You do not
+  have to end the session. If a session ends without a `disable` — a crash,
+  `session gc` — the renderer reclaims itself within a few seconds regardless.
 - Headed actions hide it. It never moves or intercepts the OS pointer.
-- Overhead is about 150–300 ms per action, all of it the visible travel.
+- Overhead is about 150–300 ms per action, all of it the visible travel. On
+  Windows the control-pipe roundtrip itself measures a fraction of a
+  millisecond; the travel animation is the cost.
 
-macOS renders it natively. Windows and Linux inherit the adapter's no-op and need only their own renderer against the same core contract.
+macOS and Windows render it natively — on Windows it also draws above the
+shell's own topmost chrome, including the taskbar. Linux inherits the
+adapter's no-op and needs its own renderer against the same core contract.
 
 ## Driving Chromium apps (CDP)
 

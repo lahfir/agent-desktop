@@ -1,0 +1,103 @@
+use super::{MAX_CONTROL_BYTES, decode, encode, is_acknowledged, may_spawn};
+use agent_desktop_core::{
+    CursorOverlayConfig, CursorOverlayControl, CursorOverlayInstruction, CursorOverlayStyle,
+    CursorPhase, Point,
+};
+
+fn session() -> String {
+    "s0000001".to_owned()
+}
+
+fn instruction(click: bool, phase: CursorPhase) -> CursorOverlayInstruction {
+    let config = CursorOverlayConfig::enabled(Some("open the file".into()), 6)
+        .expect("an enabled overlay config");
+    CursorOverlayInstruction::new(Point { x: 120.0, y: 240.0 }, &config, click)
+        .expect("an instruction with a valid destination")
+        .with_phase(phase)
+}
+
+#[test]
+fn a_control_round_trips_unchanged() {
+    let control = CursorOverlayControl::present(session(), instruction(true, CursorPhase::Travel));
+
+    let decoded = decode(&encode(&control).expect("encodes")).expect("decodes");
+
+    assert_eq!(decoded, control);
+}
+
+#[test]
+fn every_variant_round_trips() {
+    for control in [
+        CursorOverlayControl::enable(session(), None, CursorOverlayStyle::default()),
+        CursorOverlayControl::present(session(), instruction(false, CursorPhase::Effect)),
+        CursorOverlayControl::hide(session()),
+        CursorOverlayControl::show(session()),
+        CursorOverlayControl::disable(session()),
+    ] {
+        let decoded = decode(&encode(&control).expect("encodes")).expect("decodes");
+        assert_eq!(decoded, control);
+    }
+}
+
+#[test]
+fn an_oversized_payload_is_refused_rather_than_truncated() {
+    let oversized = vec![b'x'; MAX_CONTROL_BYTES + 1];
+
+    let error = decode(&oversized).expect_err("an oversized control is refused");
+
+    assert_eq!(error.code, agent_desktop_core::ErrorCode::InvalidArgs);
+}
+
+#[test]
+fn a_payload_that_is_not_a_control_is_refused() {
+    assert!(decode(b"{\"action\":\"unknown\"}").is_err());
+    assert!(decode(b"not json at all").is_err());
+}
+
+/// The enable is acknowledged and macOS's send path does not acknowledge it.
+/// `data.rendered` is answered from that byte, and the stdin bootstrap that
+/// starts the child cannot answer anything, so the divergence is the point.
+#[test]
+fn the_controls_a_caller_waits_on_are_the_ones_that_answer_something() {
+    assert!(is_acknowledged(&CursorOverlayControl::enable(
+        session(),
+        None,
+        CursorOverlayStyle::default()
+    )));
+    assert!(is_acknowledged(&CursorOverlayControl::disable(session())));
+    assert!(is_acknowledged(&CursorOverlayControl::hide(session())));
+    assert!(is_acknowledged(&CursorOverlayControl::present(
+        session(),
+        instruction(true, CursorPhase::Travel)
+    )));
+
+    assert!(
+        !is_acknowledged(&CursorOverlayControl::present(
+            session(),
+            instruction(true, CursorPhase::Effect)
+        )),
+        "an effect plays after dispatch has already confirmed, so waiting on it adds latency \
+         to nothing"
+    );
+    assert!(!is_acknowledged(&CursorOverlayControl::show(session())));
+}
+
+/// A disable that spawned a renderer would start one in order to tell it to
+/// stop, and hide/show are sent around every mutating command in a headed
+/// session - which would fork a detached renderer per command.
+#[test]
+fn only_an_enable_or_a_present_may_bring_a_renderer_into_existence() {
+    assert!(may_spawn(&CursorOverlayControl::enable(
+        session(),
+        None,
+        CursorOverlayStyle::default()
+    )));
+    assert!(may_spawn(&CursorOverlayControl::present(
+        session(),
+        instruction(false, CursorPhase::Travel)
+    )));
+
+    assert!(!may_spawn(&CursorOverlayControl::disable(session())));
+    assert!(!may_spawn(&CursorOverlayControl::hide(session())));
+    assert!(!may_spawn(&CursorOverlayControl::show(session())));
+}

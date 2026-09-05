@@ -84,7 +84,9 @@ mod imp {
         let Ok(walker) = client.get_raw_view_walker() else {
             return Ok(HitTestResult::Unknown);
         };
-        let target_root = corroborate::element_root_hwnd(target, &walker, deadline);
+        let Ok(target_root) = corroborate::element_root_hwnd(target, &walker, deadline) else {
+            return Ok(classify::result_for_incomplete_walk());
+        };
         if let Some(unknown) = pre_probe_guard(&bounds, &point, target_root) {
             return Ok(unknown);
         }

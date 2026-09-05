@@ -26,6 +26,9 @@ use crate::system::window_ops::{is_foreground_window, passes_filter};
 /// process, and folding them in would make every process appear to own the
 /// taskbar. A process with no windows answers an empty list, which is a
 /// successful answer about that process, not a refusal.
+///
+/// A menu probe that faults costs the process its `menu` classification and
+/// nothing else, the same way an unreadable window costs only its `sheet`.
 pub(crate) fn list_surfaces_for_process(
     process: ProcessIdentity,
     deadline: Deadline,
@@ -33,27 +36,19 @@ pub(crate) fn list_surfaces_for_process(
     crate::system::permissions::ensure_budget(deadline)?;
     require_live_process(&process)?;
     let windows = windows_of(process.pid, deadline)?;
-    let mut surfaces = Vec::new();
-    for window in &windows {
-        let title = live_window_title(window.handle);
-        surfaces.push(surface(
-            SnapshotSurface::Window,
-            window.handle,
-            title.clone(),
-        ));
-        if is_foreground_window(window.handle) {
-            surfaces.push(surface(
-                SnapshotSurface::Focused,
-                window.handle,
-                title.clone(),
-            ));
-        }
-        if is_modal_sheet(window.handle, deadline)? {
-            surfaces.push(surface(SnapshotSurface::Sheet, window.handle, title));
-        }
-    }
+    let observed: Vec<ObservedWindow> = windows
+        .iter()
+        .map(|window| ObservedWindow {
+            handle: window.handle,
+            title: live_window_title(window.handle),
+            foreground: is_foreground_window(window.handle),
+            sheet: is_modal_sheet(window.handle, deadline),
+        })
+        .collect();
     crate::system::permissions::ensure_budget(deadline)?;
-    if let Some(menu) = locate_menu(process.pid, deadline)? {
+    let located = locate_menu(process.pid, deadline);
+    let (mut surfaces, menu) = inventory_with_menu(observed, process.pid, located)?;
+    if let Some(menu) = menu {
         surfaces.push(menu_surface(&menu)?);
     }
     Ok(surfaces)
@@ -106,6 +101,97 @@ fn surface(kind: SnapshotSurface, handle: WindowHandle, title: Option<String>) -
         title,
         item_count: None,
     }
+}
+
+/// One window as this inventory observed it. The sheet probe is carried as a
+/// `Result` rather than resolved here, so the rule about what a failed probe
+/// costs is decided in one pure place and can be tested without a desktop.
+pub(crate) struct ObservedWindow {
+    pub(crate) handle: WindowHandle,
+    pub(crate) title: Option<String>,
+    pub(crate) foreground: bool,
+    pub(crate) sheet: Result<bool, AdapterError>,
+}
+
+/// One window whose UIA root cannot be read costs that window its `sheet`
+/// classification and nothing else. Propagating it discarded every surface
+/// already collected for the process, so a single hung window erased its
+/// responsive siblings from the inventory - where the observation path
+/// reports the partial it did observe rather than a discard.
+pub(crate) fn surfaces_of(observed: Vec<ObservedWindow>) -> Vec<SurfaceInfo> {
+    let mut surfaces = Vec::new();
+    for window in observed {
+        surfaces.push(surface(
+            SnapshotSurface::Window,
+            window.handle,
+            window.title.clone(),
+        ));
+        if window.foreground {
+            surfaces.push(surface(
+                SnapshotSurface::Focused,
+                window.handle,
+                window.title.clone(),
+            ));
+        }
+        match window.sheet {
+            Ok(true) => surfaces.push(surface(SnapshotSurface::Sheet, window.handle, window.title)),
+            Ok(false) => {}
+            Err(error) => trace_unreadable_window(window.handle, &error),
+        }
+    }
+    surfaces
+}
+
+/// Folds the menu probe's own `Result` into the window surfaces already
+/// collected, in one pure place that can be exercised in both directions
+/// without a desktop.
+///
+/// A menu probe that faults says nothing about the windows, which were read
+/// from the window census rather than from UIA - so it costs the process its
+/// `menu` classification and nothing else. Propagating it discarded every
+/// window surface already collected, which is the same erasure a failed modal
+/// probe used to cause.
+///
+/// A budget exhaustion and a process that has died are not that: neither is
+/// evidence that no menu is open, and answering "no menu" for a probe that
+/// never finished would relocate the very defect this fold exists to prevent.
+/// Those two keep their own codes. Every UIA fault on this path is already
+/// narrowed to `APP_UNRESPONSIVE` by the read-path narrowing the menu
+/// detector applies, so the two propagating codes cannot swallow one.
+pub(crate) fn inventory_with_menu<T>(
+    observed: Vec<ObservedWindow>,
+    pid: ProcessId,
+    located: Result<Option<T>, AdapterError>,
+) -> Result<(Vec<SurfaceInfo>, Option<T>), AdapterError> {
+    let surfaces = surfaces_of(observed);
+    match located {
+        Ok(menu) => Ok((surfaces, menu)),
+        Err(error) if refuses_the_listing(&error) => Err(error),
+        Err(error) => {
+            trace_unreadable_menu(pid, &error);
+            Ok((surfaces, None))
+        }
+    }
+}
+
+fn refuses_the_listing(error: &AdapterError) -> bool {
+    matches!(error.code, ErrorCode::Timeout | ErrorCode::AppNotFound)
+}
+
+fn trace_unreadable_menu(pid: ProcessId, error: &AdapterError) {
+    tracing::debug!(
+        code = %error.code.as_str(),
+        pid = u32::from(pid),
+        "a process's open-menu classification could not be read; its window surfaces stand"
+    );
+}
+
+fn trace_unreadable_window(handle: WindowHandle, error: &AdapterError) {
+    tracing::debug!(
+        code = %error.code.as_str(),
+        handle = handle as usize,
+        "a window's modal classification could not be read; its other surfaces stand"
+    );
 }
 
 /// The modal classification is the surface path's own predicate, read from
@@ -166,3 +252,7 @@ fn menu_item_count(menu: &MenuLocation) -> Result<usize, AdapterError> {
 #[cfg(test)]
 #[path = "surface_inventory_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "surface_inventory_partial_tests.rs"]
+mod partial_tests;

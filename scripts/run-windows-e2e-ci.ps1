@@ -79,9 +79,40 @@ try {
     $fixtureOutput | ForEach-Object { Write-Host $_ }
     if ($fixtureExitCode -ne 0) { throw "the E2E fixture build failed with exit code $fixtureExitCode" }
 
+    # The cursor-overlay teardown tests need a composited desktop they can read
+    # back with BitBlt, which a hosted CI runner does not have: it has a window
+    # station enough for UI Automation, so a WPF fixture stages fine there while
+    # a layered overlay reads as zero pixels. They therefore belong to this
+    # operator-run suite, under the same exclusive lease, rather than to a lane
+    # that would fail for a reason that says nothing about the renderer.
+    Write-Host 'run-windows-e2e-ci.ps1: running the cursor-overlay teardown tests under the lease'
+    $env:AGENT_DESKTOP_LIVE_WPF = '1'
+    & cargo test -p agent-desktop --locked --release --test windows_cursor_overlay_teardown -- --test-threads=1
+    $overlayExitCode = $LASTEXITCODE
+    Remove-Item Env:\AGENT_DESKTOP_LIVE_WPF -ErrorAction SilentlyContinue
+    if ($overlayExitCode -ne 0) { throw "the cursor-overlay teardown tests failed with exit code $overlayExitCode" }
+    Write-Host 'run-windows-e2e-ci.ps1: cursor-overlay teardown tests passed'
+
     Write-Host 'run-windows-e2e-ci.ps1: releasing the desktop lease so the U6 self-test tier can manage its own lease lifecycle'
     Exit-DesktopLease
     $leaseHeld = $false
+
+    # The cursor-overlay frame budgets are wall-clock numbers, and a wall-clock
+    # budget describes hardware. Asserting them on every lane was tried and a
+    # hosted ARM64 runner failed on timing alone, which is how a real budget
+    # gets loosened into one that can no longer fire. They are enforced here
+    # instead - the quiesced, operator-controlled host this suite already
+    # requires - and reported without assertion everywhere else. Release,
+    # because the numbers state what a shipped binary does; and outside the
+    # desktop lease, because these compose pixels into memory and need no
+    # desktop at all, so holding the lease would only lengthen it.
+    Write-Host 'run-windows-e2e-ci.ps1: enforcing the cursor-overlay frame budgets'
+    $env:AGENT_DESKTOP_PERF_BUDGET = '1'
+    & cargo test -p agent-desktop-windows --locked --release --lib cursor_overlay::render -- --nocapture --test-threads=1
+    $frameBudgetExitCode = $LASTEXITCODE
+    Remove-Item Env:\AGENT_DESKTOP_PERF_BUDGET -ErrorAction SilentlyContinue
+    if ($frameBudgetExitCode -ne 0) { throw "the cursor-overlay frame budgets failed with exit code $frameBudgetExitCode" }
+    Write-Host 'run-windows-e2e-ci.ps1: cursor-overlay frame budgets passed'
 
     Write-Host 'run-windows-e2e-ci.ps1: running the U6 harness-core self-test tier before the live suite'
     $u6Result = Invoke-BoundedProcess -FilePath 'powershell.exe' `

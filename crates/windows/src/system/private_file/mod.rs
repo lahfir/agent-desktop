@@ -36,7 +36,7 @@
 //! an isolation boundary between administrators.
 
 mod locality;
-mod owner;
+pub(crate) mod owner;
 mod path;
 mod replace;
 
@@ -103,17 +103,29 @@ impl PrivateFileOps for WindowsPrivateFile {
     }
 
     fn read_private_bounded(&self, path: &Path, max_bytes: u64) -> std::io::Result<Vec<u8>> {
-        let mut options = OpenOptions::new();
-        options.read(true);
-        let file = path::open_leaf_regular_no_follow(path, &mut options, "private file")?;
-        owner::require_owned_by_eligible_principal(&file, "private file")?;
-        bounded_read(file, max_bytes)
+        read_private_bounded_path(path, max_bytes)
     }
 
     fn ensure_private(&self, path: &Path) -> std::io::Result<()> {
         path::ensure_private_directory_chain(path)?;
         Ok(())
     }
+}
+
+/// The same bounded, no-follow, owner-checked read the private-file seam
+/// performs, reachable from call sites inside this crate that hold a path
+/// rather than the installed seam.
+///
+/// A child process that reads state-root files without going through core's
+/// installed `PrivateFileOps` would otherwise follow a planted symlink, trust
+/// a foreign-owned file, and read an unbounded one into memory - the three
+/// things every other read of this state root refuses.
+pub(crate) fn read_private_bounded_path(path: &Path, max_bytes: u64) -> std::io::Result<Vec<u8>> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    let file = path::open_leaf_regular_no_follow(path, &mut options, "private file")?;
+    owner::require_owned_by_eligible_principal(&file, "private file")?;
+    bounded_read(file, max_bytes)
 }
 
 fn validate_destination_if_present(path: &Path) -> std::io::Result<()> {

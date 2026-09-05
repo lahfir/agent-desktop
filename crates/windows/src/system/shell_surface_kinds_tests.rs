@@ -95,3 +95,38 @@ fn the_system_tray_chain_descends_through_the_pager_that_owns_the_icons() {
         "the pager must be the toolbar's parent, not a later hop"
     );
 }
+
+/// The raise-then-Escape dismissal re-runs the row's own raise before sending
+/// the key, so it is only sound for a raise that presents idempotently. The
+/// chevron invoke measures that way - it toggles a presented flyout closed and
+/// activates one that is merely visible, and either outcome ends in a closed
+/// surface. An accelerator raise does not: re-sending it can raise the surface
+/// the close was asked to dismiss. Pinned in the table rather than at the call
+/// site, because the table is where a future row would get this wrong.
+#[test]
+fn raise_then_escape_rows_all_raise_by_chevron_invoke() {
+    for row in KINDS {
+        if row.dismiss != SurfaceDismiss::RaiseThenEscape {
+            continue;
+        }
+        assert!(
+            matches!(row.raise, SurfaceRaise::ChevronInvoke),
+            "'{}' dismisses by re-raising, which needs an idempotent raise",
+            crate::system::shell_surface::kebab(row.kind)
+        );
+    }
+}
+
+/// The overflow is the row that carries the measured dismissal, and a table
+/// that silently moved it back to a bare Escape would put the close path back
+/// to sending a keystroke at a surface that may not be able to receive it.
+#[test]
+fn the_overflow_dismisses_by_raising_before_the_escape() {
+    let row = row_for(SnapshotSurface::SystemTrayOverflow).expect("the overflow is a known kind");
+
+    assert_eq!(
+        row.dismiss,
+        SurfaceDismiss::RaiseThenEscape,
+        "a bare Escape is delivered to the foreground, not to the overflow"
+    );
+}

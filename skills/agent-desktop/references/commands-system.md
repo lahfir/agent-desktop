@@ -518,22 +518,39 @@ Sessions are on-disk containers under `<state root>/sessions/<id>/` with a `sess
 
 ### cursor-overlay enable / disable
 
+`session start` prints the id in `data.session_id`; capture it rather than
+retyping it, so the sequence runs as written.
+
 ```bash
-agent-desktop session start --cursor                 # session + default cursor in one command
-agent-desktop --session <id> cursor-overlay enable --label "Opening menu" --accent "#FF3B7B"
-export AGENT_DESKTOP_SESSION=<id>
+SESSION=$(agent-desktop session start --cursor | jq -r .data.session_id)
+agent-desktop --session "$SESSION" cursor-overlay enable --label "Opening menu" --accent "#FF3B7B"
+export AGENT_DESKTOP_SESSION="$SESSION"    # or keep passing --session on each command
+agent-desktop cursor-overlay disable
+```
+
+The same sequence in PowerShell, which is the default shell on Windows —
+`export` and `jq` are not commands there, so the block above cannot be pasted
+as written:
+
+```powershell
+$session = (agent-desktop session start --cursor | ConvertFrom-Json).data.session_id
+agent-desktop --session $session cursor-overlay enable --label "Opening menu" --accent "#FF3B7B"
+$env:AGENT_DESKTOP_SESSION = $session      # or keep passing --session on each command
 agent-desktop cursor-overlay disable
 ```
 
 No flags gives the default look: white body, near-black rim, blue ripple, blue element outline.
 
 `enable` answers with `data.rendered`, a boolean saying whether anything was 
-actually drawn. It is `true` where a renderer ships and `false` where the 
-session setting was recorded but nothing painted, which is the answer on 
-Windows today. Read it rather than treating `ok: true` as proof of a visible 
-cursor: the command succeeded at what it could do, and the field is how it 
-tells you which of the two happened. `disable` carries no such field, because 
-a disable has nothing to render.
+actually drawn. It is `true` once a renderer has acknowledged the control 
+over its own channel — not merely that a process was started — and `false` 
+where the session setting was recorded but the renderer could not be reached, 
+refused to start, or never acknowledged. Read it rather than treating 
+`ok: true` as proof of a visible cursor: the command succeeded at what it 
+could do, and the field is how it tells you which of the two happened. 
+`disable` carries no such field, because a disable has nothing to render, and 
+neither does `session start --cursor`, which enables through the same 
+adapter call but only echoes `cursor_overlay` in its own response.
 
 Style is stored in the session manifest and inherited by every eligible headless command, batch entries included. Action and batch-entry schemas take no cursor flags. Run `enable` again to restyle; it applies at once.
 
@@ -553,11 +570,20 @@ Behaviour:
 - Travel is a human path, 90 to 320 ms. The cursor never rotates or resizes.
 - The action waits for the cursor to land, capped at 900 ms. A slow renderer never blocks it.
 - A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
-- The card shows the label. With no label there is no card.
+- The card shows the label — the one passed to `enable`, and thereafter the
+  one carried by each action. Enabling without a label shows a short greeting
+  instead of nothing, so an overlay that has just come up is visible before
+  any action has run.
 - Idle for 6 s it fades out; the next command restores it.
 - `disable` removes it and stops the renderer. Ending the session is not needed.
-- Headed actions hide it while the real pointer is in use.
-- macOS renders it natively; other platforms use the adapter's presentation no-op.
+  A session that ends without a `disable` — a crash, `session gc` — is
+  reclaimed by the renderer itself within a few seconds regardless.
+- Headed actions hide it while the real pointer is in use; the overlay draws
+  only for headless semantic actions.
+- macOS and Windows render it natively; Linux uses the adapter's presentation
+  no-op. On Windows the renderer does not collapse to a still pose under the
+  OS's reduce-motion accessibility preference the way macOS does — see
+  `agent-desktop-windows/SKILL.md` for the reason and its cost.
 
 ### session start
 ```bash

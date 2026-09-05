@@ -14,6 +14,7 @@ pub(crate) mod capture_modern;
 pub(crate) mod capture_window;
 pub(crate) mod close;
 pub(crate) mod com_runtime;
+pub(crate) mod cursor_overlay;
 pub(crate) mod display;
 pub(crate) mod dpi;
 pub(crate) mod frame_identity;
@@ -55,6 +56,7 @@ pub(crate) mod test_support;
 #[cfg(target_os = "windows")]
 pub(crate) mod thread_walk;
 pub(crate) mod wait;
+pub(crate) mod win_rect;
 pub(crate) mod window_activate;
 pub(crate) mod window_enum;
 pub(crate) mod window_identity;

@@ -61,12 +61,12 @@ const _: () = assert!(size_of::<TOKEN_USER>() == TOKEN_USER_SIZE);
 /// in every token's groups.
 const SE_GROUP_OWNER: u32 = 0x0000_0008;
 
-pub(super) struct SidBuffer {
+pub(crate) struct SidBuffer {
     storage: Vec<u64>,
 }
 
 impl SidBuffer {
-    pub(super) fn copied_from_valid(sid: PSID) -> std::io::Result<Self> {
+    pub(crate) fn copied_from_valid(sid: PSID) -> std::io::Result<Self> {
         if sid.is_null() || unsafe { IsValidSid(sid) } == 0 {
             return Err(std::io::Error::new(
                 ErrorKind::InvalidData,
@@ -95,7 +95,7 @@ impl SidBuffer {
         self.storage.as_ptr().cast::<core::ffi::c_void>().cast_mut()
     }
 
-    pub(super) fn matches(&self, other: &SidBuffer) -> bool {
+    pub(crate) fn matches(&self, other: &SidBuffer) -> bool {
         unsafe { EqualSid(self.as_psid(), other.as_psid()) != 0 }
     }
 }
@@ -274,9 +274,31 @@ fn read_token_information(
 }
 
 fn read_process_token_user() -> std::io::Result<SidBuffer> {
-    let buffer = read_process_token_information(TokenUser)?;
+    token_user_sid(TokenSource::CurrentProcess)
+}
+
+/// The user a token names, read through the same two-call probe every other
+/// token read here uses.
+///
+/// The buffer is `u64`-backed rather than `u8`-backed on purpose. `TOKEN_USER`
+/// holds a pointer, so reading one out of a byte vector is an unaligned read -
+/// it happens to work while the allocator hands back aligned blocks and is
+/// undefined the moment it does not. Anything in this crate that needs a
+/// token's user calls this rather than repeating the sequence.
+pub(crate) fn token_user_sid(token: TokenSource) -> std::io::Result<SidBuffer> {
+    let buffer = match token {
+        TokenSource::CurrentProcess => read_process_token_information(TokenUser)?,
+        TokenSource::Handle(handle) => read_token_information(handle, TokenUser)?,
+    };
     let user: TOKEN_USER = unsafe { std::ptr::read(buffer.as_ptr().cast()) };
     SidBuffer::copied_from_valid(user.User.Sid)
+}
+
+/// Which token to read: this process's own, or one a caller already opened.
+#[derive(Clone, Copy)]
+pub(crate) enum TokenSource {
+    CurrentProcess,
+    Handle(HANDLE),
 }
 
 #[cfg(test)]

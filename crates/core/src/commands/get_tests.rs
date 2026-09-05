@@ -198,27 +198,31 @@ fn bounds_marks_snapshot_fallback_as_not_live_when_a_successful_live_read_finds_
     assert_eq!(result["live"], false);
 }
 
-/// `text` is the default property, and on a control with a label but no value
-/// it comes back empty while `title` carries the label. That surprises a
-/// caller, so the shipped reference now says so — and this pins the behaviour
-/// the corrected wording describes. If `text` is ever made name-preferring,
-/// this fails and forces the documentation to move with it, which is the only
-/// thing keeping the two from drifting apart again.
+/// `text` answers the text a person reads on the control, which is the value
+/// where the value is the content and the accessible name everywhere else.
+/// Both directions are pinned here because the shipped reference describes
+/// both, and a change to either must move that wording with it.
 #[test]
-fn text_reads_the_value_and_title_reads_the_name_as_the_reference_states() {
+fn text_reads_the_name_on_a_labelled_button_and_the_value_on_a_textfield() {
     let _guard = HomeGuard::new();
     let mut labelled_button = entry_with_bounds(Some(stale_snapshot_bounds()));
     labelled_button.identity.role = "button".into();
     labelled_button.identity.name = Some("Close".into());
     labelled_button.identity.value = None;
-    let snapshot_id = save_entry(labelled_button);
-    let adapter = LiveBoundsAdapter::without_live_support();
+    let button_snapshot = save_entry(labelled_button);
 
-    let read = |property| {
+    let mut filled_field = entry_with_bounds(Some(stale_snapshot_bounds()));
+    filled_field.identity.role = "textfield".into();
+    filled_field.identity.name = Some("Search".into());
+    filled_field.identity.value = Some("kittens".into());
+    let field_snapshot = save_entry(filled_field);
+
+    let adapter = LiveBoundsAdapter::without_live_support();
+    let read = |snapshot: &str, property| {
         execute(
             GetArgs {
                 ref_id: "@e1".into(),
-                snapshot_id: Some(snapshot_id.clone()),
+                snapshot_id: Some(snapshot.to_owned()),
                 property,
             },
             &adapter,
@@ -227,19 +231,64 @@ fn text_reads_the_value_and_title_reads_the_name_as_the_reference_states() {
         .expect("get succeeds")
     };
 
-    assert!(
-        read(GetProperty::Text)["value"].is_null(),
-        "a button carries no value, so the default property answers empty"
-    );
     assert_eq!(
-        read(GetProperty::Title)["value"],
+        read(&button_snapshot, GetProperty::Text)["value"],
         "Close",
-        "the accessible name is reachable through title"
+        "a button carries no value, so the text a person reads is its label"
+    );
+    assert!(
+        read(&button_snapshot, GetProperty::Value)["value"].is_null(),
+        "value stays the raw value read, so a caller who wants it specifically still has it"
+    );
+    assert_eq!(read(&button_snapshot, GetProperty::Title)["value"], "Close");
+
+    assert_eq!(
+        read(&field_snapshot, GetProperty::Text)["value"],
+        "kittens",
+        "a textfield carries its content in its value, so that is what is read"
+    );
+    assert_eq!(read(&field_snapshot, GetProperty::Title)["value"], "Search");
+}
+
+/// The cross-fallback, in both directions, so neither preference is a rule
+/// that silently answers empty when its preferred half is missing.
+#[test]
+fn each_preference_falls_back_across_when_its_own_half_is_empty() {
+    let _guard = HomeGuard::new();
+    let mut empty_field = entry_with_bounds(Some(stale_snapshot_bounds()));
+    empty_field.identity.role = "textfield".into();
+    empty_field.identity.name = Some("Search".into());
+    empty_field.identity.value = Some("   ".into());
+    let field_snapshot = save_entry(empty_field);
+
+    let mut nameless_cell = entry_with_bounds(Some(stale_snapshot_bounds()));
+    nameless_cell.identity.role = "cell".into();
+    nameless_cell.identity.name = None;
+    nameless_cell.identity.value = Some("42".into());
+    let cell_snapshot = save_entry(nameless_cell);
+
+    let adapter = LiveBoundsAdapter::without_live_support();
+    let read = |snapshot: &str| {
+        execute(
+            GetArgs {
+                ref_id: "@e1".into(),
+                snapshot_id: Some(snapshot.to_owned()),
+                property: GetProperty::Text,
+            },
+            &adapter,
+            &CommandContext::default(),
+        )
+        .expect("get succeeds")
+    };
+
+    assert_eq!(
+        read(&field_snapshot)["value"],
+        "Search",
+        "a blank value is not text a person reads, so the label answers instead"
     );
     assert_eq!(
-        read(GetProperty::Text)["value"],
-        read(GetProperty::Value)["value"],
-        "text and value are the same read today; the reference says so, and a \
-         change here must move that wording with it"
+        read(&cell_snapshot)["value"],
+        "42",
+        "a nameless cell answers the content its value carries"
     );
 }
