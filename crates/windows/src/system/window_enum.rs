@@ -142,12 +142,7 @@ pub(crate) fn window_rect(window: HWND) -> Rect {
             height: 0.0,
         };
     }
-    Rect {
-        x: rect.left as f64,
-        y: rect.top as f64,
-        width: (rect.right - rect.left) as f64,
-        height: (rect.bottom - rect.top) as f64,
-    }
+    crate::system::win_rect::rect_of(&rect)
 }
 
 /// Every assertion here drives the live `EnumWindows` bridge, which the

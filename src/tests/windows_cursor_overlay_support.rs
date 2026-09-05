@@ -158,9 +158,10 @@ pub(crate) fn enable(scratch: &Scratch, session: &str) -> serde_json::Value {
 /// from outside: it is a detached process with no console, no taskbar entry
 /// and no window title to match on.
 pub(crate) fn overlay_children(session: &str) -> Vec<u32> {
+    let flag = agent_desktop_windows::CURSOR_OVERLAY_CHILD_FLAG;
     let script = format!(
         "Get-CimInstance Win32_Process -Filter \"Name='agent-desktop.exe'\" | \
-         Where-Object {{ $_.CommandLine -like '*--cursor-overlay-child*{session}*' }} | \
+         Where-Object {{ $_.CommandLine -like '*{flag}*{session}*' }} | \
          ForEach-Object {{ $_.ProcessId }}"
     );
     let output = Command::new("powershell")

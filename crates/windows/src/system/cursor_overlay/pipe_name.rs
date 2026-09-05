@@ -45,7 +45,7 @@ pub(crate) const CHILD_MARKER: &str = "AGENT_DESKTOP_CURSOR_OVERLAY_CHILD";
 /// Retiring a stale generation is not such a consumer: it derives that
 /// generation's pipe name and speaks to whoever answers it, which needs no
 /// command line at all.
-pub(crate) const CHILD_ARGV_FLAG: &str = "--cursor-overlay-child";
+pub const CHILD_ARGV_FLAG: &str = "--cursor-overlay-child";
 
 pub(crate) fn pipe_name(root: &Path, session_id: &str) -> String {
     pipe_name_for_generation(root, session_id, PROTOCOL_GENERATION)
