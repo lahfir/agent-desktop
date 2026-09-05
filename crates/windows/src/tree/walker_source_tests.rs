@@ -313,14 +313,35 @@ mod windows_only {
             );
         }
 
+        assert_agrees(&runs[0], &runs[1], "second");
+        assert_agrees(&runs[0], &runs[2], "third");
+    }
+
+    /// Names the node that diverged and how, rather than printing two whole
+    /// vocabularies for a reader to diff by eye.
+    ///
+    /// The divergence this catches is a provider reporting an affordance on
+    /// one walk and not the next, and the useful part of the report is which
+    /// node and which affordance - not that two long vectors are unequal. A
+    /// message that dumps both is also truncated by the test harness before
+    /// the differing element is reached, which is exactly where the reader
+    /// needs it.
+    type Vocabulary = Vec<(String, Vec<String>, Vec<String>)>;
+
+    fn assert_agrees(first: &Vocabulary, later: &Vocabulary, which: &str) {
         assert_eq!(
-            runs[0], runs[1],
-            "the second run's vocabulary diverged from the first"
+            first.len(),
+            later.len(),
+            "the {which} run observed {} nodes against the first run's {}, so the walks are not              describing the same tree",
+            later.len(),
+            first.len()
         );
-        assert_eq!(
-            runs[0], runs[2],
-            "the third run's vocabulary diverged from the first"
-        );
+        for (index, (before, after)) in first.iter().zip(later.iter()).enumerate() {
+            assert_eq!(
+                before, after,
+                "the {which} run's vocabulary diverged from the first at node {index}: the same                  element reported {before:?} and then {after:?}, so an affordance this element                  either has or does not have was read both ways"
+            );
+        }
     }
 
     fn collect<'a>(
