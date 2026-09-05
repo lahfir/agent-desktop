@@ -112,15 +112,26 @@ pub(crate) enum SurfaceRaise {
     ChevronInvoke,
 }
 
-/// The dismiss half of [`SurfaceRaise`]: the overflow closes on Esc (A26-6's
-/// measured toggle), the Action Center closes on its Win+A toggle, and the
-/// Start overlay also closes on Esc - measured, because on this build the
-/// Meta toggle re-raises it rather than dismissing it. The always-up tray
-/// family has nothing to dismiss.
-#[derive(Clone, Copy)]
+/// The dismiss half of [`SurfaceRaise`]: the Action Center closes on its
+/// Win+A toggle, and the Start overlay closes on Esc - measured, because on
+/// this build the Meta toggle re-raises it rather than dismissing it. The
+/// always-up tray family has nothing to dismiss.
+///
+/// [`SurfaceDismiss::RaiseThenEscape`] is Escape with the precondition Escape
+/// silently depends on. A synthesized Escape goes to whichever window owns the
+/// foreground, so it dismisses a surface only while that surface owns it.
+/// Measured on the overflow: Escape sent while another window held the
+/// foreground left the flyout up past every poll and went into that window
+/// instead, and an Escape sent after the shell's own chevron raise dismissed
+/// it inside one 100ms poll. Re-running the raise first covers both states the
+/// flyout can be in - it toggles a properly presented flyout closed outright,
+/// and it activates one that is visible without activation so the Escape that
+/// follows reaches it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum SurfaceDismiss {
     None,
     Escape,
+    RaiseThenEscape,
     Toggle,
 }
 
@@ -168,7 +179,7 @@ const KINDS: &[SurfaceKindRow] = &[
         kind: SnapshotSurface::SystemTrayOverflow,
         family: SurfaceFamily::Win32Class(&[OVERFLOW_WINDOW_CLASS, TOOLBAR_CLASS]),
         raise: SurfaceRaise::ChevronInvoke,
-        dismiss: SurfaceDismiss::Escape,
+        dismiss: SurfaceDismiss::RaiseThenEscape,
         exists_on_build: true,
         capability_holder: None,
     },
