@@ -53,27 +53,105 @@ pub(crate) fn submit(
     click: bool,
     phase: CursorPhase,
 ) {
-    if !context.cursor_overlay().is_enabled() {
-        return;
+    let instruction =
+        super::CursorOverlayInstruction::new(destination, context.cursor_overlay(), click)
+            .map(|instruction| instruction.with_target(target).with_phase(phase));
+    let _ = send(adapter, context, instruction);
+}
+
+pub(crate) fn submit_drag(
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+    drag_from: Point,
+    destination: Point,
+    lease: &crate::InteractionLease,
+) -> bool {
+    if lease.deadline().remaining_ms()
+        <= crate::CURSOR_ARRIVAL_TIMEOUT_MS.saturating_add(DISPATCH_RESERVE_MS)
+    {
+        return false;
     }
-    let Some(session_id) = context.session_id() else {
+    let _scope = crate::deadline::enter_scope(Some(lease.deadline().capped(
+        std::time::Duration::from_millis(crate::CURSOR_ARRIVAL_TIMEOUT_MS),
+    )));
+    let instruction =
+        super::CursorOverlayInstruction::new(destination, context.cursor_overlay(), false).map(
+            |instruction| {
+                instruction
+                    .with_drag_from(Some(drag_from))
+                    .with_phase(CursorPhase::Drag)
+            },
+        );
+    send(adapter, context, instruction)
+}
+
+pub(crate) fn submit_drag_effect(
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+    drag_from: Point,
+    destination: Point,
+) {
+    let instruction =
+        super::CursorOverlayInstruction::new(destination, context.cursor_overlay(), false).map(
+            |instruction| {
+                instruction
+                    .with_drag_from(Some(drag_from))
+                    .with_phase(CursorPhase::Effect)
+            },
+        );
+    let _ = send(adapter, context, instruction);
+}
+
+pub(crate) fn cancel_drag(adapter: &dyn PlatformAdapter, context: &CommandContext) {
+    let Ok(cleanup_deadline) = crate::Deadline::detached_after(crate::CURSOR_ARRIVAL_TIMEOUT_MS)
+    else {
         return;
     };
-    let instruction =
-        match super::CursorOverlayInstruction::new(destination, context.cursor_overlay(), click) {
-            Ok(instruction) => instruction.with_target(target).with_phase(phase),
-            Err(error) => {
-                tracing::warn!(code = %error.code.as_str(), "agent cursor instruction was skipped");
-                return;
-            }
-        };
+    let _scope = crate::deadline::enter_scope(Some(cleanup_deadline));
+    let Some(session_id) = enabled_session(context) else {
+        return;
+    };
+    let control = super::CursorOverlayControl::hide(session_id.to_owned())
+        .with_agent_id(context.agent_id().map(str::to_owned));
+    let _ = update(adapter, &control);
+}
+
+fn send(
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+    instruction: Result<super::CursorOverlayInstruction, AdapterError>,
+) -> bool {
+    let Some(session_id) = enabled_session(context) else {
+        return false;
+    };
+    let instruction = match instruction {
+        Ok(instruction) => instruction,
+        Err(error) => {
+            tracing::warn!(code = %error.code.as_str(), "agent cursor instruction was skipped");
+            return false;
+        }
+    };
     let control = super::CursorOverlayControl::present_with_style(
         session_id.to_owned(),
         instruction,
         context.cursor_overlay().style().clone(),
     )
     .with_agent_id(context.agent_id().map(str::to_owned));
-    if let Err(error) = adapter.update_cursor_overlay(&control) {
-        tracing::warn!(code = %error.code.as_str(), "agent cursor presentation was skipped");
+    update(adapter, &control)
+}
+
+fn enabled_session(context: &CommandContext) -> Option<&str> {
+    if context.cursor_overlay().is_enabled() {
+        context.session_id()
+    } else {
+        None
     }
+}
+
+fn update(adapter: &dyn PlatformAdapter, control: &super::CursorOverlayControl) -> bool {
+    if let Err(error) = adapter.update_cursor_overlay(control) {
+        tracing::warn!(code = %error.code.as_str(), "agent cursor presentation was skipped");
+        return false;
+    }
+    true
 }

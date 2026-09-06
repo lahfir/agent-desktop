@@ -102,6 +102,7 @@ fn run() -> Result<(), AdapterError> {
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 bridge::idle();
                 if !state.resting
+                    && !bridge::drag_active()
                     && quiet_since.elapsed().as_millis() >= u128::from(CURSOR_IDLE_REST_MS)
                 {
                     bridge::rest();
@@ -152,7 +153,16 @@ fn handle(control: &CursorOverlayControl, state: &mut OverlayState) -> Result<bo
         &owned
     };
     render(instruction, state)?;
-    state.at = Some(instruction.destination().clone());
+    state.at = Some(
+        if instruction.phase() == agent_desktop_core::CursorPhase::Drag {
+            instruction
+                .drag_from()
+                .unwrap_or(instruction.destination())
+                .clone()
+        } else {
+            instruction.destination().clone()
+        },
+    );
     Ok(true)
 }
 
@@ -160,6 +170,23 @@ fn render(
     instruction: &CursorOverlayInstruction,
     state: &OverlayState,
 ) -> Result<(), AdapterError> {
+    if instruction.phase() == agent_desktop_core::CursorPhase::Drag {
+        let from = instruction.drag_from().unwrap_or(instruction.destination());
+        let (screen, fps, reduce_motion) = bridge::screen_at(from)?;
+        let bubble = place_label(from, BUBBLE_SIZE, &screen);
+        bridge::run(
+            &[CursorPose::still(from.clone())],
+            fps,
+            instruction,
+            reduce_motion,
+            &bubble,
+        )?;
+        bridge::begin_drag(from, state.style.ripple() && !reduce_motion);
+        return Ok(());
+    }
+    if instruction.phase() == agent_desktop_core::CursorPhase::Effect {
+        bridge::end_drag(instruction.destination(), instruction.drag_from().is_some());
+    }
     let (screen, fps, reduce_motion) = bridge::screen_at(instruction.destination())?;
     let bubble = place_label(instruction.destination(), BUBBLE_SIZE, &screen);
     let shown = if state.style.highlight() {

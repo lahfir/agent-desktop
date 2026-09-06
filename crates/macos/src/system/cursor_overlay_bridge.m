@@ -36,6 +36,70 @@ static __strong CALayer *ADPointer = nil;
 static __strong NSWindow *ADRipple = nil;
 static __strong NSWindow *ADBubbleWindow = nil;
 static __strong NSTextField *ADBubbleText = nil;
+static bool ADDragArmed = false;
+static bool ADDragStarted = false;
+static bool ADDragTrail = false;
+static CGPoint ADDragLast = {0.0, 0.0};
+static CFTimeInterval ADDragArmDeadline = 0.0;
+static CFTimeInterval ADDragDeadline = 0.0;
+
+static void ADMoveCursor(const AgentDesktopCursorFrame *frame, double mainHeight);
+
+static void ADDragCancel(void) {
+    ADDragArmed = false;
+    ADDragStarted = false;
+    ADTrailStop();
+}
+
+static void ADDragPoll(void) {
+    if (!ADDragArmed) {
+        return;
+    }
+    CFTimeInterval now = CACurrentMediaTime();
+    bool down = CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState,
+                                         kCGMouseButtonLeft);
+    if (now >= ADDragDeadline || (!ADDragStarted && now >= ADDragArmDeadline)) {
+        ADDragCancel();
+        return;
+    }
+    if (!down) {
+        if (ADDragStarted) {
+            if (ADDragTrail) {
+                ADTrailFinish(0.9);
+            }
+            ADDragArmed = false;
+            ADDragStarted = false;
+        }
+        return;
+    }
+    CGEventRef event = CGEventCreate(NULL);
+    if (event == NULL) {
+        return;
+    }
+    CGPoint point = CGEventGetLocation(event);
+    CFRelease(event);
+    if (ADDragStarted && CGPointEqualToPoint(point, ADDragLast)) {
+        return;
+    }
+    double mainHeight = CGDisplayBounds(CGMainDisplayID()).size.height;
+    if (!ADDragStarted) {
+        ADDragStarted = true;
+        ADDragLast = point;
+        if (ADDragTrail) {
+            ADTrailBegin(NSMakePoint(point.x, mainHeight - point.y));
+        }
+    } else if (ADBubbleWindow.isVisible) {
+        NSPoint origin = ADBubbleWindow.frame.origin;
+        [ADBubbleWindow setFrameOrigin:NSMakePoint(origin.x + point.x - ADDragLast.x,
+                                                   origin.y - point.y + ADDragLast.y)];
+    }
+    AgentDesktopCursorFrame frame = {.x = point.x, .y = point.y, .ripple = 0.0};
+    ADMoveCursor(&frame, mainHeight);
+    if (ADDragTrail) {
+        ADTrailAppend(NSMakePoint(point.x, mainHeight - point.y));
+    }
+    ADDragLast = point;
+}
 
 static CAShapeLayer *ADDartLayer(void) {
     static const CGPoint dart[] = {
@@ -106,15 +170,18 @@ static NSWindow *ADBubble(void) {
 
 void agent_desktop_cursor_overlay_idle(void) {
     @autoreleasepool {
+        ADDragPoll();
         ADPump(NSApplication.sharedApplication);
     }
 }
 
 void agent_desktop_cursor_overlay_stop(void) {
+    ADDragCancel();
     [ADCursorWindow orderOut:nil];
     [ADBubbleWindow orderOut:nil];
     [ADRipple orderOut:nil];
     ADHighlightStop();
+    ADTrailStop();
     ADCursorWindow = nil;
     ADPointer = nil;
     ADRipple = nil;
@@ -135,14 +202,67 @@ void agent_desktop_cursor_overlay_rest(void) {
         [ADBubbleWindow orderOut:nil];
         ADCursorWindow.alphaValue = 1.0;
         ADBubbleWindow.alphaValue = 1.0;
+        ADTrailStop();
     }
 }
 
 void agent_desktop_cursor_overlay_hide(void) {
+    ADDragCancel();
     [ADCursorWindow orderOut:nil];
     [ADBubbleWindow orderOut:nil];
     [ADRipple orderOut:nil];
     ADHighlightStop();
+    ADTrailStop();
+}
+
+void agent_desktop_cursor_overlay_drag_begin(double fromX, double fromY, bool trail) {
+    @try {
+        @autoreleasepool {
+            (void)fromX;
+            (void)fromY;
+            ADDragCancel();
+            ADDragArmed = true;
+            ADDragTrail = trail;
+            CFTimeInterval now = CACurrentMediaTime();
+            ADDragArmDeadline = now + 1.0;
+            ADDragDeadline = now + 95.0;
+        }
+    } @catch (NSException *exception) {
+        (void)exception;
+        ADDragCancel();
+    }
+}
+
+void agent_desktop_cursor_overlay_drag_end(double toX, double toY, bool completed) {
+    @try {
+        @autoreleasepool {
+            if (!ADDragArmed) {
+                return;
+            }
+            if (!completed) {
+                ADDragCancel();
+                return;
+            }
+            double mainHeight = CGDisplayBounds(CGMainDisplayID()).size.height;
+            AgentDesktopCursorFrame frame = {.x = toX, .y = toY, .ripple = 0.0};
+            ADMoveCursor(&frame, mainHeight);
+            if (ADDragTrail) {
+                ADTrailAppend(NSMakePoint(toX, mainHeight - toY));
+                ADTrailFinish(0.9);
+            }
+            ADDragArmed = false;
+            ADDragStarted = false;
+        }
+    } @catch (NSException *exception) {
+        (void)exception;
+        if (ADDragArmed) {
+            ADDragCancel();
+        }
+    }
+}
+
+bool agent_desktop_cursor_overlay_drag_active(void) {
+    return ADDragArmed;
 }
 
 void agent_desktop_cursor_overlay_show(void) {

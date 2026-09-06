@@ -102,6 +102,55 @@ fn instruction_rejects_invalid_destination() {
 }
 
 #[test]
+fn instruction_carries_and_validates_drag_origin() {
+    let config = CursorOverlayConfig::enabled(None, 6).expect("valid config");
+    let origin = Point { x: 1.0, y: 2.0 };
+    let instruction = CursorOverlayInstruction::new(Point { x: 3.0, y: 4.0 }, &config, false)
+        .expect("valid instruction")
+        .with_drag_from(Some(origin.clone()));
+
+    assert_eq!(instruction.drag_from(), Some(&origin));
+    assert_eq!(
+        serde_json::to_value(&instruction).expect("instruction serializes")["drag_from"],
+        serde_json::json!({ "x": 1.0, "y": 2.0 })
+    );
+    assert!(
+        CursorOverlayInstruction::new(Point { x: 3.0, y: 4.0 }, &config, false)
+            .expect("valid instruction")
+            .with_drag_from(Some(Point {
+                x: f64::NAN,
+                y: 2.0,
+            }))
+            .validate()
+            .is_err()
+    );
+    let without_origin = CursorOverlayInstruction::new(Point { x: 3.0, y: 4.0 }, &config, false)
+        .expect("valid instruction");
+    assert!(
+        serde_json::to_value(without_origin)
+            .expect("instruction serializes")
+            .get("drag_from")
+            .is_none()
+    );
+}
+
+#[test]
+fn drag_phase_is_serialized_and_requires_acknowledgement() {
+    let config = CursorOverlayConfig::enabled(None, 6).expect("valid config");
+    let instruction = CursorOverlayInstruction::new(Point { x: 3.0, y: 4.0 }, &config, false)
+        .expect("valid instruction")
+        .with_drag_from(Some(Point { x: 1.0, y: 2.0 }))
+        .with_phase(CursorPhase::Drag);
+    let control = CursorOverlayControl::present("run-1".into(), instruction);
+
+    assert!(control.is_travel());
+    assert_eq!(
+        serde_json::to_value(control).expect("control serializes")["instruction"]["phase"],
+        "drag"
+    );
+}
+
+#[test]
 fn control_protocol_carries_the_session_lifecycle() {
     let enable = CursorOverlayControl::enable("run-1".into(), CursorOverlayStyle::default());
     let disable = CursorOverlayControl::disable("run-1".into());

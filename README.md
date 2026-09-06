@@ -176,7 +176,7 @@ agent-desktop session gc
 
 ### Agent cursor overlay (macOS)
 
-Agent cursors work in both headless and headed mode, including physical pointer commands. Each agent retains its own cursor; the existing interaction lease coordinates the shared OS pointer.
+Agent cursors work in both headless and headed mode, including physical pointer commands. Drags follow the cursor’s curved motion and draw an accent-colored trail while held, then fade after release. Each agent retains its own cursor; the existing interaction lease coordinates the shared OS pointer.
 
 A presentation-only cursor that shows what the agent is about to do. Off by default.
 

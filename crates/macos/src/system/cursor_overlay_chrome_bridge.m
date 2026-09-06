@@ -13,6 +13,45 @@ static AgentDesktopCursorStyle ADCurrentStyle = {
 
 static __strong NSWindow *ADHighlightWindow = nil;
 static __strong CALayer *ADHighlightBorder = nil;
+static __strong NSWindow *ADTrailWindow = nil;
+static __strong CAShapeLayer *ADTrailLayer = nil;
+static CGMutablePathRef ADTrailPath = NULL;
+static NSRect ADTrailDesktop = {{0.0, 0.0}, {0.0, 0.0}};
+static NSPoint ADTrailLast = {0.0, 0.0};
+static NSUInteger ADTrailPointCount = 0;
+
+static void ADTrailRender(void) {
+    CGRect bounds = CGPathGetBoundingBox(ADTrailPath);
+    NSRect frame = NSIntersectionRect(NSInsetRect(bounds, -10.0, -10.0),
+                                      NSInsetRect(ADTrailDesktop, -10.0, -10.0));
+    if (NSIsEmptyRect(frame)) {
+        return;
+    }
+    if (ADTrailWindow == nil) {
+        ADTrailWindow = ADWindow(frame);
+        ADTrailWindow.level = ADEffectLevel;
+        ADTrailLayer = [CAShapeLayer layer];
+        ADTrailLayer.fillColor = ADColor(ADCurrentStyle.accent, 0.9);
+        ADTrailLayer.strokeColor = ADColor(ADCurrentStyle.accent, 0.9);
+        ADTrailLayer.lineWidth = 4.0;
+        ADTrailLayer.lineCap = kCALineCapRound;
+        ADTrailLayer.lineJoin = kCALineJoinRound;
+        ADTrailLayer.shadowColor = ADColor(ADCurrentStyle.accent, 1.0);
+        ADTrailLayer.shadowOpacity = 0.45;
+        ADTrailLayer.shadowRadius = 6.0;
+        ADFreezeLayer(ADTrailLayer);
+        [ADTrailWindow.contentView.layer addSublayer:ADTrailLayer];
+    } else {
+        [ADTrailWindow setFrame:frame display:NO];
+    }
+    ADTrailLayer.frame = ADTrailWindow.contentView.bounds;
+    CGAffineTransform translation = CGAffineTransformMakeTranslation(-frame.origin.x,
+                                                                      -frame.origin.y);
+    CGPathRef localPath = CGPathCreateCopyByTransformingPath(ADTrailPath, &translation);
+    ADTrailLayer.path = localPath;
+    CGPathRelease(localPath);
+    [ADTrailWindow orderFrontRegardless];
+}
 
 CGColorRef ADColor(const double *rgb, CGFloat alpha) {
     return [NSColor colorWithSRGBRed:rgb[0] green:rgb[1] blue:rgb[2] alpha:alpha].CGColor;
@@ -180,6 +219,72 @@ void ADHighlightStop(void) {
     [ADHighlightWindow orderOut:nil];
     ADHighlightWindow = nil;
     ADHighlightBorder = nil;
+}
+
+static void ADTrailBeginInFrame(NSPoint point, NSRect desktop) {
+    ADTrailStop();
+    ADTrailDesktop = desktop;
+    if (NSEqualRects(ADTrailDesktop, NSZeroRect)) {
+        return;
+    }
+    ADTrailPath = CGPathCreateMutable();
+    ADTrailLast = point;
+    ADTrailPointCount = 1;
+    CGPathAddEllipseInRect(ADTrailPath, NULL, CGRectMake(point.x - 4.0, point.y - 4.0, 8.0, 8.0));
+    ADTrailRender();
+}
+
+void ADTrailBegin(NSPoint point) {
+    NSRect desktop = NSZeroRect;
+    for (NSScreen *screen in NSScreen.screens) {
+        desktop = NSEqualRects(desktop, NSZeroRect) ? screen.frame
+                                                     : NSUnionRect(desktop, screen.frame);
+    }
+    ADTrailBeginInFrame(point, desktop);
+}
+
+void ADTrailAppend(NSPoint point) {
+    if (ADTrailPath == NULL || hypot(point.x - ADTrailLast.x, point.y - ADTrailLast.y) < 2.0) {
+        return;
+    }
+    if (ADTrailPointCount >= 4096) {
+        ADTrailLast = point;
+        return;
+    }
+    CGPathMoveToPoint(ADTrailPath, NULL, ADTrailLast.x, ADTrailLast.y);
+    CGPathAddLineToPoint(ADTrailPath, NULL, point.x, point.y);
+    ADTrailLast = point;
+    ADTrailPointCount += 1;
+    ADTrailRender();
+}
+
+void ADTrailFinish(double seconds) {
+    if (ADTrailLayer == nil) {
+        return;
+    }
+    CGPathAddEllipseInRect(ADTrailPath,
+                           NULL,
+                           CGRectMake(ADTrailLast.x - 4.0, ADTrailLast.y - 4.0, 8.0, 8.0));
+    ADTrailRender();
+    [ADTrailLayer removeAllAnimations];
+    [ADTrailLayer addAnimation:ADHold(@"opacity",
+                                      @[ @1.0, @1.0, @0.0 ],
+                                      @[ @0.0, @0.55, @1.0 ],
+                                      seconds)
+                            forKey:@"agent-drag-trail-fade"];
+}
+
+void ADTrailStop(void) {
+    [ADTrailLayer removeAllAnimations];
+    [ADTrailWindow orderOut:nil];
+    ADTrailLayer = nil;
+    ADTrailWindow = nil;
+    if (ADTrailPath != NULL) {
+        CGPathRelease(ADTrailPath);
+        ADTrailPath = NULL;
+    }
+    ADTrailDesktop = NSZeroRect;
+    ADTrailPointCount = 0;
 }
 
 void ADShowBubble(NSTextField *text, NSRect frame, bool changed) {

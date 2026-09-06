@@ -248,7 +248,11 @@ fn send_until(
     let mut acknowledgement = [0_u8; 1];
     match stream.read_exact(&mut acknowledgement) {
         Ok(()) => Ok(true),
-        Err(error) if travels => {
+        Err(error)
+            if control.instruction().is_some_and(|instruction| {
+                instruction.phase() == agent_desktop_core::CursorPhase::Travel
+            }) =>
+        {
             tracing::debug!(%error, "cursor overlay arrival was not acknowledged in time");
             Ok(true)
         }

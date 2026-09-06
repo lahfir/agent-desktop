@@ -1,3 +1,5 @@
+#pragma once
+
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -20,4 +22,8 @@ NSWindow *ADRippleWindow(void);
 void ADRipplePlay(NSWindow *window);
 void ADHighlightShow(NSRect frame, double seconds);
 void ADHighlightStop(void);
+void ADTrailBegin(NSPoint point);
+void ADTrailAppend(NSPoint point);
+void ADTrailFinish(double seconds);
+void ADTrailStop(void);
 void ADShowBubble(NSTextField *text, NSRect frame, bool changed);

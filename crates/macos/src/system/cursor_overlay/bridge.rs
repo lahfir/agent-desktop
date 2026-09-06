@@ -41,12 +41,27 @@ unsafe extern "C" {
         frame_count: usize,
         config: *const NativeRenderConfig,
     ) -> bool;
+    fn agent_desktop_cursor_overlay_drag_begin(x: f64, y: f64, trail: bool);
+    fn agent_desktop_cursor_overlay_drag_end(x: f64, y: f64, completed: bool);
+    fn agent_desktop_cursor_overlay_drag_active() -> bool;
     fn agent_desktop_cursor_overlay_style(style: *const NativeCursorStyle);
     fn agent_desktop_cursor_overlay_idle();
     fn agent_desktop_cursor_overlay_hide();
     fn agent_desktop_cursor_overlay_rest();
     fn agent_desktop_cursor_overlay_show();
     fn agent_desktop_cursor_overlay_stop();
+}
+
+pub(super) fn begin_drag(from: &Point, trail: bool) {
+    unsafe { agent_desktop_cursor_overlay_drag_begin(from.x, from.y, trail) }
+}
+
+pub(super) fn end_drag(to: &Point, completed: bool) {
+    unsafe { agent_desktop_cursor_overlay_drag_end(to.x, to.y, completed) }
+}
+
+pub(super) fn drag_active() -> bool {
+    unsafe { agent_desktop_cursor_overlay_drag_active() }
 }
 
 pub(super) fn initial_point() -> Result<Point, AdapterError> {

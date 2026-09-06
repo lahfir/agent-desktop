@@ -326,6 +326,8 @@ Enable it once per session with `session start --cursor` or `cursor-overlay enab
 - A click plays a ripple and flashes an accent outline around the element.
 - Headed actions retain each agent’s overlay while using the real OS cursor. Raw pointer commands also present the selected agent’s cursor and keep their headed-only behavior. The existing interaction lease serializes physical input; independent overlays do not create additional OS pointers.
 
+Drags reuse the cursor overlay’s curved motion. With the overlay enabled, its cursor and accent-colored trail follow the actual pointer while the button is held, including the destination dwell, then the trail fades after release. The existing ripple setting (`--no-ripple`) and Reduce Motion disable the trail. `--duration` controls travel only (default 300 ms); `--drop-delay 1000` holds over the destination for one second before releasing.
+
 See `commands-system.md` for the style flags.
 
 | Goal | Preferred | Alternative |

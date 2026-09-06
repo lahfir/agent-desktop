@@ -1,4 +1,4 @@
-use agent_desktop_core::{AdapterError, Deadline, DragParams, ErrorCode};
+use agent_desktop_core::{AdapterError, CursorMotion, Deadline, DragParams, ErrorCode};
 use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton};
 use core_graphics::event_source::CGEventSource;
 use core_graphics::geometry::CGPoint;
@@ -30,6 +30,7 @@ fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterEr
     let from = CGPoint::new(params.from.x, params.from.y);
     let to = CGPoint::new(params.to.x, params.to.y);
     let duration_ms = params.duration_ms.unwrap_or(DEFAULT_DURATION_MS);
+    let motion = CursorMotion::new(params.from.clone(), params.to.clone());
     let steps = duration_ms.div_ceil(DWELL_TICK_MS).clamp(1, MAX_STEPS);
     let step_delay = Duration::from_secs_f64(duration_ms as f64 / steps as f64 / 1_000.0);
     let pre_delivery = crate::actions::DeliveryTracker::default();
@@ -59,11 +60,7 @@ fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterEr
         )?;
 
         for index in 1..=steps {
-            let progress = index as f64 / steps as f64;
-            let point = CGPoint::new(
-                params.from.x + (params.to.x - params.from.x) * progress,
-                params.from.y + (params.to.y - params.from.y) * progress,
-            );
+            let point = drag_point(&motion, index, steps);
             crate::input::mouse::post_event_with_source(
                 &source,
                 (
@@ -88,6 +85,11 @@ fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterEr
         release.release_at_destination(deadline)
     })();
     outcome.map_err(|error| release.enrich_error(error))
+}
+
+fn drag_point(motion: &CursorMotion, index: u64, steps: u64) -> CGPoint {
+    let point = motion.sample(motion.duration_ms() * index / steps);
+    CGPoint::new(point.x, point.y)
 }
 
 struct DragReleaseGuard {
@@ -247,6 +249,17 @@ fn validate_drag(params: &DragParams) -> Result<(), AdapterError> {
 mod tests {
     use super::*;
     use agent_desktop_core::Point;
+
+    #[test]
+    fn drag_reuses_cursor_motion_and_lands_exactly() {
+        let motion = CursorMotion::new(Point { x: 10.0, y: 20.0 }, Point { x: 400.0, y: 200.0 });
+        let midpoint = motion.sample(motion.duration_ms() / 2);
+        let halfway = drag_point(&motion, 5, 10);
+        let end = drag_point(&motion, 10, 10);
+        assert_eq!((halfway.x, halfway.y), (midpoint.x, midpoint.y));
+        assert_eq!((end.x, end.y), (400.0, 200.0));
+        assert_ne!((halfway.x, halfway.y), (205.0, 110.0));
+    }
 
     #[test]
     fn drag_limits_reject_unbounded_work() {

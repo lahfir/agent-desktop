@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct CursorOverlayInstruction {
     destination: Point,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    drag_from: Option<Point>,
     #[serde(skip_serializing_if = "Option::is_none")]
     label: Option<String>,
     click: bool,
@@ -30,6 +32,7 @@ impl CursorOverlayInstruction {
         }
         Ok(Self {
             destination,
+            drag_from: None,
             label: config.label().map(str::to_owned),
             click,
             target: None,
@@ -40,6 +43,15 @@ impl CursorOverlayInstruction {
     pub const fn with_phase(mut self, phase: CursorPhase) -> Self {
         self.phase = phase;
         self
+    }
+
+    pub fn with_drag_from(mut self, drag_from: Option<Point>) -> Self {
+        self.drag_from = drag_from;
+        self
+    }
+
+    pub const fn drag_from(&self) -> Option<&Point> {
+        self.drag_from.as_ref()
     }
 
     pub const fn phase(&self) -> CursorPhase {
@@ -57,7 +69,11 @@ impl CursorOverlayInstruction {
     }
 
     pub fn validate(&self) -> Result<(), AdapterError> {
-        self.destination.validate()
+        self.destination.validate()?;
+        if let Some(drag_from) = &self.drag_from {
+            drag_from.validate()?;
+        }
+        Ok(())
     }
 
     pub fn destination(&self) -> &Point {

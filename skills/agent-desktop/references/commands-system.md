@@ -485,6 +485,7 @@ Behaviour:
 - The action waits for the cursor to land, capped at 900 ms. A slow renderer never blocks it.
 - A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
 - The card shows the label. With no label there is no card.
+- Drags show a live accent-colored path while held and fade after release, controlled by the ripple setting and suppressed under Reduce Motion.
 - Idle for 6 s it fades out; the next command restores it.
 - `disable` removes it and stops the renderer. Ending the session is not needed.
 - Headed actions retain it while the real pointer is in use.

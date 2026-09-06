@@ -3,6 +3,15 @@ use std::os::unix::net::UnixListener;
 
 #[test]
 fn travel_acknowledgement_obeys_remaining_budget() {
+    check_acknowledgement(agent_desktop_core::CursorPhase::Travel, true);
+}
+
+#[test]
+fn drag_requires_acknowledgement_before_tracking_is_considered_ready() {
+    check_acknowledgement(agent_desktop_core::CursorPhase::Drag, false);
+}
+
+fn check_acknowledgement(phase: agent_desktop_core::CursorPhase, accepted: bool) {
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -21,10 +30,14 @@ fn travel_acknowledgement_obeys_remaining_budget() {
             &agent_desktop_core::CursorOverlayConfig::enabled(None, 8).unwrap(),
             false,
         )
-        .unwrap();
+        .unwrap()
+        .with_phase(phase);
         let control = CursorOverlayControl::present("run-budget".into(), instruction);
         let started = Instant::now();
-        assert!(send_until(&path, &control, started + Duration::from_millis(30)).unwrap());
+        assert_eq!(
+            send_until(&path, &control, started + Duration::from_millis(30)).is_ok(),
+            accepted
+        );
         let elapsed = started.elapsed();
         receiver.join().unwrap();
         assert!(elapsed < Duration::from_millis(500), "{elapsed:?}");

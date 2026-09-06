@@ -31,7 +31,7 @@ KEYBOARD
 
 MOUSE
   hover <ref|--xy>           Move cursor to element or coordinates (requires --headed)
-  drag                       Drag from one element/point to another (requires --headed)
+  drag                       Drag between points; live cursor trail fades after release (requires --headed)
   mouse-move --xy x,y        Move cursor to absolute coordinates (requires --headed)
   mouse-click --xy x,y       Click at coordinates (--button, --count; requires --headed)
   mouse-down --xy x,y        Press mouse button at coordinates (requires --headed)

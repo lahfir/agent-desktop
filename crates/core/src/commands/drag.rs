@@ -120,8 +120,22 @@ pub fn execute(
     };
     params.validate(deadline)?;
     crate::cursor_overlay::submit_travel(adapter, context, from.point.clone(), &lease);
+    let drag_tracking = crate::cursor_overlay::submit_drag(
+        adapter,
+        context,
+        from.point.clone(),
+        to.point.clone(),
+        &lease,
+    );
     let result = adapter.drag(params, &lease);
-    if crate::cursor_overlay::input_was_delivered(&result) {
+    if result.is_ok() && drag_tracking {
+        crate::cursor_overlay::submit_drag_effect(
+            adapter,
+            context,
+            from.point.clone(),
+            to.point.clone(),
+        );
+    } else if result.is_ok() {
         crate::cursor_overlay::submit(
             adapter,
             context,
@@ -130,6 +144,8 @@ pub fn execute(
             false,
             crate::CursorPhase::Effect,
         );
+    } else {
+        crate::cursor_overlay::cancel_drag(adapter, context);
     }
     result?;
     let mut response = json!({
