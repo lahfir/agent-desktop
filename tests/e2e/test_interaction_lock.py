@@ -42,6 +42,29 @@ class InteractionLockTests(unittest.TestCase):
             os.close(fd)
             self.assertEqual(self.probe(path), 0)
 
+    def test_inherited_holder_can_forward_lease_to_a_child(self):
+        with tempfile.TemporaryDirectory() as root:
+            fd = interaction_lock.acquire(root)
+            self.assertIsNotNone(fd)
+            environment = os.environ.copy()
+            environment[interaction_lock.LEASE_FD_ENV] = str(fd)
+            forwarder = """
+import os, subprocess, sys
+fd = int(os.environ['AGENT_DESKTOP_INTERACTION_LEASE_FD'])
+subprocess.run(
+    [sys.executable, '-c', 'import os,sys; os.fstat(int(sys.argv[1]))', str(fd)],
+    pass_fds=(fd,),
+    check=True,
+)
+"""
+            subprocess.run(
+                [sys.executable, "-c", forwarder],
+                env=environment,
+                pass_fds=(fd,),
+                check=True,
+            )
+            os.close(fd)
+
 
 if __name__ == "__main__":
     unittest.main()

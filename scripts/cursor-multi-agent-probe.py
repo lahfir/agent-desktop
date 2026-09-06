@@ -17,14 +17,18 @@ def main():
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    state = Path(tempfile.mkdtemp(prefix="adc-", dir="/tmp"))
+    state_directory = tempfile.TemporaryDirectory(prefix="adc-", dir="/tmp")
+    state = Path(state_directory.name)
     env = dict(os.environ, AGENT_DESKTOP_HOME=str(state))
     env.pop("AGENT_DESKTOP_SESSION", None)
     env.pop("AGENT_DESKTOP_AGENT_ID", None)
+    lease_fd = env.get("AGENT_DESKTOP_INTERACTION_LEASE_FD")
+    cli_pass_fds = (int(lease_fd),) if lease_fd is not None else ()
 
     def cli(*command):
         result = subprocess.run([str(args.bin.resolve()), *command], env=env,
-                                capture_output=True, text=True, timeout=15)
+                                capture_output=True, text=True, timeout=15,
+                                pass_fds=cli_pass_fds)
         value = json.loads(result.stdout)
         assert result.returncode == 0 and value["ok"], value
         return value["data"]
@@ -56,7 +60,8 @@ def main():
         for command in [["click", target], ["batch", json.dumps([
                 {"command": "click", "args": {"ref_id": target}}])]]:
             result = subprocess.run([str(args.bin.resolve()), *command], env=env,
-                                    capture_output=True, text=True, timeout=15)
+                                    capture_output=True, text=True, timeout=15,
+                                    pass_fds=cli_pass_fds)
             error = json.loads(result.stdout)
             assert error["error"]["code"] == "INVALID_ARGS", error
             assert "agent-id" in error["error"]["message"], error
@@ -147,6 +152,7 @@ def main():
             except subprocess.TimeoutExpired:
                 fixture.kill()
                 fixture.wait(timeout=5)
+            state_directory.cleanup()
 
 
 if __name__ == "__main__":

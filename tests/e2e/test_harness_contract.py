@@ -102,6 +102,15 @@ class HarnessContractTests(unittest.TestCase):
         focused_fixture = source.index("prepare_native_harness")
         self.assertLess(safe_gate, focused_fixture)
 
+    def test_multi_agent_probe_runs_before_the_interaction_lease_is_released(self):
+        source = (E2E_ROOT / "run.sh").read_text()
+        probe = source.index("cursor-multi-agent-probe.py")
+        finish = source.index("\nfinish", probe)
+        self.assertLess(probe, finish)
+
+        probe_source = (E2E_ROOT.parent.parent / "scripts/cursor-multi-agent-probe.py").read_text()
+        self.assertIn("pass_fds=cli_pass_fds", probe_source)
+
     def test_native_runner_builds_locked_canonical_artifacts_before_desktop_lock(self):
         source = (E2E_ROOT / "run.sh").read_text()
 

@@ -2,22 +2,30 @@ use super::*;
 
 #[test]
 fn accepted_stream_waits_for_a_delayed_control() {
-    let path = std::env::temp_dir().join(format!("cursor-delayed-{}.sock", std::process::id()));
-    let listener = UnixListener::bind(&path).unwrap();
-    listener.set_nonblocking(true).unwrap();
-    let mut client = UnixStream::connect(&path).unwrap();
-    let (stream, _) = listener.accept().unwrap();
-    prepare_stream(&stream).unwrap();
-    let sender = thread::spawn(move || {
-        thread::sleep(Duration::from_millis(20));
-        let control = CursorOverlayControl::hide("run-delayed".into());
-        client
-            .write_all(&serde_json::to_vec(&control).unwrap())
-            .unwrap();
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path =
+        std::path::Path::new("/tmp").join(format!("cd-{}-{unique:x}.sock", std::process::id()));
+    let result = std::panic::catch_unwind(|| {
+        let listener = UnixListener::bind(&path).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let mut client = UnixStream::connect(&path).unwrap();
+        let (stream, _) = listener.accept().unwrap();
+        prepare_stream(&stream).unwrap();
+        let sender = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(20));
+            let control = CursorOverlayControl::hide("run-delayed".into());
+            client
+                .write_all(&serde_json::to_vec(&control).unwrap())
+                .unwrap();
+        });
+        assert_eq!(read_control(stream).unwrap().session_id(), "run-delayed");
+        sender.join().unwrap();
     });
-    assert_eq!(read_control(stream).unwrap().session_id(), "run-delayed");
-    sender.join().unwrap();
-    std::fs::remove_file(path).unwrap();
+    let _ = std::fs::remove_file(path);
+    result.unwrap();
 }
 
 fn state(at: Option<Point>) -> OverlayState {
