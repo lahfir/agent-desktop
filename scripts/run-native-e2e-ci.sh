@@ -22,3 +22,10 @@ AGENT_DESKTOP_E2E_RELEASE_BIN="$ROOT/target/release/agent-desktop" \
 AGENT_DESKTOP_E2E_RELEASE_FFI="$ROOT/target/release-ffi/libagent_desktop_ffi.dylib" \
 AGENT_DESKTOP_E2E_RELEASE_FFI_HELPER="$ROOT/target/release/agent-desktop-macos-helper" \
     bash tests/e2e/run.sh
+
+probe_root="$(mktemp -d "${RUNNER_TEMP:-/tmp}/agent-desktop-multi-cursor.XXXXXX")"
+tests/fixture-app/build.sh "$probe_root/fixture"
+python3 scripts/cursor-multi-agent-probe.py \
+    --bin "$ROOT/target/release/agent-desktop" \
+    --fixture "$probe_root/fixture/AgentDeskFixture.app/Contents/MacOS/AgentDeskFixture" \
+    --out "$probe_root/results"

@@ -6,7 +6,7 @@ use crate::{AdapterError, Deadline, ErrorCode};
 
 /// A private state-file lock held until this guard is dropped.
 pub struct FileLock {
-    file: File,
+    _file: File,
     #[cfg(unix)]
     contention_count: u64,
 }
@@ -40,7 +40,7 @@ impl FileLock {
     pub(crate) fn duplicate_inheritable(&self) -> Result<std::os::fd::OwnedFd, AdapterError> {
         use std::os::fd::{AsRawFd, FromRawFd};
 
-        let duplicated = unsafe { libc::fcntl(self.file.as_raw_fd(), libc::F_DUPFD, 3) };
+        let duplicated = unsafe { libc::fcntl(self._file.as_raw_fd(), libc::F_DUPFD, 3) };
         if duplicated < 0 {
             return Err(io_error(std::io::Error::last_os_error()));
         }
@@ -86,12 +86,6 @@ impl FileLock {
     }
 }
 
-impl Drop for FileLock {
-    fn drop(&mut self) {
-        let _ = self.file.unlock();
-    }
-}
-
 fn lock_file(
     file: File,
     deadline: Deadline,
@@ -106,11 +100,10 @@ fn lock_file(
         match file.try_lock() {
             Ok(()) => {
                 if deadline.is_expired() {
-                    let _ = file.unlock();
                     return Err(lock_timeout(deadline, purpose, path, contention_count));
                 }
                 return Ok(FileLock {
-                    file,
+                    _file: file,
                     #[cfg(unix)]
                     contention_count,
                 });

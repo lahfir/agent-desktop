@@ -174,8 +174,6 @@ fn inherited_descriptor_survives_parent_drop_and_crash_releases() {
         )
         .spawn()
         .unwrap();
-    drop(inherited);
-    drop(lease);
     let ready_deadline = std::time::Instant::now() + Duration::from_secs(2);
     while !ready.is_file() && std::time::Instant::now() < ready_deadline {
         std::thread::sleep(Duration::from_millis(10));
@@ -184,6 +182,8 @@ fn inherited_descriptor_survives_parent_drop_and_crash_releases() {
         ready.is_file(),
         "subprocess did not adopt interaction lease"
     );
+    drop(inherited);
+    drop(lease);
     let error = acquire_unix_interaction_lease_at(Deadline::after(25).unwrap(), &root)
         .err()
         .expect("adopted descriptor must retain the lease");
