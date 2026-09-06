@@ -207,7 +207,7 @@ fn signal_group(process_group: i32, signal: i32) -> std::io::Result<bool> {
     }
 }
 
-fn poll_reap(child: &mut Child, deadline: Instant) -> bool {
+pub(super) fn poll_reap(child: &mut Child, deadline: Instant) -> bool {
     loop {
         match child.try_wait() {
             Ok(Some(_)) => return true,

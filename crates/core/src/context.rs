@@ -8,6 +8,7 @@ use std::cell::Cell;
 use std::path::PathBuf;
 use std::time::Instant;
 
+mod cursor;
 mod options;
 mod session_scope;
 mod wait_selector;
@@ -100,6 +101,7 @@ impl CommandContext {
             artifacts_full,
             options: CommandOptions {
                 cursor_overlay,
+                agent_id: None,
                 ..CommandOptions::default()
             },
         })
@@ -255,7 +257,10 @@ impl CommandContext {
         let cursor_overlay = if reuses_parent_session {
             self.options.cursor_overlay.clone()
         } else {
-            session::cursor_overlay_for_session(session.as_ref().map(|scope| scope.id.as_str()))?
+            session::cursor_overlay_for_session_agent(
+                session.as_ref().map(|scope| scope.id.as_str()),
+                self.agent_id(),
+            )?
         };
         Ok(Self {
             session,

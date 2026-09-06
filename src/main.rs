@@ -129,7 +129,7 @@ fn run() -> ExitCode {
                 Err(error) => return finish(cmd_name, Err(error)),
             };
             let session_id = match resolve_active_session(
-                cli.session.as_deref(),
+                cli.identity.session.as_deref(),
                 std::env::var("AGENT_DESKTOP_SESSION").ok().as_deref(),
             ) {
                 Ok(session_id) => session_id,
@@ -144,6 +144,15 @@ fn run() -> ExitCode {
                 Err(err) => {
                     return finish(cmd_name, Err(pre_dispatch_error(err)));
                 }
+            };
+            let agent_id = cli
+                .identity
+                .agent_id
+                .clone()
+                .or_else(|| std::env::var("AGENT_DESKTOP_AGENT_ID").ok());
+            let context = match context.with_agent_id(agent_id) {
+                Ok(context) => context,
+                Err(err) => return finish(cmd_name, Err(pre_dispatch_error(err))),
             };
             if let Some(wait) = wait_selector.as_ref() {
                 if let Err(err) = validate_wait_for_command(&cmd, wait) {
@@ -212,6 +221,9 @@ fn run_with_adapter(cmd: Commands, cmd_name: &str, context: &CommandContext) -> 
         agent_desktop_core::PermissionReport::default()
     };
     if let Err(err) = command_policy::preflight(&cmd, &report) {
+        return finish(cmd_name, Err(err));
+    }
+    if let Err(err) = command_policy::preflight_context(&cmd, context) {
         return finish(cmd_name, Err(err));
     }
 

@@ -218,3 +218,26 @@ fn malformed_permission_helper_invocation_bypasses_clap_and_tracing() {
     assert_eq!(response["ok"], false);
     assert_eq!(response["error"], "invalid_helper_invocation");
 }
+
+#[test]
+fn agent_identity_flag_overrides_environment_and_rejects_invalid_ids() {
+    let output = binary()
+        .args(["--agent-id", "worker-a", "session", "list"])
+        .env("AGENT_DESKTOP_AGENT_ID", "../invalid")
+        .env_remove("AGENT_DESKTOP_SESSION")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let output = binary()
+        .args(["session", "list"])
+        .env("AGENT_DESKTOP_AGENT_ID", "../invalid")
+        .env_remove("AGENT_DESKTOP_SESSION")
+        .output()
+        .unwrap();
+    let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(response["error"]["code"], "INVALID_ARGS");
+}

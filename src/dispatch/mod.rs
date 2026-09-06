@@ -10,6 +10,9 @@ mod session;
 mod system;
 mod trace;
 
+#[cfg(test)]
+mod test_support;
+
 use agent_desktop_core::{
     AppError, CursorOverlayControl, PermissionReport, PlatformAdapter, context::CommandContext,
 };
@@ -36,7 +39,10 @@ pub(crate) fn dispatch(
         context.command_scope(cmd.name())?
     };
     if let Some(session_id) = overlay_session.as_ref() {
-        let _ = adapter.update_cursor_overlay(&CursorOverlayControl::hide(session_id.clone()));
+        let _ = adapter.update_cursor_overlay(
+            &CursorOverlayControl::hide(session_id.clone())
+                .with_agent_id(context.agent_id().map(str::to_owned)),
+        );
     }
     let result = match cmd {
         Commands::Snapshot(args) => observation::snapshot(args, adapter, context),
@@ -102,7 +108,10 @@ pub(crate) fn dispatch(
         Commands::Trace(args) => system::trace(args, context),
     };
     if let Some(session_id) = overlay_session {
-        let _ = adapter.update_cursor_overlay(&CursorOverlayControl::show(session_id));
+        let _ = adapter.update_cursor_overlay(
+            &CursorOverlayControl::show(session_id)
+                .with_agent_id(context.agent_id().map(str::to_owned)),
+        );
     }
     scope.complete(&result)?;
     result

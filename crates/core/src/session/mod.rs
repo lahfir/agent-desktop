@@ -141,6 +141,67 @@ pub fn cursor_overlay_for_session(
     }
 }
 
+pub fn cursor_overlay_for_session_agent(
+    session_id: Option<&str>,
+    agent_id: Option<&str>,
+) -> Result<CursorOverlayConfig, AppError> {
+    let Some(session_id) = session_id else {
+        return Ok(CursorOverlayConfig::default());
+    };
+    let config = cursor_overlay_for_session(Some(session_id))?;
+    if config.is_disabled() {
+        return Ok(config);
+    }
+    let Some(agent_id) = agent_id else {
+        return Ok(config);
+    };
+    let path = agent_profile_path(session_id, agent_id)?;
+    match crate::private_file::read_private_bounded(&path, MAX_SESSION_MANIFEST_BYTES) {
+        Ok(bytes) => serde_json::from_slice::<CursorOverlayConfig>(&bytes)
+            .map_err(|error| AppError::invalid_input(format!("Invalid cursor profile: {error}")))?
+            .validated()
+            .map(|profile| profile.with_multi_agent(config.is_multi_agent()))
+            .map_err(Into::into),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(config),
+        Err(error) => Err(error.into()),
+    }
+}
+
+pub fn save_cursor_overlay_profile(
+    session_id: &str,
+    agent_id: &str,
+    config: CursorOverlayConfig,
+) -> Result<(), AppError> {
+    validate_agent_id(agent_id)?;
+    let manifest = read_manifest(session_id)?
+        .ok_or_else(|| AppError::invalid_input("Session has no manifest"))?;
+    if manifest.ended_at.is_some() || manifest.cursor_overlay.is_disabled() {
+        return Err(AppError::invalid_input(
+            "Cursor overlay is not enabled for this session",
+        ));
+    }
+    let json = serde_json::to_vec(&config.validated()?.with_multi_agent(false))?;
+    write_private_file(&agent_profile_path(session_id, agent_id)?, &json)
+}
+
+fn agent_profile_path(session_id: &str, agent_id: &str) -> Result<PathBuf, AppError> {
+    validate_session_id(session_id)?;
+    validate_agent_id(agent_id)?;
+    Ok(session_dir(session_id)?
+        .join("cursor-overlays")
+        .join(format!("{agent_id}.json")))
+}
+
+pub fn validate_agent_id(id: &str) -> Result<(), AppError> {
+    if validate_session_id(id).is_ok() {
+        return Ok(());
+    }
+    Err(AppError::invalid_input_with_suggestion(
+        "Agent id must be 1-64 chars using letters, numbers, '-' or '_'",
+        "Use a stable filesystem-safe id such as agent-a.",
+    ))
+}
+
 pub fn trace_enabled_for_session(session_id: &str) -> Result<bool, AppError> {
     Ok(read_manifest(session_id)?.is_some_and(|manifest| manifest.trace_enabled()))
 }
@@ -302,3 +363,6 @@ mod tests;
 #[cfg(test)]
 #[path = "session_gc_tests.rs"]
 mod gc_tests;
+
+#[cfg(test)]
+mod cursor_profile_tests;

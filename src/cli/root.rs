@@ -25,12 +25,8 @@ pub(crate) struct Cli {
         help = "Enable debug logging to stderr"
     )]
     pub verbose: bool,
-    #[arg(
-        long,
-        global = true,
-        help = "Select the snapshot namespace; session-owned refs require the same scope"
-    )]
-    pub session: Option<String>,
+    #[command(flatten)]
+    pub identity: super::identity::IdentityArgs,
     #[arg(
         long,
         global = true,

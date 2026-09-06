@@ -83,14 +83,17 @@ SYSTEM
   session start              Create a trace-enabled session; pass its returned ID explicitly
   session start --screenshots  Opt in to screenshot/refmap replay artifacts (requires tracing)
   session start --cursor    Create the session and show the default visual cursor
+  session start --cursor --multi-agent  One cursor per harness subagent; desktop UI actions require --agent-id
   session end                  Seal a manifest (ID from argument, --session, or environment)
   session list                 List session manifests
   session gc                   Remove ended or provably-stale sessions
-  cursor-overlay enable       Enable/style the visual cursor for the selected session (no flags = defaults)
-  cursor-overlay disable      Disable the visual cursor for the selected session
+  cursor-overlay enable       Enable/style the session cursor, or the selected --agent-id cursor
+  cursor-overlay disable      Stop every cursor in the selected session
 
 ENVIRONMENT
   AGENT_DESKTOP_SESSION      Session ID fallback when --session is not passed
+  AGENT_DESKTOP_AGENT_ID     Stable subagent ID fallback when --agent-id is not passed
+                             (1-64 letters, digits, hyphen or underscore; scoped by session)
   AGENT_DESKTOP_HOME         Relocates the state root; the value is the root itself
                              (absolute path; default ~/.agent-desktop). Applies to every
                              command; an invalid value fails with INVALID_ARGS before
@@ -145,6 +148,9 @@ EXAMPLES
   agent-desktop snapshot --app Finder -w "button:OK"
   agent-desktop click @s8f3k2p9:e5 -w ":Saved!"
   agent-desktop session start --name run-a       # note data.session_id
+  agent-desktop session start --cursor --multi-agent
+  agent-desktop --session <session_id> --agent-id researcher cursor-overlay enable --label "Checking details"
+  agent-desktop --session <session_id> --agent-id researcher click @s8f3k2p9:e5
   agent-desktop --session <session_id> cursor-overlay enable --label "Opening menu" --accent "#4299FF"
   agent-desktop --session <session_id> click @s8f3k2p9:e5
   agent-desktop batch '[{"command":"click","args":{"ref_id":"@e1","snapshot":"<snapshot_id>"}}]'

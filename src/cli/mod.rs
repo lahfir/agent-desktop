@@ -1,5 +1,6 @@
 use clap::Subcommand;
 
+mod identity;
 mod post_action_wait;
 mod root;
 
@@ -325,3 +326,6 @@ mod wait_for_cli_tests;
 #[cfg(test)]
 #[path = "contract_tests.rs"]
 mod contract_tests;
+
+#[cfg(test)]
+mod agent_identity_tests;

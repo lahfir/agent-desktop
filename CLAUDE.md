@@ -347,6 +347,7 @@ The `error` object may also carry optional `details` and `recovery` objects. Ver
 - Drill-down: `--root @ref` starts from a previously-discovered ref with scoped invalidation (only that ref's subtree refs are replaced on re-drill)
 - RefMap size check: write-side guard prevents >1MB refmap files
 - **Sessions:** `session start` creates and returns a manifest-gated session under `~/.agent-desktop/sessions/<id>/` and enables automatic trace segments by default. It does not activate that session for later processes. Pass the returned ID through `--session` or `AGENT_DESKTOP_SESSION`. Bare `--session <id>` without a manifest scopes only the snapshot namespace — no surprise trace files.
+- **Subagent cursors (macOS):** `session start --cursor --multi-agent` enables independent cursors keyed by session ID and global `--agent-id` (`AGENT_DESKTOP_AGENT_ID` fallback). The harness supplies a stable ID per subagent; desktop UI actions require it in this mode. Agents share session snapshots and use qualified refs. Optional named `cursor-overlay enable` profiles affect presentation only. Disable/end stops every cursor in the session.
 - **Trace:** manifest `trace: on` writes per-process JSONL segments under `<session>/trace/<pid>-<procTs>.jsonl`; `--trace <path>` overrides to one file; activation resolves `--session` > `AGENT_DESKTOP_SESSION` > no session. Snapshot lookup is confined to that selected namespace and never searches other sessions.
 
 ## PlatformAdapter Trait

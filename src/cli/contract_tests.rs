@@ -108,7 +108,7 @@ fn cursor_overlay_enable_is_session_scoped_and_bounded() {
     };
     let config = args.to_core().expect("valid cursor config");
 
-    assert_eq!(cli.session.as_deref(), Some("run-1"));
+    assert_eq!(cli.identity.session.as_deref(), Some("run-1"));
     assert!(config.is_enabled());
     assert_eq!(config.label(), Some("Opening the profile menu for…"));
     assert_eq!(config.style().size(), 2.5);

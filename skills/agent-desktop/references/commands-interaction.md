@@ -319,7 +319,7 @@ Synthesizes a scroll-wheel event at absolute coordinates and requires `--headed`
 
 ### Agent cursor presentation
 
-Enable it once per session with `session start --cursor` or `cursor-overlay enable`. Interaction commands take no cursor flags.
+Enable it once per session with `session start --cursor` or `cursor-overlay enable`. Interaction commands inherit styling. For macOS harness subagents, use `session start --cursor --multi-agent` and global `--agent-id` or `AGENT_DESKTOP_AGENT_ID` on each worker. Each ID gets an independent cursor within the same snapshot namespace. Configure optional per-agent styling with `--agent-id <id> cursor-overlay enable`; action-specific cursor flags remain unsupported.
 
 - The cursor stays alive between eligible headless ref actions and travels from its previous destination.
 - The action waits for it to land before it dispatches, capped at 900 ms.

@@ -4,18 +4,15 @@ use std::time::Duration;
 
 use crate::{AdapterError, Deadline, ErrorCode};
 
-pub(crate) struct FileLock {
+/// A private state-file lock held until this guard is dropped.
+pub struct FileLock {
     file: File,
     #[cfg(unix)]
     contention_count: u64,
 }
 
 impl FileLock {
-    pub(crate) fn acquire(
-        path: &Path,
-        deadline: Deadline,
-        purpose: &str,
-    ) -> Result<Self, AdapterError> {
+    pub fn acquire(path: &Path, deadline: Deadline, purpose: &str) -> Result<Self, AdapterError> {
         let file = crate::private_file::open_private_lock(path, true).map_err(io_error)?;
         lock_file(file, deadline, purpose, path)
     }

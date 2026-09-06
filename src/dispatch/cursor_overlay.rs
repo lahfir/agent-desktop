@@ -21,12 +21,31 @@ pub(crate) fn dispatch(
     })?;
     let (action, control) = match args.action {
         CursorOverlayAction::Enable(args) => {
-            let config = args.to_core()?;
+            let multi_agent = args.multi_agent || context.multi_agent();
+            let config = args.to_core()?.with_multi_agent(multi_agent);
+            let agent_id = context.agent_id().map(str::to_owned);
+            if let Some(agent_id) = agent_id.as_deref() {
+                if args.multi_agent {
+                    return Err(AppError::invalid_input(
+                        "--multi-agent configures the session; omit --agent-id",
+                    ));
+                }
+                agent_desktop_core::session::save_cursor_overlay_profile(
+                    session_id,
+                    agent_id,
+                    config.clone(),
+                )?;
+                return Ok(serde_json::json!({
+                    "session_id": session_id,
+                    "cursor_overlay": config,
+                    "agent_id": agent_id,
+                }));
+            }
             let control =
                 CursorOverlayControl::enable(session_id.to_owned(), config.style().clone());
             (
                 cursor_overlay::CursorOverlayAction::Enable(config),
-                Some(control),
+                (!multi_agent).then_some(control),
             )
         }
         CursorOverlayAction::Disable => (
@@ -38,7 +57,24 @@ pub(crate) fn dispatch(
     if let Some(control) = control
         && let Err(error) = adapter.update_cursor_overlay(&control)
     {
+        if control.is_disable() {
+            return Err(teardown_error(error));
+        }
         tracing::warn!(code = %error.code.as_str(), "cursor overlay lifecycle update was skipped");
     }
     Ok(value)
 }
+
+pub(super) fn teardown_error(mut error: agent_desktop_core::AdapterError) -> AppError {
+    error.message = format!(
+        "Session state was saved, but cursor teardown was not confirmed: {}",
+        error.message
+    );
+    error
+        .with_disposition(agent_desktop_core::DeliverySemantics::uncertain())
+        .into()
+}
+
+#[cfg(test)]
+#[path = "cursor_overlay_tests.rs"]
+mod tests;

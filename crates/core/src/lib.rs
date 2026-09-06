@@ -188,6 +188,7 @@ pub use element_identifier::ElementIdentifier;
 pub use element_state::ElementState;
 pub use error_code::ErrorCode;
 pub use event_kind::EventKind;
+pub use file_lock::FileLock;
 pub use headed_requirement::HeadedRequirement;
 pub use hit_test::HitTestResult;
 pub use identifier_kind::IdentifierKind;

@@ -8,6 +8,7 @@ pub(super) struct CommandOptions {
     pub wait_selector: Option<WaitSelector>,
     pub event_baseline: Option<Result<SignalBaseline, AdapterError>>,
     pub cursor_overlay: CursorOverlayConfig,
+    pub agent_id: Option<String>,
 }
 
 impl CommandOptions {
@@ -17,6 +18,7 @@ impl CommandOptions {
             wait_selector: None,
             event_baseline: None,
             cursor_overlay,
+            agent_id: self.agent_id.clone(),
         }
     }
 }

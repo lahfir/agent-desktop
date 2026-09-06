@@ -17,6 +17,8 @@ pub struct CursorOverlayConfig {
     max_words: usize,
     #[serde(default)]
     style: CursorOverlayStyle,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    multi_agent: bool,
 }
 
 impl CursorOverlayConfig {
@@ -26,6 +28,7 @@ impl CursorOverlayConfig {
             label,
             max_words,
             style: CursorOverlayStyle::default(),
+            multi_agent: false,
         }
         .validated()
     }
@@ -33,6 +36,15 @@ impl CursorOverlayConfig {
     pub fn with_style(mut self, style: CursorOverlayStyle) -> Result<Self, AdapterError> {
         self.style = style.validated()?;
         Ok(self)
+    }
+
+    pub fn with_multi_agent(mut self, enabled: bool) -> Self {
+        self.multi_agent = enabled;
+        self
+    }
+
+    pub const fn is_multi_agent(&self) -> bool {
+        self.multi_agent
     }
 
     pub const fn style(&self) -> &CursorOverlayStyle {
@@ -96,6 +108,7 @@ impl Default for CursorOverlayConfig {
             label: None,
             max_words: DEFAULT_CURSOR_LABEL_WORDS,
             style: CursorOverlayStyle::default(),
+            multi_agent: false,
         }
     }
 }

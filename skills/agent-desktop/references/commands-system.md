@@ -490,6 +490,27 @@ Behaviour:
 - Headed actions hide it while the real pointer is in use.
 - macOS renders it natively; other platforms use the adapter's presentation no-op.
 
+### Shared-session subagent cursors (macOS)
+
+```bash
+agent-desktop session start --cursor --multi-agent
+export AGENT_DESKTOP_SESSION=<returned-session-id>
+```
+
+The harness gives each subagent a stable `AGENT_DESKTOP_AGENT_ID` (or global `--agent-id`, which takes precedence). IDs use 1–64 letters, digits, `-` or `_`. Every desktop UI action in this mode requires the ID; observations, clipboard operations, and session administration do not. Style commands only save a profile; the next verified action presents it. Three active IDs create three independent cursors. Reusing an ID reuses its cursor. There is no extra coordinator cursor or registration step.
+
+Each agent inherits the session style. To customize one agent:
+
+```bash
+agent-desktop --agent-id researcher cursor-overlay enable --label "Checking details" --accent "#FF3B7B"
+agent-desktop --agent-id writer cursor-overlay enable --label "Updating draft" --fill "#FFE080"
+agent-desktop --agent-id reviewer cursor-overlay enable --label "Reviewing result" --accent "#49C98A"
+```
+
+Use the same ID on subsequent actions or export it in that subagent's environment. Profiles persist under the session; they do not create separate snapshots. Use snapshot-qualified refs when subagents observe concurrently. Distinct overlays do not make concurrent actions on the same application safe; the harness still coordinates dependent work and physical input.
+
+`cursor-overlay disable` and `session end` remove all session cursors, even when called with an agent ID. Headed actions hide only the calling agent's overlay. Each inactive cursor keeps the existing six-second fade. Other platforms retain their existing behavior.
+
 ### session start
 ```bash
 agent-desktop session start

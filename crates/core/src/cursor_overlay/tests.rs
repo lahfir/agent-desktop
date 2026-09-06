@@ -114,6 +114,20 @@ fn control_protocol_carries_the_session_lifecycle() {
 }
 
 #[test]
+fn control_protocol_preserves_named_agent_identity() {
+    let control = CursorOverlayControl::hide("run-1".into()).with_agent_id(Some("agent-a".into()));
+    assert_eq!(control.agent_id(), Some("agent-a"));
+    let encoded = serde_json::to_value(control).expect("control serializes");
+    assert_eq!(encoded["agent_id"], "agent-a");
+    assert!(
+        CursorOverlayControl::disable("run-1".into())
+            .with_agent_id(Some("ignored".into()))
+            .agent_id()
+            .is_none()
+    );
+}
+
+#[test]
 fn present_control_carries_the_session_style() {
     let mut style = CursorOverlayStyle::default();
     style.set_size(2.0);

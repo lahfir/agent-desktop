@@ -27,7 +27,8 @@ pub(crate) fn submit(
         session_id.to_owned(),
         instruction,
         context.cursor_overlay().style().clone(),
-    );
+    )
+    .with_agent_id(context.agent_id().map(str::to_owned));
     if let Err(error) = adapter.update_cursor_overlay(&control) {
         tracing::warn!(code = %error.code.as_str(), "agent cursor presentation was skipped");
     }

@@ -31,6 +31,12 @@ pub(crate) struct SessionStartArgs {
     pub screenshots: bool,
     #[arg(long, help = "Show the visual cursor overlay with its default style")]
     pub cursor: bool,
+    #[arg(
+        long,
+        requires = "cursor",
+        help = "Give each harness subagent its own cursor; requires --agent-id on desktop actions"
+    )]
+    pub multi_agent: bool,
 }
 
 #[derive(Args, Debug)]
