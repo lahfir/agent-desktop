@@ -23,26 +23,31 @@ pub(crate) fn update(control: &CursorOverlayControl) -> Result<(), AdapterError>
     {
         return Ok(());
     }
+    let budget = if matches!(control, CursorOverlayControl::Present { .. }) {
+        CURSOR_ARRIVAL_TIMEOUT_MS
+    } else {
+        4_000
+    };
+    let deadline = Instant::now() + agent_desktop_core::Deadline::after(budget)?.remaining();
     let socket = super::endpoint::path(control.session_id(), control.agent_id())?;
-    if send(&socket, control)? {
+    if send_until(&socket, control, deadline)? {
         return Ok(());
     }
     if control.agent_id().is_none() {
-        retire_legacy(control);
+        retire_legacy(control, deadline);
     }
     if control.is_transient() {
         return Ok(());
     }
     let lock_path = super::endpoint::lock_path()?;
-    let deadline = Instant::now() + Duration::from_secs(4);
     let _lock = startup_lock(&lock_path, deadline)?;
-    if send(&socket, control)? {
+    if send_until(&socket, control, deadline)? {
         return Ok(());
     }
     if !super::child::session_active(control.session_id(), control.agent_id()) {
         return Ok(());
     }
-    spawn(&socket, control)
+    spawn(&socket, control, deadline)
 }
 
 fn broadcast(control: &CursorOverlayControl) -> Result<(), AdapterError> {
@@ -79,7 +84,16 @@ fn startup_lock(
     )
 }
 
-fn spawn(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterError> {
+fn spawn(
+    socket: &Path,
+    control: &CursorOverlayControl,
+    deadline: Instant,
+) -> Result<(), AdapterError> {
+    if Instant::now() >= deadline {
+        return Err(AdapterError::internal(
+            "Cursor overlay startup deadline elapsed",
+        ));
+    }
     let executable = std::env::current_exe().map_err(|error| {
         AdapterError::internal("Could not locate the cursor overlay executable")
             .with_platform_detail(error.to_string())
@@ -129,7 +143,6 @@ fn spawn(socket: &Path, control: &CursorOverlayControl) -> Result<(), AdapterErr
         );
     }
     drop(stdin);
-    let deadline = Instant::now() + Duration::from_millis(CURSOR_ARRIVAL_TIMEOUT_MS);
     while Instant::now() < deadline {
         if UnixStream::connect(socket).is_ok() {
             return Ok(());
@@ -152,16 +165,12 @@ fn terminate_child(child: &mut std::process::Child) -> bool {
     super::super::process::poll_reap(child, deadline)
 }
 
-fn retire_legacy(control: &CursorOverlayControl) {
+fn retire_legacy(control: &CursorOverlayControl, deadline: Instant) {
     let Ok(socket) = super::endpoint::legacy_path(control.session_id()) else {
         return;
     };
     let disable = CursorOverlayControl::disable(control.session_id().to_owned());
-    let _ = send(&socket, &disable);
-}
-
-fn send(socket: &Path, control: &CursorOverlayControl) -> Result<bool, AdapterError> {
-    send_until(socket, control, Instant::now() + Duration::from_secs(4))
+    let _ = send_until(&socket, &disable, deadline);
 }
 
 fn send_until(
@@ -223,12 +232,12 @@ fn send_until(
                 .with_platform_detail(error.to_string())
         })?;
     let remaining = deadline.saturating_duration_since(Instant::now());
-    let budget = if travels {
-        Duration::from_millis(CURSOR_ARRIVAL_TIMEOUT_MS)
-    } else if remaining.is_zero() {
+    let budget = if remaining.is_zero() {
         return Err(AdapterError::internal(
             "Timed out stopping macOS cursor overlays",
         ));
+    } else if travels {
+        remaining.min(Duration::from_millis(CURSOR_ARRIVAL_TIMEOUT_MS))
     } else {
         remaining
     };
@@ -249,3 +258,7 @@ fn send_until(
         .with_platform_detail(error.to_string())),
     }
 }
+
+#[cfg(test)]
+#[path = "spawn_tests.rs"]
+mod tests;

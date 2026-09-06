@@ -176,6 +176,8 @@ agent-desktop session gc
 
 ### Agent cursor overlay (macOS)
 
+Agent cursors work in both headless and headed mode, including physical pointer commands. Each agent retains its own cursor; the existing interaction lease coordinates the shared OS pointer.
+
 A presentation-only cursor that shows what the agent is about to do. Off by default.
 
 ```bash
@@ -227,7 +229,7 @@ The style command is optional and saves settings for the next presentation witho
 - A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
 - Idle for 6 s, it fades out. The next command brings it back.
 - `cursor-overlay disable` removes it now. You do not have to end the session.
-- Headed actions hide it. It never moves or intercepts the OS pointer.
+- Headed actions retain it. It never moves or intercepts the OS pointer.
 - Overhead is about 150–300 ms per action, all of it the visible travel.
 
 macOS renders it natively. Windows and Linux inherit the adapter's no-op and need only their own renderer against the same core contract.

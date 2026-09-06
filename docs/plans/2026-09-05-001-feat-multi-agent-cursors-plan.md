@@ -60,7 +60,7 @@ Outside scope: launching agents, task scheduling, changing shared input serializ
 - KTD2. Use one existing renderer process per session/agent pair. Native bridge globals and the synchronous animation loop in `crates/macos/src/system/cursor_overlay/child.rs` make process isolation much smaller than multiplexing AppKit state. Covers R1, R5.
 - KTD3. Keep a validated optional agent ID in command context, independent of session scope. Preserve it when batch items change sessions and reload the destination session's profile. Missing identity selects the existing default route. Covers R2, R7.
 - KTD4. Store optional complete `CursorOverlayConfig` profiles in `sessions/<session>/cursor-overlays/<agent>.json` using existing bounded private-file helpers. Session enablement remains the master gate. Missing profiles inherit session defaults; malformed profiles fail closed with a clear error. Named configuration requires an active cursor-enabled session. Covers R3, R4.
-- KTD5. `cursor-overlay disable` remains session-wide even when an agent selector is inherited. Hide/Show with an agent ID target only that agent for headed-mode suppression; controls without an ID retain session-wide scope. Enable/Present/Hide/Show carry optional agent identity; legacy JSON remains valid. Covers R6, R7.
+- KTD5. `cursor-overlay disable` remains session-wide even when an agent selector is inherited. Hide/Show with an agent ID target only that agent for explicit visibility controls; controls without an ID retain session-wide scope. Enable/Present/Hide/Show carry optional agent identity; legacy JSON remains valid. Covers R6, R7.
 - KTD6. Discover live named sockets by a session-specific filename prefix, not profile files or a participant registry. Reuse the startup lock to serialize spawn against session-wide lifecycle controls. Before spawning, recheck session enablement so stale contexts cannot resurrect disabled cursors. Use a four-second aggregate lifecycle deadline and bounded socket reads/writes; report timeout rather than silently claiming teardown. On startup failure terminate and confirm child exit before releasing the startup lock; refuse replacement when exit cannot be confirmed. Covers R6.
 - KTD7. Named children periodically check their session manifest and stop after disable, end, or manifest removal, including GC and core callers that bypass CLI teardown. Check at a coarse interval, not per animation frame. Keep native rendering math and timing unchanged. Covers R6.
 - KTD8. Add an optional `multi_agent` boolean to the existing session cursor configuration, set by `session start --cursor --multi-agent` or unqualified `cursor-overlay enable --multi-agent`. This mode suppresses bootstrap/default rendering and rejects desktop action commands without `--agent-id` before dispatch; administrative commands remain usable without an ID. Named profiles cannot alter this master setting. Ordinary sessions retain default-route behavior. Covers R1, R3.
@@ -145,7 +145,7 @@ External research is unnecessary for the chosen approach because it reuses exist
 **Approach:** Document coordinator setup, per-agent identity/style, shared qualified refs, and session-wide shutdown. Preserve current screenshot policy.
 **Test scenarios:**
 1. Three separate CLI workers share one session, present three styled cursors, then end the session with no surviving renderer.
-2. Unnamed single-agent usage remains valid; headed suppression and restoration affect only the selected agent; session disable covers every cursor.
+2. Unnamed single-agent usage remains valid; headed and headless actions both present the selected agent’s overlay; session disable covers every cursor.
 3. Record three-agent process memory and baseline latency compared with the merge base.
 **Verification:** Run repository gates and review the performance report; state any unavailable live verification explicitly.
 
@@ -179,3 +179,9 @@ The local review fixes make named style configuration profile-only, surface unce
 Workspace tests, clippy, formatting, Rust file limits, and core dependency isolation passed. The checked-in fixture probe verifies three cursors, profile-free lazy creation, repeated-ID reuse, shared refs, cross-session isolation with the same agent ID, and process/socket cleanup. The full native E2E runner skipped because the desktop was not exclusive.
 
 The 10-round performance comparison against `8e390a4d` measured click p50 -3%, dense snapshot p50 +1%, and get +11 ms in the sample. Three existing renderer processes used approximately 94 MiB RSS in total. No no-agent context I/O or renderer dependencies were added.
+
+### Headed parity follow-up
+
+The user requires the same per-agent presentation in headed mode. Remove automatic headed suppression, present eligible physical pointer commands using the existing renderer, and retain the interaction lease for OS input. Verify named headed ref and raw-coordinate clicks create/reuse their cursors, preserve headless behavior, and update the installed skills and piano prompt.
+
+Verified headed parity: full workspace tests and clippy pass; isolated live headed probe creates three ref-agent cursors plus a raw-click-only cursor and independently observes five clicks. Matching headless probe observes four clicks with three cursors. Both prove cleanup and cross-session isolation. Raw drag presentation covers its endpoints, retaining native physical drag delivery. Presentation remains ordered under the interaction lease, with a shared 900 ms Present budget; failure cleanup retains bounded child reaping.

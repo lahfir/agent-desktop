@@ -15,21 +15,32 @@ struct WheelCall {
 
 struct WheelCaptureAdapter {
     captured: Mutex<Option<WheelCall>>,
-    fail: bool,
+    presented: Mutex<Vec<crate::CursorOverlayControl>>,
+    failure: Option<crate::DeliverySemantics>,
 }
 
 impl WheelCaptureAdapter {
     fn recording() -> Self {
         Self {
             captured: Mutex::new(None),
-            fail: false,
+            presented: Mutex::new(Vec::new()),
+            failure: None,
         }
     }
 
     fn failing() -> Self {
         Self {
             captured: Mutex::new(None),
-            fail: true,
+            presented: Mutex::new(Vec::new()),
+            failure: Some(crate::DeliverySemantics::not_delivered()),
+        }
+    }
+
+    fn failing_after_delivery() -> Self {
+        Self {
+            captured: Mutex::new(None),
+            presented: Mutex::new(Vec::new()),
+            failure: Some(crate::DeliverySemantics::delivered_unverified()),
         }
     }
 }
@@ -38,6 +49,14 @@ impl ObservationOps for WheelCaptureAdapter {}
 impl ActionOps for WheelCaptureAdapter {}
 impl SystemOps for WheelCaptureAdapter {
     crate::adapter::guarded_interaction_lease!();
+
+    fn update_cursor_overlay(
+        &self,
+        control: &crate::CursorOverlayControl,
+    ) -> Result<(), AdapterError> {
+        self.presented.lock().unwrap().push(control.clone());
+        Ok(())
+    }
 }
 
 impl InputOps for WheelCaptureAdapter {
@@ -56,8 +75,8 @@ impl InputOps for WheelCaptureAdapter {
             dx: delta_x,
             modifiers: event.modifiers,
         });
-        if self.fail {
-            return Err(AdapterError::not_supported("mouse_wheel"));
+        if let Some(disposition) = self.failure {
+            return Err(AdapterError::not_supported("mouse_wheel").with_disposition(disposition));
         }
         Ok(())
     }
@@ -119,6 +138,7 @@ fn returns_scrolled_envelope_with_requested_deltas() {
 #[test]
 fn adapter_error_propagates_as_err() {
     let adapter = WheelCaptureAdapter::failing();
+    let config = crate::CursorOverlayConfig::enabled(None, 6).expect("valid config");
 
     let result = execute(
         MouseWheelArgs {
@@ -129,10 +149,44 @@ fn adapter_error_propagates_as_err() {
             modifiers: Vec::new(),
         },
         &adapter,
-        &CommandContext::default().with_headed(true),
+        &CommandContext::default()
+            .with_headed(true)
+            .with_cursor_overlay_session("test-session", config),
     );
 
     assert!(result.is_err());
+    let presented = adapter.presented.lock().unwrap();
+    assert_eq!(presented.len(), 1);
+    assert!(presented[0].is_travel());
+}
+
+#[test]
+fn delivered_error_still_presents_effect_before_propagating() {
+    let adapter = WheelCaptureAdapter::failing_after_delivery();
+    let config = crate::CursorOverlayConfig::enabled(None, 6).expect("valid config");
+
+    let result = execute(
+        MouseWheelArgs {
+            x: 1.0,
+            y: 2.0,
+            dy: 1.0,
+            dx: 0.0,
+            modifiers: Vec::new(),
+        },
+        &adapter,
+        &CommandContext::default()
+            .with_headed(true)
+            .with_cursor_overlay_session("test-session", config),
+    );
+
+    assert!(result.is_err());
+    let presented = adapter.presented.lock().unwrap();
+    assert_eq!(presented.len(), 2);
+    assert!(presented[0].is_travel());
+    assert_eq!(
+        presented[1].instruction().unwrap().phase(),
+        crate::CursorPhase::Effect
+    );
 }
 
 #[test]

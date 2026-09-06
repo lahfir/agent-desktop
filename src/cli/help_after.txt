@@ -83,7 +83,7 @@ SYSTEM
   session start              Create a trace-enabled session; pass its returned ID explicitly
   session start --screenshots  Opt in to screenshot/refmap replay artifacts (requires tracing)
   session start --cursor    Create the session and show the default visual cursor
-  session start --cursor --multi-agent  One cursor per harness subagent; desktop UI actions require --agent-id
+  session start --cursor --multi-agent  One cursor per harness subagent in headless/headed mode; desktop UI actions require --agent-id
   session end                  Seal a manifest (ID from argument, --session, or environment)
   session list                 List session manifests
   session gc                   Remove ended or provably-stale sessions

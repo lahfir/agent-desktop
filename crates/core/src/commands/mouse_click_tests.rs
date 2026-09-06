@@ -5,14 +5,14 @@ use std::sync::Mutex;
 
 struct ModifierCaptureAdapter {
     captured: Mutex<Option<MouseEvent>>,
-    presented: Mutex<Option<crate::CursorOverlayControl>>,
+    presented: Mutex<Vec<crate::CursorOverlayControl>>,
 }
 
 impl ModifierCaptureAdapter {
     fn new() -> Self {
         Self {
             captured: Mutex::new(None),
-            presented: Mutex::new(None),
+            presented: Mutex::new(Vec::new()),
         }
     }
 }
@@ -26,7 +26,7 @@ impl SystemOps for ModifierCaptureAdapter {
         &self,
         control: &crate::CursorOverlayControl,
     ) -> Result<(), AdapterError> {
-        *self.presented.lock().unwrap() = Some(control.clone());
+        self.presented.lock().unwrap().push(control.clone());
         Ok(())
     }
 }
@@ -92,9 +92,19 @@ fn no_modifiers_requested_dispatches_empty_modifiers() {
 }
 
 #[test]
-fn headed_mouse_click_suppresses_cursor_overlay() {
+fn headed_mouse_click_presents_agent_cursor_after_delivery() {
+    let _guard = crate::refs_test_support::HomeGuard::new();
     let adapter = ModifierCaptureAdapter::new();
-    let config = crate::CursorOverlayConfig::enabled(None, 6).expect("valid config");
+    let session = crate::session::start_session(Default::default()).expect("session starts");
+    let config = crate::CursorOverlayConfig::enabled(None, 6)
+        .expect("valid config")
+        .with_multi_agent(true);
+    crate::session::set_cursor_overlay(&session.id, config).expect("overlay enabled");
+    let context = CommandContext::new(Some(session.id), None, false)
+        .expect("context loads")
+        .with_headed(true)
+        .with_agent_id(Some("agent-a".into()))
+        .expect("valid agent id");
 
     execute(
         MouseClickArgs {
@@ -105,13 +115,18 @@ fn headed_mouse_click_suppresses_cursor_overlay() {
             modifiers: Vec::new(),
         },
         &adapter,
-        &CommandContext::default()
-            .with_headed(true)
-            .with_cursor_overlay(config),
+        &context,
     )
     .expect("mouse click succeeds");
 
-    assert!(adapter.presented.lock().unwrap().is_none());
+    let presented = adapter.presented.lock().unwrap();
+    assert_eq!(presented.len(), 2);
+    assert!(presented[0].is_travel());
+    let control = &presented[1];
+    let instruction = control.instruction().expect("present instruction");
+    assert_eq!(instruction.destination(), &Point { x: 10.0, y: 20.0 });
+    assert!(instruction.is_click());
+    assert_eq!(control.agent_id(), Some("agent-a"));
 }
 
 #[test]

@@ -466,7 +466,7 @@ agent-desktop cursor-overlay disable
 
 No flags gives the default look: white body, near-black rim, blue ripple, blue element outline.
 
-Style is stored in the session manifest and inherited by every eligible headless command, batch entries included. Action and batch-entry schemas take no cursor flags. Run `enable` again to restyle; it applies at once.
+Style is stored in the session manifest and inherited by every eligible headless or headed command, batch entries included. Action and batch-entry schemas take no cursor flags. Run `enable` again to restyle; it applies at once.
 
 | Flag | Meaning | Default |
 |---|---|---|
@@ -487,7 +487,7 @@ Behaviour:
 - The card shows the label. With no label there is no card.
 - Idle for 6 s it fades out; the next command restores it.
 - `disable` removes it and stops the renderer. Ending the session is not needed.
-- Headed actions hide it while the real pointer is in use.
+- Headed actions retain it while the real pointer is in use.
 - macOS renders it natively; other platforms use the adapter's presentation no-op.
 
 ### Shared-session subagent cursors (macOS)
@@ -496,6 +496,8 @@ Behaviour:
 agent-desktop session start --cursor --multi-agent
 export AGENT_DESKTOP_SESSION=<returned-session-id>
 ```
+
+Cursor presentation works in both headless and headed mode. Physical pointer commands use the same per-agent overlays; the interaction lease coordinates the shared OS pointer.
 
 The harness gives each subagent a stable `AGENT_DESKTOP_AGENT_ID` (or global `--agent-id`, which takes precedence). IDs use 1–64 letters, digits, `-` or `_`. Every desktop UI action in this mode requires the ID; observations, clipboard operations, and session administration do not. Style commands only save a profile; the next verified action presents it. Three active IDs create three independent cursors. Reusing an ID reuses its cursor. There is no extra coordinator cursor or registration step.
 
@@ -509,7 +511,7 @@ agent-desktop --agent-id reviewer cursor-overlay enable --label "Reviewing resul
 
 Use the same ID on subsequent actions or export it in that subagent's environment. Profiles persist under the session; they do not create separate snapshots. Use snapshot-qualified refs when subagents observe concurrently. Distinct overlays do not make concurrent actions on the same application safe; the harness still coordinates dependent work and physical input.
 
-`cursor-overlay disable` and `session end` remove all session cursors, even when called with an agent ID. Headed actions hide only the calling agent's overlay. Each inactive cursor keeps the existing six-second fade. Other platforms retain their existing behavior.
+`cursor-overlay disable` and `session end` remove all session cursors, even when called with an agent ID. Headed actions present the calling agent's overlay. Each inactive cursor keeps the existing six-second fade. Other platforms retain their existing behavior.
 
 ### session start
 ```bash

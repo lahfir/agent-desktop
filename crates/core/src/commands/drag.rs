@@ -119,7 +119,19 @@ pub fn execute(
         drop_delay_ms: args.drop_delay_ms,
     };
     params.validate(deadline)?;
-    adapter.drag(params, &lease)?;
+    crate::cursor_overlay::submit_travel(adapter, context, from.point.clone(), &lease);
+    let result = adapter.drag(params, &lease);
+    if crate::cursor_overlay::input_was_delivered(&result) {
+        crate::cursor_overlay::submit(
+            adapter,
+            context,
+            to.point.clone(),
+            None,
+            false,
+            crate::CursorPhase::Effect,
+        );
+    }
+    result?;
     let mut response = json!({
         "dragged": true,
         "from": { "x": from.point.x, "y": from.point.y },

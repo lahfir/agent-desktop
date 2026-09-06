@@ -180,21 +180,30 @@ fn short_action_budget_skips_optional_travel_before_dispatch() {
 }
 
 #[test]
-fn disabled_and_headed_contexts_do_not_present() {
+fn headed_and_headless_contexts_present_the_same_cursor() {
     let adapter = CursorAdapter::new(false);
+    let headless = enabled_context();
+    let headed = headless.clone().with_headed(true);
 
-    execute_entry(&adapter, &entry(), ActionRequest::headless(Action::Click))
-        .expect("click succeeds");
-    let headed = enabled_context().with_headed(true);
+    execute_entry_with_context(
+        &adapter,
+        &entry(),
+        ActionRequest::headless(Action::Click),
+        &headless,
+    )
+    .expect("headless click succeeds");
     execute_entry_with_context(
         &adapter,
         &entry(),
         ActionRequest::headed(Action::Click),
         &headed,
     )
-    .expect("click succeeds");
+    .expect("headed click succeeds");
 
-    assert!(adapter.presented.lock().unwrap().is_empty());
+    let presented = adapter.presented.lock().unwrap();
+    assert_eq!(presented.len(), 4);
+    assert_eq!(presented[0].instruction(), presented[2].instruction());
+    assert_eq!(presented[1].instruction(), presented[3].instruction());
 }
 
 #[test]

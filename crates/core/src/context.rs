@@ -143,12 +143,6 @@ impl CommandContext {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_cursor_overlay(mut self, cursor_overlay: CursorOverlayConfig) -> Self {
-        self.options.cursor_overlay = cursor_overlay;
-        self
-    }
-
-    #[cfg(test)]
     pub(crate) fn with_cursor_overlay_session(
         mut self,
         session_id: &str,

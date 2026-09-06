@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--bin", required=True, type=Path)
     parser.add_argument("--fixture", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--headed", action="store_true", help="Exercise physical clicks with agent cursors")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     state_directory = tempfile.TemporaryDirectory(prefix="adc-", dir="/tmp")
@@ -22,6 +23,7 @@ def main():
     env = dict(os.environ, AGENT_DESKTOP_HOME=str(state))
     env.pop("AGENT_DESKTOP_SESSION", None)
     env.pop("AGENT_DESKTOP_AGENT_ID", None)
+    action_flags = ["--headed"] if args.headed else []
     lease_fd = env.get("AGENT_DESKTOP_INTERACTION_LEASE_FD")
     cli_pass_fds = (int(lease_fd),) if lease_fd is not None else ()
 
@@ -43,7 +45,7 @@ def main():
         session_id = cli("session", "start", "--cursor", "--multi-agent")["session_id"]
         env["AGENT_DESKTOP_SESSION"] = session_id
         assert not list(state.glob("*.sock")), "setup created an unwanted default cursor"
-        snapshot = cli("snapshot", "--app", "AgentDeskFixture", "-i")
+        snapshot = cli("snapshot", "--app", "AgentDeskFixture", "-i", "--include-bounds")
         (args.out / "snapshot.json").write_text(json.dumps(snapshot, indent=2))
 
         def walk(node):
@@ -75,20 +77,32 @@ def main():
                 cli("--agent-id", agent, "cursor-overlay", "enable", "--label", agent,
                     "--fill", color, "--accent", color)
                 assert set(state.glob("*.sock")) == previous, "profile created a cursor"
-            cli("--agent-id", agent, "click", target)
+            cli(*action_flags, "--agent-id", agent, "click", target)
             paths = set(state.glob("*.sock"))
             assert len(paths) == index + 1, paths
             sockets[agent] = (paths - previous).pop()
             previous = paths
         before = set(state.glob("*.sock"))
-        cli("--agent-id", "worker-0", "click", target)
+        cli(*action_flags, "--agent-id", "worker-0", "click", target)
         assert set(state.glob("*.sock")) == before, "repeat identity created another cursor"
+        if args.headed:
+            target_bounds = cli("get", target, "--property", "bounds")["value"]
+            xy = f"{target_bounds['x'] + target_bounds['width'] / 2},{target_bounds['y'] + target_bounds['height'] / 2}"
+            cli("--headed", "--agent-id", "raw-pointer", "mouse-click", "--xy", xy)
+            raw_socket, = set(state.glob("*.sock")) - before
+            before.add(raw_socket)
+        observed = cli("snapshot", "--app", "AgentDeskFixture")
+        (args.out / "observed.json").write_text(json.dumps(observed, indent=2))
+        click_status = next(node.get("value") for node in walk(observed)
+                            if node.get("description") == "click-status")
+        expected_clicks = 5 if args.headed else 4
+        assert click_status == f"click-{expected_clicks}", click_status
         displays = cli("list-displays")
         bounds = displays[0]["bounds"]
         for index, path in enumerate(sorted(before)):
             pid_output = subprocess.check_output(["lsof", "-t", str(path)], text=True)
             pids.update(int(pid) for pid in pid_output.split())
-        assert len(pids) == 3, pids
+        assert len(pids) == (4 if args.headed else 3), pids
         memory = subprocess.check_output(["ps", "-o", "pid=,rss=", "-p",
                                           ",".join(map(str, sorted(pids)))], text=True)
         for index, color in enumerate(colors):
@@ -105,15 +119,15 @@ def main():
                 stream.shutdown(socket.SHUT_WR)
                 assert stream.recv(1) == b"\x01"
         subprocess.run(["screencapture", "-x", str(args.out / "three-cursors.png")], check=True)
-        report = {"session_id": session_id, "cursor_count": len(before),
+        report = {"session_id": session_id, "cursor_count": len(before), "headed": args.headed,
                   "renderer_pids": sorted(pids), "rss_kib": memory,
                   "shared_ref": target, "state_root": str(state),
-                  "profile_free_agent": "worker-2"}
+                  "profile_free_agent": "worker-2", "verified_click_count": expected_clicks}
         other_session = cli("session", "start", "--cursor", "--multi-agent")["session_id"]
         other_snapshot = cli("--session", other_session, "snapshot", "--app", "AgentDeskFixture", "-i")
         other_target = next(node["ref_id"] for node in walk(other_snapshot)
                             if node.get("name") == "primary-button" and node.get("ref_id"))
-        cli("--session", other_session, "--agent-id", "worker-0", "click", other_target)
+        cli(*action_flags, "--session", other_session, "--agent-id", "worker-0", "click", other_target)
         other_socket, = set(state.glob("*.sock")) - before
         other_pid = int(subprocess.check_output(["lsof", "-t", str(other_socket)], text=True).strip())
         cli("session", "end")
