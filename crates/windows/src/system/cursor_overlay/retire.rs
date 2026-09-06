@@ -44,7 +44,7 @@ pub(crate) fn sweep(root: &Path, session_id: &str) {
 fn retirement_targets(root: &Path, session_id: &str, ledger: &[&'static str]) -> Vec<String> {
     pipe_name::retired_generations(ledger)
         .iter()
-        .map(|generation| pipe_name::pipe_name_for_generation(root, session_id, generation))
+        .map(|generation| pipe_name::pipe_name_for_generation(root, session_id, None, generation))
         .collect()
 }
 

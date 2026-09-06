@@ -15,19 +15,25 @@ fn root() -> &'static Path {
 
 #[test]
 fn the_same_root_and_session_always_resolve_to_the_same_name() {
-    assert_eq!(pipe_name(root(), "s0000001"), pipe_name(root(), "s0000001"));
+    assert_eq!(
+        pipe_name(root(), "s0000001", None),
+        pipe_name(root(), "s0000001", None)
+    );
 }
 
 #[test]
 fn a_different_session_resolves_to_a_different_name() {
-    assert_ne!(pipe_name(root(), "s0000001"), pipe_name(root(), "s0000002"));
+    assert_ne!(
+        pipe_name(root(), "s0000001", None),
+        pipe_name(root(), "s0000002", None)
+    );
 }
 
 #[test]
 fn a_different_state_root_resolves_to_a_different_name() {
     assert_ne!(
-        pipe_name(root(), "s0000001"),
-        pipe_name(Path::new(r"D:\elsewhere\.agent-desktop"), "s0000001")
+        pipe_name(root(), "s0000001", None),
+        pipe_name(Path::new(r"D:\elsewhere\.agent-desktop"), "s0000001", None)
     );
 }
 
@@ -37,14 +43,14 @@ fn a_different_state_root_resolves_to_a_different_name() {
 #[test]
 fn two_generations_resolve_to_different_names() {
     assert_ne!(
-        pipe_name_for_generation(root(), "s0000001", "w1"),
-        pipe_name_for_generation(root(), "s0000001", "w2")
+        pipe_name_for_generation(root(), "s0000001", None, "w1"),
+        pipe_name_for_generation(root(), "s0000001", None, "w2")
     );
 }
 
 #[test]
 fn the_name_is_a_local_pipe_path() {
-    let name = pipe_name(root(), "s0000001");
+    let name = pipe_name(root(), "s0000001", None);
 
     assert!(
         name.starts_with(r"\\.\pipe\"),
@@ -61,12 +67,12 @@ fn the_name_is_a_local_pipe_path() {
 /// can find them.
 #[test]
 fn the_child_argv_names_its_session_and_generation() {
-    let arguments = child_arguments("s0000001");
+    let arguments = child_arguments("s0000001", None);
 
     assert_eq!(arguments[0], CHILD_ARGV_FLAG);
     assert_eq!(
         parse_child_arguments(&arguments),
-        Some(("s0000001".to_owned(), PROTOCOL_GENERATION.to_owned()))
+        Some(("s0000001".to_owned(), PROTOCOL_GENERATION.to_owned(), None))
     );
 }
 
@@ -128,4 +134,81 @@ fn the_generation_this_build_speaks_is_never_a_retirement_target() {
 #[test]
 fn an_empty_ledger_retires_nothing_rather_than_panicking() {
     assert!(retired_generations(&[]).is_empty());
+}
+
+/// Two agents of one session must not share an endpoint, or the second
+/// renderer would lose the first-instance race and withdraw, leaving one
+/// cursor for both.
+#[test]
+fn two_agents_of_one_session_answer_on_different_names() {
+    assert_ne!(
+        pipe_name(root(), "s0000001", Some("a")),
+        pipe_name(root(), "s0000001", Some("b"))
+    );
+}
+
+/// The same agent name in two sessions is two different agents. The session
+/// segment carries the state root and the generation, so they cannot collide.
+#[test]
+fn one_agent_name_in_two_sessions_is_two_endpoints() {
+    assert_ne!(
+        pipe_name(root(), "s0000001", Some("a")),
+        pipe_name(root(), "s0000002", Some("a"))
+    );
+}
+
+/// An agent-less caller keeps the endpoint it had before agents existed, so a
+/// renderer already serving a plain session stays reachable.
+#[test]
+fn naming_no_agent_leaves_the_original_endpoint_untouched() {
+    let bare = pipe_name(root(), "s0000001", None);
+
+    assert!(
+        !bare
+            .trim_start_matches(r"\\.\pipe\agent-desktop-cursor-")
+            .contains('-'),
+        "an agent-less endpoint must carry one segment, got {bare}"
+    );
+}
+
+/// The agent segment is hashed under its own tag, so an agent whose id equals
+/// the session id does not produce the session's own segment twice.
+#[test]
+fn an_agent_named_like_its_session_does_not_repeat_the_session_segment() {
+    let name = pipe_name(root(), "s0000001", Some("s0000001"));
+    let tail = name
+        .rsplit('-')
+        .next()
+        .expect("an agent endpoint has a trailing segment");
+    let head = name
+        .trim_start_matches(r"\\.\pipe\agent-desktop-cursor-")
+        .split('-')
+        .next()
+        .expect("an agent endpoint has a leading segment");
+
+    assert_ne!(
+        head, tail,
+        "the two segments must be hashed under different domains"
+    );
+}
+
+/// The child carries its agent so the renderer it becomes serves the endpoint
+/// its parent reached for, and a command line written without one still parses.
+#[test]
+fn the_child_argv_round_trips_its_agent() {
+    let with_agent = child_arguments("s0000001", Some("a"));
+    assert_eq!(
+        parse_child_arguments(&with_agent),
+        Some((
+            "s0000001".to_owned(),
+            PROTOCOL_GENERATION.to_owned(),
+            Some("a".to_owned())
+        ))
+    );
+
+    let without = child_arguments("s0000001", None);
+    assert_eq!(
+        parse_child_arguments(&without),
+        Some(("s0000001".to_owned(), PROTOCOL_GENERATION.to_owned(), None))
+    );
 }

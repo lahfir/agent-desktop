@@ -30,11 +30,11 @@ fn a_bumped_ledger_targets_the_displaced_generation_and_never_the_live_one() {
 
     assert_eq!(
         targets,
-        vec![pipe_name_for_generation(root(), SESSION, "w1")],
+        vec![pipe_name_for_generation(root(), SESSION, None, "w1")],
         "the generation the append displaced is the one to clear"
     );
     assert!(
-        !targets.contains(&pipe_name_for_generation(root(), SESSION, "w2")),
+        !targets.contains(&pipe_name_for_generation(root(), SESSION, None, "w2")),
         "the live generation must never be a retirement target"
     );
 }
@@ -52,14 +52,14 @@ fn a_target_is_scoped_to_the_session_being_enabled() {
 
     assert_eq!(
         targets,
-        vec![pipe_name_for_generation(root(), SESSION, "x1")]
+        vec![pipe_name_for_generation(root(), SESSION, None, "x1")]
     );
     assert!(
-        !targets.contains(&pipe_name_for_generation(root(), "s0000002", "x1")),
+        !targets.contains(&pipe_name_for_generation(root(), "s0000002", None, "x1")),
         "another session's renderer is not this session's to retire"
     );
     assert!(
-        !targets.contains(&pipe_name(root(), SESSION)),
+        !targets.contains(&pipe_name(root(), SESSION, None)),
         "and neither is the name this build is about to serve on"
     );
 }

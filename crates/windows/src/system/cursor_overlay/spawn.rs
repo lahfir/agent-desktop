@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use agent_desktop_core::{AdapterError, CursorOverlayControl, ErrorCode};
 
+use super::discover;
 use super::framing;
 use super::pipe_name;
 use super::retire;
@@ -32,8 +33,13 @@ const TEARDOWN_BUDGET: Duration = Duration::from_secs(4);
 pub(crate) fn update(control: &CursorOverlayControl) -> Result<(), AdapterError> {
     control.validate()?;
     let root = state_root()?;
-    let name = pipe_name::pipe_name(&root, control.session_id());
     let budget = budget_for(control);
+
+    if control.is_disable() {
+        return broadcast(&root, control, budget);
+    }
+
+    let name = pipe_name::pipe_name(&root, control.session_id(), control.agent_id());
 
     if control.is_enable() {
         retire::sweep(&root, control.session_id());
@@ -50,6 +56,35 @@ pub(crate) fn update(control: &CursorOverlayControl) -> Result<(), AdapterError>
     }
 
     start_renderer(&name, control, budget)
+}
+
+/// Stops every cursor the session is drawing, not just the one an agent id
+/// would name.
+///
+/// A `Disable` carries no agent, which is the contract rather than an
+/// oversight: an operator ending a session means all of it, and the agents
+/// that drew inside it are not theirs to enumerate. So the endpoints are
+/// discovered and each is told to stop.
+///
+/// The first refusal is reported and the rest are still attempted. Returning
+/// at the first one would leave the remaining cursors on screen while the
+/// caller was told teardown failed, which is the worst of both: an error, and
+/// the windows still up.
+fn broadcast(
+    root: &std::path::Path,
+    control: &CursorOverlayControl,
+    budget: Duration,
+) -> Result<(), AdapterError> {
+    let mut first_error = None;
+    for name in discover::session_endpoints(root, control.session_id()) {
+        match transport::reach(&name, control, budget) {
+            ReachOutcome::Delivered | ReachOutcome::NoRenderer => {}
+            ReachOutcome::Unreachable(error) => {
+                first_error.get_or_insert(error);
+            }
+        }
+    }
+    first_error.map_or(Ok(()), Err)
 }
 
 fn budget_for(control: &CursorOverlayControl) -> Duration {
@@ -191,7 +226,7 @@ mod imp {
         let mut command_line = wide(&format!(
             "\"{}\" {}",
             image.display(),
-            pipe_name::child_arguments(control.session_id()).join(" ")
+            pipe_name::child_arguments(control.session_id(), control.agent_id()).join(" ")
         ));
         let mut environment = child_environment();
 
