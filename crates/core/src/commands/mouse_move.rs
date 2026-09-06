@@ -21,26 +21,18 @@ pub fn execute(
         y: args.y,
     };
     point.validate()?;
-    crate::cursor_overlay::submit_travel(adapter, context, point.clone(), &lease);
-    let result = adapter.mouse_event(
+    let result = crate::cursor_overlay::dispatch_mouse_event_with_cursor(
+        adapter,
+        context,
         MouseEvent {
             kind: MouseEventKind::Move,
-            point: point.clone(),
+            point,
             button: MouseButton::Left,
             modifiers: Vec::new(),
         },
+        false,
         &lease,
     );
-    if crate::cursor_overlay::input_was_delivered(&result) {
-        crate::cursor_overlay::submit(
-            adapter,
-            context,
-            point,
-            None,
-            false,
-            crate::CursorPhase::Effect,
-        );
-    }
     result?;
     Ok(json!({ "moved": true, "x": args.x, "y": args.y }))
 }

@@ -1,5 +1,11 @@
 use super::*;
-use crate::{Point, Rect};
+use crate::{
+    AdapterError, CommandContext, Deadline, DeliverySemantics, InteractionLease, MouseButton,
+    MouseEvent, MouseEventKind, Point, Rect,
+    adapter::{ActionOps, InputOps, ObservationOps, SystemOps},
+};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 #[test]
 fn motion_reaches_both_endpoints_and_curves_between_them() {
@@ -240,6 +246,125 @@ fn a_disabled_ripple_keeps_the_click_silent() {
 
     assert_eq!(motion.total_ms(), motion.duration_ms());
     assert_eq!(motion.pose(motion.total_ms()).ripple, 0.0);
+}
+
+struct OverlayCaptureAdapter {
+    presented: Mutex<Vec<CursorOverlayControl>>,
+    input_index: AtomicU32,
+    input_failure: Option<DeliverySemantics>,
+}
+
+impl OverlayCaptureAdapter {
+    fn with_failure(input_failure: Option<DeliverySemantics>) -> Self {
+        Self {
+            presented: Mutex::new(Vec::new()),
+            input_index: AtomicU32::new(0),
+            input_failure,
+        }
+    }
+}
+
+impl ObservationOps for OverlayCaptureAdapter {}
+impl ActionOps for OverlayCaptureAdapter {}
+
+impl InputOps for OverlayCaptureAdapter {
+    fn mouse_event(
+        &self,
+        _event: MouseEvent,
+        _lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        self.input_index.store(
+            self.presented.lock().unwrap().len() as u32,
+            Ordering::SeqCst,
+        );
+        if let Some(disposition) = self.input_failure {
+            let error = AdapterError::internal("input failed").with_disposition(disposition);
+            return Err(error);
+        }
+        Ok(())
+    }
+}
+
+impl SystemOps for OverlayCaptureAdapter {
+    crate::adapter::guarded_interaction_lease!();
+
+    fn update_cursor_overlay(&self, control: &CursorOverlayControl) -> Result<(), AdapterError> {
+        self.presented.lock().unwrap().push(control.clone());
+        Ok(())
+    }
+}
+
+fn overlay_context() -> CommandContext {
+    let config = CursorOverlayConfig::enabled(None, 6).expect("valid config");
+    CommandContext::default().with_cursor_overlay_session("test-session", config)
+}
+
+fn lease_with_timeout_ms(timeout_ms: u64) -> InteractionLease {
+    let deadline = Deadline::detached_after(timeout_ms).expect("valid deadline");
+    InteractionLease::guarded(deadline, ()).expect("valid lease")
+}
+
+fn run_travel_helper(
+    input_failure: Option<DeliverySemantics>,
+) -> (Result<(), AdapterError>, Vec<CursorPhase>, u32) {
+    let adapter = OverlayCaptureAdapter::with_failure(input_failure);
+    let context = overlay_context();
+    let lease = lease_with_timeout_ms(5_000);
+    let event = MouseEvent {
+        kind: MouseEventKind::Move,
+        point: Point { x: 10.0, y: 20.0 },
+        button: MouseButton::Left,
+        modifiers: Vec::new(),
+    };
+    let result = dispatch_mouse_event_with_cursor(&adapter, &context, event, true, &lease);
+    let phases = adapter
+        .presented
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|control| control.instruction().expect("cursor instruction").phase())
+        .collect();
+    let input_index = adapter.input_index.load(Ordering::SeqCst);
+    (result, phases, input_index)
+}
+
+#[test]
+fn travel_helper_submits_travel_then_effect_around_delivered_input() {
+    let (result, phases, input_index) = run_travel_helper(None);
+
+    assert!(result.is_ok());
+    assert_eq!(phases, vec![CursorPhase::Travel, CursorPhase::Effect]);
+    assert_eq!(input_index, 1);
+}
+
+#[test]
+fn travel_helper_skips_effect_when_input_is_not_delivered() {
+    let (result, phases, input_index) = run_travel_helper(Some(DeliverySemantics::not_delivered()));
+
+    assert!(result.is_err());
+    assert_eq!(phases, vec![CursorPhase::Travel]);
+    assert_eq!(input_index, 1);
+}
+
+#[test]
+fn travel_helper_still_marks_effect_when_delivery_is_uncertain() {
+    let (result, phases, input_index) = run_travel_helper(Some(DeliverySemantics::uncertain()));
+
+    assert!(result.is_err());
+    assert_eq!(phases, vec![CursorPhase::Travel, CursorPhase::Effect]);
+    assert_eq!(input_index, 1);
+}
+
+/// Pins the arrival guard: remaining exactly covering arrival plus the
+/// dispatch reserve still skips the overlay; a healthy lease enters scope.
+#[test]
+fn travel_scope_decides_arrival_scope_at_the_budget_boundary() {
+    let dispatch_reserve_ms = 100;
+    let starved = lease_with_timeout_ms(CURSOR_ARRIVAL_TIMEOUT_MS + dispatch_reserve_ms);
+    let healthy = lease_with_timeout_ms(5_000);
+
+    assert!(super::submit::travel_scope(&starved).is_none());
+    assert!(super::submit::travel_scope(&healthy).is_some());
 }
 
 #[test]

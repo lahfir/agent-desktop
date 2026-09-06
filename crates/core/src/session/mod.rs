@@ -157,11 +157,25 @@ pub fn cursor_overlay_for_session_agent(
     };
     let path = agent_profile_path(session_id, agent_id)?;
     match crate::private_file::read_private_bounded(&path, MAX_SESSION_MANIFEST_BYTES) {
-        Ok(bytes) => serde_json::from_slice::<CursorOverlayConfig>(&bytes)
-            .map_err(|error| AppError::invalid_input(format!("Invalid cursor profile: {error}")))?
-            .validated()
-            .map(|profile| profile.with_multi_agent(config.is_multi_agent()))
-            .map_err(Into::into),
+        Ok(bytes) => {
+            let parsed: Result<CursorOverlayConfig, AppError> = serde_json::from_slice::<
+                CursorOverlayConfig,
+            >(&bytes)
+            .map_err(|error| AppError::invalid_input(format!("Invalid cursor profile: {error}")))
+            .and_then(|profile| profile.validated().map_err(Into::into));
+            match parsed.map(|profile| profile.with_multi_agent(config.is_multi_agent())) {
+                Ok(profile) => Ok(profile),
+                Err(error) => {
+                    tracing::warn!(
+                        code = error.code(),
+                        session_id = session_id,
+                        agent_id = agent_id,
+                        "ignoring invalid cursor profile"
+                    );
+                    Ok(config)
+                }
+            }
+        }
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(config),
         Err(error) => Err(error.into()),
     }

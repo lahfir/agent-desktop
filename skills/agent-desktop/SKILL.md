@@ -244,7 +244,8 @@ agent-desktop session start [--name LABEL] [--screenshots] [--no-trace] [--curso
 agent-desktop session end [id]                                      # Seal manifest
 agent-desktop session list                                          # List session manifests
 agent-desktop session gc [--older-than SECS] [--ended]              # Reclaim ended/stale sessions
-agent-desktop --session <id> [--agent-id ID] cursor-overlay enable [--multi-agent] [--label TEXT] [--max-words N] [--fill HEX] [--rim HEX] [--accent HEX] [--size N] [--no-ripple] [--no-highlight]
+agent-desktop --session <id> cursor-overlay enable [--multi-agent] [--label TEXT] [--max-words N] [--fill HEX] [--rim HEX] [--accent HEX] [--size N] [--no-ripple] [--no-highlight]
+agent-desktop --session <id> --agent-id ID cursor-overlay enable [--label TEXT] [--max-words N] [--fill HEX] [--rim HEX] [--accent HEX] [--size N] [--no-ripple] [--no-highlight]
 export AGENT_DESKTOP_SESSION=<id>
 agent-desktop cursor-overlay disable                                # Stop all cursors in the selected session
 agent-desktop trace show [--limit N] [--event PREFIX]               # Merge trace segments (default tail 500; 0 = all)

@@ -3,7 +3,7 @@ use std::os::unix::net::UnixListener;
 
 #[test]
 fn travel_acknowledgement_obeys_remaining_budget() {
-    check_acknowledgement(agent_desktop_core::CursorPhase::Travel, true);
+    check_acknowledgement(agent_desktop_core::CursorPhase::Travel, false);
 }
 
 #[test]

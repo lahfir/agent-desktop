@@ -225,7 +225,7 @@ The style command is optional and saves settings for the next presentation witho
 **Behaviour**
 
 - The cursor travels a human path in 90–320 ms. It never rotates or resizes.
-- The action waits for it to land, so a window never closes before the cursor arrives. The wait is capped at 900 ms and never blocks an action.
+- The action waits up to 900 ms for cursor arrival confirmation. If the renderer does not confirm in time, a warning is reported and the action proceeds.
 - A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
 - Idle for 6 s, it fades out. The next command brings it back.
 - `cursor-overlay disable` removes it now. You do not have to end the session.

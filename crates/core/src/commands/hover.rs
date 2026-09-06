@@ -81,26 +81,18 @@ pub fn execute(
             "point": { "x": resolved.point.x, "y": resolved.point.y }
         })),
     )?;
-    crate::cursor_overlay::submit_travel(adapter, context, resolved.point.clone(), &lease);
-    let result = adapter.mouse_event(
+    let result = crate::cursor_overlay::dispatch_mouse_event_with_cursor(
+        adapter,
+        context,
         MouseEvent {
             kind: MouseEventKind::Move,
             point: resolved.point.clone(),
             button: MouseButton::Left,
             modifiers: Vec::new(),
         },
+        false,
         &lease,
     );
-    if crate::cursor_overlay::input_was_delivered(&result) {
-        crate::cursor_overlay::submit(
-            adapter,
-            context,
-            resolved.point.clone(),
-            None,
-            false,
-            crate::CursorPhase::Effect,
-        );
-    }
     result?;
     let mut response = json!({ "hovered": true, "x": resolved.point.x, "y": resolved.point.y });
     if resolved.focused {

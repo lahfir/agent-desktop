@@ -43,20 +43,69 @@ fn named_profiles_inherit_session_mode_and_share_snapshots() {
 }
 
 #[test]
-fn profiles_reject_bad_identity_and_corrupt_files() {
+fn profiles_reject_bad_identity_but_fall_back_on_corrupt_files() {
     let _guard = HomeGuard::new();
     let session = start_session(Default::default()).unwrap();
-    set_cursor_overlay(&session.id, CursorOverlayConfig::enabled(None, 6).unwrap()).unwrap();
+    let master = CursorOverlayConfig::enabled(None, 6).unwrap();
+    set_cursor_overlay(&session.id, master.clone()).unwrap();
     for id in ["", "../a", "a/b", "a.b", &"a".repeat(65)] {
         assert!(cursor_overlay_for_session_agent(Some(&session.id), Some(id)).is_err());
     }
     let path = agent_profile_path(&session.id, "a").unwrap();
     write_private_file(&path, b"invalid json").unwrap();
-    assert!(cursor_overlay_for_session_agent(Some(&session.id), Some("a")).is_err());
+    assert_eq!(
+        cursor_overlay_for_session_agent(Some(&session.id), Some("a")).unwrap(),
+        master
+    );
     end_session(&session.id).unwrap();
     assert!(
         cursor_overlay_for_session_agent(Some(&session.id), Some("a"))
             .unwrap()
             .is_disabled()
+    );
+}
+
+#[test]
+fn corrupt_profile_bytes_fall_back_to_session_config() {
+    let _guard = HomeGuard::new();
+    let session = start_session(Default::default()).unwrap();
+    let master = CursorOverlayConfig::enabled(None, 6).unwrap();
+    set_cursor_overlay(&session.id, master.clone()).unwrap();
+    let path = agent_profile_path(&session.id, "a").unwrap();
+    write_private_file(&path, b"not json at all").unwrap();
+    assert_eq!(
+        cursor_overlay_for_session_agent(Some(&session.id), Some("a")).unwrap(),
+        master
+    );
+    write_private_file(&path, br#"{"enabled":true,"max_words":0}"#).unwrap();
+    assert_eq!(
+        cursor_overlay_for_session_agent(Some(&session.id), Some("a")).unwrap(),
+        master
+    );
+}
+
+#[test]
+fn missing_profile_falls_back_to_session_config() {
+    let _guard = HomeGuard::new();
+    let session = start_session(Default::default()).unwrap();
+    let master = CursorOverlayConfig::enabled(None, 6).unwrap();
+    set_cursor_overlay(&session.id, master.clone()).unwrap();
+    assert_eq!(
+        cursor_overlay_for_session_agent(Some(&session.id), Some("ghost")).unwrap(),
+        master
+    );
+}
+
+#[test]
+fn valid_profile_is_used_over_session_config() {
+    let _guard = HomeGuard::new();
+    let session = start_session(Default::default()).unwrap();
+    let master = CursorOverlayConfig::enabled(None, 6).unwrap();
+    set_cursor_overlay(&session.id, master.clone()).unwrap();
+    let profile = CursorOverlayConfig::enabled(Some("Agent A".into()), 6).unwrap();
+    save_cursor_overlay_profile(&session.id, "a", profile.clone()).unwrap();
+    assert_eq!(
+        cursor_overlay_for_session_agent(Some(&session.id), Some("a")).unwrap(),
+        profile.with_multi_agent(false)
     );
 }

@@ -279,3 +279,25 @@ fn headed_menubar_click_uses_only_semantic_press_and_keeps_other_clicks_physical
         ));
     }
 }
+
+#[test]
+fn click_role_probe_failure_falls_back_to_default_chain() {
+    let fallback = crate::actions::chain_defs::click_chain(None);
+    assert!(matches!(
+        fallback.steps.first(),
+        Some(ChainStep::CGClick {
+            button: MouseButton::Left,
+            count: 1
+        })
+    ));
+    for unknown in [Some("AXUnknown"), Some(""), Some("AXButton")] {
+        assert!(std::ptr::eq(
+            fallback,
+            crate::actions::chain_defs::click_chain(unknown)
+        ));
+    }
+    assert!(!std::ptr::eq(
+        fallback,
+        crate::actions::chain_defs::click_chain(Some("AXMenuBarItem"))
+    ));
+}

@@ -54,8 +54,7 @@ fn broadcast(control: &CursorOverlayControl) -> Result<(), AdapterError> {
     let lock_path = super::endpoint::lock_path()?;
     let deadline = Instant::now() + Duration::from_secs(4);
     let _lock = startup_lock(&lock_path, deadline)?;
-    let paths = super::endpoint::discover(control.session_id())?;
-    let mut first_error = None;
+    let (paths, mut first_error) = super::endpoint::discover(control.session_id())?;
     for socket in paths {
         if Instant::now() >= deadline {
             return Err(AdapterError::internal(
@@ -253,8 +252,16 @@ fn send_until(
                 instruction.phase() == agent_desktop_core::CursorPhase::Travel
             }) =>
         {
-            tracing::debug!(%error, "cursor overlay arrival was not acknowledged in time");
-            Ok(true)
+            tracing::warn!(
+                session = control.session_id(),
+                agent = control.agent_id(),
+                %error,
+                "cursor overlay travel was not acknowledged; continuing without cursor confirmation"
+            );
+            Err(
+                AdapterError::internal("macOS cursor overlay did not confirm cursor arrival")
+                    .with_platform_detail(error.to_string()),
+            )
         }
         Err(error) => Err(AdapterError::internal(
             "macOS cursor overlay did not acknowledge the control",

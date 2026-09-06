@@ -406,7 +406,7 @@ agent-desktop batch '[{"command":"launch","args":{"app":"Obsidian","cdp":0}}]'
 ```
 Execute multiple commands in sequence from a JSON array. Each entry has `command` (string) and `args` (object). Use `args`, not `params`. For ref-consuming commands, pass the output `snapshot_id` as the `snapshot` field.
 
-Batch uses the same typed `Commands` enum, command policy preflight, permission report, and dispatch path as the CLI. Unknown fields are rejected instead of being silently ignored. Nested `batch` is rejected.
+Batch uses the same typed `Commands` enum, command policy preflight, permission report, and dispatch path as the CLI. Unknown fields are rejected instead of being silently ignored. Nested `batch` is rejected. If an entry’s session ends before dispatch, that entry is reported as `not_started` with reason `session_ended`; `--stop-on-error` stops there, otherwise later entries continue.
 
 Each entry may include `"session": "id"` beside `command` and `args`. If omitted, the entry inherits the top-level resolved session. Use per-entry sessions only when intentionally inspecting or coordinating separate agent runs.
 
@@ -482,7 +482,7 @@ Style is stored in the session manifest and inherited by every eligible headless
 Behaviour:
 
 - Travel is a human path, 90 to 320 ms. The cursor never rotates or resizes.
-- The action waits for the cursor to land, capped at 900 ms. A slow renderer never blocks it.
+- The action waits for cursor arrival confirmation, capped at 900 ms. An unconfirmed arrival reports a warning and the action still proceeds.
 - A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
 - The card shows the label. With no label there is no card.
 - Drags show a live accent-colored path while held and fade after release, controlled by the ripple setting and suppressed under Reduce Motion.
@@ -510,7 +510,7 @@ agent-desktop --agent-id writer cursor-overlay enable --label "Updating draft" -
 agent-desktop --agent-id reviewer cursor-overlay enable --label "Reviewing result" --accent "#49C98A"
 ```
 
-Use the same ID on subsequent actions or export it in that subagent's environment. Profiles persist under the session; they do not create separate snapshots. Use snapshot-qualified refs when subagents observe concurrently. Distinct overlays do not make concurrent actions on the same application safe; the harness still coordinates dependent work and physical input.
+Use the same ID on subsequent actions or export it in that subagent's environment. Profiles persist under the session; they do not create separate snapshots. Invalid profile JSON or style values fall back to the session style with a warning; unsafe or unreadable profile files still fail. Use snapshot-qualified refs when subagents observe concurrently. Distinct overlays do not make concurrent actions on the same application safe; the harness still coordinates dependent work and physical input. Running `cursor-overlay enable --multi-agent` converts the session scope post-hoc and rejects `--agent-id`, so per-agent styling never takes `--multi-agent`.
 
 `cursor-overlay disable` and `session end` remove all session cursors, even when called with an agent ID. Headed actions present the calling agent's overlay. Each inactive cursor keeps the existing six-second fade. Other platforms retain their existing behavior.
 

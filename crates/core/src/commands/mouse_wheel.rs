@@ -29,29 +29,21 @@ pub fn execute(
         y: args.y,
     };
     point.validate()?;
-    crate::cursor_overlay::submit_travel(adapter, context, point.clone(), &lease);
-    let result = adapter.mouse_event(
+    let result = crate::cursor_overlay::dispatch_mouse_event_with_cursor(
+        adapter,
+        context,
         MouseEvent {
             kind: MouseEventKind::Wheel {
                 delta_x: args.dx,
                 delta_y: args.dy,
             },
-            point: point.clone(),
+            point,
             button: MouseButton::Left,
             modifiers: args.modifiers,
         },
+        false,
         &lease,
     );
-    if crate::cursor_overlay::input_was_delivered(&result) {
-        crate::cursor_overlay::submit(
-            adapter,
-            context,
-            point,
-            None,
-            false,
-            crate::CursorPhase::Effect,
-        );
-    }
     result?;
     Ok(json!({ "scrolled": true, "dy": args.dy, "dx": args.dx }))
 }
