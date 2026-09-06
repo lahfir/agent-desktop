@@ -44,7 +44,6 @@ mod ref_evidence_requirements;
 mod resolve;
 mod select;
 mod selection_completeness;
-mod tree_order;
 mod validate;
 
 pub use cardinality::{classify_query_result, require_unique};

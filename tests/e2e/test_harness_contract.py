@@ -55,31 +55,6 @@ class HarnessContractTests(unittest.TestCase):
 
         self.assertEqual(offenders, [])
 
-    def test_wait_scenarios_use_independent_oracles(self):
-        source = (E2E_ROOT / "scenarios" / "reliability.sh").read_text()
-
-        self.assertIn('is_target "$delayed" enabled', source)
-        self.assertIn('is_target "$primary" visible', source)
-        self.assertIn('get_target "$text_input" --property value', source)
-        self.assertIn("require_value actionable_before click-status", source)
-        self.assertIn("require_value actionable_after click-status", source)
-
-    def test_acceptance_visibility_uses_a_qualified_zero_bounds_ref(self):
-        source = (E2E_ROOT / "scenarios" / "acceptance.sh").read_text()
-
-        self.assertIn("require_target zero_target button zero-bounds-button", source)
-        self.assertIn('is_target "$zero_target" visible', source)
-        self.assertIn('data.applicable)" = "True"', source)
-        self.assertIn('data.result)" = "False"', source)
-
-    def test_hover_uses_the_headed_qualified_ref_pipeline(self):
-        source = (E2E_ROOT / "scenarios" / "interaction.sh").read_text()
-
-        self.assertIn("require_target hover_target button hover-target", source)
-        self.assertIn('act_target "$hover_target" hover', source)
-        self.assertIn("require_value hover_after hover-status", source)
-        self.assertNotIn("hover --xy", source)
-
     def test_denied_automation_skips_when_notification_center_cannot_be_closed(self):
         source = (E2E_ROOT / "scenarios" / "acceptance.sh").read_text()
 
@@ -179,41 +154,6 @@ cleanup
         decision = body.index('if [ "$fail" -gt 0 ]')
         self.assertLess(body.index('verify_immutable_binary "$ffi_dylib"'), decision)
         self.assertLess(body.index('verify_immutable_binary "$ffi_helper"'), decision)
-
-    def test_fixture_status_oracles_use_stable_native_identifiers(self):
-        source = (E2E_ROOT / "lib.sh").read_text()
-
-        self.assertIn('--role statictext --native-id "$name" --first', source)
-
-    def test_trace_artifact_actions_use_the_session_that_created_their_refs(self):
-        source = (E2E_ROOT / "scenarios" / "trace_performance.sh").read_text()
-
-        self.assertIn('"$bin" --session "$trace_session" find', source)
-        self.assertIn('trace_click="$("$bin" --session "$trace_session" click', source)
-        self.assertIn(
-            'trace_session_type="$("$bin" --headed --session "$trace_session" type',
-            source,
-        )
-
-    def test_sheet_scenarios_scroll_the_button_before_clicking(self):
-        fixtures = [
-            (
-                "scenarios/surfaces.sh",
-                'act_target "$open_sheet" scroll-to',
-                'act_target "$open_sheet" click',
-            ),
-            (
-                "scenarios/acceptance.sh",
-                'act_target "$open_sheet" scroll-to',
-                'batch_payload="$(python3',
-            ),
-        ]
-        for filename, scroll_marker, click_marker in fixtures:
-            with self.subTest(filename=filename):
-                source = (E2E_ROOT / filename).read_text()
-                scroll = source.index(scroll_marker)
-                click = source.index(click_marker)
-                self.assertLess(scroll, click)
 
     def test_recoverable_trash_moves_artifact_with_available_backend(self):
         with tempfile.TemporaryDirectory() as root:

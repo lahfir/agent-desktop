@@ -5,7 +5,7 @@
 #   1. runs a fixture A/B (snapshots, reads, and fixture-only actions),
 #   2. runs the deterministic synthetic locator benchmark on HEAD,
 #   3. optionally probes real apps READ-ONLY (snapshot/find timing only),
-# and writes a markdown report + raw JSON.
+# and writes an HTML report + raw JSON.
 #
 # Usage:
 #   scripts/perf-baseline-compare.sh [--base <ref>] [--apps "Slack,Google Chrome"]
@@ -35,6 +35,7 @@ cd "$repo"
 [ -n "$base_ref" ] || base_ref="$(git merge-base HEAD "$(git rev-parse --verify --quiet origin/main >/dev/null 2>&1 && echo origin/main || echo main)")"
 base_sha="$(git rev-parse --short "$base_ref")"
 head_sha="$(git rev-parse --short HEAD)"
+if ! git diff --quiet HEAD; then head_sha="${head_sha}+working-tree"; fi
 [ -n "$out" ] || out="$(mktemp -d "/tmp/agent-desktop-perf-${head_sha}-vs-${base_sha}.XXXXXX")"
 mkdir -p "$out"
 echo "== perf compare: HEAD ${head_sha} vs base ${base_sha} -> ${out}"
@@ -65,7 +66,6 @@ cleanup_fixture() {
 cleanup() {
     cleanup_fixture
     git worktree remove --force "$wt" >/dev/null 2>&1 || true
-    git worktree prune >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 (cd "$wt" && cargo build --release -p agent-desktop >/dev/null)

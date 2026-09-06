@@ -160,6 +160,25 @@ pub(crate) fn apply_post_action_wait(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    if context.wait_selector().is_none() {
+        return Ok(result);
+    }
+    apply_scoped_post_action_wait(
+        result,
+        entry.and_then(|entry| probe_app_name(adapter, entry)),
+        entry.and_then(|entry| entry.source.source_window_id.clone()),
+        adapter,
+        context,
+    )
+}
+
+pub(crate) fn apply_scoped_post_action_wait(
+    result: Value,
+    app: Option<String>,
+    window_id: Option<String>,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
     let Some(wait) = context.wait_selector() else {
         return Ok(result);
     };
@@ -167,8 +186,8 @@ pub(crate) fn apply_post_action_wait(
         WaitSelectorInput {
             query_raw: wait.query_raw.clone(),
             gone: wait.gone,
-            app: entry.and_then(|entry| probe_app_name(adapter, entry)),
-            window_id: entry.and_then(|entry| entry.source.source_window_id.clone()),
+            app,
+            window_id,
             opts: TreeOptions::default(),
             timeout_ms: wait.timeout_ms,
         },

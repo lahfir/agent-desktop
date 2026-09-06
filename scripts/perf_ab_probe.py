@@ -13,6 +13,7 @@ never collide. Rounds alternate between binaries to cancel machine drift.
 """
 import argparse
 import json
+import math
 import os
 import statistics
 import subprocess
@@ -55,11 +56,11 @@ def walk(node):
 
 def tree_stats(env):
     tree = env.get("data", {}).get("tree", {})
-    nodes = sum(1 for _ in walk(tree))
-    depth = 0
+    nodes = depth = 0
 
     def measure(node, level):
-        nonlocal depth
+        nonlocal nodes, depth
+        nodes += 1
         depth = max(depth, level)
         for child in node.get("children", []):
             measure(child, level + 1)
@@ -107,6 +108,7 @@ def app_cases(app):
         ("snapshot -i", ["snapshot", "--app", app, "-i"]),
         ("snapshot skeleton", ["snapshot", "--app", app, "--skeleton"]),
         ("snapshot d30", ["snapshot", "--app", app, "--max-depth", "30"]),
+        ("find --role button --first", ["find", "--app", app, "--role", "button", "--first"]),
     ]
 
 
@@ -114,9 +116,13 @@ def collect(binaries, cases_for, rounds):
     cases = {label: cases_for(label) for label in binaries}
     results = {label: {} for label in binaries}
     shapes = {label: {} for label in binaries}
-    for _ in range(rounds):
-        for label, binary in binaries.items():
-            for name, args in cases[label]:
+    labels = list(binaries)
+    for round_index in range(rounds):
+        order = labels if round_index % 2 == 0 else labels[::-1]
+        for case_index in range(len(cases[labels[0]])):
+            for label in order:
+                binary = binaries[label]
+                name, args = cases[label][case_index]
                 elapsed, proc = run(binary, *args)
                 env = envelope(proc)
                 ok = bool(env.get("ok"))
@@ -133,31 +139,11 @@ def summarize(results, shapes):
             times = sorted(t for t, ok in samples if ok)
             report.setdefault(name, {})[label] = {
                 "p50_ms": round(statistics.median(times), 1) if times else None,
-                "p95_ms": round(times[max(0, int(len(times) * 0.95) - 1)], 1) if times else None,
+                "p95_ms": round(times[math.ceil(len(times) * 0.95) - 1], 1) if times else None,
                 "ok_rate": sum(1 for _, ok in samples if ok) / len(samples),
                 "shape": shapes[label].get(name),
             }
     return report
-
-
-def head_only_find(binary, app, rounds, report):
-    times, matches = [], None
-    for _ in range(rounds):
-        elapsed, proc = run(binary, "find", "--app", app, "--role", "button", "--first")
-        env = envelope(proc)
-        if env.get("ok"):
-            times.append(elapsed)
-            matches = env.get("data", {}).get("match", {}).get("role")
-    if times:
-        times.sort()
-        report["find --role button --first (HEAD-only)"] = {
-            "HEAD": {
-                "p50_ms": round(statistics.median(times), 1),
-                "p95_ms": round(times[max(0, int(len(times) * 0.95) - 1)], 1),
-                "ok_rate": len(times) / rounds,
-                "matched_role": matches,
-            }
-        }
 
 
 def main():
@@ -176,8 +162,6 @@ def main():
     else:
         results, shapes = collect(binaries, lambda _label: app_cases(args.app), args.rounds)
     report = summarize(results, shapes)
-    if args.mode == "app":
-        head_only_find(args.head_bin, args.app, args.rounds, report)
 
     payload = {"mode": args.mode, "app": args.app, "rounds": args.rounds, "cases": report}
     if args.json_out:

@@ -330,9 +330,9 @@ When `--snapshot` is omitted, the command polls the caller's latest session refm
 
 ### wait (window)
 ```bash
-agent-desktop wait --window "Save As" --timeout 10000
+agent-desktop wait --window "Save As" --app "TextEdit" --timeout 10000
 ```
-Blocks until a window with the given title appears.
+Blocks until a window whose title contains the given text is present. `--app` restricts matches to that application; without it, all applications are searched. On timeout, `details.last_observed` reports the scoped window count and up to eight titles, each capped at 120 characters, with `truncated` indicating omitted content. This distinguishes a missing expected window from a shortcut whose key delivery succeeded.
 
 ### wait (text)
 ```bash

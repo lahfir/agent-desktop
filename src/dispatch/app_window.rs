@@ -3,10 +3,10 @@ use agent_desktop_core::{
     commands::{
         close_app as close_app_command, focus_window as focus_window_command, helpers,
         launch as launch_command, list_apps as list_apps_command,
-        list_displays as list_displays_command, list_surfaces as list_surfaces_command,
-        list_windows as list_windows_command, maximize as maximize_command,
-        minimize as minimize_command, move_window as move_window_command,
-        resize_window as resize_window_command, restore as restore_command,
+        list_surfaces as list_surfaces_command, list_windows as list_windows_command,
+        maximize as maximize_command, minimize as minimize_command,
+        move_window as move_window_command, resize_window as resize_window_command,
+        restore as restore_command,
     },
 };
 use serde_json::Value;
@@ -51,10 +51,6 @@ pub(super) fn list_windows(
         list_windows_command::ListWindowsArgs { app: args.app },
         adapter,
     )
-}
-
-pub(super) fn list_displays(adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    list_displays_command::execute(adapter)
 }
 
 pub(super) fn list_apps(

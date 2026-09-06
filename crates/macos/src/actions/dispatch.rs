@@ -30,9 +30,18 @@ mod imp {
         tracing::debug!("action: perform {label}");
         match action {
             Action::Click => {
+                let role = if request.policy.is_headed() {
+                    crate::tree::resolve_ax_read::read_string(
+                        el,
+                        "AXRole",
+                        crate::tree::locator_deadline::from_operation(deadline)?,
+                    )?
+                } else {
+                    None
+                };
                 steps.extend(run_chain(
                     el,
-                    &chain_defs::CLICK_CHAIN,
+                    chain_defs::click_chain(role.as_deref()),
                     None,
                     request,
                     deadline,

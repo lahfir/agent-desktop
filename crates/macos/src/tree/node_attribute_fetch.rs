@@ -33,10 +33,8 @@ mod imp {
         usage: &mut crate::tree::observation_usage::ObservationUsage,
     ) -> NodeAttributeRead {
         let mask = crate::tree::node_attribute_names::safe_attribute_mask(requirements);
-        let requested =
-            crate::tree::node_attribute_names::requested_indices(mask).collect::<Vec<_>>();
-        let mut requested_count = requested.len() as u64;
-        if crate::tree::locator_deadline::prepare(element, deadline).is_err() {
+        let mut requested_count = u64::from(mask.count_ones());
+        if crate::tree::locator_deadline::remaining(deadline).is_err() {
             return failed_node_attribute_read(
                 accessibility_sys::kAXErrorCannotComplete,
                 requested_count,
@@ -63,6 +61,9 @@ mod imp {
         let Some(attributes) = created_cf_array(batch_result) else {
             return failed_node_attribute_read(kAXErrorFailure, requested_count, false, 1);
         };
+        if attributes.len() as u64 != requested_count {
+            return failed_node_attribute_read(kAXErrorFailure, requested_count, false, 1);
+        }
         let mut batch_reads = 1;
         let fallback_reads = 0;
 
@@ -74,7 +75,9 @@ mod imp {
         let mut subrole = None;
         let mut status = NodeAttributeStatus::default();
         let mut deadline_exhausted = false;
-        for (index, item) in requested.into_iter().zip(attributes.into_iter()) {
+        for (index, item) in
+            crate::tree::node_attribute_names::requested_indices(mask).zip(attributes.into_iter())
+        {
             if node_attribute_decode::is_null(&item) {
                 continue;
             }
@@ -130,8 +133,7 @@ mod imp {
                 _ => {}
             }
         }
-        let get = |index: usize| texts.get(index).and_then(Clone::clone);
-        let role = get(ROLE);
+        let role = texts[ROLE].take();
         if status.field_unknown(SUBROLE) {
             subrole = None;
         }
@@ -146,7 +148,7 @@ mod imp {
         ) {
             batch_reads += 1;
             requested_count += 1;
-            if crate::tree::locator_deadline::prepare(element, deadline).is_err() {
+            if crate::tree::locator_deadline::remaining(deadline).is_err() {
                 deadline_exhausted = true;
                 status.record_slot_error(VALUE, accessibility_sys::kAXErrorCannotComplete);
             } else {
@@ -190,8 +192,7 @@ mod imp {
         } else if requirements.value && (!role_complete || !subrole_complete) {
             status.record_slot_error(VALUE, accessibility_sys::kAXErrorCannotComplete);
         }
-        let get = |index: usize| texts.get(index).and_then(Clone::clone);
-        let value = get(VALUE);
+        let value = texts[VALUE].take();
         let readonly = if requirements.states {
             crate::tree::readonly::read_readonly(element, role.as_deref(), deadline)
         } else {
@@ -206,15 +207,21 @@ mod imp {
             status.record_readonly_error(error);
         }
         deadline_exhausted |= readonly.deadline_exhausted;
-        let identifier_field = |index| {
+        let mut identifier_field = |index: usize| {
             if status.field_unknown(index) {
                 agent_desktop_core::LocatorField::Unknown
             } else {
-                get(index)
+                texts[index]
+                    .take()
                     .map(agent_desktop_core::LocatorField::Known)
                     .unwrap_or(agent_desktop_core::LocatorField::Absent)
             }
         };
+        let identifiers = NodeIdentifiers::from_fields(
+            identifier_field(AX_IDENTIFIER),
+            identifier_field(AX_DOM_IDENTIFIER),
+        );
+        let mut get = |index: usize| texts[index].take();
         NodeAttributeRead {
             attrs: NodeAttrs {
                 name_evidence: agent_desktop_core::NameEvidence {
@@ -255,10 +262,7 @@ mod imp {
                     .and_then(|(position, size)| rect_from_parts(position, size)),
                 has_scrollbars,
             },
-            identifiers: NodeIdentifiers::from_fields(
-                identifier_field(AX_IDENTIFIER),
-                identifier_field(AX_DOM_IDENTIFIER),
-            ),
+            identifiers,
             metrics: crate::tree::node_attribute_metrics::NodeAttributeMetrics {
                 batch_reads,
                 requested_count,
@@ -300,8 +304,6 @@ mod imp {
         deadline: std::time::Instant,
         usage: &mut crate::tree::observation_usage::ObservationUsage,
     ) -> Result<Option<crate::tree::bounded_string::BoundedString>, i32> {
-        crate::tree::locator_deadline::prepare(element, deadline)
-            .map_err(|_| accessibility_sys::kAXErrorCannotComplete)?;
         let title = crate::tree::attributes::copy_string_attr_bounded_result(
             element,
             kAXTitleAttribute,
@@ -311,13 +313,16 @@ mod imp {
         if let Some(title) = title.filter(|value| !value.value.trim().is_empty()) {
             return Ok(Some(title));
         }
-        let role = read_unbounded_identity(element, kAXRoleAttribute, deadline)?;
-        let subrole = read_unbounded_identity(element, kAXSubroleAttribute, deadline)?;
+        let role =
+            crate::tree::attributes::copy_string_attr_result(element, kAXRoleAttribute, deadline)?;
+        let subrole = crate::tree::attributes::copy_string_attr_result(
+            element,
+            kAXSubroleAttribute,
+            deadline,
+        )?;
         let safe_static_text = role.as_deref() == Some("AXStaticText")
             && subrole.as_deref() != Some("AXSecureTextField");
         if safe_static_text {
-            crate::tree::locator_deadline::prepare(element, deadline)
-                .map_err(|_| accessibility_sys::kAXErrorCannotComplete)?;
             if let Some(value) =
                 crate::tree::attributes::copy_value_typed_bounded_result(element, deadline, usage)?
                     .filter(|value| !value.value.trim().is_empty())
@@ -325,24 +330,12 @@ mod imp {
                 return Ok(Some(value));
             }
         }
-        crate::tree::locator_deadline::prepare(element, deadline)
-            .map_err(|_| accessibility_sys::kAXErrorCannotComplete)?;
         crate::tree::attributes::copy_string_attr_bounded_result(
             element,
             kAXDescriptionAttribute,
             deadline,
             usage,
         )
-    }
-
-    fn read_unbounded_identity(
-        element: &AXElement,
-        attribute: &str,
-        deadline: std::time::Instant,
-    ) -> Result<Option<String>, i32> {
-        crate::tree::locator_deadline::prepare(element, deadline)
-            .map_err(|_| accessibility_sys::kAXErrorCannotComplete)?;
-        crate::tree::attributes::copy_string_attr_result(element, attribute, deadline)
     }
 }
 

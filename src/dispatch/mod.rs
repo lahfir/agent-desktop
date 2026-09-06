@@ -13,7 +13,9 @@ mod trace;
 #[cfg(test)]
 mod test_support;
 
-use agent_desktop_core::{AppError, PermissionReport, PlatformAdapter, context::CommandContext};
+use agent_desktop_core::{
+    AppError, PermissionReport, PlatformAdapter, commands, context::CommandContext,
+};
 use serde_json::Value;
 
 use crate::cli::Commands;
@@ -65,7 +67,7 @@ pub(crate) fn dispatch(
         Commands::Launch(args) => app_window::launch(args, adapter),
         Commands::CloseApp(args) => app_window::close_app(args, adapter),
         Commands::ListWindows(args) => app_window::list_windows(args, adapter),
-        Commands::ListDisplays => app_window::list_displays(adapter),
+        Commands::ListDisplays => commands::list_displays::execute(adapter),
         Commands::ListApps(args) => app_window::list_apps(args, adapter),
         Commands::FocusWindow(args) => app_window::focus_window(args, adapter),
         Commands::ResizeWindow(args) => app_window::resize_window(args, adapter),
@@ -82,16 +84,18 @@ pub(crate) fn dispatch(
         Commands::NotificationAction(args) => notifications::action(args, adapter, context),
         Commands::ClipboardGet(args) => clipboard::get(args, adapter, context),
         Commands::ClipboardSet(args) => clipboard::set(args, adapter),
-        Commands::ClipboardClear => clipboard::clear(adapter),
+        Commands::ClipboardClear => commands::clipboard_clear::execute(adapter),
         Commands::Wait(args) => system::wait(args, adapter, context),
-        Commands::Status => system::status(adapter, permission_report, context),
+        Commands::Status => {
+            commands::status::execute_with_report_with_context(adapter, permission_report, context)
+        }
         Commands::Permissions(args) => system::permissions(args, adapter, permission_report),
-        Commands::Version => system::version(),
-        Commands::Batch(args) => system::batch(args, adapter, permission_report, context),
+        Commands::Version => commands::version::execute(),
+        Commands::Batch(args) => crate::batch::execute(args, adapter, permission_report, context),
         Commands::Skills(args) => system::skills(args),
-        Commands::Session(args) => system::session(args, adapter, context),
+        Commands::Session(args) => session::dispatch(args, adapter, context),
         Commands::CursorOverlay(args) => cursor_overlay::dispatch(args, adapter, context),
-        Commands::Trace(args) => system::trace(args, context),
+        Commands::Trace(args) => trace::dispatch(args, context),
     };
     scope.complete(&result)?;
     result

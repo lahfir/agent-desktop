@@ -130,11 +130,7 @@ fn text_field_matches(expected: Option<&str>, actual: Option<&str>, exact: bool)
     let Some(actual) = actual else {
         return false;
     };
-    if exact {
-        search_text::normalize(actual) == expected
-    } else {
-        search_text::contains(actual, expected)
-    }
+    text_matches(actual, expected, exact)
 }
 
 fn native_id_matches(expected: Option<&str>, actual: Option<&str>) -> bool {
@@ -155,22 +151,7 @@ fn has_text_matches(expected: Option<&str>, ctx: &NodeMatchContext<'_>, exact: b
         || ctx
             .children
             .iter()
-            .any(|child| subtree_text_matches(child, expected, exact))
-}
-
-fn subtree_text_matches(node: &AccessibilityNode, expected: &str, exact: bool) -> bool {
-    [
-        node.identity.name.as_deref(),
-        node.identity.description.as_deref(),
-        node.identity.value.as_deref(),
-    ]
-    .into_iter()
-    .flatten()
-    .any(|text| text_matches(text, expected, exact))
-        || node
-            .children
-            .iter()
-            .any(|child| subtree_text_matches(child, expected, exact))
+            .any(|child| has_text_matches(Some(expected), &node_context(child), exact))
 }
 
 fn text_matches(actual: &str, expected: &str, exact: bool) -> bool {

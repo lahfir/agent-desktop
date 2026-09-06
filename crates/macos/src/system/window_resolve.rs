@@ -34,6 +34,14 @@ pub(crate) fn window_element_for_info_with_deadline(
     resolve_window_element_strict(win, deadline)
 }
 
+pub(crate) fn resolve_capture_window(
+    win: &WindowInfo,
+    deadline: std::time::Instant,
+) -> Result<WindowInfo, AdapterError> {
+    let (_, record) = locate_verified_record_until(win, deadline)?;
+    window_info_from_record(win, &record)
+}
+
 pub(crate) fn resolve_window_strict(
     win: &WindowInfo,
     deadline: std::time::Instant,

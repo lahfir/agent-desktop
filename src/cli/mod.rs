@@ -199,7 +199,7 @@ impl Commands {
             Self::Collapse(_) => CommandMetadata::new("collapse", true),
             Self::Scroll(_) => CommandMetadata::new("scroll", true),
             Self::ScrollTo(_) => CommandMetadata::new("scroll-to", true),
-            Self::Press(_) => CommandMetadata::new("press", false),
+            Self::Press(_) => CommandMetadata::new("press", true),
             Self::KeyDown(_) => CommandMetadata::new("key-down", false),
             Self::KeyUp(_) => CommandMetadata::new("key-up", false),
             Self::Hover(_) => CommandMetadata::new("hover", true),

@@ -13,7 +13,11 @@ pub(crate) fn normalize(value: &str) -> String {
             normalized.push(' ');
             pending_space = false;
         }
-        normalized.extend(character.to_lowercase());
+        if character.is_ascii() {
+            normalized.push(character.to_ascii_lowercase());
+        } else {
+            normalized.extend(character.to_lowercase());
+        }
     }
     normalized
 }

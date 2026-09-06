@@ -19,7 +19,7 @@ pub(crate) fn read_readonly(
             deadline_exhausted: false,
         };
     }
-    if super::locator_deadline::prepare(element, deadline).is_err() {
+    if super::locator_deadline::remaining(deadline).is_err() {
         return ReadonlyRead {
             value: None,
             error: None,

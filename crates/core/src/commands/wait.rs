@@ -81,7 +81,7 @@ pub fn execute(
             adapter,
             context,
         ),
-        WaitMode::Window(title) => wait_for_window(title, timeout_ms, adapter),
+        WaitMode::Window { title, app } => wait_for_window(title, app, timeout_ms, adapter),
         WaitMode::Text { text, count, app } => wait_for_text(
             TextWaitInput {
                 text,
@@ -133,6 +133,7 @@ fn wait_for_menu(
 
 fn wait_for_window(
     title: String,
+    app: Option<String>,
     timeout_ms: u64,
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AppError> {
@@ -140,20 +141,28 @@ fn wait_for_window(
     let deadline = crate::Deadline::at(start, timeout_ms)?;
     let filter = WindowFilter {
         focused_only: false,
-        app: None,
+        app,
     };
     let mut last_error = None;
+    let mut last_observed = None;
 
     loop {
         if deadline.is_expired() {
-            return wait_timeout::window(&title, timeout_ms, last_error);
+            return wait_timeout::window(
+                &title,
+                filter.app.as_deref(),
+                timeout_ms,
+                last_error,
+                last_observed,
+            );
         }
         match adapter.list_windows(&filter, deadline) {
             Ok(windows) => {
-                if let Some(win) = windows.into_iter().find(|w| w.title.contains(&title)) {
+                if let Some(win) = windows.iter().find(|w| w.title.contains(&title)) {
                     let elapsed = start.elapsed().as_millis();
                     return Ok(json!({ "found": true, "window": win, "elapsed_ms": elapsed }));
                 }
+                last_observed = Some(wait_timeout::window_observation(&windows));
             }
             Err(err) if is_retryable_wait_poll_error(&err.code) => {
                 last_error = Some(json!({
@@ -164,12 +173,7 @@ fn wait_for_window(
             Err(err) => return Err(AppError::Adapter(err)),
         }
 
-        let remaining = deadline.remaining();
-        if remaining.is_zero() {
-            return wait_timeout::window(&title, timeout_ms, last_error);
-        }
-
-        std::thread::sleep(remaining.min(Duration::from_millis(100)));
+        std::thread::sleep(deadline.remaining().min(Duration::from_millis(100)));
     }
 }
 

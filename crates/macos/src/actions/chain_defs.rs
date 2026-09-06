@@ -9,7 +9,7 @@ mod imp {
     use crate::tree::AXElement;
     use agent_desktop_core::{ActionStep, Deadline, MouseButton, StepMechanism};
 
-    pub(crate) static CLICK_CHAIN: ChainDef = ChainDef {
+    static CLICK_CHAIN: ChainDef = ChainDef {
         steps: &[
             ChainStep::CGClick {
                 button: MouseButton::Left,
@@ -30,6 +30,20 @@ mod imp {
         suggestion: "Target an element that advertises Click or use an explicit point click.",
         continue_after_unverified_delivery: false,
     };
+
+    static MENUBAR_CLICK_CHAIN: ChainDef = ChainDef {
+        steps: &[ChainStep::Action("AXPress")],
+        suggestion: "Refresh the menu-bar snapshot and target an item that supports AXPress.",
+        continue_after_unverified_delivery: false,
+    };
+
+    pub(crate) fn click_chain(native_role: Option<&str>) -> &'static ChainDef {
+        if native_role == Some("AXMenuBarItem") {
+            &MENUBAR_CLICK_CHAIN
+        } else {
+            &CLICK_CHAIN
+        }
+    }
 
     /// Continues past an unverified delivery because an `AXShowMenu` that
     /// reports success without opening a menu must not consume the fallbacks
@@ -199,6 +213,6 @@ mod imp {}
 
 #[cfg(target_os = "macos")]
 pub(crate) use imp::{
-    CLEAR_CHAIN, CLICK_CHAIN, COLLAPSE_CHAIN, EXPAND_CHAIN, FOCUS_CHAIN, RIGHT_CLICK_CHAIN,
-    SCROLL_TO_CHAIN, SEMANTIC_CLICK_CHAIN, SET_VALUE_CHAIN, double_click, triple_click,
+    CLEAR_CHAIN, COLLAPSE_CHAIN, EXPAND_CHAIN, FOCUS_CHAIN, RIGHT_CLICK_CHAIN, SCROLL_TO_CHAIN,
+    SEMANTIC_CLICK_CHAIN, SET_VALUE_CHAIN, click_chain, double_click, triple_click,
 };

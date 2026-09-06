@@ -96,8 +96,36 @@ fn incomplete_descendant_propagates_to_the_observation_root() {
 }
 
 #[test]
+fn builder_rejects_nonincreasing_explicit_and_implicit_child_indices() {
+    for indices in [
+        [Some(1), Some(1)],
+        [Some(2), Some(1)],
+        [Some(2), None],
+        [None, Some(0)],
+    ] {
+        let children = indices
+            .into_iter()
+            .map(|index| {
+                let mut child = subtree("button", "Save", Vec::new());
+                child.source_child_index = index;
+                child
+            })
+            .collect();
+        let error = ObservedTree::from_roots(
+            vec![subtree("window", "Fixture", children)],
+            source(),
+            Default::default(),
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, crate::ErrorCode::Internal);
+        assert!(error.message.contains("native document order"));
+    }
+}
+
+#[test]
 fn snapshot_projection_and_find_share_the_same_observation() {
-    let tree = ObservedTree::from_roots(
+    let mut tree = ObservedTree::from_roots(
         vec![subtree(
             "window",
             "Fixture",
@@ -108,7 +136,25 @@ fn snapshot_projection_and_find_share_the_same_observation() {
         true,
     )
     .unwrap();
+    let button = &mut tree.nodes[1];
+    button.ref_id = Some("@e1".into());
+    button.evidence.value = super::LocatorField::Known("draft".into());
+    button.evidence.description = super::LocatorField::Known("Save draft".into());
+    button.evidence.states = super::LocatorField::Known(vec!["enabled".into()]);
+    button.evidence.ref_evidence.available_actions =
+        super::LocatorField::Known(vec!["Click".into()]);
     let snapshot = tree.clone().into_accessibility_tree().unwrap();
+    let projected = &snapshot.children[0];
+    assert_eq!(projected.ref_id.as_deref(), Some("@e1"));
+    assert_eq!(projected.identity.value.as_deref(), Some("draft"));
+    assert_eq!(
+        projected.identity.description.as_deref(),
+        Some("Save draft")
+    );
+    assert_eq!(projected.presentation.states, ["enabled"]);
+    assert_eq!(projected.presentation.available_actions, ["Click"]);
+    assert_eq!(snapshot.identity.value, None);
+    assert_eq!(snapshot.identity.description, None);
     let query = LocatorQuery {
         identity: IdentityPredicate {
             name: Some("save".into()),

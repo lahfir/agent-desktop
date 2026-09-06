@@ -156,7 +156,6 @@ impl LocatorTraversal {
         };
         self.arena.ancestors.remove(&pointer);
         self.arena.drop_handles(1);
-        let subtree_complete = structural_completeness(subtree_complete, read.evidence_complete);
         if !subtree_complete {
             self.arena.mark_incomplete();
         }
@@ -245,10 +244,6 @@ fn retained_edge_certainty(prefix_certain: &mut bool, retained: bool) -> bool {
     edge_certain
 }
 
-fn structural_completeness(topology_complete: bool, _evidence_complete: bool) -> bool {
-    topology_complete
-}
-
 #[cfg(test)]
 mod tests {
     use super::retained_edge_certainty;
@@ -266,11 +261,5 @@ mod tests {
 
         assert!(retained_edge_certainty(&mut prefix_certain, false));
         assert!(!retained_edge_certainty(&mut prefix_certain, true));
-    }
-
-    #[test]
-    fn unknown_semantic_evidence_does_not_poison_complete_topology() {
-        assert!(super::structural_completeness(true, false));
-        assert!(!super::structural_completeness(false, true));
     }
 }

@@ -28,6 +28,10 @@ fn contains_uses_ascii_fast_path_case_insensitively() {
 #[test]
 fn contains_handles_non_ascii_text() {
     assert!(contains("Résumé", &normalize("rés")));
+    assert_eq!(
+        normalize("  SAVE\tAs\n \u{200e}İ\u{a0}Σ  "),
+        "save as i\u{307} σ"
+    );
 }
 
 #[test]

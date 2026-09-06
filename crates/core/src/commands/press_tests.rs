@@ -57,9 +57,29 @@ impl SystemOps for AllowingAdapter {
 struct CapturingAdapter {
     global_policy: Mutex<Option<crate::InteractionPolicy>>,
     app_policy: Mutex<Option<crate::InteractionPolicy>>,
+    dispatches: std::sync::atomic::AtomicUsize,
+    expect_scoped_windows: bool,
 }
 
 impl ObservationOps for CapturingAdapter {
+    fn observe_tree(
+        &self,
+        root: crate::live_locator::ObservationRoot<'_>,
+        _request: &crate::live_locator::ObservationRequest,
+    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+        assert_eq!(self.dispatches.load(std::sync::atomic::Ordering::SeqCst), 1);
+        crate::adapter::observed_tree(&root, saved_tree())
+    }
+
+    fn get_tree(
+        &self,
+        _window: &crate::WindowInfo,
+        _opts: &crate::adapter::TreeOptions,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::AccessibilityNode, AdapterError> {
+        Ok(saved_tree())
+    }
+
     fn list_apps(&self, _deadline: crate::Deadline) -> Result<Vec<crate::AppInfo>, AdapterError> {
         Ok(vec![crate::AppInfo {
             name: "Editor".into(),
@@ -72,9 +92,12 @@ impl ObservationOps for CapturingAdapter {
 
     fn list_windows(
         &self,
-        _filter: &crate::WindowFilter,
+        filter: &crate::WindowFilter,
         _deadline: crate::Deadline,
     ) -> Result<Vec<crate::WindowInfo>, AdapterError> {
+        if self.expect_scoped_windows {
+            assert_eq!(filter.app.as_deref(), Some("Editor"));
+        }
         Ok(vec![crate::WindowInfo {
             id: "w-42".into(),
             title: "Editor".into(),
@@ -115,6 +138,8 @@ impl SystemOps for CapturingAdapter {
         policy: crate::InteractionPolicy,
         _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
+        self.dispatches
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         *self.app_policy.lock().unwrap() = Some(policy);
         Ok(ActionResult::delivered_unverified("PressKey"))
     }
@@ -209,4 +234,72 @@ fn app_targeted_press_threads_focus_authorization_to_adapter() {
         *adapter.app_policy.lock().unwrap(),
         Some(crate::InteractionPolicy::headed())
     );
+}
+
+fn saved_tree() -> crate::AccessibilityNode {
+    crate::AccessibilityNode {
+        ref_id: None,
+        role: "window".into(),
+        identity: crate::NodeIdentity {
+            name: Some("Saved!".into()),
+            ..Default::default()
+        },
+        presentation: Default::default(),
+        children_count: None,
+        subtree_truncated: false,
+        children: vec![],
+    }
+}
+
+#[test]
+fn press_waits_in_requested_app_without_repeating_delivery() {
+    let _home = crate::refs_test_support::HomeGuard::new();
+    for (query, gone, expected_error) in [
+        (":Saved!", false, None),
+        (":Missing", true, None),
+        (":Missing", false, Some("TIMEOUT")),
+        ("", false, Some("INVALID_ARGS")),
+    ] {
+        let adapter = CapturingAdapter {
+            expect_scoped_windows: true,
+            ..Default::default()
+        };
+        let mut request = args("a", false);
+        request.app = Some("Editor".into());
+        let context =
+            CommandContext::default().with_wait_selector(Some(crate::context::WaitSelector {
+                query_raw: query.into(),
+                gone,
+                timeout_ms: 20,
+            }));
+        let result = execute(request, &adapter, &context);
+        if let Some(code) = expected_error {
+            let error = result.unwrap_err();
+            assert_eq!(error.code(), code);
+            if code == "TIMEOUT" {
+                let crate::AppError::Adapter(error) = error else {
+                    panic!("adapter error")
+                };
+                assert_eq!(
+                    error.disposition,
+                    crate::DeliverySemantics::delivered_unverified()
+                );
+                assert_eq!(
+                    error.details.unwrap()["after_action"]["disposition"]["delivery"],
+                    "delivered_unverified"
+                );
+            }
+        } else {
+            let value = result.unwrap();
+            assert_eq!(value["matched_selector"], query);
+            assert_eq!(
+                value["after_action"]["disposition"]["delivery"],
+                "delivered_unverified"
+            );
+        }
+        assert_eq!(
+            adapter.dispatches.load(std::sync::atomic::Ordering::SeqCst),
+            usize::from(expected_error != Some("INVALID_ARGS"))
+        );
+    }
 }

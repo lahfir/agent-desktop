@@ -58,6 +58,10 @@ pub(crate) fn tree(
     roots: Vec<u32>,
     structurally_complete: bool,
 ) -> ObservedTree {
+    for (index, node) in nodes.iter().enumerate() {
+        assert_eq!(node.document_order as usize, index);
+        assert!(node.children.iter().all(|child| *child as usize > index));
+    }
     ObservedTree {
         nodes,
         roots,

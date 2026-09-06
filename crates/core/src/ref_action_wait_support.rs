@@ -43,7 +43,9 @@ pub(crate) fn enrich_with_process_state(
         };
         details.insert("kind".into(), json!("app_unresponsive"));
         details.insert("retryable".into(), json!(false));
-        return unresponsive.with_details(details.into());
+        return unresponsive
+            .with_details(details.into())
+            .with_disposition(err.disposition);
     }
     attach_process_state_detail(err, state)
 }

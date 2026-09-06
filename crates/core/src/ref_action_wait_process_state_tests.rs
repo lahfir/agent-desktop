@@ -205,9 +205,35 @@ fn recycled_pid_never_upgrades_stale_ref_to_app_unresponsive() {
     assert_eq!(adapter.inventory_calls.load(Ordering::SeqCst), 1);
 }
 
-struct ExitedProcessAdapter;
+#[test]
+fn unresponsive_enrichment_preserves_delivery_evidence() {
+    use crate::DeliverySemantics;
 
-impl ObservationOps for ExitedProcessAdapter {
+    let adapter = UnresponsiveProcessAdapter {
+        probe_calls: AtomicU32::new(0),
+        inventory_calls: AtomicU32::new(0),
+    };
+    for disposition in [
+        DeliverySemantics::Unknown,
+        DeliverySemantics::NotDelivered,
+        DeliverySemantics::DeliveryUncertain,
+        DeliverySemantics::DeliveredUnverified,
+        DeliverySemantics::DeliveredVerified,
+    ] {
+        let error = enrich_with_process_state(
+            &adapter,
+            &entry(),
+            AdapterError::stale_ref("post-action read").with_disposition(disposition),
+            Deadline::standard().unwrap(),
+        );
+        assert_eq!(error.code, ErrorCode::AppUnresponsive);
+        assert_eq!(error.disposition, disposition);
+    }
+}
+
+struct TerminatedProcessAdapter(crate::process_state::ProcessState);
+
+impl ObservationOps for TerminatedProcessAdapter {
     fn resolve_element_strict(
         &self,
         _entry: &RefEntry,
@@ -217,22 +243,10 @@ impl ObservationOps for ExitedProcessAdapter {
     }
 }
 
-impl ActionOps for ExitedProcessAdapter {
-    fn execute_action(
-        &self,
-        _handle: &NativeHandle,
-        _request: ActionRequest,
-        _lease: &crate::InteractionLease,
-    ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::delivered_unverified(
-            "click",
-        ))
-    }
-}
+impl ActionOps for TerminatedProcessAdapter {}
+impl InputOps for TerminatedProcessAdapter {}
 
-impl InputOps for ExitedProcessAdapter {}
-
-impl SystemOps for ExitedProcessAdapter {
+impl SystemOps for TerminatedProcessAdapter {
     crate::adapter::guarded_interaction_lease!();
 
     fn process_state(
@@ -240,97 +254,38 @@ impl SystemOps for ExitedProcessAdapter {
         _process: crate::ProcessIdentity,
         _deadline: crate::Deadline,
     ) -> Result<crate::process_state::ProcessState, AdapterError> {
-        Ok(crate::process_state::ProcessState::Exited { code: None })
+        Ok(self.0)
     }
 }
 
 #[test]
-fn terminal_stale_ref_against_exited_process_carries_process_state_detail() {
-    let err = execute_with_auto_wait(
-        RefActionWaitCtx {
-            adapter: &ExitedProcessAdapter,
-            entry: &entry(),
-            ref_id: "@e1",
-            context: &CommandContext::default(),
-        },
-        ActionRequest::headless(Action::Click),
-        crate::ref_action::dispatch_resolved,
-    )
-    .unwrap_err();
+fn terminal_stale_ref_preserves_exited_and_crashed_process_details() {
+    for (state, label) in [
+        (
+            crate::process_state::ProcessState::Exited { code: None },
+            "exited",
+        ),
+        (
+            crate::process_state::ProcessState::Crashed { signal_or_code: 11 },
+            "crashed",
+        ),
+    ] {
+        let err = execute_with_auto_wait(
+            RefActionWaitCtx {
+                adapter: &TerminatedProcessAdapter(state),
+                entry: &entry(),
+                ref_id: "@e1",
+                context: &CommandContext::default(),
+            },
+            ActionRequest::headless(Action::Click),
+            crate::ref_action::dispatch_resolved,
+        )
+        .unwrap_err();
 
-    assert_eq!(
-        err.code,
-        ErrorCode::StaleRef,
-        "an Exited (not Unresponsive) classification must not replace the original error code"
-    );
-    assert_eq!(
-        err.details.as_ref().and_then(|d| d.get("process_state")),
-        Some(&serde_json::json!("exited")),
-        "STALE_REF against a dead pid must carry details.process_state = \"exited\""
-    );
-}
-
-struct CrashedProcessAdapter;
-
-impl ObservationOps for CrashedProcessAdapter {
-    fn resolve_element_strict(
-        &self,
-        _entry: &RefEntry,
-        _deadline: crate::Deadline,
-    ) -> Result<NativeHandle, AdapterError> {
-        Err(AdapterError::stale_ref("@e1"))
+        assert_eq!(err.code, ErrorCode::StaleRef);
+        assert_eq!(
+            err.details.as_ref().and_then(|d| d.get("process_state")),
+            Some(&serde_json::json!(label))
+        );
     }
-}
-
-impl ActionOps for CrashedProcessAdapter {
-    fn execute_action(
-        &self,
-        _handle: &NativeHandle,
-        _request: ActionRequest,
-        _lease: &crate::InteractionLease,
-    ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        Ok(crate::action_result::ActionResult::delivered_unverified(
-            "click",
-        ))
-    }
-}
-
-impl InputOps for CrashedProcessAdapter {}
-
-impl SystemOps for CrashedProcessAdapter {
-    crate::adapter::guarded_interaction_lease!();
-
-    fn process_state(
-        &self,
-        _process: crate::ProcessIdentity,
-        _deadline: crate::Deadline,
-    ) -> Result<crate::process_state::ProcessState, AdapterError> {
-        Ok(crate::process_state::ProcessState::Crashed { signal_or_code: 11 })
-    }
-}
-
-#[test]
-fn terminal_stale_ref_against_crashed_process_carries_process_state_detail() {
-    let err = execute_with_auto_wait(
-        RefActionWaitCtx {
-            adapter: &CrashedProcessAdapter,
-            entry: &entry(),
-            ref_id: "@e1",
-            context: &CommandContext::default(),
-        },
-        ActionRequest::headless(Action::Click),
-        crate::ref_action::dispatch_resolved,
-    )
-    .unwrap_err();
-
-    assert_eq!(
-        err.code,
-        ErrorCode::StaleRef,
-        "a Crashed (not Unresponsive) classification must not replace the original error code"
-    );
-    assert_eq!(
-        err.details.as_ref().and_then(|d| d.get("process_state")),
-        Some(&serde_json::json!("crashed")),
-        "STALE_REF against a crashed pid must carry details.process_state = \"crashed\""
-    );
 }

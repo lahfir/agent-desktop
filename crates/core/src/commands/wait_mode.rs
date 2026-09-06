@@ -11,7 +11,10 @@ pub(crate) enum WaitMode {
         snapshot_id: Option<String>,
         predicate: wait_predicate::ElementPredicate,
     },
-    Window(String),
+    Window {
+        title: String,
+        app: Option<String>,
+    },
     Text {
         text: String,
         count: Option<usize>,
@@ -82,7 +85,10 @@ impl WaitMode {
             });
         }
         if let Some(title) = args.mode.window {
-            return Ok(Self::Window(title));
+            return Ok(Self::Window {
+                title,
+                app: args.app,
+            });
         }
         if let Some(text) = args.mode.text {
             return Ok(Self::Text {

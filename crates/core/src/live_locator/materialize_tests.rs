@@ -89,11 +89,11 @@ fn full_refmap_uses_same_arena_evidence_and_document_order() {
     let resolution = evaluate_locator_tree(
         tree(
             vec![
+                node(0, root, vec![1, 2], &[]),
                 node(1, button, vec![], &[0]),
                 node(2, disclosure, vec![], &[1]),
-                node(0, root, vec![0, 1], &[]),
             ],
-            vec![2],
+            vec![0],
             true,
         ),
         &query,
@@ -208,8 +208,8 @@ fn scoped_refmap_extends_source_path_without_index_correlation() {
     let root = evidence("group", Some("Scope"));
     let button = evidence("button", Some("Save"));
     let mut scoped = tree(
-        vec![node(1, button, vec![], &[0]), node(0, root, vec![0], &[])],
-        vec![1],
+        vec![node(0, root, vec![1], &[]), node(1, button, vec![], &[0])],
+        vec![0],
         true,
     );
     scoped.source = ObservationSource::Element {

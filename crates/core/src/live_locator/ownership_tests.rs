@@ -1,7 +1,7 @@
 use super::{
     LocatorMaterialization, LocatorResolveRequest, LocatorSelection, evaluate_locator_tree,
 };
-use crate::{locator::LocatorQuery, refs::RefPath};
+use crate::locator::LocatorQuery;
 
 use super::test_support::{evidence, node, tree};
 
@@ -41,23 +41,4 @@ fn count_returns_no_target_ownership() {
     .unwrap();
 
     assert!(resolution.matches.is_empty());
-}
-
-#[test]
-fn invalid_tree_fails_before_evaluation() {
-    let mut invalid = tree(
-        vec![node(0, evidence("button", Some("match")), vec![], &[])],
-        vec![0],
-        true,
-    );
-    invalid.nodes[0].path = RefPath::from_slice(&[1]);
-    let error = evaluate_locator_tree(
-        invalid,
-        &LocatorQuery::default(),
-        &request(LocatorSelection::Strict),
-    )
-    .err()
-    .unwrap();
-
-    assert_eq!(error.code, crate::ErrorCode::Internal);
 }

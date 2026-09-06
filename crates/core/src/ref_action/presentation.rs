@@ -7,7 +7,7 @@ pub(super) fn before_dispatch(
     preflight: &ActionabilityPreflight,
     lease: &crate::InteractionLease,
 ) {
-    let Some(destination) = preflight.presentation_point.clone() else {
+    let Some(destination) = destination(preflight) else {
         return;
     };
     crate::cursor_overlay::submit_travel(target.adapter, target.context, destination, lease);
@@ -27,7 +27,7 @@ pub(super) fn after_dispatch(
     if !crate::cursor_overlay::confirms_delivery(disposition) {
         return;
     }
-    let Some(destination) = preflight.presentation_point.clone() else {
+    let Some(destination) = destination(preflight) else {
         return;
     };
     crate::cursor_overlay::submit(
@@ -38,6 +38,13 @@ pub(super) fn after_dispatch(
         is_click(action),
         CursorPhase::Effect,
     );
+}
+
+fn destination(preflight: &ActionabilityPreflight) -> Option<crate::Point> {
+    match preflight.pointer_delivery {
+        crate::actionability::PointerDelivery::Physical => preflight.verified_point.clone(),
+        _ => preflight.presentation_point.clone(),
+    }
 }
 
 fn is_click(action: &Action) -> bool {

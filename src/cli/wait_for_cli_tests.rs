@@ -116,6 +116,7 @@ fn validate_rejects_match_everything_selector_before_dispatch() {
 fn validate_accepts_supported_command_with_constraining_selector() {
     for supported in [
         command(&["snapshot"]),
+        command(&["press", "cmd+k", "--app", "GarageBand"]),
         command(&["click", "@e1"]),
         command(&["hover", "@e1"]),
         command(&["drag", "--from", "@e1", "--to", "@e2"]),

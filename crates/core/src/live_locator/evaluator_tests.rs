@@ -33,9 +33,9 @@ fn named_query(name: &str, exact: bool) -> LocatorQuery {
 fn names_tree() -> super::ObservedTree {
     tree(
         vec![
-            node(2, evidence("button", Some("SAVE")), vec![], &[]),
             node(0, evidence("button", Some("Save draft")), vec![], &[]),
             node(1, evidence("button", Some("save")), vec![], &[]),
+            node(2, evidence("button", Some("SAVE")), vec![], &[]),
         ],
         vec![0, 1, 2],
         true,
@@ -67,29 +67,27 @@ fn exact_and_substring_matching_use_normalized_document_order() {
 }
 
 fn deep_tree(structurally_complete: bool) -> super::ObservedTree {
-    let mut nodes = vec![node(
-        30,
-        evidence("button", Some("Deep Needle")),
-        vec![],
-        &vec![0; 30],
-    )];
-    let mut child = 0;
-    for depth in (0..30).rev() {
+    let mut nodes = Vec::new();
+    for depth in 0..30 {
         let name = (depth == 0).then_some("root");
-        let index = nodes.len() as u32;
         let mut parent = node(
             depth,
             evidence("group", name),
-            vec![child],
+            vec![depth + 1],
             &vec![0; depth as usize],
         );
         if depth == 0 {
             parent.completeness.subtree_complete = structurally_complete;
         }
         nodes.push(parent);
-        child = index;
     }
-    tree(nodes, vec![child], structurally_complete)
+    nodes.push(node(
+        30,
+        evidence("button", Some("Deep Needle")),
+        vec![],
+        &vec![0; 30],
+    ));
+    tree(nodes, vec![0], structurally_complete)
 }
 
 #[test]
@@ -215,7 +213,33 @@ fn candidate_role_with_unknown_name_remains_incomplete() {
 }
 
 #[test]
-fn ordinal_selection_uses_document_order_not_arena_order() {
+fn later_known_fields_decide_unknown_predicates() {
+    let mut evidence = evidence("button", Some("Save"));
+    evidence.role = LocatorField::Unknown;
+    evidence.description = LocatorField::Unknown;
+    let mut stats = Default::default();
+    let query = LocatorQuery {
+        identity: IdentityPredicate {
+            role: Some("button".into()),
+            name: Some("missing".into()),
+            ..IdentityPredicate::default()
+        },
+        ..LocatorQuery::default()
+    };
+    assert_eq!(
+        super::predicate::self_verdict(&query, &evidence, &mut stats),
+        super::match_verdict::MatchVerdict::NoMatch
+    );
+    evidence.name = LocatorField::Unknown;
+    evidence.value = LocatorField::Known("SAVE".into());
+    assert_eq!(
+        super::predicate::self_text_verdict(Some("save"), &evidence, false),
+        super::match_verdict::MatchVerdict::Match
+    );
+}
+
+#[test]
+fn ordinal_selection_uses_document_order() {
     for (selection, expected) in [
         (LocatorSelection::First, 0),
         (LocatorSelection::Nth(1), 1),
@@ -231,8 +255,8 @@ fn ordinal_selection_uses_document_order_not_arena_order() {
 #[test]
 fn strict_classification_preserves_zero_one_many_and_incomplete() {
     let zero = evaluate_locator_tree(
-        tree(Vec::new(), Vec::new(), true),
-        &LocatorQuery::default(),
+        names_tree(),
+        &named_query("missing", false),
         &request(LocatorSelection::Strict),
     )
     .unwrap();
