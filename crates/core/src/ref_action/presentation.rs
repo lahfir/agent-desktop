@@ -42,7 +42,10 @@ pub(super) fn after_dispatch(
 
 fn destination(preflight: &ActionabilityPreflight) -> Option<crate::Point> {
     match preflight.pointer_delivery {
-        crate::actionability::PointerDelivery::Physical => preflight.verified_point.clone(),
+        crate::actionability::PointerDelivery::Physical => preflight
+            .verified_point
+            .clone()
+            .or_else(|| preflight.presentation_point.clone()),
         _ => preflight.presentation_point.clone(),
     }
 }

@@ -9,6 +9,7 @@ struct CursorAdapter {
     presented: Mutex<Vec<CursorOverlayControl>>,
     events: Mutex<Vec<CursorEvent>>,
     fail_presentation: bool,
+    unknown_hit: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -24,7 +25,14 @@ impl CursorAdapter {
             presented: Mutex::new(Vec::new()),
             events: Mutex::new(Vec::new()),
             fail_presentation,
+            unknown_hit: false,
         }
+    }
+
+    fn with_unknown_hit_test(fail_presentation: bool) -> Self {
+        let mut adapter = Self::new(fail_presentation);
+        adapter.unknown_hit = true;
+        adapter
     }
 }
 
@@ -37,11 +45,23 @@ impl ObservationOps for CursorAdapter {
         Ok(NativeHandle::null())
     }
 
-    crate::adapter::complete_live_observation!(
+    crate::adapter::complete_live_observation_without_hit_test!(
         "textfield",
         "Run",
         [capability::CLICK, capability::SET_VALUE]
     );
+    fn hit_test(
+        &self,
+        _handle: &NativeHandle,
+        _point: crate::Point,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::hit_test::HitTestResult, AdapterError> {
+        Ok(if self.unknown_hit {
+            crate::hit_test::HitTestResult::Unknown
+        } else {
+            crate::hit_test::HitTestResult::ReachesTarget
+        })
+    }
 }
 
 impl ActionOps for CursorAdapter {
@@ -53,8 +73,13 @@ impl ActionOps for CursorAdapter {
     ) -> Result<ActionResult, AdapterError> {
         if request.policy.is_headed() {
             assert_eq!(
-                request.verified_point(),
-                Some(&crate::Point { x: 11.0, y: 11.0 })
+                request.verified_point().cloned(),
+                if self.unknown_hit {
+                    None
+                } else {
+                    Some(crate::Point { x: 11.0, y: 11.0 })
+                },
+                "verified_point must match the adapter's hit-test outcome"
             );
         }
         self.events.lock().unwrap().push(CursorEvent::Dispatch);
@@ -317,4 +342,58 @@ fn headed_and_headless_contexts_present_the_same_cursor() {
     assert_eq!(presented.len(), 4);
     assert_eq!(presented[0].instruction(), presented[2].instruction());
     assert_eq!(presented[1].instruction(), presented[3].instruction());
+}
+
+#[test]
+fn physical_delivery_without_verified_point_should_present_both_travel_and_effect() {
+    let adapter = CursorAdapter::with_unknown_hit_test(false);
+    let context = enabled_context().with_headed(true);
+
+    execute_entry_with_context(
+        &adapter,
+        &entry(),
+        ActionRequest::headed(Action::Click),
+        &context,
+    )
+    .expect("click succeeds despite inconclusive hit-test (non-blocking)");
+
+    let presented = adapter.presented.lock().unwrap();
+    assert_eq!(presented.len(), 2, "presents Travel and Effect");
+    let center = crate::Point { x: 11.0, y: 11.0 };
+    for control in presented.iter() {
+        assert_eq!(control.instruction().unwrap().destination(), &center);
+    }
+    assert_eq!(
+        *adapter.events.lock().unwrap(),
+        [
+            CursorEvent::Travel,
+            CursorEvent::Dispatch,
+            CursorEvent::Effect
+        ]
+    );
+}
+
+#[test]
+fn after_dispatch_physical_without_verified_point_should_present_effect_at_bounds_center() {
+    let adapter = CursorAdapter::new(false);
+    let context = enabled_context().with_headed(true);
+    let preflight = ActionabilityPreflight {
+        verified_point: None,
+        presentation_point: Some(crate::Point { x: 11.0, y: 11.0 }),
+        presentation_bounds: entry().geometry.bounds,
+        pointer_delivery: actionability::PointerDelivery::Physical,
+    };
+    presentation::after_dispatch(
+        &adapter,
+        &context,
+        &preflight,
+        &Action::Click,
+        &Ok(ActionResult::delivered_unverified("click")),
+    );
+    let presented = adapter.presented.lock().unwrap();
+    assert_eq!(presented.len(), 1, "presents Effect at bounds center");
+    assert_eq!(
+        presented[0].instruction().unwrap().destination(),
+        &crate::Point { x: 11.0, y: 11.0 }
+    );
 }

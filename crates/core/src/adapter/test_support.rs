@@ -1,4 +1,4 @@
-macro_rules! complete_live_observation {
+macro_rules! live_observation_methods {
     ($role:expr, $name:expr, [$($action:expr),* $(,)?]) => {
         fn get_live_element(
             &self,
@@ -65,6 +65,12 @@ macro_rules! complete_live_observation {
         ) -> Result<Option<Vec<String>>, $crate::AdapterError> {
             Ok(Some(vec![$($action.into()),*]))
         }
+    };
+}
+
+macro_rules! complete_live_observation {
+    ($role:expr, $name:expr, [$($action:expr),* $(,)?]) => {
+        $crate::adapter::live_observation_methods!($role, $name, [$($action),*]);
 
         fn hit_test(
             &self,
@@ -77,7 +83,15 @@ macro_rules! complete_live_observation {
     };
 }
 
+macro_rules! complete_live_observation_without_hit_test {
+    ($role:expr, $name:expr, [$($action:expr),* $(,)?]) => {
+        $crate::adapter::live_observation_methods!($role, $name, [$($action),*]);
+    };
+}
+
 pub(crate) use complete_live_observation;
+pub(crate) use complete_live_observation_without_hit_test;
+pub(crate) use live_observation_methods;
 
 macro_rules! guarded_interaction_lease {
     () => {
