@@ -37,6 +37,8 @@ Reach into that overlay with `find --surface sheet` rather than searching the
 window. A `delivered_unverified` result with a surface still open usually means
 the application is waiting for a confirmation the action did not deliver.
 
+On macOS, headed clicks on native menu-bar items use AXPress because these items have no ordinary owning window. Other headed ref clicks retain physical target verification. An enabled cursor overlay travels to and highlights that verified target alongside the real pointer.
+
 ### `--wait-for` / `--wait-for-gone` (global)
 
 Three global flags poll the accessibility tree until a compact selector matches (or, with `--wait-for-gone`, until it no longer matches), then return a snapshot envelope:
@@ -55,9 +57,9 @@ agent-desktop click @s8f3k2p9:e5 --wait-for-gone "progressindicator" --wait-time
 
 **Selector grammar:** one `role:text` string split on the first `:`. Examples: `"button:Submit"` (role + text), `"button"` (role only), `":Saved!"` (text only). Matching uses the same `find` matcher (`node_matches`); text searches name, value, and description.
 
-**Supported commands:** `snapshot` plus all 18 ref-resolving actions (`click`, `type`, `set-value`, `scroll`, `hover`, `drag`, …) — 19 commands total. Other commands (`find`, `launch`, …) return `INVALID_ARGS`. Workaround: `snapshot --app Foo -w "button:Login"`.
+**Supported commands:** `snapshot`, `press`, and all 18 ref-resolving actions (`click`, `type`, `set-value`, `scroll`, `hover`, `drag`, …). Other commands (`find`, `launch`, …) return `INVALID_ARGS`. Workaround: `snapshot --app Foo -w "button:Login"`.
 
-**Post-action waits** poll the **acted-on ref's own window** (`entry.source_window_id`, scoped to `entry.source_app`), not the frontmost window — critical in headless and multi-window apps where the terminal or a sibling window has focus. The action result is preserved under `after_action` in the returned envelope.
+**Post-action waits** for ref actions poll the **acted-on ref's own window** (`entry.source_window_id`, scoped to `entry.source_app`). For `press`, `--app` scopes the observation to that app; without it, observation uses the frontmost app. The action result is preserved under `after_action` in the returned envelope.
 
 **Success shape:** a match returns the full snapshot envelope (`app`, `window`, `ref_count`, `snapshot_id`, `tree`) plus `elapsed_ms` and `matched_selector`. The one exception is `--wait-for-gone` when the target **app or window has itself closed**: there is no tree left to capture, so the success payload is the compact `{ "matched_selector", "gone": true, "target_absent": true, "elapsed_ms" }`. On timeout the `wait_timeout` error `details` carry `last_error` (when a poll errored) and the `snapshot_id` of the last tree built.
 
@@ -229,6 +231,25 @@ agent-desktop press cmd+a --app "TextEdit"
 |------|-------------|
 | `--app` | Target application; key delivery is PID-targeted, and `--headed` additionally focuses its exact window first |
 
+`press` reports `delivered_unverified`: delivery does not prove the shortcut produced the intended UI. Use the global CLI selector flags to wait for an expected accessible element in the requested app after sending the key once:
+
+```bash
+agent-desktop press cmd+s --app "TextEdit" --wait-for "button:Save" --wait-timeout 5000
+```
+
+`--wait-for-gone "button:Save"` waits for disappearance instead. Success returns the observed selector result plus the original key delivery under `after_action`; it does not prove an unrelated effect such as audio playback. A timeout retains the delivered result and is unsafe to retry blindly. These global flags apply to the CLI, not batch item arguments or the C ABI.
+
+For a new window, keep the press and event wait in one batch so the baseline is captured before delivery:
+
+```bash
+agent-desktop --headed batch '[
+  {"command":"press","args":{"combo":"cmd+k","app":"GarageBand"}},
+  {"command":"wait","args":{"event":"window-opened","window":"Musical Typing","app":"GarageBand","timeout":5000}}
+]' --stop-on-error
+```
+
+Use the actual window title for the current app language. To check a window that may already be open, use `wait --window "Musical Typing" --app "GarageBand" --timeout 5000`. A failed wait does not make the preceding press safe to repeat.
+
 **Key names:** `return`, `escape`, `tab`, `space`, `delete`, `up`, `down`, `left`, `right`, `f1`-`f12`
 **Modifiers:** `cmd`, `ctrl`, `alt`, `shift` — combine with `+`
 
@@ -319,12 +340,14 @@ Synthesizes a scroll-wheel event at absolute coordinates and requires `--headed`
 
 ### Agent cursor presentation
 
-Enable it once per session with `session start --cursor` or `cursor-overlay enable`. Interaction commands take no cursor flags.
+Enable it once per session with `session start --cursor` or `cursor-overlay enable`. Interaction commands inherit styling. For macOS harness subagents, use `session start --cursor --multi-agent` and global `--agent-id` or `AGENT_DESKTOP_AGENT_ID` on each worker. Each ID gets an independent cursor within the same snapshot namespace. Configure optional per-agent styling with `--agent-id <id> cursor-overlay enable`; action-specific cursor flags remain unsupported.
 
-- The cursor stays alive between eligible headless ref actions and travels from its previous destination.
+- The cursor stays alive between eligible headless or headed actions and travels from its previous destination.
 - The action waits for it to land before it dispatches, capped at 900 ms.
 - A click plays a ripple and flashes an accent outline around the element.
-- Headed actions hide the overlay and use the real OS cursor. Raw pointer commands keep their headed-only behavior.
+- Headed actions retain each agent’s overlay while using the real OS cursor. Physical clicks present at the verified input point. Raw pointer commands also present the selected agent’s cursor and keep their headed-only behavior. The existing interaction lease serializes physical input; independent overlays do not create additional OS pointers.
+
+Drags reuse the cursor overlay’s curved motion. With the overlay enabled, its cursor and accent-colored trail follow the actual pointer while the button is held, including the destination dwell, then the trail fades after release. The existing ripple setting (`--no-ripple`) and Reduce Motion disable the trail. `--duration` controls travel only (default 300 ms); `--drop-delay 1000` holds over the destination for one second before releasing.
 
 See `commands-system.md` for the style flags.
 

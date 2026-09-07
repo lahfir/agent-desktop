@@ -60,7 +60,7 @@ jobs:
           # Scan commit history, not just the checked-out tree: a value added
           # in one commit and removed in a later one stays reachable in branch
           # history, and a tree-only scan would pass it.
-          ./gitleaks git . --config .gitleaks.toml --redact --no-banner --exit-code 1
+          ./gitleaks git . --log-opts=HEAD --config .gitleaks.toml --redact --no-banner --exit-code 1
 
       - name: Workflow security audit
         uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2

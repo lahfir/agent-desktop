@@ -8,7 +8,6 @@ use super::{
     predicate::{normalize_query, self_text_verdict, self_verdict},
     select::{match_data, selected_indices},
     selection_completeness::first_is_authoritative,
-    tree_order::validated_postorder,
     validate::{validate_query, validate_request},
 };
 use crate::{AdapterError, locator::LocatorQuery};
@@ -24,7 +23,12 @@ pub fn evaluate_locator_tree(
     let normalized = normalize_query(query);
     let mut clauses = Vec::new();
     let root_clause = compile_clauses(&normalized, &mut clauses);
-    let (postorder, parents) = validated_postorder(&tree)?;
+    let mut parents = vec![None; tree.nodes.len()];
+    for (index, node) in tree.nodes.iter().enumerate() {
+        for child in &node.children {
+            parents[*child as usize] = Some(index);
+        }
+    }
     let cells = tree
         .nodes
         .len()
@@ -47,7 +51,7 @@ pub fn evaluate_locator_tree(
             subtree_text: subtree_text.as_mut_slice(),
             stats: &mut stats,
         };
-        for node_index in postorder {
+        for node_index in (0..tree.nodes.len()).rev() {
             evaluate_node(&tree, node_index, &clauses, &mut buffers);
         }
     }
@@ -61,7 +65,6 @@ pub fn evaluate_locator_tree(
             MatchVerdict::NoMatch => {}
         }
     }
-    matched_indices.sort_by_key(|index| tree.nodes[*index].document_order);
     stats.evaluation.matched_nodes = matched_indices.len() as u64;
     let (selected, truncated) = selected_indices(&matched_indices, request.selection);
     let mut complete = tree.structurally_complete && !unknown;
@@ -115,12 +118,12 @@ pub fn evaluate_locator_tree(
                 let root_verdicts = (0..tree.nodes.len())
                     .map(|index| matches[cell(index, root_clause, clauses.len())])
                     .collect::<Vec<_>>();
-                tree.nodes
-                    .iter()
-                    .position(|node| node.document_order == selected.document_order)
-                    .is_some_and(|index| {
-                        first_is_authoritative(&tree, index, &parents, &root_verdicts)
-                    })
+                first_is_authoritative(
+                    &tree,
+                    selected.document_order as usize,
+                    &parents,
+                    &root_verdicts,
+                )
             })
     };
     Ok(LocatorResolution {

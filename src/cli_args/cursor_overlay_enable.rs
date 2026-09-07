@@ -4,6 +4,11 @@ use clap::Args;
 pub(crate) struct CursorOverlayEnableArgs {
     #[arg(
         long,
+        help = "Require agent IDs for desktop UI actions; use without --agent-id to configure the session"
+    )]
+    pub multi_agent: bool,
+    #[arg(
+        long,
         help = "Show caller-authored intent text beside the cursor overlay"
     )]
     pub label: Option<String>,

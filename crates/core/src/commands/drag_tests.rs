@@ -1,7 +1,7 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    AdapterError, DragParams, Rect,
+    AdapterError, CursorOverlayControl, DeliverySemantics, DragParams, Rect,
     adapter::NativeHandle,
     capability,
     commands::stale_retry_test_support::StaleRetryCounter,
@@ -15,23 +15,34 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 struct DragCaptureAdapter {
     captured: Mutex<Option<DragParams>>,
+    presented: Mutex<Vec<CursorOverlayControl>>,
     focused_pids: Mutex<Vec<crate::ProcessId>>,
     resolve_calls: AtomicU32,
+    presented_before_drag: AtomicU32,
     focused_bounds: Option<Rect>,
+    drag_failure: Option<DeliverySemantics>,
 }
 
 impl DragCaptureAdapter {
     fn new() -> Self {
         Self {
             captured: Mutex::new(None),
+            presented: Mutex::new(Vec::new()),
             focused_pids: Mutex::new(Vec::new()),
             resolve_calls: AtomicU32::new(0),
+            presented_before_drag: AtomicU32::new(0),
             focused_bounds: None,
+            drag_failure: None,
         }
     }
 
     fn with_focused_bounds(mut self, bounds: Rect) -> Self {
         self.focused_bounds = Some(bounds);
+        self
+    }
+
+    fn with_drag_failure(mut self, disposition: DeliverySemantics) -> Self {
+        self.drag_failure = Some(disposition);
         self
     }
 }
@@ -82,7 +93,15 @@ impl InputOps for DragCaptureAdapter {
         params: DragParams,
         _lease: &crate::InteractionLease,
     ) -> Result<(), AdapterError> {
+        self.presented_before_drag.store(
+            self.presented.lock().unwrap().len() as u32,
+            Ordering::SeqCst,
+        );
         *self.captured.lock().unwrap() = Some(params);
+        if let Some(disposition) = self.drag_failure {
+            return Err(AdapterError::internal("drag completion was uncertain")
+                .with_disposition(disposition));
+        }
         Ok(())
     }
 }
@@ -104,6 +123,11 @@ impl SystemOps for DragCaptureAdapter {
         _lease: &crate::InteractionLease,
     ) -> Result<(), AdapterError> {
         self.focused_pids.lock().unwrap().push(window.pid);
+        Ok(())
+    }
+
+    fn update_cursor_overlay(&self, control: &CursorOverlayControl) -> Result<(), AdapterError> {
+        self.presented.lock().unwrap().push(control.clone());
         Ok(())
     }
 }
@@ -158,6 +182,69 @@ fn drop_delay_omitted_uses_adapter_default_and_no_response_field() {
     assert!(value.get("drop_delay_ms").is_none());
     let captured = adapter.captured.lock().unwrap().clone().unwrap();
     assert_eq!(captured.drop_delay_ms, None);
+}
+
+#[test]
+fn successful_drag_effect_carries_the_complete_path() {
+    let adapter = DragCaptureAdapter::new();
+    let config = crate::CursorOverlayConfig::enabled(None, 6).expect("valid config");
+    let context = CommandContext::default()
+        .with_headed(true)
+        .with_cursor_overlay_session("test-session", config);
+
+    execute(xy_args(None), &adapter, &context).expect("drag succeeds");
+
+    let presented = adapter.presented.lock().unwrap();
+    assert_eq!(adapter.presented_before_drag.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        presented[1]
+            .instruction()
+            .expect("drag instruction")
+            .phase(),
+        crate::CursorPhase::Drag
+    );
+    let effect = presented
+        .last()
+        .and_then(CursorOverlayControl::instruction)
+        .expect("effect instruction");
+    assert_eq!(effect.phase(), crate::CursorPhase::Effect);
+    assert_eq!(effect.drag_from(), Some(&crate::Point { x: 1.0, y: 2.0 }));
+    assert_eq!(effect.destination(), &crate::Point { x: 3.0, y: 4.0 });
+}
+
+#[test]
+fn uncertain_drag_hides_the_overlay_without_claiming_a_landing() {
+    let adapter = DragCaptureAdapter::new().with_drag_failure(DeliverySemantics::uncertain());
+    let config = crate::CursorOverlayConfig::enabled(None, 6).expect("valid config");
+    let context = CommandContext::default()
+        .with_agent_id(Some("agent-a".into()))
+        .expect("valid agent")
+        .with_headed(true)
+        .with_cursor_overlay_session("test-session", config);
+
+    execute(xy_args(None), &adapter, &context).expect_err("drag is uncertain");
+
+    let presented = adapter.presented.lock().unwrap();
+    let cancel = presented.last().expect("cancel control");
+    assert!(cancel.is_hide());
+    assert!(cancel.instruction().is_none());
+    assert_eq!(cancel.agent_id(), Some("agent-a"));
+}
+
+#[test]
+fn expired_action_deadline_does_not_suppress_drag_cancellation() {
+    let adapter = DragCaptureAdapter::new();
+    let config = crate::CursorOverlayConfig::enabled(None, 6).expect("valid config");
+    let context = CommandContext::default()
+        .with_headed(true)
+        .with_cursor_overlay_session("test-session", config);
+    let expired = crate::Deadline::detached_after(1).expect("valid deadline");
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    let _scope = crate::deadline::enter_scope(Some(expired));
+
+    crate::cursor_overlay::cancel_drag(&adapter, &context);
+
+    assert!(adapter.presented.lock().unwrap()[0].is_hide());
 }
 
 fn ref_entry(pid: u32) -> RefEntry {

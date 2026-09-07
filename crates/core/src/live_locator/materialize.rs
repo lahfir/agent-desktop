@@ -15,10 +15,9 @@ pub(crate) fn materialize_refmap(
     let nodes = &mut tree.nodes;
     let mut refmap = RefMap::new();
     let mut complete = true;
-    let mut indices = selected
+    let indices = selected
         .map(|indices| indices.to_vec())
         .unwrap_or_else(|| (0..nodes.len()).collect());
-    indices.sort_by_key(|index| nodes[*index].document_order);
     for index in indices {
         let node = &nodes[index];
         let (addressable, known) = addressability(&node.evidence);

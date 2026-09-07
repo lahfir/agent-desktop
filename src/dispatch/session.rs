@@ -21,14 +21,16 @@ pub(crate) fn dispatch(
                 screenshots: s.screenshots,
             })?;
             if show_cursor {
-                show_default_cursor(adapter, &mut value)?;
+                show_default_cursor(adapter, &mut value, s.multi_agent)?;
             }
             Ok(value)
         }
         SessionAction::End(e) => {
             let id = resolve_end_session_id(e.id, context.session_id())?;
             let value = session::execute(session::SessionAction::End { id: id.clone() })?;
-            let _ = adapter.update_cursor_overlay(&CursorOverlayControl::disable(id));
+            adapter
+                .update_cursor_overlay(&CursorOverlayControl::disable(id))
+                .map_err(super::cursor_overlay::teardown_error)?;
             Ok(value)
         }
         SessionAction::List => session::execute(session::SessionAction::List),
@@ -39,7 +41,11 @@ pub(crate) fn dispatch(
     }
 }
 
-fn show_default_cursor(adapter: &dyn PlatformAdapter, value: &mut Value) -> Result<(), AppError> {
+fn show_default_cursor(
+    adapter: &dyn PlatformAdapter,
+    value: &mut Value,
+    multi_agent: bool,
+) -> Result<(), AppError> {
     let Some(id) = value
         .get("session_id")
         .and_then(Value::as_str)
@@ -47,7 +53,7 @@ fn show_default_cursor(adapter: &dyn PlatformAdapter, value: &mut Value) -> Resu
     else {
         return Ok(());
     };
-    let config = CursorOverlayConfig::enabled(None, 6)?;
+    let config = CursorOverlayConfig::enabled(None, 6)?.with_multi_agent(multi_agent);
     let control = CursorOverlayControl::enable(id.clone(), config.style().clone());
     let enabled =
         cursor_overlay::execute(&id, cursor_overlay::CursorOverlayAction::Enable(config))?;
@@ -55,6 +61,9 @@ fn show_default_cursor(adapter: &dyn PlatformAdapter, value: &mut Value) -> Resu
         && let Some(map) = value.as_object_mut()
     {
         map.insert("cursor_overlay".into(), overlay);
+    }
+    if multi_agent {
+        return Ok(());
     }
     if let Err(error) = adapter.update_cursor_overlay(&control) {
         tracing::warn!(code = %error.code.as_str(), "cursor overlay lifecycle update was skipped");

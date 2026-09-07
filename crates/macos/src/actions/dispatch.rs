@@ -30,9 +30,14 @@ mod imp {
         tracing::debug!("action: perform {label}");
         match action {
             Action::Click => {
+                let role = if request.policy.is_headed() {
+                    probe_click_role(el, deadline)?
+                } else {
+                    None
+                };
                 steps.extend(run_chain(
                     el,
-                    &chain_defs::CLICK_CHAIN,
+                    chain_defs::click_chain(role.as_deref()),
                     None,
                     request,
                     deadline,
@@ -219,6 +224,17 @@ mod imp {
             },
             request.policy,
         )
+    }
+
+    fn probe_click_role(
+        element: &AXElement,
+        deadline: Deadline,
+    ) -> Result<Option<String>, AdapterError> {
+        let operation_deadline = crate::tree::locator_deadline::from_operation(deadline)?;
+        match crate::tree::resolve_ax_read::read_string(element, "AXRole", operation_deadline) {
+            Err(error) if error.code == ErrorCode::AppUnresponsive => Ok(None),
+            result => result,
+        }
     }
 
     fn after_delivery(error: AdapterError) -> AdapterError {

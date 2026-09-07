@@ -176,6 +176,8 @@ agent-desktop session gc
 
 ### Agent cursor overlay (macOS)
 
+Agent cursors work in both headless and headed mode, including physical pointer commands. Drags follow the cursor’s curved motion and draw an accent-colored trail while held, then fade after release. Each agent retains its own cursor; the existing interaction lease coordinates the shared OS pointer.
+
 A presentation-only cursor that shows what the agent is about to do. Off by default.
 
 ```bash
@@ -188,12 +190,26 @@ agent-desktop cursor-overlay disable
 
 `session start --cursor` turns it on with the default look. `cursor-overlay enable` does the same for a session that already exists.
 
-**Style is session-global.** Set it once; every later command uses it. Never pass it per action.
+**Style defaults belong to the session.** Set them once; later commands inherit them. Named agents can save their own style using global `--agent-id`.
 
 ```bash
 agent-desktop --session "$session_id" cursor-overlay enable --label "Opening the menu"
 export AGENT_DESKTOP_SESSION="$session_id"
 ```
+
+For harness subagents on macOS, start one shared session and give each worker a stable ID:
+
+```bash
+session_id=$(agent-desktop session start --cursor --multi-agent | jq -r '.data.session_id')
+export AGENT_DESKTOP_SESSION="$session_id"
+# Set a different ID in each subagent's environment:
+export AGENT_DESKTOP_AGENT_ID=researcher
+agent-desktop cursor-overlay enable --label "Checking details" --accent "#FF3B7B"
+agent-desktop snapshot --app Finder -i
+agent-desktop click <qualified-ref-from-snapshot>
+```
+
+The style command is optional and saves settings for the next presentation without creating a cursor. Each distinct agent ID gets its own cursor on first presentation; three IDs produce three cursors, with no extra coordinator cursor. IDs use 1–64 letters, digits, `-` or `_`. Global `--agent-id` overrides the environment. In multi-agent mode, desktop UI actions require an ID; observations, clipboard operations, and session administration do not. Snapshots remain shared by session, so pin qualified refs and coordinate actions on shared UI. `cursor-overlay disable` or `session end` stops every cursor, even when an agent ID is set. To enable this mode on an existing session, run `cursor-overlay enable --multi-agent` without an agent ID.
 
 | Flag | Meaning | Default |
 |---|---|---|
@@ -209,11 +225,11 @@ export AGENT_DESKTOP_SESSION="$session_id"
 **Behaviour**
 
 - The cursor travels a human path in 90–320 ms. It never rotates or resizes.
-- The action waits for it to land, so a window never closes before the cursor arrives. The wait is capped at 900 ms and never blocks an action.
+- The action waits up to 900 ms for cursor arrival confirmation. If the renderer does not confirm in time, a warning is reported and the action proceeds.
 - A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
 - Idle for 6 s, it fades out. The next command brings it back.
 - `cursor-overlay disable` removes it now. You do not have to end the session.
-- Headed actions hide it. It never moves or intercepts the OS pointer.
+- Headed actions retain it. It never moves or intercepts the OS pointer.
 - Overhead is about 150–300 ms per action, all of it the visible travel.
 
 macOS renders it natively. Windows and Linux inherit the adapter's no-op and need only their own renderer against the same core contract.
@@ -378,11 +394,11 @@ agent-desktop --session run-a batch '[
 ### System
 
 ```bash
-agent-desktop session start [--name LABEL] [--no-trace] [--cursor]  # create session; pass returned ID explicitly
+agent-desktop session start [--name LABEL] [--no-trace] [--cursor [--multi-agent]]  # create session; pass returned ID explicitly
 agent-desktop session end [id]
 agent-desktop session list
 agent-desktop session gc [--older-than SECS] [--ended]
-agent-desktop --session <id> cursor-overlay enable [--label TEXT] [--max-words N] [--fill HEX] [--rim HEX] [--accent HEX] [--size N] [--no-ripple] [--no-highlight]
+agent-desktop --session <id> [--agent-id ID] cursor-overlay enable [--multi-agent] [--label TEXT] [--max-words N] [--fill HEX] [--rim HEX] [--accent HEX] [--size N] [--no-ripple] [--no-highlight]
 export AGENT_DESKTOP_SESSION=<id>
 agent-desktop cursor-overlay disable
 agent-desktop status                     # platform, permissions, session_id, tracing, latest snapshot

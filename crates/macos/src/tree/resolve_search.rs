@@ -5,7 +5,7 @@ use agent_desktop_core::{
 use rustc_hash::FxHashSet;
 
 use super::AXElement;
-use super::element_dedupe::ElementDedupe;
+use super::element_dedupe::push_unique;
 use super::resolve_classify::classify_candidates;
 pub(super) use super::resolve_errors::incomplete_traversal as incomplete_traversal_error;
 use super::resolve_errors::{
@@ -23,7 +23,6 @@ pub(super) fn find_entry_by_path(
 ) -> Result<NativeHandle, AdapterError> {
     crate::tree::locator_deadline::remaining(read_context.deadline)?;
     let mut matches = Vec::new();
-    let mut dedupe = ElementDedupe;
     let mut incomplete = None;
     for root in roots {
         crate::tree::locator_deadline::remaining(read_context.deadline)?;
@@ -33,7 +32,7 @@ pub(super) fn find_entry_by_path(
         let identity = candidate_identity(&candidate, entry, read_context)?;
         match identity {
             IdentityMatch::Match => {
-                dedupe.push(&mut matches, candidate);
+                push_unique(&mut matches, candidate);
             }
             IdentityMatch::Unknown => {
                 incomplete.get_or_insert_with(|| identity_unknown_error(entry));
@@ -135,7 +134,6 @@ pub(super) fn find_entry_in_roots(
     read_context: &mut ResolveReadContext,
 ) -> Result<NativeHandle, AdapterError> {
     let mut matches = Vec::new();
-    let mut seen_matches = ElementDedupe;
     let mut incomplete = None;
     let mut identifier_role_reuse = false;
     for root in roots {
@@ -147,7 +145,6 @@ pub(super) fn find_entry_in_roots(
             entry,
             max_depth: resolve_depth,
             ancestors: &mut ancestors,
-            seen_matches: &mut seen_matches,
             matches: &mut matches,
             incomplete: &mut incomplete,
             identifier_role_reuse: &mut identifier_role_reuse,
@@ -182,7 +179,6 @@ struct CollectContext<'a> {
     entry: &'a RefEntry,
     max_depth: u8,
     ancestors: &'a mut FxHashSet<usize>,
-    seen_matches: &'a mut ElementDedupe,
     matches: &'a mut Vec<AXElement>,
     incomplete: &'a mut Option<AdapterError>,
     identifier_role_reuse: &'a mut bool,
@@ -227,11 +223,11 @@ fn collect_elements_recursive(
             if role == &context.entry.identity.role {
                 match match_native_or_text_identity(context.entry, &read.evidence) {
                     IdentityMatch::Match => {
-                        context.seen_matches.push_clone(context.matches, element);
+                        push_unique(context.matches, element.clone());
                     }
                     IdentityMatch::Unknown => {
                         if provisional_geometry_candidate(context.entry) {
-                            context.seen_matches.push_clone(context.matches, element);
+                            push_unique(context.matches, element.clone());
                         } else {
                             mark_incomplete(context, identity_unknown_error(context.entry));
                         }

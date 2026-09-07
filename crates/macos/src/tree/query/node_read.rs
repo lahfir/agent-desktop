@@ -5,7 +5,7 @@ use serde_json::json;
 
 use crate::tree::query::evidence_fields::{description_field, name_field};
 use crate::tree::query::node_evidence::{
-    identifiers as identifier_evidence, is_transparent_wrapper, option_field, required_complete,
+    identifiers as identifier_evidence, is_transparent_wrapper, option_field,
     unknown as unknown_evidence, update_identifier_stats,
 };
 use crate::tree::query::node_read_context::NodeReadContext;
@@ -17,7 +17,6 @@ pub(crate) struct NodeRead {
     pub(crate) web_wrapper: bool,
     pub(crate) invalid_element: bool,
     pub(crate) child_read: ChildRead,
-    pub(crate) evidence_complete: bool,
 }
 
 pub(crate) fn read_node(
@@ -32,7 +31,7 @@ pub(crate) fn read_node(
         deadline,
         child_plan,
     } = context;
-    crate::tree::locator_deadline::prepare(element, deadline)?;
+    crate::tree::locator_deadline::remaining(deadline)?;
     let read = crate::tree::element::fetch_node_attrs_with_status_for(
         element,
         requirements,
@@ -55,7 +54,6 @@ pub(crate) fn read_node(
             web_wrapper: false,
             invalid_element: true,
             child_read: ChildRead::empty(false),
-            evidence_complete: false,
         });
     }
     let attrs = read.attrs;
@@ -68,16 +66,15 @@ pub(crate) fn read_node(
     let secure = attrs.role.as_deref() == Some("AXSecureTextField")
         || attrs.subrole.as_deref() == Some("AXSecureTextField");
     let value = (!secure).then(|| attrs.value.clone()).flatten();
-    let actions = if let Some(actions) =
-        read_native_actions_if(requirements.ref_evidence.actions, || {
-            crate::tree::action_list::read_platform_available_actions(
-                element,
-                &role,
-                attrs.has_scrollbars,
-                deadline,
-                usage,
-            )
-        }) {
+    let actions = if let Some(actions) = requirements.ref_evidence.actions.then(|| {
+        crate::tree::action_list::read_platform_available_actions(
+            element,
+            &role,
+            attrs.has_scrollbars,
+            deadline,
+            usage,
+        )
+    }) {
         stats.reads.counts.action_reads += 1;
         stats.reads.health.cannot_complete += u64::from(actions.cannot_complete);
         stats.reads.health.deadline_exhausted += u64::from(actions.deadline_exhausted);
@@ -92,7 +89,6 @@ pub(crate) fn read_node(
                 web_wrapper: false,
                 invalid_element: true,
                 child_read: ChildRead::empty(false),
-                evidence_complete: false,
             });
         }
         if actions.complete && !actions.deadline_exhausted && !read.status.scrollbars_unknown() {
@@ -133,7 +129,6 @@ pub(crate) fn read_node(
             web_wrapper: false,
             invalid_element: true,
             child_read: ChildRead::empty(false),
-            evidence_complete: false,
         });
     }
     let (name_evidence, child_label_complete) = if requirements.name || requirements.description {
@@ -216,21 +211,13 @@ pub(crate) fn read_node(
             available_actions: actions,
         },
     };
-    let evidence_complete = required_complete(&evidence, requirements)
-        && !read.metrics.deadline_exhausted
-        && child_read.status.health.deadline_exhausted == 0;
     Ok(NodeRead {
         attrs,
         evidence,
         web_wrapper,
         invalid_element: false,
         child_read,
-        evidence_complete,
     })
-}
-
-fn read_native_actions_if<T>(include_actions: bool, reader: impl FnOnce() -> T) -> Option<T> {
-    include_actions.then(reader)
 }
 
 fn permission_error(phase: &str) -> AdapterError {
@@ -299,15 +286,5 @@ mod tests {
             option_field(Some("Save".to_string()), true),
             LocatorField::Known("Save".into())
         );
-    }
-
-    #[test]
-    fn omitted_ref_evidence_performs_zero_native_action_reads() {
-        let calls = std::cell::Cell::new(0);
-
-        let read = read_native_actions_if(false, || calls.set(calls.get() + 1));
-
-        assert!(read.is_none());
-        assert_eq!(calls.get(), 0);
     }
 }

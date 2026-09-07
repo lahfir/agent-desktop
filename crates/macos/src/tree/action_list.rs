@@ -42,7 +42,7 @@ pub(crate) fn read_platform_available_actions(
     usage: &mut crate::tree::observation_usage::ObservationUsage,
 ) -> AvailableActionsRead {
     let mut read = AvailableActionsRead::default();
-    if crate::tree::locator_deadline::prepare(el, deadline).is_err() {
+    if crate::tree::locator_deadline::remaining(deadline).is_err() {
         read.complete = false;
         read.deadline_exhausted = true;
         return read;
@@ -116,7 +116,7 @@ fn read_settable(
     deadline: std::time::Instant,
     read: &mut AvailableActionsRead,
 ) -> Option<bool> {
-    if crate::tree::locator_deadline::prepare(element, deadline).is_err() {
+    if crate::tree::locator_deadline::remaining(deadline).is_err() {
         read.complete = false;
         read.deadline_exhausted = true;
         return None;

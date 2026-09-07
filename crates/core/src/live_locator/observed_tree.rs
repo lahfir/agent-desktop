@@ -53,7 +53,7 @@ impl ObservedTree {
         self.structurally_complete
     }
 
-    pub fn into_accessibility_tree(self) -> Result<AccessibilityNode, AdapterError> {
+    pub fn into_accessibility_tree(mut self) -> Result<AccessibilityNode, AdapterError> {
         if !self.structurally_complete {
             return Err(AdapterError::new(
                 ErrorCode::Timeout,
@@ -81,7 +81,7 @@ impl ObservedTree {
     /// truncated container with `children_count`, so a partial tree stays
     /// honest about its own boundaries.
     pub fn into_accessibility_tree_partial(
-        self,
+        mut self,
     ) -> Result<(AccessibilityNode, bool, usize), AdapterError> {
         if self.roots.len() != 1 {
             return Err(AdapterError::internal(
@@ -116,9 +116,17 @@ impl ObservedTree {
         });
         let mut child_indices = Vec::with_capacity(children.len());
         let mut complete = completeness.subtree_complete;
+        let mut previous_native_index = None;
         for (child_order, child) in children.into_iter().enumerate() {
+            let native_index = child.source_child_index.unwrap_or(child_order);
+            if previous_native_index.is_some_and(|previous| previous >= native_index) {
+                return Err(AdapterError::internal(
+                    "locator tree children are not in native document order",
+                ));
+            }
+            previous_native_index = Some(native_index);
             let mut child_path = path.clone();
-            child_path.push(child.source_child_index.unwrap_or(child_order));
+            child_path.push(native_index);
             let child_index = self.append(child, child_path)?;
             complete &= self.nodes[child_index as usize]
                 .completeness
@@ -134,46 +142,56 @@ impl ObservedTree {
         Ok(index)
     }
 
-    fn project(&self, index: usize) -> Result<AccessibilityNode, AdapterError> {
+    fn project(&mut self, index: usize) -> Result<AccessibilityNode, AdapterError> {
         let node = self
             .nodes
-            .get(index)
+            .get_mut(index)
             .ok_or_else(|| AdapterError::internal("observed child index is out of bounds"))?;
         let role = node
             .evidence
             .role
-            .known()
-            .cloned()
+            .take_known()
             .unwrap_or_else(|| "unknown".into());
-        let children = node
-            .children
-            .iter()
-            .map(|child| self.project(*child as usize))
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(AccessibilityNode {
-            ref_id: node.ref_id.clone(),
+        let child_indices = std::mem::take(&mut node.children);
+        let mut projected = AccessibilityNode {
+            ref_id: node.ref_id.take(),
             role,
             identity: crate::NodeIdentity {
-                name: node.evidence.name.meaningful_string(),
-                value: node.evidence.value.meaningful_string(),
-                description: node.evidence.description.meaningful_string(),
+                name: node
+                    .evidence
+                    .name
+                    .take_known()
+                    .filter(|value| !value.is_empty()),
+                value: node
+                    .evidence
+                    .value
+                    .take_known()
+                    .filter(|value| !value.is_empty()),
+                description: node
+                    .evidence
+                    .description
+                    .take_known()
+                    .filter(|value| !value.is_empty()),
                 native_id: node.evidence.identifiers.preferred_identifier().cloned(),
             },
             presentation: crate::NodePresentation {
                 hint: None,
-                states: node.evidence.states.known().cloned().unwrap_or_default(),
+                states: node.evidence.states.take_known().unwrap_or_default(),
                 available_actions: node
                     .evidence
                     .ref_evidence
                     .available_actions
-                    .known()
-                    .cloned()
+                    .take_known()
                     .unwrap_or_default(),
                 bounds: node.evidence.ref_evidence.bounds.known().copied(),
             },
             children_count: node.children_count,
             subtree_truncated: !node.completeness.subtree_complete,
-            children,
-        })
+            children: Vec::with_capacity(child_indices.len()),
+        };
+        for child in child_indices {
+            projected.children.push(self.project(child as usize)?);
+        }
+        Ok(projected)
     }
 }

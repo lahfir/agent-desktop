@@ -29,7 +29,9 @@ pub fn execute(
         y: args.y,
     };
     point.validate()?;
-    adapter.mouse_event(
+    let result = crate::cursor_overlay::dispatch_mouse_event_with_cursor(
+        adapter,
+        context,
         MouseEvent {
             kind: MouseEventKind::Wheel {
                 delta_x: args.dx,
@@ -39,8 +41,10 @@ pub fn execute(
             button: MouseButton::Left,
             modifiers: args.modifiers,
         },
+        false,
         &lease,
-    )?;
+    );
+    result?;
     Ok(json!({ "scrolled": true, "dy": args.dy, "dx": args.dx }))
 }
 

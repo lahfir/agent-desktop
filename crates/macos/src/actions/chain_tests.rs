@@ -35,7 +35,7 @@ fn right_click_prefers_physical_input_before_semantic_fallbacks() {
 #[test]
 fn click_and_clear_prefer_physical_delivery_when_policy_allows_it() {
     assert!(matches!(
-        crate::actions::chain_defs::CLICK_CHAIN.steps.first(),
+        crate::actions::chain_defs::click_chain(None).steps.first(),
         Some(ChainStep::CGClick {
             button: MouseButton::Left,
             count: 1
@@ -240,4 +240,64 @@ fn exhaustion_without_any_delivery_reports_not_delivered() {
         exhaustion_disposition(&[]),
         agent_desktop_core::DeliverySemantics::not_delivered()
     );
+}
+
+#[test]
+fn headed_menubar_click_uses_only_semantic_press_and_keeps_other_clicks_physical() {
+    let menu = crate::actions::chain_defs::click_chain(Some("AXMenuBarItem"));
+    assert!(matches!(menu.steps, [ChainStep::Action("AXPress")]));
+    assert!(!menu.continue_after_unverified_delivery);
+    let mut steps = Vec::new();
+    assert!(record_step_outcome(
+        &mut steps,
+        &menu.steps[0],
+        DeliveryOutcome::DeliveredUnverified,
+        false
+    ));
+    assert_eq!(steps[0].mechanism(), Some(StepMechanism::SemanticApi));
+    assert_eq!(steps[0].verified(), Some(false));
+    let mut unsupported = Vec::new();
+    assert!(!record_step_outcome(
+        &mut unsupported,
+        &menu.steps[0],
+        DeliveryOutcome::NotDelivered,
+        false,
+    ));
+    assert_eq!(
+        exhaustion_disposition(&unsupported),
+        agent_desktop_core::DeliverySemantics::not_delivered()
+    );
+    for role in [
+        None,
+        Some("AXButton"),
+        Some("AXMenuItem"),
+        Some("AXMenuBar"),
+    ] {
+        assert!(matches!(
+            crate::actions::chain_defs::click_chain(role).steps.first(),
+            Some(ChainStep::CGClick { .. })
+        ));
+    }
+}
+
+#[test]
+fn click_role_probe_failure_falls_back_to_default_chain() {
+    let fallback = crate::actions::chain_defs::click_chain(None);
+    assert!(matches!(
+        fallback.steps.first(),
+        Some(ChainStep::CGClick {
+            button: MouseButton::Left,
+            count: 1
+        })
+    ));
+    for unknown in [Some("AXUnknown"), Some(""), Some("AXButton")] {
+        assert!(std::ptr::eq(
+            fallback,
+            crate::actions::chain_defs::click_chain(unknown)
+        ));
+    }
+    assert!(!std::ptr::eq(
+        fallback,
+        crate::actions::chain_defs::click_chain(Some("AXMenuBarItem"))
+    ));
 }

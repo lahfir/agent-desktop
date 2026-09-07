@@ -132,6 +132,11 @@ jobs:
       - name: Core and macOS unit tests
         run: scripts/cargo-test-isolated-home.sh test --locked -p agent-desktop-core -p agent-desktop-macos --lib
 
+      - name: Native cursor trail lifecycle
+        run: |
+          clang -fobjc-arc -Werror -framework AppKit -framework QuartzCore -framework CoreGraphics tests/native/cursor_overlay_trail_test.m -o "$RUNNER_TEMP/cursor-trail-test"
+          "$RUNNER_TEMP/cursor-trail-test"
+
       - name: Locator benchmark adapter contract
         run: scripts/cargo-test-isolated-home.sh test --locked -p agent-desktop-core --example locator_benchmark
 

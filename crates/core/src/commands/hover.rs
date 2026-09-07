@@ -81,15 +81,19 @@ pub fn execute(
             "point": { "x": resolved.point.x, "y": resolved.point.y }
         })),
     )?;
-    adapter.mouse_event(
+    let result = crate::cursor_overlay::dispatch_mouse_event_with_cursor(
+        adapter,
+        context,
         MouseEvent {
             kind: MouseEventKind::Move,
             point: resolved.point.clone(),
             button: MouseButton::Left,
             modifiers: Vec::new(),
         },
+        false,
         &lease,
-    )?;
+    );
+    result?;
     let mut response = json!({ "hovered": true, "x": resolved.point.x, "y": resolved.point.y });
     if resolved.focused {
         response["focused"] = json!(true);

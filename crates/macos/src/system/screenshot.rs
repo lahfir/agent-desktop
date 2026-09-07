@@ -101,7 +101,7 @@ mod imp {
             )
             .with_suggestion("Refresh the target with 'list-windows', then retry"));
         }
-        let verified = crate::system::window_resolve::resolve_window_strict(
+        let verified = crate::system::window_resolve::resolve_capture_window(
             window,
             deadline_instant(deadline)?,
         )?;
@@ -109,7 +109,7 @@ mod imp {
         let scale = crate::system::display::scale_for_bounds(verified.bounds, deadline)?;
         ensure_budget(deadline)?;
         let captured = capture(scale, deadline, |path| Ok(window_args(window_id, path)))?;
-        crate::system::window_resolve::resolve_window_strict(
+        crate::system::window_resolve::resolve_capture_window(
             &verified,
             deadline_instant(deadline)?,
         )?;

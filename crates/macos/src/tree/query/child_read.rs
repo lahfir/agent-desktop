@@ -52,6 +52,30 @@ impl ChildRead {
         }
     }
 
+    fn indexed(
+        mut elements: Vec<AXElement>,
+        initial_count: usize,
+        index: usize,
+        final_count: Result<usize, i32>,
+        mut status: ChildReadStatus,
+    ) -> Self {
+        let Ok(final_count) = final_count else {
+            return Self::failed(status);
+        };
+        status.count_changed |= initial_count != final_count;
+        let expected = usize::from(index < initial_count);
+        let complete = !status.count_changed && elements.len() == expected;
+        elements.truncate(expected);
+        Self {
+            elements,
+            total_count: final_count,
+            complete,
+            source_availability: ChildSourceAvailability::Available,
+            prefix_certain: complete,
+            status,
+        }
+    }
+
     pub(crate) fn truncated(&self) -> bool {
         self.elements.len() < self.total_count
     }
@@ -103,7 +127,7 @@ mod imp {
         let count_deadline =
             super::super::child_read_budget::count_deadline(max_elements, deadline);
         let mut status = ChildReadStatus::default();
-        if prepare(element, deadline, &mut status).is_err() {
+        if check_deadline(deadline, &mut status).is_err() {
             return ChildRead::failed(status);
         }
         status.attempts += 1;
@@ -136,7 +160,7 @@ mod imp {
                 count
             }
         };
-        if count_changed(count, final_count) {
+        if count != final_count {
             status.count_changed = true;
             complete = false;
             elements.truncate(final_count);
@@ -158,7 +182,7 @@ mod imp {
         deadline: std::time::Instant,
     ) -> ChildRead {
         let mut status = ChildReadStatus::default();
-        if prepare(element, deadline, &mut status).is_err() {
+        if check_deadline(deadline, &mut status).is_err() {
             return ChildRead::failed(status);
         }
         status.attempts += 1;
@@ -170,7 +194,7 @@ mod imp {
                 return ChildRead::failed(status);
             }
         };
-        let mut elements = if index < initial_count {
+        let elements = if index < initial_count {
             status.attempts += 1;
             match copy_page(element, attribute, index, 1, deadline) {
                 Ok(elements) => elements,
@@ -191,56 +215,41 @@ mod imp {
         if index < initial_count && elements.is_empty() {
             status.cursor_stalled = true;
         }
-        let final_count = match stable_count(element, attribute, deadline, &mut status) {
-            Ok(count) => count,
-            Err(error) => {
-                telemetry::record(
-                    &mut status,
-                    attribute,
-                    "stable_count",
-                    error,
-                    Some(initial_count),
-                );
-                initial_count
-            }
-        };
-        if count_changed(initial_count, final_count) {
-            status.count_changed = true;
+        let final_count = stable_count(element, attribute, deadline, &mut status);
+        if let Err(error) = final_count {
+            telemetry::record(
+                &mut status,
+                attribute,
+                "stable_count",
+                error,
+                Some(initial_count),
+            );
         }
-        let expected = usize::from(index < initial_count);
-        let complete = status.health.deadline_exhausted == 0
-            && status.health.cannot_complete == 0
-            && !status.invalid_element
-            && !status.api_disabled
-            && !status.count_changed
-            && elements.len() == expected;
-        elements.truncate(expected);
-        ChildRead {
-            elements,
-            total_count: final_count,
-            complete,
-            source_availability: ChildSourceAvailability::Available,
-            prefix_certain: complete,
-            status,
-        }
+        ChildRead::indexed(elements, initial_count, index, final_count, status)
     }
 
     /// A responder can serve the values of an attribute while failing to answer
     /// its count inside the count budget — Xcode does this for `AXWindows`. The
     /// count is only an optimisation, so a short read still proves the elements
     /// it returned; only a full page leaves the tail unknown.
-    fn read_without_count(
+    pub(super) fn read_without_count(
         element: &AXElement,
         attribute: &str,
         max_elements: usize,
         deadline: std::time::Instant,
         mut status: ChildReadStatus,
     ) -> ChildRead {
-        let Ok(elements) = read_prefix(element, attribute, max_elements, deadline, &mut status)
-        else {
+        if max_elements == 0 {
             return ChildRead::failed(status);
+        }
+        let elements = match read_prefix(element, attribute, max_elements, deadline, &mut status) {
+            Ok(elements) => elements,
+            Err(error) => {
+                telemetry::record(&mut status, attribute, "prefix", error, None);
+                return ChildRead::failed(status);
+            }
         };
-        let saturated = max_elements > 0 && elements.len() == max_elements;
+        let saturated = elements.len() == max_elements;
         ChildRead {
             total_count: elements.len() + usize::from(saturated),
             elements,
@@ -272,7 +281,7 @@ mod imp {
         status: &mut ChildReadStatus,
     ) -> Result<Vec<AXElement>, i32> {
         let result = read_paged_prefix(requested, CHILD_PAGE_SIZE, |index, page_len| {
-            prepare(element, deadline, status)
+            check_deadline(deadline, status)
                 .map_err(|_| accessibility_sys::kAXErrorCannotComplete)?;
             status.attempts += 1;
             copy_page(element, attribute, index, page_len, deadline)
@@ -287,8 +296,7 @@ mod imp {
         deadline: std::time::Instant,
         status: &mut ChildReadStatus,
     ) -> Result<usize, i32> {
-        prepare(element, deadline, status)
-            .map_err(|_| accessibility_sys::kAXErrorCannotComplete)?;
+        check_deadline(deadline, status).map_err(|_| accessibility_sys::kAXErrorCannotComplete)?;
         status.attempts += 1;
         child_count(element, attribute, deadline)
     }
@@ -333,29 +341,19 @@ mod imp {
         Ok(elements)
     }
 
-    fn prepare(
-        element: &AXElement,
+    fn check_deadline(
         deadline: std::time::Instant,
         status: &mut ChildReadStatus,
     ) -> Result<(), ()> {
-        crate::tree::locator_deadline::prepare(element, deadline)
+        crate::tree::locator_deadline::remaining(deadline)
             .map(|_| ())
             .map_err(|_| {
                 status.health.deadline_exhausted = 1;
             })
     }
 
-    #[cfg(test)]
-    pub(super) fn record_error(status: &mut ChildReadStatus, error: i32) {
-        telemetry::record_status(status, error);
-    }
-
     pub(super) fn is_absent_error(error: i32) -> bool {
         error == kAXErrorAttributeUnsupported || error == kAXErrorNoValue
-    }
-
-    pub(super) fn count_changed(initial: usize, final_count: usize) -> bool {
-        initial != final_count
     }
 }
 

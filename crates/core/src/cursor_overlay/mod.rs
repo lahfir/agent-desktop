@@ -18,7 +18,10 @@ pub use motion::CursorMotion;
 pub use phase::CursorPhase;
 pub use pose::CursorPose;
 pub use style::CursorOverlayStyle;
-pub(crate) use submit::submit;
+pub(crate) use submit::{
+    cancel_drag, confirms_delivery, dispatch_mouse_event_with_cursor, input_was_delivered, submit,
+    submit_drag, submit_drag_effect, submit_travel,
+};
 pub use timing::{CURSOR_ARRIVAL_TIMEOUT_MS, CURSOR_HIGHLIGHT_HOLD_MS, CURSOR_IDLE_REST_MS};
 
 #[cfg(test)]

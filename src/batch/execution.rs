@@ -78,6 +78,19 @@ pub(super) fn execute(
             None => None,
         };
 
+        if let Some(ended_session) = session_ended_for(&commands[index]) {
+            let error = batch_session_ended(index, &commands[index].name, &ended_session);
+            push_small_entry(
+                &mut results,
+                &mut results_bytes,
+                not_started_entry(index, &commands[index].name, "session_ended", error),
+            );
+            if args.stop_on_error {
+                stopped = Some(json!({ "reason": "stop_on_error", "index": index }));
+                break;
+            }
+            continue;
+        }
         let item_context = commands[index]
             .context
             .clone()
@@ -184,6 +197,32 @@ fn baseline_error(
     source.details = Some(details);
     source.disposition = DeliverySemantics::not_delivered();
     source.into()
+}
+
+fn session_ended_for(command: &PreparedCommand) -> Option<String> {
+    let session_id = command.context.session_id()?;
+    match agent_desktop_core::session::read_manifest(session_id) {
+        Ok(Some(manifest)) if manifest.ended_at.is_some() => Some(session_id.to_owned()),
+        _ => None,
+    }
+}
+
+fn batch_session_ended(index: usize, command: &str, session_id: &str) -> AppError {
+    AdapterError::new(
+        ErrorCode::InvalidArgs,
+        format!(
+            "Batch entry {index} ('{command}') was not started because session '{session_id}' has ended"
+        ),
+    )
+    .with_suggestion("Re-run the entry outside the ended session or start a new session")
+    .with_details(json!({
+        "kind": "batch_session_ended",
+        "batch_index": index,
+        "batch_command": command,
+        "session_id": session_id,
+    }))
+    .with_disposition(DeliverySemantics::not_delivered())
+    .into()
 }
 
 fn batch_timeout(index: usize, command: &str, timeout_ms: u64) -> AppError {

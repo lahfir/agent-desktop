@@ -136,4 +136,23 @@ source "$here/scenarios/trace_performance.sh"
 # shellcheck source=tests/e2e/scenarios/notifications.sh
 source "$here/scenarios/notifications.sh"
 
+note "Multi-agent cursor probe"
+if "$bin" close-app "$app" --force >/dev/null 2>&1; then
+    fixture_owned=0
+    for mode in headless headed; do
+        cursor_flags=()
+        if [[ "$mode" == headed ]]; then cursor_flags=(--headed); fi
+        if python3 "$repo/scripts/cursor-multi-agent-probe.py" \
+            --bin "$raw_bin" \
+            --fixture "$fixture_app/Contents/MacOS/AgentDeskFixture" \
+            --out "$suite_root/multi-agent-cursor-$mode" "${cursor_flags[@]}"; then
+            okmsg "$mode multi-agent cursors share session state and preserve renderer isolation"
+        else
+            badmsg "$mode multi-agent cursor probe failed"
+        fi
+    done
+else
+    badmsg "fixture could not be restarted for the multi-agent cursor probe"
+fi
+
 finish

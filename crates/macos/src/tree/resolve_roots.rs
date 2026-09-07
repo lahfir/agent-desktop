@@ -2,7 +2,7 @@ use agent_desktop_core::{AdapterError, RefEntry, SnapshotSurface};
 
 use super::AXElement;
 use super::element::element_for_pid;
-use super::element_dedupe::ElementDedupe;
+use super::element_dedupe::push_unique;
 use super::resolve_read_context::ResolveReadContext;
 
 #[cfg(target_os = "macos")]
@@ -33,30 +33,25 @@ pub(super) fn candidate_roots(
     }
 
     let mut roots = Vec::new();
-    let mut dedupe = ElementDedupe;
     let windows = read_root_array(&application, "AXWindows", context)?;
     if windows.as_ref().is_some_and(|windows| !windows.is_empty()) {
-        add_array(&mut roots, &mut dedupe, windows);
+        add_array(&mut roots, windows);
     } else {
         add_optional_element(
             &mut roots,
-            &mut dedupe,
             super::resolve_ax_read::read_element(&application, "AXFocusedWindow", deadline)?,
         );
         add_optional_element(
             &mut roots,
-            &mut dedupe,
             super::resolve_ax_read::read_element(&application, "AXMainWindow", deadline)?,
         );
     }
     add_array(
         &mut roots,
-        &mut dedupe,
         read_root_array(&application, "AXMenus", context)?,
     );
     add_array(
         &mut roots,
-        &mut dedupe,
         read_root_array(&application, "AXChildren", context)?,
     );
     crate::tree::locator_deadline::remaining(deadline)?;
@@ -303,24 +298,16 @@ fn verify_source_application(
 }
 
 #[cfg(target_os = "macos")]
-fn add_optional_element(
-    roots: &mut Vec<AXElement>,
-    dedupe: &mut ElementDedupe,
-    element: Option<AXElement>,
-) {
+fn add_optional_element(roots: &mut Vec<AXElement>, element: Option<AXElement>) {
     if let Some(element) = element {
-        dedupe.push(roots, element);
+        push_unique(roots, element);
     }
 }
 
 #[cfg(target_os = "macos")]
-fn add_array(
-    roots: &mut Vec<AXElement>,
-    dedupe: &mut ElementDedupe,
-    elements: Option<Vec<AXElement>>,
-) {
+fn add_array(roots: &mut Vec<AXElement>, elements: Option<Vec<AXElement>>) {
     for element in elements.unwrap_or_default() {
-        dedupe.push(roots, element);
+        push_unique(roots, element);
     }
 }
 

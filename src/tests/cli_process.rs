@@ -218,3 +218,133 @@ fn malformed_permission_helper_invocation_bypasses_clap_and_tracing() {
     assert_eq!(response["ok"], false);
     assert_eq!(response["error"], "invalid_helper_invocation");
 }
+
+#[test]
+fn agent_identity_flag_overrides_environment_and_rejects_invalid_ids() {
+    let output = binary()
+        .args(["--agent-id", "worker-a", "session", "list"])
+        .env("AGENT_DESKTOP_AGENT_ID", "../invalid")
+        .env_remove("AGENT_DESKTOP_SESSION")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let output = binary()
+        .args(["session", "list"])
+        .env("AGENT_DESKTOP_AGENT_ID", "../invalid")
+        .env_remove("AGENT_DESKTOP_SESSION")
+        .output()
+        .unwrap();
+    let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(response["error"]["code"], "INVALID_ARGS");
+}
+
+#[cfg(unix)]
+fn create_private_dir(dir: &std::path::Path) {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)
+        .expect("create state root");
+}
+
+#[cfg(not(unix))]
+fn create_private_dir(dir: &std::path::Path) {
+    std::fs::create_dir_all(dir).expect("create state root");
+}
+
+#[test]
+fn batch_entry_after_mid_batch_session_end_is_skipped_without_aborting_batch() {
+    let dir = std::env::temp_dir().join(format!(
+        "agent-desktop-cli-batch-session-end-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    create_private_dir(&dir);
+    let start = binary()
+        .args(["session", "start", "--no-trace"])
+        .env("AGENT_DESKTOP_HOME", &dir)
+        .output()
+        .expect("binary starts");
+    let start_envelope: serde_json::Value =
+        serde_json::from_slice(&start.stdout).expect("stdout is one JSON envelope");
+    assert!(start.status.success());
+    let session_id = start_envelope["data"]["session_id"]
+        .as_str()
+        .expect("session start returns a session id")
+        .to_owned();
+    let commands = serde_json::json!([
+        {"command": "session", "session": session_id, "args": {"action": "end"}},
+        {"command": "clipboard-clear", "session": session_id, "args": {}},
+        {"command": "version", "args": {}},
+    ]);
+    let output = binary()
+        .arg("batch")
+        .arg(commands.to_string())
+        .env("AGENT_DESKTOP_HOME", &dir)
+        .output()
+        .expect("binary starts");
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout is one JSON envelope");
+
+    assert!(output.status.success());
+    assert_eq!(envelope["ok"], true);
+    let data = &envelope["data"];
+    assert_eq!(data["results"][0]["execution"], "completed");
+    assert_eq!(data["results"][0]["ok"], true);
+    assert_eq!(data["results"][0]["data"]["session_id"], session_id);
+    assert!(data["results"][0]["data"]["ended_at"].is_number());
+    assert_eq!(data["results"][1]["execution"], "not_started");
+    assert_eq!(data["results"][1]["not_started_reason"], "session_ended");
+    assert_eq!(data["results"][1]["ok"], false);
+    assert_eq!(data["results"][1]["error"]["code"], "INVALID_ARGS");
+    assert!(
+        data["results"][1]["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains(session_id.as_str()))
+    );
+    assert_eq!(data["results"][2]["execution"], "completed");
+    assert_eq!(data["results"][2]["ok"], true);
+    assert_eq!(data["total_entries"], 3);
+    assert_eq!(data["completed_entries"], 2);
+    assert_eq!(data["not_started_entries"], 1);
+    assert!(data.get("stopped").is_none());
+    let start = binary()
+        .args(["session", "start", "--no-trace"])
+        .env("AGENT_DESKTOP_HOME", &dir)
+        .output()
+        .expect("new session starts");
+    let new_session: serde_json::Value = serde_json::from_slice(&start.stdout).unwrap();
+    let next_id = new_session["data"]["session_id"].as_str().unwrap();
+    let stopped = binary()
+        .arg("batch")
+        .arg(
+            serde_json::json!([
+                {"command": "session", "session": next_id, "args": {"action": "end"}},
+                {"command": "version", "session": next_id, "args": {}},
+                {"command": "version", "args": {}}
+            ])
+            .to_string(),
+        )
+        .arg("--stop-on-error")
+        .env("AGENT_DESKTOP_HOME", &dir)
+        .output()
+        .expect("batch starts");
+    let stopped: serde_json::Value = serde_json::from_slice(&stopped.stdout).unwrap();
+    assert_eq!(stopped["data"]["stopped"]["reason"], "stop_on_error");
+    assert_eq!(stopped["data"]["results"].as_array().unwrap().len(), 2);
+    let manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.join("sessions").join(&session_id).join("session.json"))
+            .expect("ended manifest remains on disk"),
+    )
+    .expect("manifest is JSON");
+    assert!(manifest["ended_at"].is_number());
+    let _ = std::fs::remove_dir_all(&dir);
+}

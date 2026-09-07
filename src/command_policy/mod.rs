@@ -110,6 +110,24 @@ pub(crate) fn preflight(cmd: &Commands, report: &PermissionReport) -> Result<(),
     Ok(())
 }
 
+pub(crate) fn preflight_context(
+    cmd: &Commands,
+    context: &agent_desktop_core::context::CommandContext,
+) -> Result<(), AppError> {
+    if cfg!(target_os = "macos")
+        && context.multi_agent()
+        && context.agent_id().is_none()
+        && cmd.is_mutating()
+        && policy_for(cmd) == PermissionNeed::Accessibility
+    {
+        return Err(AppError::invalid_input_with_suggestion(
+            "Multi-agent sessions require --agent-id for desktop actions",
+            "Set --agent-id or AGENT_DESKTOP_AGENT_ID before running the command.",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn requires_permission_report(cmd: &Commands) -> bool {
     policy_for(cmd) != PermissionNeed::None
         || matches!(

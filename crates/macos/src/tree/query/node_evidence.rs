@@ -1,6 +1,5 @@
 use agent_desktop_core::{
-    EvidenceRequirements, IdentifierEvidence, LocatorEvidence, LocatorField, LocatorRefEvidence,
-    LocatorStats,
+    IdentifierEvidence, LocatorEvidence, LocatorField, LocatorRefEvidence, LocatorStats,
 };
 
 fn is_wrapper_candidate(
@@ -116,21 +115,6 @@ pub(crate) fn identifiers(
         (!values.is_empty()).then_some(0)
     };
     IdentifierEvidence::typed(values, preferred, complete)
-}
-
-pub(crate) fn required_complete(
-    evidence: &LocatorEvidence,
-    requirements: EvidenceRequirements,
-) -> bool {
-    (!requirements.role || !evidence.role.is_unknown())
-        && (!requirements.name || !evidence.name.is_unknown())
-        && (!requirements.description || !evidence.description.is_unknown())
-        && (!requirements.value || !evidence.value.is_unknown())
-        && (!requirements.identifiers || evidence.identifiers.is_complete())
-        && (!requirements.states || !evidence.states.is_unknown())
-        && (!requirements.ref_evidence.bounds || !evidence.ref_evidence.bounds.is_unknown())
-        && (!requirements.ref_evidence.actions
-            || !evidence.ref_evidence.available_actions.is_unknown())
 }
 
 #[cfg(test)]

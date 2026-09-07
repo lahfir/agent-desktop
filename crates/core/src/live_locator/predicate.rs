@@ -50,6 +50,12 @@ pub(crate) fn self_verdict(
     let (identifier, identifier_match) =
         identifier_verdict(query.identity.native_id.as_deref(), evidence);
     let verdict = role_verdict(query.identity.role.as_deref(), &evidence.role)
+        .and(identifier)
+        .and(states_verdict(query, evidence));
+    if verdict == MatchVerdict::NoMatch {
+        return verdict;
+    }
+    let verdict = verdict
         .and(text_verdict(
             query.identity.name.as_deref(),
             &evidence.name,
@@ -60,13 +66,11 @@ pub(crate) fn self_verdict(
             &evidence.description,
             query.exact,
         ))
-        .and(identifier)
         .and(text_verdict(
             query.identity.value.as_deref(),
             &evidence.value,
             query.exact,
-        ))
-        .and(states_verdict(query, evidence));
+        ));
     if verdict == MatchVerdict::Match {
         match identifier_match {
             Some(IdentifierMatch::Preferred) => identifier_stats.preferred_matches += 1,
@@ -87,15 +91,10 @@ pub(crate) fn self_text_verdict(
     };
     let mut verdict = MatchVerdict::NoMatch;
     for field in [&evidence.name, &evidence.description, &evidence.value] {
-        verdict = verdict.or(match field {
-            LocatorField::Known(actual) => bool_verdict(if exact {
-                search_text::normalize(actual) == expected
-            } else {
-                search_text::contains(actual, expected)
-            }),
-            LocatorField::Absent => MatchVerdict::NoMatch,
-            LocatorField::Unknown => MatchVerdict::Unknown,
-        });
+        verdict = verdict.or(text_verdict(Some(expected), field, exact));
+        if verdict == MatchVerdict::Match {
+            return verdict;
+        }
     }
     verdict
 }
@@ -104,7 +103,11 @@ fn role_verdict(expected: Option<&str>, actual: &LocatorField<String>) -> MatchV
     let Some(expected) = expected else {
         return MatchVerdict::Match;
     };
-    field_equality(actual, expected)
+    match actual {
+        LocatorField::Known(actual) => bool_verdict(actual == expected),
+        LocatorField::Absent => MatchVerdict::NoMatch,
+        LocatorField::Unknown => MatchVerdict::Unknown,
+    }
 }
 
 fn text_verdict(
@@ -175,14 +178,6 @@ fn states_verdict(query: &LocatorQuery, evidence: &LocatorEvidence) -> MatchVerd
                 .iter()
                 .all(|predicate| predicate.expected == Some(false)),
         ),
-        LocatorField::Unknown => MatchVerdict::Unknown,
-    }
-}
-
-fn field_equality(actual: &LocatorField<String>, expected: &str) -> MatchVerdict {
-    match actual {
-        LocatorField::Known(actual) => bool_verdict(actual == expected),
-        LocatorField::Absent => MatchVerdict::NoMatch,
         LocatorField::Unknown => MatchVerdict::Unknown,
     }
 }

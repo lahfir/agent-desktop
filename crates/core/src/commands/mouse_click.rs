@@ -25,15 +25,19 @@ pub fn execute(
         y: args.y,
     };
     point.validate()?;
-    adapter.mouse_event(
+    let result = crate::cursor_overlay::dispatch_mouse_event_with_cursor(
+        adapter,
+        context,
         MouseEvent {
             kind: MouseEventKind::Click { count: args.count },
             point,
             button: args.button,
             modifiers: args.modifiers,
         },
+        true,
         &lease,
-    )?;
+    );
+    result?;
     Ok(json!({ "clicked": true, "x": args.x, "y": args.y, "count": args.count }))
 }
 

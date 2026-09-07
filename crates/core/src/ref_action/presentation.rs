@@ -1,30 +1,16 @@
 use super::{ActionabilityPreflight, ResolvedRefAction};
 use crate::cursor_overlay::CursorPhase;
-use crate::{Action, CommandContext, DeliveryDisposition, DeliverySemantics, PlatformAdapter};
-
-const DISPATCH_RESERVE_MS: u64 = 100;
+use crate::{Action, CommandContext, PlatformAdapter};
 
 pub(super) fn before_dispatch(
     target: &ResolvedRefAction<'_>,
     preflight: &ActionabilityPreflight,
     lease: &crate::InteractionLease,
 ) {
-    if lease.deadline().remaining_ms()
-        <= crate::CURSOR_ARRIVAL_TIMEOUT_MS.saturating_add(DISPATCH_RESERVE_MS)
-    {
-        return;
-    }
-    let Some(destination) = preflight.presentation_point.clone() else {
+    let Some(destination) = destination(preflight) else {
         return;
     };
-    crate::cursor_overlay::submit(
-        target.adapter,
-        target.context,
-        destination,
-        None,
-        false,
-        CursorPhase::Travel,
-    );
+    crate::cursor_overlay::submit_travel(target.adapter, target.context, destination, lease);
 }
 
 pub(super) fn after_dispatch(
@@ -38,10 +24,10 @@ pub(super) fn after_dispatch(
         Ok(result) => result.disposition(),
         Err(error) => error.disposition,
     };
-    if !confirms_dispatch(disposition) {
+    if !crate::cursor_overlay::confirms_delivery(disposition) {
         return;
     }
-    let Some(destination) = preflight.presentation_point.clone() else {
+    let Some(destination) = destination(preflight) else {
         return;
     };
     crate::cursor_overlay::submit(
@@ -54,13 +40,11 @@ pub(super) fn after_dispatch(
     );
 }
 
-fn confirms_dispatch(disposition: DeliverySemantics) -> bool {
-    matches!(
-        disposition.delivery(),
-        DeliveryDisposition::DeliveryUncertain
-            | DeliveryDisposition::DeliveredUnverified
-            | DeliveryDisposition::DeliveredVerified
-    )
+fn destination(preflight: &ActionabilityPreflight) -> Option<crate::Point> {
+    match preflight.pointer_delivery {
+        crate::actionability::PointerDelivery::Physical => preflight.verified_point.clone(),
+        _ => preflight.presentation_point.clone(),
+    }
 }
 
 fn is_click(action: &Action) -> bool {

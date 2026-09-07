@@ -330,9 +330,9 @@ When `--snapshot` is omitted, the command polls the caller's latest session refm
 
 ### wait (window)
 ```bash
-agent-desktop wait --window "Save As" --timeout 10000
+agent-desktop wait --window "Save As" --app "TextEdit" --timeout 10000
 ```
-Blocks until a window with the given title appears.
+Blocks until a window whose title contains the given text is present. `--app` restricts matches to that application; without it, all applications are searched. On timeout, `details.last_observed` reports the scoped window count and up to eight titles, each capped at 120 characters, with `truncated` indicating omitted content. This distinguishes a missing expected window from a shortcut whose key delivery succeeded.
 
 ### wait (text)
 ```bash
@@ -406,7 +406,7 @@ agent-desktop batch '[{"command":"launch","args":{"app":"Obsidian","cdp":0}}]'
 ```
 Execute multiple commands in sequence from a JSON array. Each entry has `command` (string) and `args` (object). Use `args`, not `params`. For ref-consuming commands, pass the output `snapshot_id` as the `snapshot` field.
 
-Batch uses the same typed `Commands` enum, command policy preflight, permission report, and dispatch path as the CLI. Unknown fields are rejected instead of being silently ignored. Nested `batch` is rejected.
+Batch uses the same typed `Commands` enum, command policy preflight, permission report, and dispatch path as the CLI. Unknown fields are rejected instead of being silently ignored. Nested `batch` is rejected. If an entry’s session ends before dispatch, that entry is reported as `not_started` with reason `session_ended`; `--stop-on-error` stops there, otherwise later entries continue.
 
 Each entry may include `"session": "id"` beside `command` and `args`. If omitted, the entry inherits the top-level resolved session. Use per-entry sessions only when intentionally inspecting or coordinating separate agent runs.
 
@@ -466,7 +466,7 @@ agent-desktop cursor-overlay disable
 
 No flags gives the default look: white body, near-black rim, blue ripple, blue element outline.
 
-Style is stored in the session manifest and inherited by every eligible headless command, batch entries included. Action and batch-entry schemas take no cursor flags. Run `enable` again to restyle; it applies at once.
+Style is stored in the session manifest and inherited by every eligible headless or headed command, batch entries included. Action and batch-entry schemas take no cursor flags. Run `enable` again to restyle; it applies at once.
 
 | Flag | Meaning | Default |
 |---|---|---|
@@ -482,13 +482,37 @@ Style is stored in the session manifest and inherited by every eligible headless
 Behaviour:
 
 - Travel is a human path, 90 to 320 ms. The cursor never rotates or resizes.
-- The action waits for the cursor to land, capped at 900 ms. A slow renderer never blocks it.
+- The action waits for cursor arrival confirmation, capped at 900 ms. An unconfirmed arrival reports a warning and the action still proceeds.
 - A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
 - The card shows the label. With no label there is no card.
+- Drags show a live accent-colored path while held and fade after release, controlled by the ripple setting and suppressed under Reduce Motion.
 - Idle for 6 s it fades out; the next command restores it.
 - `disable` removes it and stops the renderer. Ending the session is not needed.
-- Headed actions hide it while the real pointer is in use.
+- Headed actions retain it while the real pointer is in use.
 - macOS renders it natively; other platforms use the adapter's presentation no-op.
+
+### Shared-session subagent cursors (macOS)
+
+```bash
+agent-desktop session start --cursor --multi-agent
+export AGENT_DESKTOP_SESSION=<returned-session-id>
+```
+
+Cursor presentation works in both headless and headed mode. Physical pointer commands use the same per-agent overlays; the interaction lease coordinates the shared OS pointer.
+
+The harness gives each subagent a stable `AGENT_DESKTOP_AGENT_ID` (or global `--agent-id`, which takes precedence). IDs use 1–64 letters, digits, `-` or `_`. Every desktop UI action in this mode requires the ID; observations, clipboard operations, and session administration do not. Style commands only save a profile; the next verified action presents it. Three active IDs create three independent cursors. Reusing an ID reuses its cursor. There is no extra coordinator cursor or registration step.
+
+Each agent inherits the session style. To customize one agent:
+
+```bash
+agent-desktop --agent-id researcher cursor-overlay enable --label "Checking details" --accent "#FF3B7B"
+agent-desktop --agent-id writer cursor-overlay enable --label "Updating draft" --fill "#FFE080"
+agent-desktop --agent-id reviewer cursor-overlay enable --label "Reviewing result" --accent "#49C98A"
+```
+
+Use the same ID on subsequent actions or export it in that subagent's environment. Profiles persist under the session; they do not create separate snapshots. Invalid profile JSON or style values fall back to the session style with a warning; unsafe or unreadable profile files still fail. Use snapshot-qualified refs when subagents observe concurrently. Distinct overlays do not make concurrent actions on the same application safe; the harness still coordinates dependent work and physical input. Running `cursor-overlay enable --multi-agent` converts the session scope post-hoc and rejects `--agent-id`, so per-agent styling never takes `--multi-agent`.
+
+`cursor-overlay disable` and `session end` remove all session cursors, even when called with an agent ID. Headed actions present the calling agent's overlay. Each inactive cursor keeps the existing six-second fade. Other platforms retain their existing behavior.
 
 ### session start
 ```bash

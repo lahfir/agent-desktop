@@ -1,8 +1,39 @@
-use super::imp::{count_changed, is_absent_error, record_error};
+use super::super::child_read_telemetry::record_status as record_error;
+use super::imp::{is_absent_error, read_without_count};
 use super::*;
 use accessibility_sys::{
     kAXErrorAttributeUnsupported, kAXErrorCannotComplete, kAXErrorFailure, kAXErrorNoValue,
 };
+
+#[test]
+fn child_reads_distinguish_expired_deadlines_from_invalid_elements() {
+    let element = AXElement(std::ptr::null_mut());
+    let expired = read_attribute_children(&element, "AXChildren", 1, std::time::Instant::now());
+
+    assert!(!expired.complete);
+    assert_eq!(expired.status.health.deadline_exhausted, 1);
+    assert_eq!(expired.status.attempts, 0);
+    assert!(!expired.status.invalid_element);
+
+    for max_elements in [0, 1] {
+        let invalid = read_attribute_children(
+            &element,
+            "AXChildren",
+            max_elements,
+            std::time::Instant::now() + std::time::Duration::from_secs(1),
+        );
+
+        assert!(!invalid.complete);
+        assert!(!invalid.prefix_certain);
+        assert_eq!(
+            invalid.source_availability,
+            ChildSourceAvailability::Unknown
+        );
+        assert!(invalid.status.invalid_element);
+        assert_eq!(invalid.status.health.deadline_exhausted, 0);
+        assert_eq!(invalid.status.attempts, 1 + max_elements as u64);
+    }
+}
 
 #[test]
 fn unsupported_and_missing_child_attributes_are_authoritatively_absent() {
@@ -27,10 +58,38 @@ fn bounded_child_read_distinguishes_truncation_from_native_failure() {
 }
 
 #[test]
-fn child_count_change_is_not_a_complete_observation() {
-    assert!(count_changed(4, 3));
-    assert!(count_changed(3, 4));
-    assert!(!count_changed(4, 4));
+fn indexed_child_requires_a_successful_unchanged_final_count() {
+    for final_count in [
+        Ok(1),
+        Ok(0),
+        Ok(2),
+        Err(kAXErrorFailure),
+        Err(kAXErrorNoValue),
+        Err(kAXErrorAttributeUnsupported),
+        Err(kAXErrorCannotComplete),
+        Err(i32::MIN),
+    ] {
+        let mut status = ChildReadStatus {
+            attempts: 3,
+            ..Default::default()
+        };
+        if let Err(error) = final_count {
+            record_error(&mut status, error);
+        }
+        let read = ChildRead::indexed(
+            vec![AXElement(std::ptr::null_mut())],
+            1,
+            0,
+            final_count,
+            status,
+        );
+        assert_eq!(read.complete, final_count == Ok(1));
+        assert_eq!(read.prefix_certain, read.complete);
+        assert_eq!(read.status.attempts, 3);
+        if final_count == Err(kAXErrorFailure) {
+            assert_eq!(read.status.health.native_read_failures, 1);
+        }
+    }
 }
 
 #[test]
@@ -51,14 +110,13 @@ fn cursor_stall_is_preserved_when_statuses_merge() {
 
 #[test]
 fn indexed_child_read_is_not_rejected_for_unread_siblings() {
-    let read = ChildRead {
-        elements: vec![AXElement(std::ptr::null_mut())],
-        total_count: 10_000,
-        complete: true,
-        source_availability: ChildSourceAvailability::Available,
-        prefix_certain: true,
-        status: ChildReadStatus::default(),
-    };
+    let read = ChildRead::indexed(
+        vec![AXElement(std::ptr::null_mut())],
+        10_000,
+        3,
+        Ok(10_000),
+        ChildReadStatus::default(),
+    );
 
     assert!(read.complete);
     assert!(read.truncated());
@@ -141,4 +199,26 @@ fn ax_failure_remains_a_native_read_failure() {
 
     assert_eq!(status.health.native_read_failures, 1);
     assert_eq!(status.health.cannot_complete, 0);
+}
+
+#[test]
+fn count_fallback_preserves_a_terminal_prefix_failure() {
+    let mut status = ChildReadStatus {
+        attempts: 1,
+        ..Default::default()
+    };
+    record_error(&mut status, kAXErrorCannotComplete);
+    let read = read_without_count(
+        &AXElement(std::ptr::null_mut()),
+        "AXChildren",
+        1,
+        std::time::Instant::now() + std::time::Duration::from_secs(1),
+        status,
+    );
+
+    assert!(read.status.invalid_element);
+    assert_eq!(read.status.health.cannot_complete, 1);
+    assert_eq!(read.status.attempts, 2);
+    assert!(!read.complete);
+    assert!(!read.prefix_certain);
 }

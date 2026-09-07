@@ -239,7 +239,7 @@ fn changed_during_hydration() -> AdapterError {
 }
 
 fn query_incomplete(validation: &LocatorResolution) -> AdapterError {
-    let deterministic = has_deterministic_limit(&validation.stats);
+    let deterministic = super::resolve::has_deterministic_limit(&validation.stats);
     AdapterError::timeout("Selected locator query could not be revalidated")
         .with_suggestion("Retry against a stable subtree or use a narrower locator")
         .with_details(json!({
@@ -254,15 +254,6 @@ fn query_incomplete(validation: &LocatorResolution) -> AdapterError {
             "query_stats": &validation.stats,
         }))
         .with_disposition(crate::DeliverySemantics::not_delivered())
-}
-
-fn has_deterministic_limit(stats: &super::LocatorStats) -> bool {
-    let limits = &stats.traversal.limits;
-    limits.node_hits > 0
-        || limits.edge_hits > 0
-        || limits.child_hits > 0
-        || limits.text_hits > 0
-        || limits.depth_hits > 0
 }
 
 fn evidence_incomplete(

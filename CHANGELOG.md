@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.5](https://github.com/lahfir/agent-desktop/compare/v0.8.4...v0.8.5) (2026-09-06)
+
+
+### Features
+
+* combine multi-agent cursors with core and macOS optimizations ([#171](https://github.com/lahfir/agent-desktop/issues/171)) ([922bb7d](https://github.com/lahfir/agent-desktop/commit/922bb7d5b59f2cc8cfaad9896c81fb8fed545bec))
+
 ## [0.8.4](https://github.com/lahfir/agent-desktop/compare/v0.8.3...v0.8.4) (2026-08-28)
 
 

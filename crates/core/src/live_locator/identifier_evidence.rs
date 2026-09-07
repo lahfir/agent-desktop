@@ -26,23 +26,25 @@ impl IdentifierEvidence {
         preferred: Option<usize>,
         complete: bool,
     ) -> Self {
-        let original = identifiers.into_iter().collect::<Vec<_>>();
-        let preferred_value = preferred
-            .and_then(|index| original.get(index))
-            .filter(|identifier| !identifier.value.trim().is_empty())
-            .cloned();
         let mut normalized = Vec::new();
-        for identifier in original {
-            if !identifier.value.trim().is_empty() && !normalized.contains(&identifier) {
+        let mut normalized_preferred = None;
+        for (index, identifier) in identifiers.into_iter().enumerate() {
+            if identifier.value.trim().is_empty() {
+                continue;
+            }
+            let position = normalized
+                .iter()
+                .position(|candidate| candidate == &identifier);
+            if preferred == Some(index) {
+                normalized_preferred = Some(position.unwrap_or(normalized.len()));
+            }
+            if position.is_none() {
                 normalized.push(identifier);
             }
         }
-        let preferred = preferred_value
-            .as_ref()
-            .and_then(|value| normalized.iter().position(|candidate| candidate == value));
         Self {
             identifiers: normalized,
-            preferred,
+            preferred: normalized_preferred,
             complete,
         }
     }

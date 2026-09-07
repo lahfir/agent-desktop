@@ -16,6 +16,13 @@ impl<T> LocatorField<T> {
     pub fn is_unknown(&self) -> bool {
         matches!(self, Self::Unknown)
     }
+
+    pub(crate) fn take_known(&mut self) -> Option<T> {
+        match std::mem::replace(self, Self::Unknown) {
+            Self::Known(value) => Some(value),
+            Self::Absent | Self::Unknown => None,
+        }
+    }
 }
 
 impl LocatorField<String> {

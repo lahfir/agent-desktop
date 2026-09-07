@@ -1,21 +1,17 @@
 use agent_desktop_core::{
     AppError, PermissionReport, PlatformAdapter,
     commands::{
-        permissions as permissions_command, skills as skills_command, status as status_command,
-        version as version_command, wait as wait_command, wait_surface::SurfaceWait,
+        permissions as permissions_command, skills as skills_command, wait as wait_command,
+        wait_surface::SurfaceWait,
     },
     context::CommandContext,
 };
 use serde_json::Value;
 
 use crate::cli_args::{
-    batch::BatchArgs,
-    session::SessionArgs,
     skills::{SkillsAction, SkillsArgs},
     system::{PermissionsArgs, WaitArgs},
-    trace::TraceArgs,
 };
-use crate::dispatch::{session as session_dispatch, trace as trace_dispatch};
 
 pub(super) fn wait(
     args: WaitArgs,
@@ -52,14 +48,6 @@ pub(super) fn wait(
     )
 }
 
-pub(super) fn status(
-    adapter: &dyn PlatformAdapter,
-    permission_report: &PermissionReport,
-    context: &CommandContext,
-) -> Result<Value, AppError> {
-    status_command::execute_with_report_with_context(adapter, permission_report, context)
-}
-
 pub(super) fn permissions(
     args: PermissionsArgs,
     adapter: &dyn PlatformAdapter,
@@ -74,10 +62,6 @@ pub(super) fn permissions(
     )
 }
 
-pub(super) fn version() -> Result<Value, AppError> {
-    version_command::execute()
-}
-
 pub(super) fn skills(args: SkillsArgs) -> Result<Value, AppError> {
     match args.action.unwrap_or(SkillsAction::List) {
         SkillsAction::List => skills_command::list(),
@@ -88,25 +72,4 @@ pub(super) fn skills(args: SkillsArgs) -> Result<Value, AppError> {
             reference: get.reference,
         }),
     }
-}
-
-pub(super) fn session(
-    args: SessionArgs,
-    adapter: &dyn PlatformAdapter,
-    context: &CommandContext,
-) -> Result<Value, AppError> {
-    session_dispatch::dispatch(args, adapter, context)
-}
-
-pub(super) fn trace(args: TraceArgs, context: &CommandContext) -> Result<Value, AppError> {
-    trace_dispatch::dispatch(args, context)
-}
-
-pub(super) fn batch(
-    args: BatchArgs,
-    adapter: &dyn PlatformAdapter,
-    permission_report: &PermissionReport,
-    context: &CommandContext,
-) -> Result<Value, AppError> {
-    crate::batch::execute(args, adapter, permission_report, context)
 }

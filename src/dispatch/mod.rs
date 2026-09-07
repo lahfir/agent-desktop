@@ -10,8 +10,11 @@ mod session;
 mod system;
 mod trace;
 
+#[cfg(test)]
+mod test_support;
+
 use agent_desktop_core::{
-    AppError, CursorOverlayControl, PermissionReport, PlatformAdapter, context::CommandContext,
+    AppError, PermissionReport, PlatformAdapter, commands, context::CommandContext,
 };
 use serde_json::Value;
 
@@ -24,20 +27,11 @@ pub(crate) fn dispatch(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     tracing::debug!("dispatch: {}", cmd.name());
-    let overlay_session =
-        if cmd.is_mutating() && context.is_headed() && context.cursor_overlay().is_enabled() {
-            context.session_id().map(str::to_owned)
-        } else {
-            None
-        };
     let scope = if cmd.is_mutating() {
         context.mutating_command_scope(cmd.name())?
     } else {
         context.command_scope(cmd.name())?
     };
-    if let Some(session_id) = overlay_session.as_ref() {
-        let _ = adapter.update_cursor_overlay(&CursorOverlayControl::hide(session_id.clone()));
-    }
     let result = match cmd {
         Commands::Snapshot(args) => observation::snapshot(args, adapter, context),
         Commands::Find(args) => observation::find(args, adapter, context),
@@ -73,7 +67,7 @@ pub(crate) fn dispatch(
         Commands::Launch(args) => app_window::launch(args, adapter),
         Commands::CloseApp(args) => app_window::close_app(args, adapter),
         Commands::ListWindows(args) => app_window::list_windows(args, adapter),
-        Commands::ListDisplays => app_window::list_displays(adapter),
+        Commands::ListDisplays => commands::list_displays::execute(adapter),
         Commands::ListApps(args) => app_window::list_apps(args, adapter),
         Commands::FocusWindow(args) => app_window::focus_window(args, adapter),
         Commands::ResizeWindow(args) => app_window::resize_window(args, adapter),
@@ -90,20 +84,19 @@ pub(crate) fn dispatch(
         Commands::NotificationAction(args) => notifications::action(args, adapter, context),
         Commands::ClipboardGet(args) => clipboard::get(args, adapter, context),
         Commands::ClipboardSet(args) => clipboard::set(args, adapter),
-        Commands::ClipboardClear => clipboard::clear(adapter),
+        Commands::ClipboardClear => commands::clipboard_clear::execute(adapter),
         Commands::Wait(args) => system::wait(args, adapter, context),
-        Commands::Status => system::status(adapter, permission_report, context),
+        Commands::Status => {
+            commands::status::execute_with_report_with_context(adapter, permission_report, context)
+        }
         Commands::Permissions(args) => system::permissions(args, adapter, permission_report),
-        Commands::Version => system::version(),
-        Commands::Batch(args) => system::batch(args, adapter, permission_report, context),
+        Commands::Version => commands::version::execute(),
+        Commands::Batch(args) => crate::batch::execute(args, adapter, permission_report, context),
         Commands::Skills(args) => system::skills(args),
-        Commands::Session(args) => system::session(args, adapter, context),
+        Commands::Session(args) => session::dispatch(args, adapter, context),
         Commands::CursorOverlay(args) => cursor_overlay::dispatch(args, adapter, context),
-        Commands::Trace(args) => system::trace(args, context),
+        Commands::Trace(args) => trace::dispatch(args, context),
     };
-    if let Some(session_id) = overlay_session {
-        let _ = adapter.update_cursor_overlay(&CursorOverlayControl::show(session_id));
-    }
     scope.complete(&result)?;
     result
 }

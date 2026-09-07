@@ -45,6 +45,8 @@ pub(super) fn prepare(
             let item_context = context
                 .for_batch_item(session)
                 .map_err(|error| located_error(index, &name, error))?;
+            crate::command_policy::preflight_context(&command, &item_context)
+                .map_err(|error| located_error(index, &name, error))?;
             Ok(PreparedCommand {
                 name,
                 command,

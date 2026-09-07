@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     AppError, PlatformAdapter,
-    commands::{clipboard_clear, clipboard_get, clipboard_set},
+    commands::{clipboard_get, clipboard_set},
     context::CommandContext,
 };
 use serde_json::Value;
@@ -39,8 +39,4 @@ pub(super) fn set(
         },
         adapter,
     )
-}
-
-pub(super) fn clear(adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    clipboard_clear::execute(adapter)
 }

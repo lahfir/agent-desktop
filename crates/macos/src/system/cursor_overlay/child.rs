@@ -4,7 +4,7 @@ use agent_desktop_core::{
 };
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::UnixListener;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
@@ -35,6 +35,9 @@ pub(crate) fn entry_from_env() -> Option<Result<(), AdapterError>> {
 
 fn run() -> Result<(), AdapterError> {
     let initial = read_control(std::io::stdin())?;
+    if !session_active(initial.session_id(), initial.agent_id()) {
+        return Ok(());
+    }
     let socket = socket_path(&initial)?;
     prepare_socket(&socket)?;
     let mut state = OverlayState::default();
@@ -54,13 +57,27 @@ fn run() -> Result<(), AdapterError> {
             .with_platform_detail(error.to_string())
     })?;
     let mut quiet_since = std::time::Instant::now();
+    let mut checked_session = quiet_since;
     loop {
+        if checked_session.elapsed() >= Duration::from_secs(1) {
+            if !session_active(initial.session_id(), initial.agent_id()) {
+                return cleanup(socket);
+            }
+            checked_session = std::time::Instant::now();
+        }
         match listener.accept() {
             Ok((mut stream, _)) => {
+                if prepare_stream(&stream).is_err() {
+                    continue;
+                }
                 let Ok(control) = read_control(&mut stream) else {
                     continue;
                 };
-                if control.session_id() != initial.session_id() {
+                if control.session_id() != initial.session_id()
+                    || (control.agent_id() != initial.agent_id()
+                        && !(control.agent_id().is_none()
+                            && (control.is_transient() || control.is_disable())))
+                {
                     continue;
                 }
                 if control.is_disable() {
@@ -85,6 +102,7 @@ fn run() -> Result<(), AdapterError> {
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 bridge::idle();
                 if !state.resting
+                    && !bridge::drag_active()
                     && quiet_since.elapsed().as_millis() >= u128::from(CURSOR_IDLE_REST_MS)
                 {
                     bridge::rest();
@@ -101,6 +119,12 @@ fn run() -> Result<(), AdapterError> {
             }
         }
     }
+}
+
+fn prepare_stream(stream: &UnixStream) -> std::io::Result<()> {
+    stream.set_nonblocking(false)?;
+    stream.set_read_timeout(Some(Duration::from_secs(1)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(1)))
 }
 
 fn handle(control: &CursorOverlayControl, state: &mut OverlayState) -> Result<bool, AdapterError> {
@@ -129,7 +153,16 @@ fn handle(control: &CursorOverlayControl, state: &mut OverlayState) -> Result<bo
         &owned
     };
     render(instruction, state)?;
-    state.at = Some(instruction.destination().clone());
+    state.at = Some(
+        if instruction.phase() == agent_desktop_core::CursorPhase::Drag {
+            instruction
+                .drag_from()
+                .unwrap_or(instruction.destination())
+                .clone()
+        } else {
+            instruction.destination().clone()
+        },
+    );
     Ok(true)
 }
 
@@ -137,6 +170,23 @@ fn render(
     instruction: &CursorOverlayInstruction,
     state: &OverlayState,
 ) -> Result<(), AdapterError> {
+    if instruction.phase() == agent_desktop_core::CursorPhase::Drag {
+        let from = instruction.drag_from().unwrap_or(instruction.destination());
+        let (screen, fps, reduce_motion) = bridge::screen_at(from)?;
+        let bubble = place_label(from, BUBBLE_SIZE, &screen);
+        bridge::run(
+            &[CursorPose::still(from.clone())],
+            fps,
+            instruction,
+            reduce_motion,
+            &bubble,
+        )?;
+        bridge::begin_drag(from, state.style.ripple() && !reduce_motion);
+        return Ok(());
+    }
+    if instruction.phase() == agent_desktop_core::CursorPhase::Effect {
+        bridge::end_drag(instruction.destination(), instruction.drag_from().is_some());
+    }
     let (screen, fps, reduce_motion) = bridge::screen_at(instruction.destination())?;
     let bubble = place_label(instruction.destination(), BUBBLE_SIZE, &screen);
     let shown = if state.style.highlight() {
@@ -209,7 +259,7 @@ fn read_control(reader: impl Read) -> Result<CursorOverlayControl, AdapterError>
 }
 
 fn socket_path(control: &CursorOverlayControl) -> Result<PathBuf, AdapterError> {
-    let expected = super::endpoint::path(control.session_id())?;
+    let expected = super::endpoint::path(control.session_id(), control.agent_id())?;
     let supplied = std::env::var_os(SOCKET_ENV)
         .map(PathBuf::from)
         .ok_or_else(|| AdapterError::internal("Cursor overlay child socket is missing"))?;
@@ -220,6 +270,17 @@ fn socket_path(control: &CursorOverlayControl) -> Result<PathBuf, AdapterError> 
         ));
     }
     Ok(expected)
+}
+
+pub(super) fn session_active(session_id: &str, agent_id: Option<&str>) -> bool {
+    agent_desktop_core::session::read_manifest(session_id)
+        .ok()
+        .flatten()
+        .is_some_and(|manifest| {
+            manifest.ended_at.is_none()
+                && manifest.cursor_overlay.is_enabled()
+                && !(manifest.cursor_overlay.is_multi_agent() && agent_id.is_none())
+        })
 }
 
 fn prepare_socket(path: &Path) -> Result<(), AdapterError> {
@@ -246,101 +307,5 @@ fn cleanup(path: PathBuf) -> Result<(), AdapterError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn state(at: Option<Point>) -> OverlayState {
-        OverlayState {
-            at,
-            ..OverlayState::default()
-        }
-    }
-
-    fn screen() -> agent_desktop_core::Rect {
-        agent_desktop_core::Rect {
-            x: 0.0,
-            y: 0.0,
-            width: 1920.0,
-            height: 1080.0,
-        }
-    }
-
-    fn instruction(destination: Point, click: bool) -> CursorOverlayInstruction {
-        let config = CursorOverlayConfig::enabled(None, 6).expect("valid config");
-        CursorOverlayInstruction::new(destination, &config, click).expect("valid instruction")
-    }
-
-    #[test]
-    fn sampled_motion_ends_at_the_requested_destination() {
-        let destination = Point { x: 900.0, y: 500.0 };
-        let frames = motion_frames(
-            &state(None),
-            &instruction(destination.clone(), false),
-            &screen(),
-            120,
-        );
-
-        assert_eq!(frames.last().map(|pose| &pose.point), Some(&destination));
-        let biggest_step = frames
-            .windows(2)
-            .map(|pair| {
-                (pair[1].point.x - pair[0].point.x).hypot(pair[1].point.y - pair[0].point.y)
-            })
-            .fold(0.0_f64, f64::max);
-        assert!(frames.len() >= 20, "the path is sampled per frame");
-        assert!(
-            biggest_step < 40.0,
-            "no visible jump between frames: {biggest_step}"
-        );
-    }
-
-    #[test]
-    fn subsequent_motion_starts_from_the_previous_destination() {
-        let start = Point { x: 200.0, y: 300.0 };
-        let destination = Point { x: 900.0, y: 500.0 };
-        let frames = motion_frames(
-            &state(Some(start.clone())),
-            &instruction(destination.clone(), false),
-            &screen(),
-            120,
-        );
-
-        assert_eq!(frames.first().map(|pose| &pose.point), Some(&start));
-        assert_eq!(frames.last().map(|pose| &pose.point), Some(&destination));
-    }
-
-    #[test]
-    fn a_click_instruction_adds_ripple_frames_at_the_destination() {
-        let destination = Point { x: 900.0, y: 500.0 };
-        let moved = motion_frames(
-            &state(None),
-            &instruction(destination.clone(), false),
-            &screen(),
-            120,
-        );
-        let clicked = motion_frames(
-            &state(None),
-            &instruction(destination.clone(), true),
-            &screen(),
-            120,
-        );
-
-        assert!(clicked.len() > moved.len());
-        assert!(clicked.iter().any(|pose| pose.ripple > 0.0));
-        assert_eq!(clicked.last().map(|pose| &pose.point), Some(&destination));
-    }
-
-    #[test]
-    fn click_effect_returns_immediately_to_the_control_loop() {
-        let destination = Point { x: 900.0, y: 500.0 };
-        let effect = instruction(destination.clone(), true)
-            .with_phase(agent_desktop_core::CursorPhase::Effect);
-
-        let frames = motion_frames(&state(Some(destination.clone())), &effect, &screen(), 120);
-
-        assert_eq!(frames.len(), 2);
-        assert_eq!(frames[0], CursorPose::still(destination.clone()));
-        assert_eq!(frames[1].point, destination);
-        assert_eq!(frames[1].ripple, 1.0);
-    }
-}
+#[path = "child_tests.rs"]
+mod tests;

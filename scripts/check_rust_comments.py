@@ -65,17 +65,9 @@ def forbidden_comments(source):
     line = 1
     code_on_line = False
     while cursor < len(source):
-        raw_end = raw_string_end(source, cursor)
-        if raw_end is not None:
-            segment = source[cursor:raw_end]
-            line += segment.count("\n")
-            if "\n" in segment:
-                code_on_line = bool(segment.rsplit("\n", 1)[-1].strip())
-            else:
-                code_on_line = True
-            cursor = raw_end
-            continue
-        string_end = quoted_string_end(source, cursor)
+        string_end = raw_string_end(source, cursor)
+        if string_end is None:
+            string_end = quoted_string_end(source, cursor)
         if string_end is not None:
             segment = source[cursor:string_end]
             line += segment.count("\n")

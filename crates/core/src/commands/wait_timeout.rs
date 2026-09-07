@@ -41,23 +41,40 @@ fn with_last_error(mut details: Value, last_error: Option<Value>) -> Value {
 
 pub(crate) fn window(
     title: &str,
+    app: Option<&str>,
     timeout_ms: u64,
     last_error: Option<Value>,
+    last_observed: Option<Value>,
 ) -> Result<Value, AppError> {
+    let mut details = json!({
+        "predicate": "window",
+        "title": title,
+        "timeout_ms": timeout_ms,
+    });
+    if let Some(app) = app {
+        details["app"] = json!(app);
+    }
+    if let Some(last_observed) = last_observed {
+        details["last_observed"] = last_observed;
+    }
     timeout_err(
         format!(
             "Window title ({} chars) not found within {timeout_ms}ms",
             title.chars().count()
         ),
-        with_last_error(
-            json!({
-                "predicate": "window",
-                "title": title,
-                "timeout_ms": timeout_ms,
-            }),
-            last_error,
-        ),
+        with_last_error(details, last_error),
     )
+}
+
+pub(crate) fn window_observation(windows: &[crate::WindowInfo]) -> Value {
+    json!({
+        "count": windows.len(),
+        "titles": windows.iter().take(8)
+            .map(|window| window.title.chars().take(120).collect::<String>())
+            .collect::<Vec<_>>(),
+        "truncated": windows.len() > 8 || windows.iter().take(8)
+            .any(|window| window.title.chars().nth(120).is_some()),
+    })
 }
 
 pub(crate) fn text(

@@ -48,9 +48,15 @@ impl ActionOps for CursorAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
-        _request: ActionRequest,
+        request: ActionRequest,
         _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
+        if request.policy.is_headed() {
+            assert_eq!(
+                request.verified_point(),
+                Some(&crate::Point { x: 11.0, y: 11.0 })
+            );
+        }
         self.events.lock().unwrap().push(CursorEvent::Dispatch);
         Ok(ActionResult::delivered_unverified("click"))
     }
@@ -180,11 +186,17 @@ fn short_action_budget_skips_optional_travel_before_dispatch() {
 }
 
 #[test]
-fn disabled_and_headed_contexts_do_not_present() {
+fn disabled_overlay_does_not_present() {
     let adapter = CursorAdapter::new(false);
 
     execute_entry(&adapter, &entry(), ActionRequest::headless(Action::Click))
         .expect("click succeeds");
+    assert!(adapter.presented.lock().unwrap().is_empty());
+}
+
+#[test]
+fn headed_click_retains_travel_and_effect_around_physical_dispatch() {
+    let adapter = CursorAdapter::new(false);
     let headed = enabled_context().with_headed(true);
     execute_entry_with_context(
         &adapter,
@@ -194,7 +206,54 @@ fn disabled_and_headed_contexts_do_not_present() {
     )
     .expect("click succeeds");
 
+    assert_eq!(
+        *adapter.events.lock().unwrap(),
+        [
+            CursorEvent::Travel,
+            CursorEvent::Dispatch,
+            CursorEvent::Effect
+        ]
+    );
+    for control in adapter.presented.lock().unwrap().iter() {
+        assert_eq!(
+            control.instruction().unwrap().destination(),
+            &crate::Point { x: 11.0, y: 11.0 }
+        );
+    }
+}
+
+#[test]
+fn physical_effect_uses_verified_input_point_and_requires_delivery() {
+    let adapter = CursorAdapter::new(false);
+    let context = enabled_context().with_headed(true);
+    let preflight = ActionabilityPreflight {
+        verified_point: Some(crate::Point { x: 4.0, y: 5.0 }),
+        presentation_point: Some(crate::Point { x: 11.0, y: 11.0 }),
+        presentation_bounds: entry().geometry.bounds,
+        pointer_delivery: actionability::PointerDelivery::Physical,
+    };
+    presentation::after_dispatch(
+        &adapter,
+        &context,
+        &preflight,
+        &Action::Click,
+        &Err(AdapterError::stale_ref("blocked")
+            .with_disposition(crate::DeliverySemantics::NotDelivered)),
+    );
     assert!(adapter.presented.lock().unwrap().is_empty());
+    presentation::after_dispatch(
+        &adapter,
+        &context,
+        &preflight,
+        &Action::Click,
+        &Ok(ActionResult::delivered_unverified("click")),
+    );
+    let presented = adapter.presented.lock().unwrap();
+    assert_eq!(presented.len(), 1);
+    assert_eq!(
+        presented[0].instruction().unwrap().destination(),
+        &crate::Point { x: 4.0, y: 5.0 }
+    );
 }
 
 #[test]
@@ -231,4 +290,31 @@ fn a_value_write_outlines_the_element_without_a_click_ripple() {
     assert!(!effect.is_click(), "a value write must not ripple");
     assert!(effect.target().is_some(), "but it must outline the element");
     assert_eq!(effect.phase(), crate::CursorPhase::Effect);
+}
+
+#[test]
+fn headed_and_headless_contexts_present_the_same_cursor() {
+    let adapter = CursorAdapter::new(false);
+    let headless = enabled_context();
+    let headed = headless.clone().with_headed(true);
+
+    execute_entry_with_context(
+        &adapter,
+        &entry(),
+        ActionRequest::headless(Action::Click),
+        &headless,
+    )
+    .expect("headless click succeeds");
+    execute_entry_with_context(
+        &adapter,
+        &entry(),
+        ActionRequest::headed(Action::Click),
+        &headed,
+    )
+    .expect("headed click succeeds");
+
+    let presented = adapter.presented.lock().unwrap();
+    assert_eq!(presented.len(), 4);
+    assert_eq!(presented[0].instruction(), presented[2].instruction());
+    assert_eq!(presented[1].instruction(), presented[3].instruction());
 }
