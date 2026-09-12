@@ -24,7 +24,7 @@
 
 use agent_desktop_core::{
     AdapterError, ElementState, ErrorCode, LiveElement, LiveIdentity, LocatorEvidence,
-    LocatorField, Rect,
+    LocatorField, Rect, roles,
 };
 
 use super::element_properties::ElementProperties;
@@ -234,13 +234,41 @@ pub(crate) fn live_element(read: &LiveRead) -> Result<LiveElement, AdapterError>
     };
     let available_actions = live_actions(read)?;
     let bounds = read.evidence.ref_evidence.bounds.known().copied();
+    let states_complete = states_are_complete(read, &state.role);
     Ok(LiveElement {
         identity,
         state,
-        states_complete: true,
+        states_complete,
         bounds,
         available_actions,
     })
+}
+
+/// Whether the control-state evidence the post-action verifier reads was
+/// actually observed.
+///
+/// A toggleable role needs a readable `ToggleState`, an expandable role a
+/// readable `ExpandCollapseState`; every other role trivially satisfies both
+/// halves. `gated_number` is the accessor `states.rs` builds the state vector
+/// with, so it answers the question the verifier actually has: did a value
+/// reach the vector? A gate that never reported true - the `Absent` of a
+/// pattern the provider does not implement, the `Unknown` of a read that
+/// failed - yields no value, and a defaulted value must not be read as an
+/// observation. Reporting the state vector's source as observed when it never
+/// produced a token is exactly what lets core mistake "collapsed" for "never
+/// looked".
+fn states_are_complete(read: &LiveRead, role: &str) -> bool {
+    let toggle_observed = !roles::is_toggleable_role(role)
+        || read
+            .properties
+            .gated_number(super::property_ids::TreeProperty::ToggleState)
+            .is_some();
+    let expand_observed = !roles::is_expandable_role(role)
+        || read
+            .properties
+            .gated_number(super::property_ids::TreeProperty::ExpandCollapseState)
+            .is_some();
+    toggle_observed && expand_observed
 }
 
 /// The bounds projection, with the same essential-completeness discipline as
@@ -349,3 +377,11 @@ mod seam_tests;
 #[cfg(test)]
 #[path = "live_read_gate_tests.rs"]
 mod gate_tests;
+
+/// Split from `live_read_tests.rs` for the per-file line cap: the
+/// states-completeness predicate's truth table is likewise a pure function of
+/// the read set and the resolved role, so it needs no UI Automation client and
+/// runs on every target.
+#[cfg(test)]
+#[path = "live_read_states_complete_tests.rs"]
+mod states_complete_tests;
