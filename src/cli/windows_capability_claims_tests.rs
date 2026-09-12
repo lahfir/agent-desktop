@@ -193,3 +193,44 @@ fn the_windows_skill_warns_that_powershell_eats_an_unquoted_ref() {
         "the warning must show the quoted form, not merely assert that quoting is needed"
     );
 }
+
+/// Pins the verification vocabulary an agent has to branch on. The emitting
+/// side is core's own `post_action` tests; what this guards is the doc, because
+/// a skill that omits `unavailable` teaches an agent to read missing evidence
+/// as a failed change - the one reading that turns a working action into an
+/// abandoned one.
+#[test]
+fn the_windows_skill_teaches_the_verification_outcomes_an_agent_branches_on() {
+    for token in [
+        "element_value",
+        "unavailable",
+        "post_action_verification",
+        "delivered_verified",
+    ] {
+        assert!(
+            WINDOWS_SKILL_DOC.contains(token),
+            "the skill must name {token} so an agent can tell the outcomes apart"
+        );
+    }
+}
+
+/// The role-scoped numeric tolerance decides which controls survive a value the
+/// application reformats. The skill lists those roles by name, so the list must
+/// be the one `value_matches` applies rather than a remembered copy of it.
+#[test]
+fn the_windows_skill_lists_the_roles_that_compare_numerically() {
+    for role in ["slider", "incrementor", "scrollbar", "handle"] {
+        assert!(
+            WINDOWS_SKILL_DOC.contains(role),
+            "the skill must name {role} as numerically compared"
+        );
+        assert!(
+            agent_desktop_core::value_matches(role, "42", Some("42.0")),
+            "{role} must still compare numerically for the skill's claim to hold"
+        );
+    }
+    assert!(
+        !agent_desktop_core::value_matches("textfield", "42", Some("42.0")),
+        "the skill's textfield counter-example must still fail an exact comparison"
+    );
+}
