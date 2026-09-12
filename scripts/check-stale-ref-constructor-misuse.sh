@@ -23,8 +23,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-EXPECTED_ADAPTER_CALLS=2
-EXPECTED_APP_CALLS=2
+# Three each, and every one hands over a ref id:
+#   AdapterError - AppError::stale_ref's own body, RefStore's snapshot-mismatch
+#   return, and the visual-debug capture's window-moved return.
+#   AppError      - the ref-action helper, RefStore::load_ref's miss, and the
+#   drill-down root lookup.
+# The last of each arrived with the 0.9.0 line: RefStore::load_ref and
+# src/visual_debug/capture.rs, both passing the ref id they were given.
+EXPECTED_ADAPTER_CALLS=3
+EXPECTED_APP_CALLS=3
 
 # Counts a constructor's non-test call sites under crates/ and src/.
 #
