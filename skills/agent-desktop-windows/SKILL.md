@@ -106,6 +106,49 @@ Requires Windows 10 1809+ / Windows Server 2019+ (x64 or ARM64).
   browser downloads and Smart App Control are different stories — see
   `references/troubleshooting.md`.
 
+## Action Verification
+
+Every stateful action — `set-value`, `clear`, `type`, `toggle`, `check`,
+`uncheck`, `expand`, `collapse` — is performed **exactly once** and then
+verified by re-reading live state. The settle loop only re-reads; it never
+re-performs. It polls at 50 ms up to a 400 ms cap and stops as soon as the
+postcondition holds, so an action that lands immediately pays nothing.
+
+Three outcomes, and they are not interchangeable:
+
+- The readback matches the request: `disposition.delivery` is
+  `delivered_verified`. A value write also carries
+  `details.verification_scope: "element_value"` with
+  `application_commit: "not_verified"` — the control holds your value; whether
+  the application has committed it is a separate question the control cannot
+  answer.
+- The readback contradicts the request: `ACTION_FAILED` with
+  `details.kind: "post_action_verification"` and `details.post_state`. **Read
+  `post_state` before doing anything else.** The action was delivered, so
+  `disposition.retry` is `unsafe` and repeating it may act twice.
+- The evidence was never observed: the action succeeds as
+  `delivered_unverified` with `details.verification_scope: "unavailable"`.
+  This is not a failure and not proof the change did not happen — it means the
+  UIA property the verifier needs was not readable on that element. A control
+  whose TogglePattern or ExpandCollapsePattern is absent, or whose property
+  read failed, reports this rather than a false verdict. **`type` always lands
+  here on Windows today**: deriving what a field should contain after an
+  insertion needs the selection range, and the adapter does not yet read one.
+  A `type` is therefore correct and unverified, never falsely failed — confirm
+  it with a fresh `get` if the value matters.
+
+**A `set-value` that the application reshapes is reported as failed.** If the
+app trims whitespace, reformats a date, or normalizes a number, the readback no
+longer equals what you wrote and the envelope says `ACTION_FAILED` even though
+the write landed. The `SetValue` comparison captures no *before* state, so it
+cannot separate "nothing happened" from "accepted and reshaped" — only the
+first proves non-delivery. When the failure surprises you, compare
+`details.post_state.value` against what you sent: if it holds your value in the
+application's own formatting, the write succeeded and it is this limitation you
+are seeing, not a broken control. Numeric tolerance is role-scoped — only
+`slider`, `incrementor`, `scrollbar` and `handle` compare numerically, so a
+`textfield` an app stores as `42.0` after you wrote `42` fails this way.
+
 ## Shell Surfaces
 
 `open-system-surface --surface <kind>` raises a shell surface and answers with

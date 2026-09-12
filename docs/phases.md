@@ -1805,6 +1805,18 @@ Integration-level tests (Explorer/Notepad/Settings snapshots, click/type/clipboa
 **Exit criteria:** two agents in one session complete interleaved observe-act loops on Windows with no cross-talk, each acting only on refs it took, verified by observation rather than by each command's own `ok`; one `cursor-overlay disable` stops every cursor the session is drawing, verified by observation after teardown; and the `latest_snapshot_id` hazard has a test that fails if it regresses.
 
 
+### 2.18 — Envelope 2.4 Adapter Surface
+
+**Goal:** Implement the two `PlatformAdapter` methods the 0.9.0 line added, which reached this branch through the main sync with their `not_supported()` defaults intact.
+
+**Status:** deferred here by the sync, not by a measurement. Both methods ship a default body, so the Windows crate compiles and every existing command behaves exactly as before; each unimplemented method silently withholds one feature rather than breaking one. Neither is on the action path, which is why the sync did not block on them.
+
+**`get_text_selection` returns the selection range in UTF-16 code units.** Core calls it from one place: `TypeText` verification, to derive what a field should contain once the typed text replaces the selection. Absent, verification degrades to a successful `delivered_unverified` carrying `details.verification_scope: "unavailable"` — a `type` on Windows is therefore correct and unverified today, never falsely failed. The UIA surface to investigate is the Text pattern's selection API, and the unit is the trap: UIA text ranges are not indexed in UTF-16 code units, so the endpoints need conversion rather than a cast, and a range converted by assumption will verify the wrong substring on any text containing a surrogate pair or a combining sequence.
+
+**`screenshot_window_frame` captures one named window, not the foreground.** Its only consumer is the visual-debug artifact, and only on one of its two paths: `src/visual_debug/capture.rs:176` calls it for `click --debug --screenshot <path>.html`, while the `snapshot` path uses the ordinary `screenshot` the Windows adapter already implements. So visual debug is half-available on Windows right now — working for `snapshot`, refusing `ACTION_NOT_SUPPORTED` for `click` — which is worse than either whole state, because the flag is global and its failure is per-command. The macOS implementation resolves the window through `resolve_window_strict`, re-verifies bounds before and after the capture, and fails closed if the window moved between them; a Windows implementation that captures whatever is frontmost would produce a debug artifact that confidently shows the wrong application.
+
+**Exit criteria:** `type` against a field with a non-empty selection reports `delivered_verified` with `verification_scope: "element_value"`, and reports the same on text containing a surrogate pair, pinned by a test that fails if the range is treated as UTF-8 or as a raw endpoint index; `click --debug --screenshot out.html` produces an artifact on Windows whose image is the resolved target window rather than the foreground one, verified by observation against a deliberately non-foreground target; and a window that moves mid-capture fails closed rather than emitting a mismatched frame.
+
 ---
 
 ## Phase 3 — Linux Adapter
