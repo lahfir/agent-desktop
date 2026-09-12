@@ -1,9 +1,8 @@
 use agent_desktop_core::{
     ActionResult, AdapterError, Deadline, DismissAllNotificationsRequest,
     DismissNotificationRequest, ImageBuffer, InteractionLease, NotificationActionRequest,
-    NotificationFilter, NotificationInfo, ObservationOps, PermissionReport, ProcessIdentity,
-    ScreenshotTarget, SignalBaseline, SignalFilter, SnapshotSurface, SystemOps, WindowFilter,
-    WindowInfo, WindowOp,
+    NotificationFilter, NotificationInfo, PermissionReport, ProcessIdentity, ScreenshotTarget,
+    SignalBaseline, SignalFilter, SnapshotSurface, SystemOps, WindowInfo, WindowOp,
 };
 
 use crate::adapter::MacOSAdapter;
@@ -150,13 +149,18 @@ impl SystemOps for MacOSAdapter {
         }
     }
 
+    fn screenshot_window_frame(
+        &self,
+        window: &WindowInfo,
+        deadline: Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
+        crate::system::screenshot::capture_window_frame(window, deadline)
+    }
+
     fn focused_window(&self, deadline: Deadline) -> Result<Option<WindowInfo>, AdapterError> {
-        let filter = WindowFilter {
-            focused_only: true,
-            app: None,
-        };
-        let windows = self.list_windows(&filter, deadline)?;
-        Ok(windows.into_iter().next())
+        crate::system::window_inventory::focused_window_until(
+            crate::tree::locator_deadline::from_operation(deadline)?,
+        )
     }
 
     fn press_key_for_app(

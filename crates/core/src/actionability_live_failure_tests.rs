@@ -60,4 +60,46 @@ fn live_read_errors_are_not_silently_downgraded_to_snapshot_data() {
     .unwrap_err();
 
     assert_eq!(err.code, ErrorCode::PermDenied);
+    assert_eq!(err.disposition, crate::DeliverySemantics::not_delivered());
+}
+
+#[test]
+fn transient_live_read_failure_reports_no_delivery() {
+    struct FailedRead(crate::DeliverySemantics);
+    impl ObservationOps for FailedRead {
+        fn get_live_element(
+            &self,
+            _: &NativeHandle,
+            _: crate::Deadline,
+        ) -> Result<LiveElement, AdapterError> {
+            Err(
+                AdapterError::new(ErrorCode::AppUnresponsive, "incomplete live evidence")
+                    .with_disposition(self.0),
+            )
+        }
+    }
+    impl ActionOps for FailedRead {}
+    impl InputOps for FailedRead {}
+    impl SystemOps for FailedRead {}
+
+    for (reported, expected) in [
+        (
+            crate::DeliverySemantics::unknown(),
+            crate::DeliverySemantics::not_delivered(),
+        ),
+        (
+            crate::DeliverySemantics::uncertain(),
+            crate::DeliverySemantics::uncertain(),
+        ),
+    ] {
+        let error = check_live(
+            &entry(),
+            &NativeHandle::null(),
+            &FailedRead(reported),
+            &ActionRequest::headless(Action::Click),
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::AppUnresponsive);
+        assert_eq!(error.disposition, expected);
+    }
 }

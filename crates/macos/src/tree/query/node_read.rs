@@ -182,11 +182,11 @@ pub(crate) fn read_node(
         &identifiers,
         &actions,
     );
-    let role_field = if attrs.role.is_some() {
-        LocatorField::Known(role)
-    } else {
-        option_field(None, read.status.role_unknown())
-    };
+    let role_field = super::evidence_fields::role_field(
+        attrs.role.as_deref(),
+        attrs.subrole.as_deref(),
+        &read.status,
+    );
     let evidence = LocatorEvidence {
         role: role_field,
         name: name_field,

@@ -24,11 +24,7 @@ mod imp {
             outcome @ (DeliveryOutcome::SatisfiedNoDelivery
             | DeliveryOutcome::DeliveredVerified) => Ok(outcome),
             DeliveryOutcome::NotDelivered => scroll_ancestor_until_visible(element, deadline),
-            DeliveryOutcome::DeliveredUnverified => Err(AdapterError::new(
-                ErrorCode::ActionFailed,
-                "AXScrollToVisible completed without verified visibility",
-            )
-            .with_disposition(DeliverySemantics::delivered_unverified())),
+            DeliveryOutcome::DeliveredUnverified => Err(unverified_scroll_error()),
         }
     }
 
@@ -36,21 +32,34 @@ mod imp {
         element: &AXElement,
         deadline: Deadline,
     ) -> Result<DeliveryOutcome, AdapterError> {
+        let mut delivery = crate::actions::DeliveryTracker::default();
         for attempt in 0..MAX_ANCESTOR_SCROLLS {
-            let Some(direction) = direction_to_window(element, deadline)? else {
+            let Some(direction) =
+                direction_to_window(element, deadline).map_err(|error| delivery.annotate(error))?
+            else {
                 return Ok(if attempt == 0 {
                     DeliveryOutcome::SatisfiedNoDelivery
                 } else {
                     DeliveryOutcome::DeliveredVerified
                 });
             };
+            let parent = crate::actions::scroll_read::element(element, "AXParent", deadline)
+                .map_err(|error| delivery.annotate(error))?
+                .ok_or_else(|| {
+                    delivery.annotate(AdapterError::new(
+                        ErrorCode::ActionNotSupported,
+                        "Target has no ancestor to scroll",
+                    ))
+                })?;
             crate::actions::scroll::ax_scroll(
-                element,
+                &parent,
                 &direction,
                 1,
                 InteractionPolicy::headless(),
                 deadline,
-            )?;
+            )
+            .map_err(|error| delivery.annotate(error))?;
+            delivery.mark_delivered();
         }
         Err(AdapterError::new(
             ErrorCode::ActionFailed,
@@ -66,14 +75,23 @@ mod imp {
         let instant = crate::tree::locator_deadline::from_operation(deadline)?;
         let bounds = crate::tree::element_bounds::read_bounds_with_deadline(element, instant)?
             .ok_or_else(|| AdapterError::new(ErrorCode::ActionFailed, "Target has no bounds"))?;
-        let Some(window) = crate::tree::surface_read::element(element, "AXWindow", instant)? else {
-            return Ok(None);
-        };
+        let window = require_window(crate::tree::surface_read::element(
+            element, "AXWindow", instant,
+        )?)?;
         let window_bounds = crate::tree::element_bounds::read_bounds_with_deadline(
             &window, instant,
         )?
         .ok_or_else(|| AdapterError::new(ErrorCode::ActionFailed, "Target window has no bounds"))?;
         Ok(direction_for_visibility(bounds, window_bounds))
+    }
+
+    pub(super) fn require_window(window: Option<AXElement>) -> Result<AXElement, AdapterError> {
+        window.ok_or_else(|| {
+            AdapterError::new(
+                ErrorCode::ActionFailed,
+                "Target window is unavailable; visibility cannot be verified",
+            )
+        })
     }
 
     pub(crate) fn direction_for_visibility(target: Rect, viewport: Rect) -> Option<Direction> {
@@ -116,20 +134,23 @@ mod imp {
                 )));
             }
             if Instant::now() >= local_end {
-                if !scroll_effect_observed(before, element_bounds(element, deadline)?) {
-                    return Ok(DeliveryOutcome::NotDelivered);
-                }
-                return Err(AdapterError::new(
-                    ErrorCode::ActionFailed,
-                    "AXScrollToVisible completed but target visibility was not verified",
-                )
-                .with_disposition(DeliverySemantics::delivered_unverified()));
+                return settled_scroll_outcome(before, element_bounds(element, deadline));
             }
             let pause = deadline
                 .remaining_slice(Duration::from_millis(20))
                 .map_err(after_delivery)?;
             std::thread::sleep(pause.min(Duration::from_millis(20)));
         }
+    }
+
+    pub(super) fn settled_scroll_outcome(
+        before: Option<Rect>,
+        after: Result<Option<Rect>, AdapterError>,
+    ) -> Result<DeliveryOutcome, AdapterError> {
+        if !scroll_effect_observed(before, after.map_err(after_delivery)?) {
+            return Ok(DeliveryOutcome::NotDelivered);
+        }
+        Err(unverified_scroll_error())
     }
 
     fn element_bounds(
@@ -148,6 +169,15 @@ mod imp {
             (None, None) => false,
             _ => true,
         }
+    }
+
+    pub(super) fn unverified_scroll_error() -> AdapterError {
+        AdapterError::new(
+            ErrorCode::ActionFailed,
+            "AXScrollToVisible completed but target visibility was not verified",
+        )
+        .with_disposition(DeliverySemantics::delivered_unverified())
+        .with_suggestion("Inspect target visibility before deciding whether to scroll again.")
     }
 
     fn visible_in_window(element: &AXElement, deadline: Deadline) -> Result<bool, AdapterError> {
@@ -217,3 +247,15 @@ pub(crate) use imp::{direction_for_visibility, intersects, rect_has_area, scroll
 #[cfg(all(test, target_os = "macos"))]
 #[path = "scroll_into_view_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "macos"))]
+mod evidence_tests {
+    #[test]
+    fn missing_window_is_not_verified_visibility() {
+        assert!(super::imp::require_window(None).is_err());
+        assert_eq!(
+            super::imp::unverified_scroll_error().disposition,
+            agent_desktop_core::DeliverySemantics::delivered_unverified()
+        );
+    }
+}

@@ -61,6 +61,10 @@ if [ -n "$drag_anchor" ]; then
     act_target "$drag_anchor" scroll-to >/dev/null 2>&1
     sleep 0.3
 fi
+drag_focus="$("$bin" focus-window --app "$app" 2>&1)"
+if [ "$(json_field "$drag_focus" ok)" != "True" ]; then
+    abort_suite "drag fixture focus failed: $(json_field "$drag_focus" error.code)"
+fi
 drag_snapshot="$("$bin" snapshot --app "$app" --include-bounds --max-depth 30 2>/dev/null)"
 drag_points="$(printf '%s' "$drag_snapshot" | python3 "$json_tool" tree drag-canvas drag 2>/dev/null)" || drag_points=""
 if [ -z "$drag_points" ]; then

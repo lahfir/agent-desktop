@@ -38,6 +38,17 @@ fn mixed_checkbox_emits_indeterminate_not_checked() {
 }
 
 #[test]
+fn checked_value_spellings_match_action_readback() {
+    for value in ["1", "true", "yes", "on", "checked", " ON "] {
+        let mut attrs = sample_attrs();
+        attrs.value = Some(value.into());
+        let el = AXElement(std::ptr::null_mut());
+        let states = states_from_element(&el, &attrs, "checkbox", &ctx_with(None, false));
+        assert!(states.contains(&state::CHECKED.to_string()), "{value}");
+    }
+}
+
+#[test]
 fn hidden_attr_emits_hidden_token() {
     let mut attrs = sample_attrs();
     attrs.states.semantic.hidden = Some(true);

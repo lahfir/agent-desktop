@@ -17,18 +17,36 @@ pub(crate) fn classify_result(
 }
 
 fn classify(operation: &str, api: &str, error: i32) -> Result<bool, AdapterError> {
-    signal_or_error(operation, api, error).map(|signal| signal == PerformSignal::ReportedDelivered)
+    let signal = signal_or_error(operation, api, error)?;
+    if signal == PerformSignal::Uninformative && api == PERFORM_API {
+        return settle_uninformative_perform(operation, error, false)
+            .map(|outcome| outcome.was_delivered());
+    }
+    Ok(signal == PerformSignal::ReportedDelivered)
 }
 
 fn signal_or_error(operation: &str, api: &str, error: i32) -> Result<PerformSignal, AdapterError> {
     if error == kAXErrorSuccess {
         return Ok(PerformSignal::ReportedDelivered);
     }
-    if error == kAXErrorActionUnsupported
-        || error == kAXErrorNotImplemented
-        || error == kAXErrorFailure
-    {
+    if error == kAXErrorActionUnsupported || error == kAXErrorNotImplemented {
         return Ok(PerformSignal::ReportedUnsupported);
+    }
+    if error == kAXErrorFailure {
+        return Err(crate::actions::DeliveryTracker::uncertain(
+            AdapterError::new(
+                ErrorCode::ActionFailed,
+                format!("{operation} returned kAXErrorFailure; mutation outcome is uncertain"),
+            )
+            .with_details(serde_json::json!({
+                "ax_error": error,
+                "operation": operation,
+            }))
+            .with_platform_detail(format!("{api}({operation}) returned {error}"))
+            .with_suggestion(
+                "Inspect the target state with a fresh snapshot before deciding whether to retry.",
+            ),
+        ));
     }
     if error == kAXErrorAttributeUnsupported || error == kAXErrorNoValue {
         return Ok(PerformSignal::Uninformative);
@@ -99,11 +117,30 @@ pub(crate) fn classify_perform(operation: &str, error: i32) -> Result<PerformSig
     signal_or_error(operation, PERFORM_API, error)
 }
 
+pub(crate) fn settle_uninformative_perform(
+    operation: &str,
+    error: i32,
+    observed_effect: bool,
+) -> Result<crate::actions::chain_delivery::DeliveryOutcome, AdapterError> {
+    if observed_effect {
+        return Ok(crate::actions::chain_delivery::DeliveryOutcome::DeliveredVerified);
+    }
+    Err(AdapterError::new(
+        ErrorCode::ActionFailed,
+        format!("{operation} did not establish a verifiable effect; mutation outcome is uncertain"),
+    )
+    .with_disposition(DeliverySemantics::uncertain())
+    .with_details(serde_json::json!({ "ax_error": error, "operation": operation }))
+    .with_suggestion(
+        "Inspect the target state with a fresh snapshot before deciding whether to retry.",
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use accessibility_sys::{
         kAXErrorAPIDisabled, kAXErrorActionUnsupported, kAXErrorAttributeUnsupported,
-        kAXErrorCannotComplete, kAXErrorInvalidUIElement, kAXErrorSuccess,
+        kAXErrorCannotComplete, kAXErrorFailure, kAXErrorInvalidUIElement, kAXErrorSuccess,
     };
     use agent_desktop_core::{DeliveryDisposition, ErrorCode, RetryDisposition};
 
@@ -113,6 +150,39 @@ mod tests {
     fn success_is_delivered() {
         let result = classify("AXPress", "perform", kAXErrorSuccess);
         assert!(result.unwrap());
+    }
+
+    #[test]
+    fn uninformative_perform_without_observed_effect_stops_fallback() {
+        let error =
+            super::settle_uninformative_perform("AXOpen", kAXErrorAttributeUnsupported, false)
+                .expect_err("missing or unchanged observations do not prove non-delivery");
+        assert_eq!(
+            error.disposition.delivery(),
+            DeliveryDisposition::DeliveryUncertain
+        );
+        assert_eq!(error.disposition.retry(), RetryDisposition::Unsafe);
+        assert_eq!(
+            super::settle_uninformative_perform("AXOpen", kAXErrorAttributeUnsupported, true)
+                .unwrap(),
+            crate::actions::chain_delivery::DeliveryOutcome::DeliveredVerified,
+        );
+    }
+
+    #[test]
+    fn raw_perform_cannot_fall_through_on_an_uninformative_return_code() {
+        for code in [
+            kAXErrorAttributeUnsupported,
+            accessibility_sys::kAXErrorNoValue,
+        ] {
+            let error = classify("AXConfirm", super::PERFORM_API, code).unwrap_err();
+            assert_eq!(error.disposition.retry(), RetryDisposition::Unsafe);
+            assert_eq!(
+                error.disposition.delivery(),
+                DeliveryDisposition::DeliveryUncertain
+            );
+            assert!(!classify("AXValue", "AXUIElementSetAttributeValue", code).unwrap());
+        }
     }
 
     #[test]
@@ -139,16 +209,37 @@ mod tests {
         );
     }
 
-    /// `tree::action_list` reads `kAXErrorFailure` as "this element implements
-    /// no such action". A perform must not read the same code as a failure, or
-    /// an element the reader called action-less becomes an error when acted on.
     #[test]
-    fn perform_and_capability_reads_agree_on_the_appkit_absence_code() {
+    fn capability_read_absence_does_not_prove_perform_non_delivery() {
+        let error = super::classify_perform("AXScrollToVisible", kAXErrorFailure)
+            .expect_err("generic failure does not prove an action was unsupported");
+        assert_eq!(error.code, ErrorCode::ActionFailed);
         assert_eq!(
-            super::classify_perform("AXScrollToVisible", accessibility_sys::kAXErrorFailure)
-                .unwrap(),
-            super::PerformSignal::ReportedUnsupported
+            error.disposition.delivery(),
+            DeliveryDisposition::DeliveryUncertain
         );
+        assert_eq!(error.disposition.retry(), RetryDisposition::Unsafe);
+    }
+
+    #[test]
+    fn generic_failure_cannot_authorize_a_second_mutation() {
+        for (operation, api) in [
+            ("AXPress", super::PERFORM_API),
+            ("AXValue", "AXUIElementSetAttributeValue"),
+        ] {
+            let error = classify(operation, api, kAXErrorFailure).unwrap_err();
+            assert_eq!(
+                error.disposition,
+                agent_desktop_core::DeliverySemantics::uncertain()
+            );
+            assert_eq!(error.disposition.retry(), RetryDisposition::Unsafe);
+            assert!(
+                error
+                    .suggestion
+                    .unwrap()
+                    .contains("Inspect the target state")
+            );
+        }
     }
 
     #[test]

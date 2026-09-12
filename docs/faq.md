@@ -2,7 +2,7 @@
 
 ## What is agent-desktop?
 
-agent-desktop is a native desktop automation CLI for AI agents. It lets agents observe and control desktop apps through OS accessibility trees, using structured JSON instead of screenshots, pixel matching, or browser-only automation.
+agent-desktop gives any agent reliable computer use on the desktop. Agents see and operate desktop apps through OS accessibility trees, using structured JSON with stable refs instead of guessing from screenshots or pixel matching.
 
 ## Does agent-desktop require screenshots or pixel matching?
 

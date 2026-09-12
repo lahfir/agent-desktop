@@ -39,7 +39,7 @@ Bypass for an emergency commit with `git commit --no-verify` or `SKIP_PRECOMMIT=
 
 ## Project Overview
 
-Cross-platform Rust CLI + MCP server enabling AI agents to observe and control desktop applications via native OS accessibility trees.
+Computer-use tool (CLI + C library) letting AI agents observe and operate desktop apps via native accessibility trees.
 
 ## Source of Truth & Sync (Non-Negotiable)
 
@@ -345,7 +345,7 @@ Every command produces a response envelope:
 
 ```json
 {
-  "version": "2.3",
+  "version": "2.4",
   "ok": true,
   "command": "snapshot",
   "data": {
@@ -370,7 +370,7 @@ Error responses:
 
 ```json
 {
-  "version": "2.3",
+  "version": "2.4",
   "ok": false,
   "command": "click",
   "error": {
@@ -468,10 +468,10 @@ contact with Windows and was deleted. See
 
 ## Commands
 
-58 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
+60 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
 Mouse, Notifications (macOS), Clipboard, Wait, System (including `session`), and
 Batch. The full surface and per-command reference live in `skills/agent-desktop/`.
-All 58 are implemented on macOS (Phase 1). Windows ships observation, semantic
+All 60 are implemented on macOS (Phase 1). Windows ships observation, semantic
 actions, input synthesis, process/window lifecycle (`launch`, `close-app`,
 window ops, `press --app`), screenshot, and typed clipboard against the same
 surface; wait-event and shell surfaces remain ahead. Linux (Phase 3) targets the

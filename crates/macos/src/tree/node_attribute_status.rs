@@ -31,7 +31,7 @@ const ATTRIBUTE_COUNT: usize = 23;
 
 const ROLE_MASK: u32 = bit(ROLE) | bit(SUBROLE);
 const STATE_MASK: u32 =
-    bit(ROLE) | bit(VALUE) | range_mask(4, 12) | bit(POSITION) | bit(SIZE) | bit(READONLY_PROBE);
+    ROLE_MASK | bit(VALUE) | range_mask(4, 12) | bit(POSITION) | bit(SIZE) | bit(READONLY_PROBE);
 const BOUNDS_MASK: u32 = bit(POSITION) | bit(SIZE);
 const SCROLLBAR_MASK: u32 = bit(VERTICAL_SCROLLBAR) | bit(HORIZONTAL_SCROLLBAR);
 const ALL_ATTRIBUTE_MASK: u32 = range_mask(0, ATTRIBUTE_COUNT - 1);
@@ -49,6 +49,12 @@ pub(crate) struct NodeAttributeStatus {
 impl NodeAttributeStatus {
     pub(crate) fn record_slot_error(&mut self, index: usize, error: i32) {
         self.record_error(bit(index), error);
+    }
+
+    pub(crate) fn record_native_slot_error(&mut self, index: usize, error: i32) {
+        if !crate::tree::ax_absence::is_absent_attribute_error(error) {
+            self.record_slot_error(index, error);
+        }
     }
 
     pub(crate) fn record_batch_error(&mut self, error: i32) {
@@ -175,6 +181,48 @@ mod tests {
 
         assert!(status.field_unknown(TITLE));
         assert_eq!(status.text_truncations, 1);
+    }
+
+    #[test]
+    fn native_absence_slots_do_not_make_name_evidence_unknown() {
+        for error in [
+            kAXErrorAttributeUnsupported,
+            kAXErrorNoValue,
+            accessibility_sys::kAXErrorNotImplemented,
+            accessibility_sys::kAXErrorFailure,
+        ] {
+            let mut status = NodeAttributeStatus::default();
+            status.record_native_slot_error(DESCRIPTION, error);
+
+            assert!(!status.field_unknown(DESCRIPTION));
+            assert_eq!(status.native_read_failures, 0);
+        }
+    }
+
+    #[test]
+    fn native_transport_and_invalid_element_slots_remain_unknown() {
+        for error in [
+            kAXErrorCannotComplete,
+            kAXErrorInvalidUIElement,
+            kAXErrorAPIDisabled,
+        ] {
+            let mut status = NodeAttributeStatus::default();
+            status.record_native_slot_error(DESCRIPTION, error);
+
+            assert!(status.field_unknown(DESCRIPTION));
+            assert_eq!(status.cannot_complete, error == kAXErrorCannotComplete);
+            assert_eq!(status.invalid_element, error == kAXErrorInvalidUIElement);
+            assert_eq!(status.api_disabled, error == kAXErrorAPIDisabled);
+        }
+    }
+
+    #[test]
+    fn malformed_batches_cannot_be_treated_as_absence() {
+        let mut status = NodeAttributeStatus::default();
+        status.record_batch_error(accessibility_sys::kAXErrorFailure);
+
+        assert!(status.field_unknown(DESCRIPTION));
+        assert_eq!(status.native_read_failures, 1);
     }
 
     #[test]

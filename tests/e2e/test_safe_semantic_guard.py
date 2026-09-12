@@ -50,6 +50,13 @@ def action_data(action="click", delivery="delivered_verified", mechanism="semant
 
 
 class CommandPolicyTests(unittest.TestCase):
+    def test_value_readback_requires_owned_window_and_snapshot(self):
+        command = ["get", "@snap-1:e2", "--snapshot", "snap-1", "--property", "value"]
+        validate_command(command, APP, WINDOW, False)
+        for argv, window in [(command, ""), (command[:2], WINDOW), (command[:-1] + ["text"], WINDOW)]:
+            with self.assertRaises(SafetyError):
+                validate_command(argv, APP, window, False)
+
     def test_allows_only_exact_fixture_scoped_observations(self):
         validate_command(["version"], APP, "", False)
         validate_command(["permissions"], APP, "", False)

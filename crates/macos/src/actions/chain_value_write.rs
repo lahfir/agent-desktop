@@ -21,10 +21,14 @@ mod imp {
             if error.disposition != agent_desktop_core::DeliverySemantics::uncertain() {
                 return Err(error);
             }
-            let recovery = Deadline::detached_after(500)?;
-            let observed = crate::tree::copy_value_typed(element, recovery);
-            let verified =
-                chain_verify::dynamic_write_had_effect(attribute, None, value, observed.as_deref());
+            let observed = crate::tree::copy_value_typed(element, deadline);
+            let role = ax_helpers::element_role(element, deadline).ok().flatten();
+            let verified = chain_verify::dynamic_write_had_effect(
+                attribute,
+                role.as_deref(),
+                value,
+                observed.as_deref(),
+            );
             return if verified {
                 Ok(DeliveryOutcome::DeliveredVerified)
             } else {
@@ -36,7 +40,6 @@ mod imp {
         prepare(element, deadline).map_err(|error| delivery.annotate(error))?;
         let role = ax_helpers::element_role(element, deadline)
             .map_err(|error| delivery.annotate(error))?;
-        prepare(element, deadline).map_err(|error| delivery.annotate(error))?;
         let observed = crate::tree::copy_value_typed(element, deadline);
         Ok(DeliveryOutcome::from_delivery(
             true,
@@ -56,17 +59,18 @@ mod imp {
     ) -> Result<DeliveryOutcome, AdapterError> {
         const MAX_INCREMENT_STEPS: usize = 1_024;
 
-        let Some(target) = finite_target(target) else {
+        let requested = target;
+        let Some(target) = finite_target(requested) else {
             return Ok(DeliveryOutcome::NotDelivered);
         };
-        let Some(mut current) = read_number(element, deadline)? else {
+        let Some((mut current, mut current_text)) = read_number(element, deadline)? else {
             return Ok(DeliveryOutcome::NotDelivered);
         };
         let start = current;
         let mut delivered = false;
         let mut delivery = crate::actions::DeliveryTracker::default();
         for _ in 0..MAX_INCREMENT_STEPS {
-            if (current - target).abs() < 0.5 {
+            if increment_target_reached(&current_text, requested) {
                 return Ok(if delivered {
                     DeliveryOutcome::DeliveredVerified
                 } else {
@@ -74,32 +78,37 @@ mod imp {
                 });
             }
             if deadline.is_expired() {
-                return Err(chain_verify::increment_deadline_error(
+                return Err(delivery.annotate(chain_verify::increment_deadline_error(
                     start, current, target,
-                ));
+                )));
             }
-            let action = if current < target {
-                "AXIncrement"
-            } else {
-                "AXDecrement"
+            let Some(action) = increment_action(&current_text, requested) else {
+                return Ok(DeliveryOutcome::from_delivery(delivered, false));
             };
             prepare(element, deadline).map_err(|error| delivery.annotate(error))?;
-            let delivered_step = match ax_helpers::try_ax_action_or_err(element, action, deadline) {
-                Ok(delivered) => delivered,
-                Err(error) if delivered => return Err(delivery.annotate(error)),
-                Err(error) => return Err(error),
-            };
+            let delivered_step = ax_helpers::try_ax_action_or_err(element, action, deadline)
+                .map_err(|error| delivery.annotate(error))?;
             if !delivered_step {
                 break;
             }
             delivered = true;
             delivery.mark_delivered();
             match read_number(element, deadline).map_err(|error| delivery.annotate(error))? {
-                Some(next) if (next - current).abs() >= f64::EPSILON => current = next,
+                Some((next, text)) => {
+                    let progressed = increment_progressed(&current_text, &text, requested);
+                    current = next;
+                    current_text = text;
+                    if !progressed {
+                        return Err(delivery.annotate(AdapterError::new(
+                            agent_desktop_core::ErrorCode::ActionFailed,
+                            "Native increments stopped progressing toward the requested value",
+                        ).with_suggestion("Read the current value; choose a target supported by the control's native step size.")));
+                    }
+                }
                 _ => break,
             }
         }
-        if (current - target).abs() < 0.5 {
+        if increment_target_reached(&current_text, requested) {
             return Ok(DeliveryOutcome::DeliveredVerified);
         }
         if (current - start).abs() >= f64::EPSILON {
@@ -131,25 +140,51 @@ mod imp {
         ))
     }
 
+    pub(crate) fn increment_action(current: &str, target: &str) -> Option<&'static str> {
+        let ordering =
+            if let (Ok(current), Ok(target)) = (current.parse::<i128>(), target.parse::<i128>()) {
+                current.cmp(&target)
+            } else {
+                let (current, target) = (finite_target(current)?, finite_target(target)?);
+                if current.abs().max(target.abs()) >= 9_007_199_254_740_992.0 {
+                    return None;
+                }
+                current.partial_cmp(&target)?
+            };
+        match ordering {
+            std::cmp::Ordering::Less => Some("AXIncrement"),
+            std::cmp::Ordering::Greater => Some("AXDecrement"),
+            std::cmp::Ordering::Equal => None,
+        }
+    }
+
+    pub(crate) fn increment_progressed(before: &str, after: &str, target: &str) -> bool {
+        let direction = increment_action(before, target);
+        increment_target_reached(after, target)
+            || (direction.is_some()
+                && increment_action(before, after) == direction
+                && increment_action(after, target) == direction)
+    }
+
+    pub(crate) fn increment_target_reached(current: &str, target: &str) -> bool {
+        agent_desktop_core::value_matches("incrementor", target, Some(current))
+    }
+
     pub(crate) fn finite_target(target: &str) -> Option<f64> {
         target.parse::<f64>().ok().filter(|value| value.is_finite())
     }
 
-    fn read_number(element: &AXElement, deadline: Deadline) -> Result<Option<f64>, AdapterError> {
+    fn read_number(
+        element: &AXElement,
+        deadline: Deadline,
+    ) -> Result<Option<(f64, String)>, AdapterError> {
         prepare(element, deadline)?;
         Ok(crate::tree::copy_value_typed(element, deadline)
-            .and_then(|value| value.parse::<f64>().ok()))
+            .and_then(|value| finite_target(&value).map(|number| (number, value))))
     }
 
     fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {
         crate::tree::attributes::set_messaging_timeout(element, deadline)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn verification_failure_after_write(error: AdapterError) -> AdapterError {
-        let mut delivery = crate::actions::DeliveryTracker::default();
-        delivery.mark_delivered();
-        delivery.annotate(error)
     }
 }
 
@@ -157,10 +192,7 @@ mod imp {
 pub(crate) use imp::{increment_to_value, set_bool_verified, set_dynamic_verified};
 
 #[cfg(all(test, target_os = "macos"))]
-use imp::finite_target;
-
-#[cfg(all(test, target_os = "macos"))]
-use imp::verification_failure_after_write;
+use imp::{finite_target, increment_action, increment_target_reached};
 
 #[cfg(test)]
 #[path = "chain_value_write_tests.rs"]

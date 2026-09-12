@@ -55,7 +55,7 @@ impl ObservationOps for ScrollRecoveryAdapter {
                 hidden: Some(false),
                 offscreen: Some(offscreen),
             },
-            states_complete: true,
+            states_complete: false,
             bounds: Some(bounds()),
             available_actions: vec![capability::EXPAND.into()],
         })

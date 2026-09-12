@@ -1,8 +1,7 @@
-use super::{clear_judged_for, parse_finite_f64, set_value_judged_for};
+use super::{parse_finite_f64, set_value_judged_for};
 use crate::actions::chain::DeliveryOutcome;
 use agent_desktop_core::{
-    Action, ActionStepOutcome, Deadline, DeliveryDisposition, ElementState, ErrorCode,
-    InteractionPolicy,
+    Action, ActionStepOutcome, Deadline, DeliveryDisposition, ErrorCode, InteractionPolicy,
 };
 use std::cell::Cell;
 
@@ -25,12 +24,8 @@ fn set_value_verified_when_readback_equals() {
     assert_eq!(steps.len(), 1);
     assert!(matches!(steps[0].outcome, ActionStepOutcome::Succeeded));
     assert_eq!(steps[0].verified(), Some(true));
-    let result = agent_desktop_core::ActionResult::from_execution(
-        &Action::SetValue("hello".into()),
-        steps,
-        None,
-    )
-    .expect("result");
+    let result =
+        agent_desktop_core::ActionResult::from_execution(&Action::SetValue("hello".into()), steps);
     assert_eq!(
         result.disposition().delivery(),
         DeliveryDisposition::DeliveredVerified
@@ -111,50 +106,6 @@ fn parse_finite_rejects_nan_and_non_numeric() {
     assert!(parse_finite_f64("abc").is_none());
     assert!(parse_finite_f64("NaN").is_none());
     assert!(parse_finite_f64("inf").is_none());
-}
-
-#[test]
-fn clear_empty_post_state_satisfies_core_postcondition() {
-    let steps = clear_judged_for(deadline(), InteractionPolicy::headless(), true, || {
-        Ok(DeliveryOutcome::DeliveredVerified)
-    })
-    .expect("clear");
-    let state = ElementState {
-        role: "textfield".into(),
-        states: vec![],
-        value: Some(String::new()),
-        enabled: Some(true),
-        hidden: None,
-        offscreen: Some(false),
-    };
-    let result =
-        agent_desktop_core::ActionResult::from_execution(&Action::Clear, steps, Some(state))
-            .expect("clear ok");
-    assert!(result.post_state.is_some());
-}
-
-#[test]
-fn clear_refusing_fake_yields_action_failed_delivered_unverified() {
-    let steps = clear_judged_for(deadline(), InteractionPolicy::headless(), true, || {
-        Ok(DeliveryOutcome::DeliveredUnverified)
-    })
-    .expect("delivered");
-    let state = ElementState {
-        role: "textfield".into(),
-        states: vec![],
-        value: Some("still-here".into()),
-        enabled: Some(true),
-        hidden: None,
-        offscreen: Some(false),
-    };
-    let error =
-        agent_desktop_core::ActionResult::from_execution(&Action::Clear, steps, Some(state))
-            .expect_err("postcondition");
-    assert_eq!(error.code, ErrorCode::ActionFailed);
-    assert_eq!(
-        error.disposition.delivery(),
-        DeliveryDisposition::DeliveredUnverified
-    );
 }
 
 #[test]

@@ -203,6 +203,7 @@ impl LocatorTraversal {
                     );
                 }
                 None => {
+                    complete = false;
                     retained_edge_certainty(&mut predecessors_complete, false);
                 }
             }
@@ -246,7 +247,33 @@ fn retained_edge_certainty(prefix_certain: &mut bool, retained: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::retained_edge_certainty;
+    use super::*;
+
+    #[test]
+    fn omitted_child_cannot_leave_its_parent_subtree_complete() {
+        let mut request = ObservationRequest::snapshot(
+            &agent_desktop_core::TreeOptions::default(),
+            agent_desktop_core::Deadline::after(1_000).unwrap(),
+        );
+        request.budget.max_nodes = 1;
+        let mut traversal = LocatorTraversal::new(
+            &request,
+            crate::tree::TreeBuildContext::empty(false),
+            Instant::now() + Duration::from_secs(1),
+        );
+        assert!(traversal.usage.claim_node());
+        traversal.arena.add_handles(1);
+        let mut read = ChildRead::empty(true);
+        read.elements.push(AXElement(std::ptr::null_mut()));
+        read.total_count = 1;
+
+        let (children, complete) = traversal.visit_children(read, (1, 0)).unwrap();
+
+        assert!(children.is_empty());
+        assert!(!complete);
+        assert!(!traversal.arena.structurally_complete);
+        assert!(traversal.arena.finish().is_ok());
+    }
 
     #[test]
     fn uncertain_source_prefix_marks_retained_edge_uncertain() {

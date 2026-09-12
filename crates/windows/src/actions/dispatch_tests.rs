@@ -241,7 +241,6 @@ fn set_focus_call_site_lives_only_in_focus_rs() {
         ("actions/dispatch.rs", include_str!("dispatch.rs")),
         ("actions/focus.rs", include_str!("focus.rs")),
         ("actions/value_write.rs", include_str!("value_write.rs")),
-        ("actions/post_state.rs", include_str!("post_state.rs")),
         ("actions/toggle_state.rs", include_str!("toggle_state.rs")),
         ("actions/disclosure.rs", include_str!("disclosure.rs")),
         ("actions/select.rs", include_str!("select.rs")),

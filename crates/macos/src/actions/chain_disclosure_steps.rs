@@ -106,7 +106,12 @@ mod imp {
         expanded: bool,
     ) -> Result<DeliveryOutcome, AdapterError> {
         if last_state == Some(!expanded) {
-            Ok(DeliveryOutcome::NotDelivered)
+            Err(AdapterError::new(
+                agent_desktop_core::ErrorCode::ActionFailed,
+                "Disclosure action completed but the requested expanded state was not observed",
+            )
+            .with_disposition(agent_desktop_core::DeliverySemantics::delivered_unverified())
+            .with_suggestion("Inspect the expanded state before deciding whether to retry."))
         } else {
             Ok(DeliveryOutcome::DeliveredUnverified)
         }
@@ -150,8 +155,10 @@ mod imp {
         #[test]
         fn unobserved_delivery_preserves_honest_unknown_state() {
             assert_eq!(
-                unobserved_delivery(Some(false), true).expect("known opposite state"),
-                DeliveryOutcome::NotDelivered
+                unobserved_delivery(Some(false), true)
+                    .expect_err("known opposite state")
+                    .disposition,
+                agent_desktop_core::DeliverySemantics::delivered_unverified()
             );
             assert_eq!(
                 unobserved_delivery(None, true).expect("unreadable state after delivery"),

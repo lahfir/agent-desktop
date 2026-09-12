@@ -106,7 +106,7 @@ pub(crate) fn ax_role_and_subrole_to_str(ax_role: &str, ax_subrole: Option<&str>
     }
 }
 
-pub(crate) use agent_desktop_core::roles::is_toggleable_role;
+pub(crate) use agent_desktop_core::roles::{is_expandable_role, is_toggleable_role};
 
 pub(crate) fn accessible_name_from_subrole(subrole: Option<&str>) -> Option<&'static str> {
     match subrole {

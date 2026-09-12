@@ -230,6 +230,7 @@ fn requires_scroll_into_view_covers_all_actions() {
         Action::Clear,
         Action::Hover,
         Action::Drag(dummy_drag()),
+        Action::Scroll(Direction::Down, 1),
     ];
     for action in scroll_into_view {
         assert!(
@@ -240,7 +241,6 @@ fn requires_scroll_into_view_covers_all_actions() {
     }
 
     let not_scroll_into_view: &[Action] = &[
-        Action::Scroll(Direction::Down, 1),
         Action::ScrollTo,
         Action::SetFocus,
         Action::PressKey(dummy_key()),

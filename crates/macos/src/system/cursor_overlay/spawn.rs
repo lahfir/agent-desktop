@@ -221,7 +221,7 @@ fn send_until(
             .with_platform_detail(error.to_string())
     })?;
     let travels = control.is_travel();
-    if !travels && !control.is_hide() && !control.is_disable() {
+    if !control.expects_acknowledgement() {
         return Ok(true);
     }
     stream
@@ -260,6 +260,22 @@ fn send_until(
             );
             Err(
                 AdapterError::internal("macOS cursor overlay did not confirm cursor arrival")
+                    .with_platform_detail(error.to_string()),
+            )
+        }
+        Err(error)
+            if control.instruction().is_some_and(|instruction| {
+                instruction.phase() == agent_desktop_core::CursorPhase::Effect
+            }) =>
+        {
+            tracing::warn!(
+                session = control.session_id(),
+                agent = control.agent_id(),
+                %error,
+                "cursor overlay effect was not acknowledged; continuing without effect confirmation"
+            );
+            Err(
+                AdapterError::internal("macOS cursor overlay did not confirm cursor effect")
                     .with_platform_detail(error.to_string()),
             )
         }

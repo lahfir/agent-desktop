@@ -12,19 +12,14 @@ const AFTER_HELP: &str = include_str!("help_after.txt");
 #[command(
     name = "agent-desktop",
     version,
-    about = "Desktop automation CLI for AI agents",
+    about = "Reliable computer use for AI agents — see and operate desktop apps",
     long_about = None,
     before_help = BEFORE_HELP,
     after_help = AFTER_HELP,
 )]
 pub(crate) struct Cli {
-    #[arg(
-        long,
-        short = 'v',
-        global = true,
-        help = "Enable debug logging to stderr"
-    )]
-    pub verbose: bool,
+    #[command(flatten)]
+    pub visual_debug: crate::visual_debug::options::DebugOptions,
     #[command(flatten)]
     pub identity: super::identity::IdentityArgs,
     #[arg(

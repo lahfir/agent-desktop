@@ -47,6 +47,18 @@ fn offscreen_direction_uses_global_viewport_edges() {
 }
 
 #[test]
+fn final_scroll_read_timeout_does_not_claim_safe_non_delivery() {
+    let error = agent_desktop_core::AdapterError::timeout("final bounds read")
+        .with_disposition(agent_desktop_core::DeliverySemantics::not_delivered());
+    let error = super::imp::settled_scroll_outcome(None, Err(error)).unwrap_err();
+    assert_eq!(error.code, agent_desktop_core::ErrorCode::Timeout);
+    assert_eq!(
+        error.disposition,
+        agent_desktop_core::DeliverySemantics::delivered_unverified()
+    );
+}
+
+#[test]
 fn acknowledged_scroll_without_geometry_change_is_not_delivery() {
     let before = rect(2622.0, 1063.0, 177.0, 24.0);
 

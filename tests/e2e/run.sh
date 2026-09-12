@@ -137,7 +137,7 @@ source "$here/scenarios/trace_performance.sh"
 source "$here/scenarios/notifications.sh"
 
 note "Multi-agent cursor probe"
-if "$bin" close-app "$app" --force >/dev/null 2>&1; then
+if [ "$fixture_owned" -eq 0 ] || "$bin" close-app "$app" --force >/dev/null 2>&1; then
     fixture_owned=0
     for mode in headless headed; do
         cursor_flags=()

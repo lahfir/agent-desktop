@@ -92,7 +92,7 @@ fn run() -> Result<(), AdapterError> {
                     state.resting = false;
                 }
                 let outcome = handle(&control, &mut state);
-                if outcome.is_ok() && (control.is_hide() || control.is_travel()) {
+                if outcome.is_ok() && control.expects_acknowledgement() {
                     let _ = stream.write_all(&[1]);
                 }
                 if outcome.is_err() {

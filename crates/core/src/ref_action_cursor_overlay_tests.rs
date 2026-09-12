@@ -8,6 +8,7 @@ use std::sync::Mutex;
 struct CursorAdapter {
     presented: Mutex<Vec<CursorOverlayControl>>,
     events: Mutex<Vec<CursorEvent>>,
+    value: Mutex<Option<String>>,
     fail_presentation: bool,
 }
 
@@ -23,6 +24,7 @@ impl CursorAdapter {
         Self {
             presented: Mutex::new(Vec::new()),
             events: Mutex::new(Vec::new()),
+            value: Mutex::new(None),
             fail_presentation,
         }
     }
@@ -40,7 +42,15 @@ impl ObservationOps for CursorAdapter {
     crate::adapter::complete_live_observation!(
         "textfield",
         "Run",
-        [capability::CLICK, capability::SET_VALUE]
+        [capability::CLICK, capability::SET_VALUE],
+        adapter => crate::ElementState {
+            role: "textfield".into(),
+            states: Vec::new(),
+            value: adapter.value.lock().unwrap().clone(),
+            enabled: Some(true),
+            hidden: Some(false),
+            offscreen: Some(false),
+        }
     );
 }
 
@@ -56,6 +66,9 @@ impl ActionOps for CursorAdapter {
                 request.verified_point(),
                 Some(&crate::Point { x: 11.0, y: 11.0 })
             );
+        }
+        if let Action::SetValue(value) = &request.action {
+            *self.value.lock().unwrap() = Some(value.clone());
         }
         self.events.lock().unwrap().push(CursorEvent::Dispatch);
         Ok(ActionResult::delivered_unverified("click"))

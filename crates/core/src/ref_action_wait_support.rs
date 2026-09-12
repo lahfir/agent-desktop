@@ -108,6 +108,30 @@ pub(crate) fn trace_resolve_error(context: &CommandContext, ref_id: &str, err: &
     });
 }
 
+pub(crate) fn after_scroll(mut error: AdapterError) -> AdapterError {
+    if matches!(
+        error.disposition,
+        crate::DeliverySemantics::NotDelivered | crate::DeliverySemantics::Unknown
+    ) {
+        error.disposition = crate::DeliverySemantics::uncertain();
+    }
+    let details = error.details.get_or_insert_with(|| json!({}));
+    if let Some(details) = details.as_object_mut() {
+        details.insert("preparatory_scroll".into(), "may_have_changed_view".into());
+    }
+    error
+}
+
+pub(crate) fn trace_scroll_error(
+    target: &crate::ref_action_context::RefActionContext<'_>,
+    error: &AdapterError,
+) {
+    let _ = target.context.trace_lazy(
+        "ref.scroll_into_view.error",
+        || json!({"ref": target.ref_id, "code": error.code.as_str(), "message": error.message}),
+    );
+}
+
 pub(crate) fn trace_resolve_ok(context: &CommandContext, ref_id: &str) {
     let _ = context.trace_lazy("ref.resolve.ok", || json!({ "ref": ref_id }));
 }

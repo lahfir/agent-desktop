@@ -82,6 +82,7 @@ skills-lock.json
 docs/*
 !docs/architecture.excalidraw
 !docs/architecture.png
+!docs/slack-example.png
 !docs/faq.md
 !docs/json-output.md
 !docs/phases.md

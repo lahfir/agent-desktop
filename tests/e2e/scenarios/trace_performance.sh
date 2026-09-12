@@ -5,6 +5,10 @@ require_target trace_text textfield text-input
 trace_type="$("$bin" --headed --trace "$trace_file" type "$(target_ref "$trace_text")" \
     --snapshot "$(target_snapshot "$trace_text")" "sup3r-secret-trace" 2>&1)"
 sleep 0.2
+require_value trace_echo text-echo
+assert "headed trace typing reaches the target field" \
+    "$([[ "$trace_echo" == *sup3r-secret-trace* ]] && echo 1 || echo 0)" \
+    "observed_chars=${#trace_echo}"
 trace_bytes="$(wc -c < "$trace_file" | tr -d ' ')"
 trace_resolver="$(grep -q 'ref.resolve' "$trace_file" && echo 1 || echo 0)"
 trace_leak="$(grep -q 'sup3r-secret-trace' "$trace_file" && echo 1 || echo 0)"
@@ -122,6 +126,10 @@ running_before="$(running)"
 "$bin" close-app "$app" --force >/dev/null 2>&1
 sleep 1.5
 running_after="$(running)"
+if [ "$running_after" = "False" ]; then
+    fixture_owned=0
+    fixture_started=0
+fi
 assert "force close removes the fixture process" \
     "$([ "$running_before" = "True" ] && [ "$running_after" = "False" ] && echo 1 || echo 0)" \
     "before=$running_before after=$running_after"

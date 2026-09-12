@@ -19,8 +19,8 @@ mod imp {
         AdapterError, Deadline, DeliveryOutcome, DeliverySemantics, ErrorCode, InteractionLease,
         Rect,
     };
+    use crate::actions::chain::after_delivery;
     use crate::actions::mutation::classify_mutation;
-    use crate::actions::post_state::after_delivery;
     use crate::actions::scroll_ladder::{
         LADDER_SCROLL_LABEL, VisibilitySample, ancestor_ladder, apply_ladder_seam,
         visibility_verified,

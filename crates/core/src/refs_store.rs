@@ -88,6 +88,18 @@ impl RefStore {
         }
     }
 
+    pub fn load_ref(
+        &self,
+        ref_id: &str,
+        snapshot_id: Option<&str>,
+    ) -> Result<crate::RefEntry, AppError> {
+        let (snapshot_id, local_ref) = crate::ref_token::resolve_ref_target(ref_id, snapshot_id)?;
+        self.load_snapshot(&snapshot_id)?
+            .get(&local_ref)
+            .cloned()
+            .ok_or_else(|| AppError::stale_ref(ref_id))
+    }
+
     pub fn load_latest(&self) -> Result<RefMap, AppError> {
         if let Some(id) = self.read_latest_snapshot_id()? {
             return self.load_snapshot_from_base(&self.base_dir, &id);

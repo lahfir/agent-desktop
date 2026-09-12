@@ -7,7 +7,6 @@ use crate::actions::chain::{
     ALREADY_LABEL, ChainDef, ChainRung, DeliveryOutcome, INVOKE_LABEL, build_step,
     capped_verification_end, execute_chain,
 };
-use crate::actions::post_state::after_delivery;
 use crate::tree::element::UIAElement;
 
 pub(crate) const TOGGLE_LABEL: &str = "TogglePattern.Toggle";
@@ -53,10 +52,10 @@ mod imp {
         ALREADY_LABEL, ActionStep, AdapterError, CHECK_SUGGESTION, ChainRung, Deadline,
         DeliveryOutcome, ErrorCode, INVOKE_LABEL, Instant, InteractionPolicy, POLL_SLICE,
         TOGGLE_CHAIN, TOGGLE_LABEL, TOGGLE_STABLE, TOGGLE_TIMEOUT, ToggleKind, UIAElement,
-        after_delivery, build_step, capped_verification_end, execute_chain,
+        build_step, capped_verification_end, execute_chain,
     };
+    use crate::actions::chain::{after_delivery, delivery_occurred};
     use crate::actions::mutation::{classify_success, classify_write};
-    use crate::actions::post_state::delivery_occurred;
     use crate::system::permissions::ensure_budget;
     use crate::tree::properties::read_one;
     use crate::tree::property_ids::TreeProperty;

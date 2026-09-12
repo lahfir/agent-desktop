@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-desktop · Live Inspector</title>
+<link rel="stylesheet" href="/shared/viewer.css">
+<link rel="stylesheet" href="/styles.css">
+<script src="/shared/viewer_filter.js" defer></script>
+<script src="/app.js" type="module"></script>
+</head>
+<body>
+<header>
+<div class="heading"><h1>agent-desktop <span>Live Inspector</span></h1><span class="readonly">Read-only</span></div>
+<form id="app-form" class="app-picker">
+<label>Application<select id="app" required><option value="">Loading applications…</option></select></label>
+<label id="window-field" hidden>Window<select id="window"></select></label>
+<button id="load" type="submit" class="primary" disabled>Inspect app</button>
+<button id="reload-apps" type="button">Reload apps</button>
+</form>
+<p id="status" role="status" aria-live="polite">Choose a running app to see its interface.</p>
+<div id="error" role="alert" hidden></div>
+</header>
+<main class="workspace">
+<div id="show-left" class="pane-show" hidden><button type="button" class="pane-toggle" title="Show elements sidebar" aria-label="Show elements sidebar">›</button></div>
+<nav id="tree-pane" class="tree-pane" aria-label="Application element hierarchy">
+<div class="pane-heading"><h2>Elements</h2><span class="pane-heading-tools"><span id="node-count"></span><button id="hide-left" type="button" class="pane-toggle" title="Hide elements sidebar" aria-label="Hide elements sidebar">‹</button></span></div>
+<p class="hint">Select a row to highlight it. Use an arrow to open a branch.</p>
+<div id="tree-empty" class="empty">Your app’s element tree will appear here.</div>
+<div id="tree"></div>
+</nav>
+<div id="resize-left" class="pane-resize" role="separator" aria-orientation="vertical" aria-label="Resize elements sidebar" tabindex="0"></div>
+<section class="preview-pane" aria-label="Window screenshot">
+<div class="pane-heading"><h2 id="window-title">Window preview</h2><div class="preview-controls"><button id="show-right" type="button" class="pane-toggle" title="Show inspector sidebar" aria-label="Show inspector sidebar" hidden>‹</button><button id="show-all" type="button" disabled>Show all</button><label><input id="highlights" type="checkbox" checked> Highlights</label></div></div>
+<p id="preview-hint" class="hint">Selecting a highlight inspects the element. It never clicks the app.</p>
+<div id="preview-empty" class="empty">Choose an app, then select <strong>Inspect app</strong>.</div>
+<div id="stage" hidden><img id="capture" alt="Selected application window"><svg id="overlay" xmlns="http://www.w3.org/2000/svg" aria-label="Selectable element highlights"></svg></div>
+<p id="capture-warning" class="hint"></p>
+</section>
+<div id="resize-right" class="pane-resize" role="separator" aria-orientation="vertical" aria-label="Resize inspector sidebar" tabindex="0"></div>
+<aside id="inspect-pane" class="inspect-pane" aria-label="Selected element and scoped commands">
+<h2 id="selected-name">Select an element</h2>
+<p id="selected-role" class="hint">Its details and available reads will appear here.</p>
+<code id="selected-ref"></code>
+<p id="selected-states" class="hint"></p>
+<button id="expand" type="button" disabled>Load children</button>
+<p id="scope-note" class="hint"></p>
+<form id="find-form">
+<h3>Find inside selection</h3>
+<label>Search field<select id="find-field"><option value="text">Text (name, value, descendants)</option><option value="name">Name only</option><option value="value">Value only</option></select></label>
+<p class="hint">Text searches names, values, descriptions, and descendant content within the selected scope.</p>
+<label>Search term<input id="find-name" type="search" placeholder="For example, Save" maxlength="512"></label>
+<div class="search-options"><label>Role<input id="find-role" list="roles" placeholder="Any role" maxlength="64"></label><datalist id="roles"></datalist><label class="exact"><input id="find-exact" type="checkbox"> Exact match</label></div>
+<button id="find" class="primary" type="submit" disabled>Find</button>
+</form>
+<p id="result-count" role="status"></p>
+<div id="results"></div>
+<details id="read-options"><summary>Read a property or state</summary>
+<form id="read-form"><label>Read<select id="read-kind"><option value="get">Property</option><option value="is">State</option></select></label><label>Which one?<select id="property"></select></label><button id="read" type="submit" disabled>Read from app</button></form>
+<pre id="read-result"></pre></details>
+<details><summary>Element details</summary><pre id="element-details">No selection</pre></details>
+<button id="hide-right" type="button" class="pane-toggle pane-toggle-hide" title="Hide inspector sidebar" aria-label="Hide inspector sidebar">›</button>
+</aside>
+</main>
+<footer><details id="command-log"><summary id="command-summary">Command history</summary><ol id="commands"></ol></details><p class="hint">Local inspector · screenshots and labels may contain sensitive content. Refresh after the app changes.</p></footer>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden><div class="toast-heading"><span class="spinner" aria-hidden="true"></span><strong id="toast-title"></strong><button id="toast-dismiss" type="button" aria-label="Dismiss command notification">×</button></div><code id="toast-command"></code><p id="toast-message"></p></div>
+</body>
+</html>

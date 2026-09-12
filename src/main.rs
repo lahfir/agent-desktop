@@ -6,6 +6,7 @@ mod cli_args;
 mod command_policy;
 mod diagnostic;
 mod dispatch;
+mod visual_debug;
 
 /// Shared blanket-default `PlatformAdapter` test double, sourced once from
 /// `tests/support/noop_ops.rs` (also consumed by the standalone
@@ -90,7 +91,7 @@ fn run() -> ExitCode {
         }
     };
 
-    init_tracing(cli.verbose);
+    init_tracing(cli.visual_debug.verbose);
 
     let cmd = match cli.command.take() {
         Some(c) => c,
@@ -103,6 +104,10 @@ fn run() -> ExitCode {
     };
 
     let cmd_name = cmd.name();
+
+    if let Err(err) = cli.visual_debug.validate(&cmd) {
+        return finish(cmd_name, Err(err));
+    }
 
     if let Err(err) = agent_desktop_core::validate_state_root_env() {
         return finish(cmd_name, Err(pre_dispatch_error(err)));
@@ -163,7 +168,7 @@ fn run() -> ExitCode {
                     return finish(cmd_name, Err(err));
                 }
             }
-            run_with_adapter(cmd, cmd_name, &context)
+            run_with_adapter(cmd, cmd_name, &context, &cli.visual_debug)
         }
     }
 }
@@ -210,7 +215,12 @@ fn validate_wait_for_command(cmd: &Commands, wait: &WaitSelector) -> Result<(), 
     Ok(())
 }
 
-fn run_with_adapter(cmd: Commands, cmd_name: &str, context: &CommandContext) -> ExitCode {
+fn run_with_adapter(
+    mut cmd: Commands,
+    cmd_name: &str,
+    context: &CommandContext,
+    debug: &visual_debug::options::DebugOptions,
+) -> ExitCode {
     #[cfg(target_os = "windows")]
     if let Err(bootstrap_error) = agent_desktop_windows::ensure_owned_process_mta_and_dpi() {
         return finish(cmd_name, Err(pre_dispatch_error(bootstrap_error.into())));
@@ -236,7 +246,31 @@ fn run_with_adapter(cmd: Commands, cmd_name: &str, context: &CommandContext) -> 
         return finish(cmd_name, Err(err));
     }
 
-    let result = dispatch::dispatch(cmd, adapter, &report, context);
+    if debug.debug && report.screen_recording_denied() {
+        return finish(
+            cmd_name,
+            Err(pre_dispatch_error(
+                AdapterError::new(
+                    ErrorCode::PermDenied,
+                    "Visual debug requires Screen Recording permission",
+                )
+                .with_suggestion(
+                    report
+                        .screen_recording_suggestion()
+                        .unwrap_or("Grant Screen Recording permission and retry"),
+                )
+                .into(),
+            )),
+        );
+    }
+    let capture = match visual_debug::DebugCapture::prepare(&mut cmd, debug, adapter, context) {
+        Ok(capture) => capture,
+        Err(error) => return finish(cmd_name, Err(pre_dispatch_error(error))),
+    };
+    let mut result = dispatch::dispatch(cmd, adapter, &report, context);
+    if let Some(capture) = capture {
+        capture.finish(&mut result, adapter, context);
+    }
     finish(cmd_name, result)
 }
 

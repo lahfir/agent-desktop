@@ -1,24 +1,41 @@
 macro_rules! complete_live_observation {
     ($role:expr, $name:expr, [$($action:expr),* $(,)?]) => {
+        $crate::adapter::complete_live_observation!(
+            @impl $role,
+            $name,
+            [$($action),*],
+            _adapter => $crate::ElementState {
+                role: $role.into(),
+                states: Vec::new(),
+                value: None,
+                enabled: Some(true),
+                hidden: Some(false),
+                offscreen: Some(false),
+            }
+        );
+    };
+    ($role:expr, $name:expr, [$($action:expr),* $(,)?], $adapter:ident => $state:expr) => {
+        $crate::adapter::complete_live_observation!(
+            @impl $role,
+            $name,
+            [$($action),*],
+            $adapter => $state
+        );
+    };
+    (@impl $role:expr, $name:expr, [$($action:expr),* $(,)?], $adapter:ident => $state:expr) => {
         fn get_live_element(
             &self,
             _handle: &$crate::adapter::NativeHandle,
             _deadline: $crate::Deadline,
         ) -> Result<$crate::LiveElement, $crate::AdapterError> {
+            let $adapter = self;
             Ok($crate::LiveElement {
                 identity: $crate::LiveIdentity {
                     name: $crate::LocatorField::Known($name.into()),
                     description: $crate::LocatorField::Absent,
                     identifiers: $crate::IdentifierEvidence::absent(),
                 },
-                state: $crate::ElementState {
-                    role: $role.into(),
-                    states: Vec::new(),
-                    value: None,
-                    enabled: Some(true),
-                    hidden: Some(false),
-                    offscreen: Some(false),
-                },
+                state: $state,
                 states_complete: true,
                 bounds: Some($crate::Rect {
                     x: 1.0,
@@ -35,14 +52,8 @@ macro_rules! complete_live_observation {
             _handle: &$crate::adapter::NativeHandle,
             _deadline: $crate::Deadline,
         ) -> Result<Option<$crate::ElementState>, $crate::AdapterError> {
-            Ok(Some($crate::ElementState {
-                role: $role.into(),
-                states: Vec::new(),
-                value: None,
-                enabled: Some(true),
-                hidden: Some(false),
-                offscreen: Some(false),
-            }))
+            let $adapter = self;
+            Ok(Some($state))
         }
 
         fn get_element_bounds(
@@ -119,6 +130,39 @@ pub(crate) fn live_identity(name: &str) -> crate::LiveIdentity {
         name: crate::LocatorField::Known(name.into()),
         description: crate::LocatorField::Absent,
         identifiers: crate::IdentifierEvidence::absent(),
+    }
+}
+
+pub(crate) fn recorded_action_state(requests: &[crate::ActionRequest]) -> crate::ElementState {
+    let mut value = String::new();
+    let mut checked = false;
+    let mut expanded = false;
+    for request in requests {
+        match &request.action {
+            crate::Action::Clear => value.clear(),
+            crate::Action::SetValue(next) | crate::Action::TypeText(next) => value.clone_from(next),
+            crate::Action::Check => checked = true,
+            crate::Action::Uncheck => checked = false,
+            crate::Action::Toggle => checked = !checked,
+            crate::Action::Expand => expanded = true,
+            crate::Action::Collapse => expanded = false,
+            _ => {}
+        }
+    }
+    let mut states = Vec::new();
+    if checked {
+        states.push(crate::state::CHECKED.into());
+    }
+    if expanded {
+        states.push(crate::state::EXPANDED.into());
+    }
+    crate::ElementState {
+        role: "textfield".into(),
+        states,
+        value: Some(value),
+        enabled: Some(true),
+        hidden: Some(false),
+        offscreen: Some(false),
     }
 }
 

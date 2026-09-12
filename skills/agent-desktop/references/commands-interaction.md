@@ -24,6 +24,12 @@ A successful action reports what happened, not just that it ran:
 | `data.post_state` | The target element's state after the action, when the action has one |
 | `data.surfaces` | Overlays the application had open once the action settled |
 
+Stateful actions (`set-value`, `type`, `clear`, `check`, `uncheck`, `toggle`, `expand`, `collapse`) read fresh state after execution. An observed mismatch returns `ACTION_FAILED` with `error.details.kind: post_action_verification`; a failed read preserves its original error code. Missing evidence alone returns successful `delivered_unverified` with `details.verification_scope: unavailable` and `verification_reason: insufficient_evidence`. Inspect `post_state`, `after_action`, and the delivery disposition before deciding what to do next. `toggle` requires readable before/after checked state; check/uncheck and expand/collapse require the requested final state. Do not blindly repeat an action with uncertain or unverified delivery, especially `toggle`, which could undo the first change.
+
+Headed typing may change the selection when it focuses an inactive field. A range read before that focus change cannot verify insertion into a nonempty field, so the result remains explicitly unverified rather than reporting a false contradiction.
+
+Secure text is intentionally redacted: a successfully delivered text write can return `delivered_unverified` with `verification_scope: unavailable` and `verification_reason: secure_field`, without exposing the value or claiming verification. This exception does not turn a native delivery error into success.
+
 Check `data.surfaces` before assuming an action finished the job. An action that
 opens a sheet, menu, or alert leaves the application waiting on that overlay, and
 the next command must target it:
@@ -38,6 +44,14 @@ window. A `delivered_unverified` result with a surface still open usually means
 the application is waiting for a confirmation the action did not deliver.
 
 On macOS, headed clicks on native menu-bar items use AXPress because these items have no ordinary owning window. Other headed ref clicks retain physical target verification. An enabled cursor overlay travels to and highlights that verified target alongside the real pointer.
+
+### Visual click debugging
+
+On macOS, `click REF --debug --screenshot /tmp/click-visual.html` writes a local
+HTML artifact with the highlighted pre-dispatch target, an after-command window
+capture, and the original command result. It neither enables `--headed` nor
+proves delivery from the screenshot. See [Visual debug](commands-observation.md#visual-debug)
+for role-group checkbox filters, permissions, new-file requirements, and failure handling.
 
 ### `--wait-for` / `--wait-for-gone` (global)
 
@@ -136,11 +150,15 @@ agent-desktop type @s8f3k2p9:e2 "multi line\ntext"
 ```
 Headless `type` uses semantic text insertion where the platform exposes it (macOS `AXSelectedText`) without focusing the app or synthesizing keys. On Windows, headless `type` fails closed at policy — UIA has no insert-at-selection path; use `set-value` for semantic writes. Pass `--headed` to focus the target and synthesize keyboard input via `SendInput` (A4-1).
 
+When the value and selection are readable, insertion checks the resulting value. A mismatch or unavailable readback returns `ACTION_FAILED`; inspect the current state and delivery disposition before writing again. Secure-field redaction is the explicit exception described above: a delivered write remains unverified rather than failing solely because its value is hidden.
+
 ### set-value
 ```bash
 agent-desktop set-value @s8f3k2p9:e2 "new value"
 ```
 Sets the value directly via the platform's semantic value write (macOS AX value attribute; Windows `ValuePattern.SetValue` / `RangeValuePattern.SetValue`). Faster than `type` but may not trigger all UI callbacks. Use for text fields, text areas, and sliders. Secure fields withhold content from steps and post-state (A19-3).
+
+`delivered_verified` confirms the target element's value, not an application commit or a dependent document change. The result details identify `verification_scope: element_value` and `application_commit: not_verified`. For example, changing a spreadsheet's row-count text field does not prove the table resized; verify the table or target its native incrementor. A readable cell without `SetValue` is not directly editable: activate it and target the editor it exposes.
 
 ### clear
 ```bash

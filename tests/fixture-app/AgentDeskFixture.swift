@@ -144,6 +144,8 @@ struct ContentView: View {
                 .accessibilityLabel("text-input")
             StatusReadout(name: "text-echo", value: textValue)
 
+            SilentTextInput().frame(height: 22)
+
             SecureField("Secure Input", text: $secureValue)
                 .accessibilityLabel("secure-input")
             StatusReadout(name: "secure-echo", value: secureValue.isEmpty ? "empty" : "set")

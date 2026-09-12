@@ -9,7 +9,7 @@ use crate::{
         chain::{ChainContext, execute_chain},
         chain_defs,
     },
-    tree::AXElement,
+    tree::{AXElement, state_reader::parse_checked_value},
 };
 
 const TOGGLE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(600);
@@ -109,23 +109,12 @@ fn after_delivery(error: AdapterError) -> AdapterError {
 
 fn mark_last_verified(steps: &mut [ActionStep], verified: bool) {
     if let Some(step) = steps.last_mut() {
-        if verified || step.verified.is_none() {
-            step.verified = Some(verified);
-        }
+        step.verified = Some(verified);
     }
 }
 
 fn checked_state(el: &AXElement, deadline: Deadline) -> Result<Option<bool>, AdapterError> {
     Ok(read_value(el, deadline)?.and_then(|value| parse_checked_value(&value)))
-}
-
-fn parse_checked_value(value: &str) -> Option<bool> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "1" | "true" | "yes" | "on" | "checked" => Some(true),
-        "0" | "false" | "no" | "off" | "unchecked" => Some(false),
-        "2" | "mixed" | "indeterminate" => None,
-        _ => None,
-    }
 }
 
 fn wait_for_checked_state(
@@ -279,10 +268,10 @@ mod tests {
     }
 
     #[test]
-    fn absent_toggle_state_does_not_erase_existing_verification() {
+    fn absent_toggle_state_does_not_inherit_click_verification() {
         let mut steps = vec![ActionStep::succeeded("verified_press").with_verified(true)];
         mark_last_verified(&mut steps, false);
-        assert_eq!(steps[0].verified(), Some(true));
+        assert_eq!(steps[0].verified(), Some(false));
     }
 
     #[test]

@@ -61,24 +61,6 @@ fn element_state_from_attrs_omits_offscreen_without_window_bounds() {
 }
 
 #[test]
-fn post_delay_is_skipped_when_it_would_exhaust_the_budget() {
-    let deadline = Deadline::after(1).unwrap();
-
-    assert!(!pause_if_budget_allows(
-        deadline,
-        std::time::Duration::from_millis(50)
-    ));
-}
-
-#[test]
-fn click_does_not_post_read_a_target_that_navigation_may_detach() {
-    let element = crate::tree::AXElement(std::ptr::null_mut());
-    let state = read_post_state(&element, &Action::Click, Deadline::after(1).unwrap()).unwrap();
-
-    assert!(state.is_none());
-}
-
-#[test]
 fn post_state_uses_the_same_subrole_mapping_as_snapshot_observation() {
     assert_eq!(
         normalized_role(Some("AXRow"), Some("AXOutlineRow")),
@@ -172,4 +154,21 @@ fn optional_identity_gaps_do_not_poison_complete_actionability_evidence() {
     assert!(essential_live_evidence_complete(&evidence));
     evidence.states = LocatorField::Unknown;
     assert!(!essential_live_evidence_complete(&evidence));
+}
+
+#[test]
+fn an_unread_expanded_attribute_is_not_complete_state_evidence() {
+    let element = |role: &str| agent_desktop_core::ElementState {
+        role: role.into(),
+        states: Vec::new(),
+        value: None,
+        enabled: Some(true),
+        hidden: Some(false),
+        offscreen: Some(false),
+    };
+
+    assert!(!states_are_complete(&element("disclosure"), false));
+    assert!(states_are_complete(&element("disclosure"), true));
+    assert!(states_are_complete(&element("button"), false));
+    assert!(!states_are_complete(&element("checkbox"), true));
 }

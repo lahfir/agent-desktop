@@ -101,10 +101,12 @@ pub unsafe extern "C" fn ad_execute_action_with_policy(
             error::set_last_error(&error);
             return error::last_error_code();
         }
-        match adapter
-            .inner
-            .execute_action(native_handle.as_ref(), request, &lease)
-        {
+        match agent_desktop_core::execute_verified_action(
+            adapter.inner.as_ref(),
+            native_handle.as_ref(),
+            request,
+            &lease,
+        ) {
             Ok(result) => {
                 *out = action_result_to_c(&result);
                 AdResult::Ok

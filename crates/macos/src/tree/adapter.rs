@@ -128,6 +128,22 @@ impl ObservationOps for MacOSAdapter {
         Err(AdapterError::not_supported("get_live_state"))
     }
 
+    fn get_text_selection(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<Option<std::ops::Range<usize>>, AdapterError> {
+        #[cfg(target_os = "macos")]
+        {
+            Ok(crate::tree::attributes::selected_text_range(
+                ax_element(handle)?,
+                deadline,
+            ))
+        }
+        #[cfg(not(target_os = "macos"))]
+        Ok(None)
+    }
+
     fn get_live_actions(
         &self,
         handle: &NativeHandle,

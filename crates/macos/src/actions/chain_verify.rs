@@ -57,23 +57,7 @@ pub(crate) fn dynamic_write_had_effect(
     expected: &str,
     observed: Option<&str>,
 ) -> bool {
-    if attr != "AXValue" || role == Some("AXSecureTextField") {
-        return true;
-    }
-    observed == Some(expected) || numbers_match(expected, observed)
-}
-
-fn numbers_match(expected: &str, observed: Option<&str>) -> bool {
-    match (
-        expected.parse::<f64>(),
-        observed.and_then(|o| o.parse::<f64>().ok()),
-    ) {
-        (Ok(a), Some(b)) => {
-            let tolerance = 1e-6_f64.max(a.abs().max(b.abs()) * 1e-9);
-            (a - b).abs() <= tolerance
-        }
-        _ => false,
-    }
+    attr == "AXValue" && agent_desktop_core::value_matches(role.unwrap_or(""), expected, observed)
 }
 
 #[cfg(test)]
@@ -132,27 +116,27 @@ mod tests {
     fn ax_value_write_requires_readback_match() {
         assert!(!dynamic_write_had_effect(
             "AXValue",
-            Some("AXTextField"),
+            Some("textfield"),
             "",
             Some("unchanged")
         ));
         assert!(dynamic_write_had_effect(
             "AXValue",
-            Some("AXTextField"),
+            Some("textfield"),
             "",
             Some("")
         ));
     }
 
     #[test]
-    fn non_value_and_secure_writes_trust_ax_success() {
-        assert!(dynamic_write_had_effect(
+    fn missing_readback_never_verifies_a_write() {
+        assert!(!dynamic_write_had_effect(
             "AXSelected",
             Some("AXCheckBox"),
             "true",
             None
         ));
-        assert!(dynamic_write_had_effect(
+        assert!(!dynamic_write_had_effect(
             "AXValue",
             Some("AXSecureTextField"),
             "secret",
@@ -172,25 +156,25 @@ mod tests {
     fn numeric_value_write_matches_reformatted_readback() {
         assert!(dynamic_write_had_effect(
             "AXValue",
-            Some("AXSlider"),
+            Some("slider"),
             "50",
             Some("50.00")
         ));
         assert!(dynamic_write_had_effect(
             "AXValue",
-            Some("AXIncrementor"),
+            Some("incrementor"),
             "3",
             Some("3")
         ));
         assert!(dynamic_write_had_effect(
             "AXValue",
-            Some("AXSlider"),
+            Some("slider"),
             "50",
             Some("50.0000004")
         ));
         assert!(!dynamic_write_had_effect(
             "AXValue",
-            Some("AXSlider"),
+            Some("slider"),
             "50",
             Some("12.00")
         ));

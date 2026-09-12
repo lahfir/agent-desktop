@@ -175,6 +175,14 @@ pub trait SystemOps: Send + Sync {
         Err(AdapterError::not_supported("screenshot"))
     }
 
+    fn screenshot_window_frame(
+        &self,
+        _window: &WindowInfo,
+        _deadline: Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
+        Err(AdapterError::not_supported("screenshot_window_frame"))
+    }
+
     fn list_displays(&self, _deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
         Err(AdapterError::not_supported("list_displays"))
     }

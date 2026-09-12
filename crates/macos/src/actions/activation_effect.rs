@@ -10,7 +10,6 @@ mod imp {
     /// The readback for `perform`, which has no written attribute to re-read.
     #[derive(Default)]
     pub(crate) struct FocusState {
-        window_title: Option<String>,
         focused_element: Option<AXElement>,
     }
 
@@ -20,62 +19,98 @@ mod imp {
     /// identity the framework defines.
     impl PartialEq for FocusState {
         fn eq(&self, other: &Self) -> bool {
-            self.window_title == other.window_title
-                && match (&self.focused_element, &other.focused_element) {
-                    (None, None) => true,
-                    (Some(mine), Some(theirs)) => crate::tree::same_element(mine, theirs),
-                    _ => false,
-                }
+            match (&self.focused_element, &other.focused_element) {
+                (None, None) => true,
+                (Some(mine), Some(theirs)) => crate::tree::same_element(mine, theirs),
+                _ => false,
+            }
         }
     }
 
-    pub(crate) fn focus_state(element: &AXElement, deadline: Deadline) -> FocusState {
-        let Some(app) = crate::system::app_ops::pid_from_element(element, deadline)
-            .map(crate::tree::element_for_pid)
-        else {
-            return FocusState::default();
-        };
-        FocusState {
-            window_title: read_element(&app, "AXFocusedWindow", deadline).and_then(|window| {
-                crate::tree::attributes::copy_string_attr_result(&window, "AXTitle", deadline)
-                    .ok()
-                    .flatten()
-            }),
-            focused_element: read_element(&app, "AXFocusedUIElement", deadline),
-        }
+    pub(crate) fn focus_state(element: &AXElement, deadline: Deadline) -> Option<FocusState> {
+        let app = crate::system::app_ops::pid_from_element(element, deadline)
+            .map(crate::tree::element_for_pid)?;
+        Some(FocusState {
+            focused_element: crate::tree::attributes::copy_element_attr_result(
+                &app,
+                "AXFocusedUIElement",
+                deadline,
+            )
+            .ok()?,
+        })
     }
 
     pub(crate) fn changed_now(
-        before: &FocusState,
+        before: &Option<FocusState>,
         element: &AXElement,
         deadline: Deadline,
     ) -> bool {
-        focus_state(element, deadline) != *before
+        let after = focus_state(element, deadline);
+        let target_focused = after
+            .as_ref()
+            .and_then(|state| state.focused_element.as_ref())
+            .is_some_and(|focused| crate::tree::same_element(focused, element));
+        observed_change(before, &after, target_focused)
     }
 
     pub(crate) fn settled_change(
-        before: &FocusState,
+        before: &Option<FocusState>,
         element: &AXElement,
         deadline: Deadline,
     ) -> bool {
-        let started = std::time::Instant::now();
-        loop {
-            if focus_state(element, deadline) != *before {
+        if before.is_none() {
+            return false;
+        }
+        let deadline = deadline.capped(std::time::Duration::from_millis(SETTLE_BUDGET_MS));
+        while !deadline.is_expired() {
+            if changed_now(before, element, deadline) {
                 return true;
             }
-            if started.elapsed() >= std::time::Duration::from_millis(SETTLE_BUDGET_MS)
-                || deadline.is_expired()
-            {
-                return false;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(SETTLE_POLL_MS));
+            std::thread::sleep(
+                deadline
+                    .remaining()
+                    .min(std::time::Duration::from_millis(SETTLE_POLL_MS)),
+            );
         }
+        false
     }
 
-    fn read_element(app: &AXElement, attr: &str, deadline: Deadline) -> Option<AXElement> {
-        crate::tree::attributes::copy_element_attr_result(app, attr, deadline)
-            .ok()
-            .flatten()
+    fn observed_change(
+        before: &Option<FocusState>,
+        after: &Option<FocusState>,
+        target_focused: bool,
+    ) -> bool {
+        target_focused && matches!((before, after), (Some(before), Some(after)) if before != after)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn focus_changes_must_correlate_with_the_target() {
+            let before = Some(FocusState {
+                focused_element: Some(crate::tree::element_for_pid(1)),
+            });
+            let after = Some(FocusState {
+                focused_element: Some(crate::tree::element_for_pid(2)),
+            });
+            assert!(!observed_change(&before, &after, false));
+            assert!(observed_change(&before, &after, true));
+            assert!(!observed_change(&after, &after, true));
+        }
+
+        #[test]
+        fn missing_observation_cannot_verify_an_action() {
+            let before = Some(FocusState::default());
+            let after = Some(FocusState::default());
+            assert!(!observed_change(&before, &None, true));
+            assert!(!observed_change(&None, &after, true));
+            assert!(!observed_change(&None, &None, true));
+            assert!(!observed_change(&before, &before, true));
+            assert!(!observed_change(&before, &after, false));
+            assert!(!observed_change(&before, &after, true));
+        }
     }
 }
 

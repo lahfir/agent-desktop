@@ -179,6 +179,36 @@ fn test_root_ref_serde_roundtrip() {
 }
 
 #[test]
+fn drill_replaces_full_snapshot_and_nested_descendants_only() {
+    let mut map = RefMap::new();
+    let mut allocate = |path: &[usize], owner: Option<&str>| {
+        let mut value = entry("button", Some("Target"));
+        value.scope.path = path.iter().copied().collect();
+        value.scope.root_ref = owner.map(str::to_string);
+        value.scope.path_is_absolute = owner.is_some();
+        map.allocate(value)
+    };
+    let root = allocate(&[0], None);
+    let full_child = allocate(&[0, 0], None);
+    let drilled_child = allocate(&[0, 0], Some(&root));
+    let nested_child = allocate(&[0, 0, 0], Some(&drilled_child));
+    let sibling = allocate(&[1], None);
+    let mut other_window = map.get(&full_child).unwrap().clone();
+    other_window.source.source_window_id = Some("w-2".into());
+    let other_window = map.allocate(other_window);
+    map.remove_by_root_ref(&root);
+    assert!(map.get(&root).is_some());
+    assert!(map.get(&sibling).is_some());
+    assert!(map.get(&other_window).is_some());
+    for removed in [full_child, drilled_child, nested_child] {
+        assert!(
+            map.get(&removed).is_none(),
+            "obsolete ref {removed} survived"
+        );
+    }
+}
+
+#[test]
 fn test_serialize_with_size_check_rejects_oversized() {
     let mut map = RefMap::new();
     let big_name = "x".repeat(2048);
@@ -204,7 +234,9 @@ fn test_serialize_with_size_check_accepts_normal() {
     }
 
     let result = map.serialize_with_size_check();
-    assert!(result.is_ok(), "normal-sized refmap should serialize");
+    let value: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
+    assert_eq!(value["inner"]["@e1"]["role"], "button");
+    assert_eq!(value["inner"]["@e1"]["name"], "OK");
 }
 
 #[test]

@@ -232,6 +232,17 @@ fn text_input_requires_editable_target() {
 }
 
 #[test]
+fn cell_text_input_explains_how_to_target_the_editor() {
+    let mut cell = entry();
+    cell.identity.role = "cell".into();
+    for action in [Action::TypeText("x".into()), Action::SetValue("x".into())] {
+        let error = check(&cell, &ActionRequest::headless(action)).unwrap_err();
+        assert!(error.suggestion.unwrap().contains("target the text editor"));
+        assert_eq!(error.disposition, crate::DeliverySemantics::not_delivered());
+    }
+}
+
+#[test]
 fn cursor_movement_requires_physical_policy() {
     let err = check(&entry(), &ActionRequest::headless(Action::Hover)).unwrap_err();
 

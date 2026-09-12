@@ -39,7 +39,7 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 **Output structure:**
 ```json
 {
-  "version": "2.3",
+  "version": "2.4",
   "ok": true,
   "command": "snapshot",
   "data": {
@@ -139,6 +139,35 @@ closed one returns `WINDOW_NOT_FOUND` with a suggestion naming
 - For a Chromium-based app's web contents (Slack, VS Code, Discord, and similar), `launch --cdp` plus a CDP client is a faster alternative to skeleton traversal on a fresh launch — see `references/commands-system.md`
 - Keep `snapshot_id` when commands must resolve against a specific snapshot instead of the latest snapshot pointer
 
+### Visual debug
+
+On macOS, `--debug --screenshot PATH.html` saves a local HTML viewer with window screenshots, element highlights, and ref labels. With TextEdit open:
+
+```bash
+agent-desktop snapshot --app TextEdit --skeleton -i --debug --screenshot /tmp/textedit-visual.html
+open /tmp/textedit-visual.html
+```
+
+For a click, use a real ref from your snapshot:
+
+```bash
+agent-desktop click @s8f3k2p9:e5 --debug --screenshot /tmp/click-visual.html
+```
+
+**Using the viewer**
+- Expand a role group to inspect its elements; snapshot groups start collapsed.
+- Check **Tree items**, **Buttons**, or another role to filter highlights. Multiple checked roles combine; none checked shows all. Checking does not expand the group.
+- Select an element to isolate its bounds and ref; select it again to undo. **Show all elements** resets everything. **Highlights** hides or shows the boxes.
+- Blue = action ref, amber dashed = drill anchor, gray = context, red = click target. Hidden/offscreen elements and elements without drawable bounds stay listed without boxes. List numbers are not refs.
+- Click captures have **Before click** and **After command** views. Only the before image highlights the target; screenshots are not proof of delivery or a live recording.
+
+**Important limits**
+- Both flags are required. Choose a new `.html` file in an existing directory; files are never overwritten.
+- Requires Accessibility and Screen Recording permissions. Supports window-surface `snapshot` and ref-based `click`, not batch or other commands. It does not enable `--headed`; `-v` is still separate logging.
+- Success adds `data.debug` with the artifact path and optional warning. Late capture/write failures preserve the command result; command failures preserve the original error and report artifact metadata on stderr. Preparation errors may prevent dispatch.
+- Screenshots and labels are sensitive. No session is needed. Debug snapshots retain full bounds in their persisted refmap for the viewer; JSON still omits bounds unless `--include-bounds` was requested. Debug capture is opt-in, not a byte-identical persistence mode.
+- Rebuild after viewer changes and generate a new artifact; saved HTML does not update automatically.
+
 ## find
 
 Search elements by role, name, value, or text content.
@@ -197,6 +226,8 @@ menu-bar dump.
 ```
 
 Every non-count `find` response returns the `snapshot_id` that owns its refs. Pass that exact ID to later ref actions instead of relying on the mutable latest-snapshot pointer, especially when interleaving automation across apps or windows. Count-only responses create no ref namespace and omit `snapshot_id`.
+
+A match with no `ref_id` is a context match: readable text that carries no action target. A context match also carries a `bounds` object (`{ x, y, width, height }`) whenever the platform reports one, so it can still be located on screen. A match that has a `ref_id` never carries `bounds`; read those with `get --property bounds`.
 
 **Output (no match — `roles_present` hint):** when a `--role` filter matches nothing, `roles_present` lists the roles actually in the searched tree so you can tell a wrong role name from "none on screen"; this applies to all non-count selection modes — an empty match list, or a `--first`/`--last`/`--nth` miss — whenever a role filter was active, making it a role-vocabulary hint for retries.
 ```json

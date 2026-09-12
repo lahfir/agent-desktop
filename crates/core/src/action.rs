@@ -80,6 +80,18 @@ impl Action {
         }
     }
 
+    pub(crate) fn writes_element_value(&self) -> bool {
+        matches!(self, Self::SetValue(_) | Self::Clear | Self::TypeText(_))
+    }
+
+    pub(crate) fn requires_state_readback(&self) -> bool {
+        self.writes_element_value()
+            || matches!(
+                self,
+                Self::Check | Self::Uncheck | Self::Toggle | Self::Expand | Self::Collapse
+            )
+    }
+
     pub fn requires_cursor_policy(&self) -> bool {
         matches!(self, Self::Hover | Self::Drag(_))
     }
@@ -130,6 +142,7 @@ impl Action {
                 | Self::Clear
                 | Self::Hover
                 | Self::Drag(_)
+                | Self::Scroll(_, _)
         )
     }
 

@@ -31,18 +31,16 @@ mod imp {
         crate::tree::attributes::set_messaging_timeout(el, ctx.deadline)?;
 
         for (i, step) in def.steps.iter().enumerate() {
-            ctx.ensure_budget()?;
+            ctx.ensure_budget()
+                .map_err(|error| after_steps(&steps, error))?;
             if !step_allowed(step, policy) {
                 continue;
             }
             let label = step_label(step);
-            let outcome = execute_step(el, step, ctx, policy)?;
-            if record_step_outcome(
-                &mut steps,
-                step,
-                outcome,
-                def.continue_after_unverified_delivery,
-            ) {
+            let outcome =
+                execute_step(el, step, ctx, policy).map_err(|error| after_steps(&steps, error))?;
+            let continue_unverified = def.continue_after_unverified_delivery;
+            if record_step_outcome(&mut steps, step, outcome, continue_unverified) {
                 tracing::debug!("chain: [{}/{}] {} -> success", i + 1, total, label);
                 return Ok(steps);
             }
@@ -50,11 +48,20 @@ mod imp {
         }
 
         tracing::debug!("chain: all {total} steps exhausted");
-        Err(
-            AdapterError::new(ErrorCode::ActionFailed, "All chain steps exhausted")
-                .with_disposition(exhaustion_disposition(&steps))
-                .with_suggestion(def.suggestion),
-        )
+        Err(exhaustion_error(&steps, def.suggestion))
+    }
+
+    pub(crate) fn exhaustion_error(steps: &[ActionStep], suggestion: &str) -> AdapterError {
+        AdapterError::new(ErrorCode::ActionFailed, "All chain steps exhausted")
+            .with_disposition(exhaustion_disposition(steps))
+            .with_suggestion(suggestion)
+    }
+
+    pub(crate) fn after_steps(steps: &[ActionStep], error: AdapterError) -> AdapterError {
+        let delivered = exhaustion_disposition(steps)
+            == agent_desktop_core::DeliverySemantics::delivered_unverified();
+        crate::actions::DeliveryTracker::from_delivered_units(usize::from(delivered))
+            .annotate(error)
     }
 
     pub(crate) fn exhaustion_disposition(
@@ -132,7 +139,8 @@ mod imp {
 
 #[cfg(all(test, target_os = "macos"))]
 pub(crate) use imp::{
-    build_step, exhaustion_disposition, record_step_outcome, step_allowed, step_mechanism,
+    after_steps, build_step, exhaustion_disposition, exhaustion_error, record_step_outcome,
+    step_allowed, step_mechanism,
 };
 
 #[cfg(test)]

@@ -49,7 +49,9 @@ pub(crate) fn execute_poll_loop(
                 state.preflight_attempts = state.preflight_attempts.saturating_add(1);
                 if let Err(error) = preflight_resolved(&target, request, state.stability()) {
                     let error = into_adapter_error(error);
-                    if !should_scroll_after_preflight(request, &error) {
+                    let focus_pending = request.headed_requirement().requires_focus()
+                        && failed_check(&error, "receives_events");
+                    if !focus_pending && !should_scroll_after_preflight(request, &error) {
                         handle_actionability_failure(&mut state, error, deadline)?;
                         continue;
                     }

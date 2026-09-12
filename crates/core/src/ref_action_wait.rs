@@ -140,3 +140,7 @@ mod success_tests;
 #[cfg(test)]
 #[path = "ref_action_exactly_once_tests.rs"]
 mod exactly_once_tests;
+
+#[cfg(test)]
+#[path = "ref_action_focus_order_tests.rs"]
+mod focus_order_tests;

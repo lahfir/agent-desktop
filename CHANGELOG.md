@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0](https://github.com/lahfir/agent-desktop/compare/v0.8.5...v0.9.0) (2026-09-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* the response envelope moves to 2.4. Stateful ref actions can now return ACTION_FAILED for an observed postcondition contradiction, and ActionResult::from_execution takes only action and steps.
+
+### Features
+
+* verify stateful ref actions against fresh platform state ([9bc91bc](https://github.com/lahfir/agent-desktop/commit/9bc91bc0ab53139d85e5c10a0ae0b3c3b4bc18b9))
+
+
+### Bug Fixes
+
+* guard the debug viewer image sink and unpin a flaky test deadline ([fca24f2](https://github.com/lahfir/agent-desktop/commit/fca24f2b0259bac83ff17a490052e1f2a9a9496f))
+* report unread expand state as unverified rather than failed ([a7131c2](https://github.com/lahfir/agent-desktop/commit/a7131c241cce06687b15c53386fd7787d8fbfd72))
+
 ## [0.8.5](https://github.com/lahfir/agent-desktop/compare/v0.8.4...v0.8.5) (2026-09-06)
 
 

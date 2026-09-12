@@ -14,10 +14,10 @@
 </p>
 
 <p align="center">
-  <img src="assets/Tutorial.gif" alt="agent-desktop tutorial demo" width="800" />
+  <video src="https://github.com/user-attachments/assets/9b2c9f8c-a49d-4b69-b6cf-11d9e0d40ceb" controls width="800"></video>
 </p>
 
-**agent-desktop** is a native desktop automation CLI designed for AI agents, built with Rust. It gives structured access to any application through OS accessibility trees — no screenshots, no pixel matching, no browser required.
+**agent-desktop** gives any agent reliable computer use on the desktop. Built with Rust, it sees any app's real UI structure through OS accessibility trees and operates it — refs stay stable and actions stay safe to retry, instead of guessing from pixels.
 
 ## Architecture
 
@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/example.png" alt="agent-desktop real-world example — Slack accessibility tree with 97% token savings" width="900" />
+  <img src="docs/slack-example.png" alt="Slack accessibility snapshots: 30,743 tokens for a regular snapshot versus 383 for a skeleton overview, with focused drilling for controls" width="900" />
 </p>
 
 <a href="https://star-history.com/#lahfir/agent-desktop&Date">

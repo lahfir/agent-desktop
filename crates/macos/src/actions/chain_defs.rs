@@ -104,7 +104,7 @@ mod imp {
             ChainStep::IncrementToDynamic,
         ],
         suggestion: "Target an element with a settable value or native increment/decrement actions.",
-        continue_after_unverified_delivery: true,
+        continue_after_unverified_delivery: false,
     };
 
     pub(crate) static CLEAR_CHAIN: ChainDef = ChainDef {
@@ -113,7 +113,7 @@ mod imp {
             ChainStep::SetDynamic { attr: "AXValue" },
         ],
         suggestion: "Target an editable control or allow the verified keyboard fallback.",
-        continue_after_unverified_delivery: true,
+        continue_after_unverified_delivery: false,
     };
 
     pub(crate) static SEMANTIC_CLICK_CHAIN: ChainDef = ChainDef {

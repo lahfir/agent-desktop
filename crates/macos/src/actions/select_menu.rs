@@ -216,7 +216,8 @@ fn deliver_candidate(
         match select_attribute() {
             Ok(Some(verified)) => return Ok(verified),
             Ok(None) => None,
-            Err(error) => Some(error),
+            Err(error) if error.disposition == DeliverySemantics::not_delivered() => Some(error),
+            Err(error) => return Err(error),
         }
     } else {
         None
@@ -246,10 +247,24 @@ fn select_candidate_attribute(
     if !crate::actions::ax_helpers::set_ax_bool_or_err(candidate, "AXSelected", true, deadline)? {
         return Ok(None);
     }
-    let instant = crate::tree::locator_deadline::from_operation(deadline)?;
-    Ok(Some(
-        crate::tree::surface_read::boolean(candidate, "AXSelected", instant)? == Some(true),
-    ))
+    let instant =
+        crate::tree::locator_deadline::from_operation(deadline).map_err(after_menu_delivery)?;
+    let observed = crate::tree::surface_read::boolean(candidate, "AXSelected", instant)
+        .map_err(after_menu_delivery)?;
+    selected_readback(observed).map(Some)
+}
+
+fn selected_readback(observed: Option<bool>) -> Result<bool, AdapterError> {
+    match observed {
+        Some(false) => Err(AdapterError::new(
+            ErrorCode::ActionFailed,
+            "AXSelected write completed but the item remained unselected",
+        )
+        .with_disposition(DeliverySemantics::delivered_unverified())
+        .with_suggestion("Inspect the selection before deciding whether to retry.")),
+        Some(true) => Ok(true),
+        None => Ok(false),
+    }
 }
 
 fn press_candidate(candidate: &AXElement, deadline: Deadline) -> Result<bool, AdapterError> {
@@ -301,58 +316,5 @@ fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::cell::Cell;
-
-    #[test]
-    fn select_traversal_limits_are_bounded() {
-        assert_eq!(MAX_SELECT_NODES, 2_048);
-        assert_eq!(MAX_SELECT_DEPTH, 8);
-    }
-
-    #[test]
-    fn menu_items_are_pressed_without_setting_selected_first() {
-        let selected_calls = Cell::new(0);
-        let press_calls = Cell::new(0);
-
-        let verified = deliver_candidate(
-            false,
-            || {
-                selected_calls.set(selected_calls.get() + 1);
-                Ok(Some(true))
-            },
-            || {
-                press_calls.set(press_calls.get() + 1);
-                Ok(true)
-            },
-        )
-        .expect("menu candidate delivery");
-
-        assert!(!verified);
-        assert_eq!(selected_calls.get(), 0);
-        assert_eq!(press_calls.get(), 1);
-    }
-
-    #[test]
-    fn collection_selection_falls_back_to_press_when_selected_write_fails() {
-        let press_calls = Cell::new(0);
-        let verified = deliver_candidate(
-            true,
-            || {
-                Err(AdapterError::new(
-                    ErrorCode::ActionFailed,
-                    "AXSelected is unavailable",
-                ))
-            },
-            || {
-                press_calls.set(press_calls.get() + 1);
-                Ok(true)
-            },
-        )
-        .expect("press fallback");
-
-        assert!(!verified);
-        assert_eq!(press_calls.get(), 1);
-    }
-}
+#[path = "select_menu_tests.rs"]
+mod tests;

@@ -152,6 +152,26 @@ agent-desktop click @e8 --snapshot <snapshot_id>
 agent-desktop snapshot --app "System Settings" -i
 ```
 
+## Pattern: Edit One Cell at a Time (Shared Editor)
+
+Spreadsheet cells and other controls that open a shared editor are an observed
+sequence, not one action: activate the cell, take a fresh snapshot, target the
+editor it exposes, write with `type`/`set-value`, then commit explicitly. The
+interaction lease serializes individual actions, not your whole sequence —
+parallel writers can steal the shared editor even when each targets a different
+row.
+
+- Run the full sequence from one writer; do not parallelize edits to the same
+  document or window.
+- After any uncertain delivery or timeout from a mutation, inspect the current
+  editor/cell/document state (fresh snapshot plus `get --property value`)
+  before choosing the next action. Never blindly retry the timed-out command:
+  the mutation may already have landed.
+- `set-value`/`type` verification covers the element value only
+  (`verification_scope: element_value`, `application_commit: not_verified`).
+  Confirm document-level effects such as table dimensions with an independent
+  read of the document model.
+
 ## Pattern: Navigate Menus
 
 ```bash
@@ -378,3 +398,4 @@ agent-desktop batch '[
 9. **Re-snapshotting everything after one action.** Use scoped re-drill (`--root @ref`) to refresh only the affected region. Other refs stay valid.
 10. **Assuming headed and headless have the same side effects.** Headless ref actions block implicit focus/cursor input. Headed ref actions intentionally focus the exact source window when required, and headed pointer actions may move the cursor; raw coordinates never infer focus.
 11. **Hand-rolling raw CDP for a Chromium app.** After `launch --cdp`, connect a real CDP client — `agent-browser connect <port>` (preferred), or Playwright, Puppeteer, `chrome-remote-interface`, and similar — never a hand-written WebSocket client, `Runtime.evaluate` DOM edits, or app-internal APIs (e.g. an app's own JS globals). Those bypass real input, verify nothing, and are app-specific; they break silently on the next app update. If no CDP client is available, ask the user to install agent-browser or stay on accessibility commands.
+12. **Parallel writers on a shared editor.** Click-to-edit plus type plus commit is not atomic across CLI invocations. Serialize the whole observed sequence through one writer, and after uncertain delivery inspect state before acting — never blindly retry a timeout from a mutation.

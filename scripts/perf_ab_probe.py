@@ -34,8 +34,10 @@ def env_for(binary):
 
 def run(binary, *args, timeout=90):
     start = time.monotonic()
+    lease = os.environ.get("AGENT_DESKTOP_INTERACTION_LEASE_FD")
     proc = subprocess.run(
-        [binary, *args], capture_output=True, text=True, timeout=timeout, env=env_for(binary)
+        [binary, *args], capture_output=True, text=True, timeout=timeout, env=env_for(binary),
+        pass_fds=(int(lease),) if lease else (),
     )
     elapsed = (time.monotonic() - start) * 1000
     return elapsed, proc

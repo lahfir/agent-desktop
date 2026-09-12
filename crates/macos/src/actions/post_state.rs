@@ -1,44 +1,10 @@
 use agent_desktop_core::{
-    Action, AdapterError, Deadline, DeliverySemantics, ElementState, ErrorCode,
-    EvidenceRequirements, LiveElement, LiveIdentity, LocatorField, Rect,
+    AdapterError, Deadline, ElementState, ErrorCode, EvidenceRequirements, LiveElement,
+    LiveIdentity, LocatorField, Rect,
 };
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::tree::AXElement;
-
-pub(crate) fn read_post_state(
-    element: &AXElement,
-    action: &Action,
-    deadline: Deadline,
-) -> Result<Option<ElementState>, AdapterError> {
-    let delay = match action {
-        Action::TypeText(_) => Duration::from_millis(50),
-        Action::Toggle
-        | Action::Check
-        | Action::Uncheck
-        | Action::SetValue(_)
-        | Action::Clear
-        | Action::Expand
-        | Action::Collapse => Duration::ZERO,
-        Action::Click
-        | Action::DoubleClick
-        | Action::RightClick
-        | Action::TripleClick
-        | Action::SetFocus
-        | Action::Select(_)
-        | Action::Scroll(_, _)
-        | Action::ScrollTo
-        | Action::PressKey(_)
-        | Action::KeyDown(_)
-        | Action::KeyUp(_)
-        | Action::Hover
-        | Action::Drag(_) => return Ok(None),
-    };
-    if !delay.is_zero() && !pause_if_budget_allows(deadline, delay) {
-        return Ok(None);
-    }
-    read_element_state(element, deadline).map(Some)
-}
 
 pub(crate) fn read_element_state(
     element: &AXElement,
@@ -69,12 +35,18 @@ pub(crate) fn read_live_element(
     let available_actions = known_actions(read.evidence.ref_evidence.available_actions)?;
     let attrs = read.attrs;
     let bounds = attrs.bounds;
+    let expanded_observed = attrs
+        .states
+        .control
+        .expanded
+        .or(attrs.states.control.disclosing)
+        .is_some();
     let window_bounds = owning_window_bounds(element, deadline)?;
     let state = element_state_from_attrs(element, attrs, role, window_bounds)?;
     Ok(LiveElement {
         identity,
+        states_complete: states_are_complete(&state, expanded_observed),
         state,
-        states_complete: true,
         bounds,
         available_actions,
     })
@@ -196,6 +168,21 @@ fn incomplete_live_evidence() -> AdapterError {
     }))
 }
 
+/// Reports whether the control-state evidence the post-action verifier reads was
+/// actually observed. A toggleable role needs a parsable checked value; an
+/// expandable role needs an observed expanded or disclosing attribute, because an
+/// unread attribute is otherwise indistinguishable from a collapsed control.
+pub(crate) fn states_are_complete(state: &ElementState, expanded_observed: bool) -> bool {
+    let toggle_ready = !crate::tree::roles::is_toggleable_role(&state.role)
+        || state
+            .value
+            .as_deref()
+            .and_then(crate::tree::state_reader::parse_checked_value)
+            .is_some();
+    let expand_ready = !crate::tree::roles::is_expandable_role(&state.role) || expanded_observed;
+    toggle_ready && expand_ready
+}
+
 fn element_state_from_attrs(
     element: &AXElement,
     attrs: crate::tree::NodeAttrs,
@@ -233,15 +220,6 @@ fn normalized_role(ax_role: Option<&str>, ax_subrole: Option<&str>) -> String {
         .map(|role| crate::tree::roles::ax_role_and_subrole_to_str(role, ax_subrole))
         .unwrap_or("unknown")
         .to_string()
-}
-
-fn pause_if_budget_allows(deadline: Deadline, delay: Duration) -> bool {
-    let remaining = deadline.remaining();
-    if remaining <= delay {
-        return false;
-    }
-    std::thread::sleep(delay);
-    !deadline.is_expired()
 }
 
 fn deadline_instant(deadline: Deadline) -> Result<Instant, AdapterError> {

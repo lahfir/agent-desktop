@@ -75,12 +75,25 @@ fn is_expanded(attrs: &NodeAttrs) -> bool {
         .unwrap_or(false)
 }
 
+pub(crate) fn parse_checked_value(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" | "checked" => Some(true),
+        "0" | "false" | "no" | "off" | "unchecked" => Some(false),
+        _ => None,
+    }
+}
+
 fn value_is_checked(value: Option<&str>) -> bool {
-    matches!(value, Some("1" | "true"))
+    value.and_then(parse_checked_value) == Some(true)
 }
 
 fn value_is_indeterminate(value: Option<&str>) -> bool {
-    matches!(value, Some("2" | "mixed"))
+    value.is_some_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "2" | "mixed" | "indeterminate"
+        )
+    })
 }
 
 /// `None` when either rectangle is unknown. No macOS element publishes
