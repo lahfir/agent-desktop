@@ -127,16 +127,11 @@ pub(crate) fn execute_chain(
         let outcome = match (rung.run)() {
             Ok(outcome) => outcome,
             Err(error) => {
-                return Err(
-                    if steps
-                        .iter()
-                        .any(|step| matches!(step.outcome, ActionStepOutcome::Succeeded))
-                    {
-                        error.with_disposition(exhaustion_disposition(&steps))
-                    } else {
-                        error
-                    },
-                );
+                return Err(if delivery_occurred(&steps) {
+                    error.with_disposition(exhaustion_disposition(&steps))
+                } else {
+                    error
+                });
             }
         };
         if record_step_outcome(
