@@ -5,12 +5,12 @@ use crate::{AdapterError, Deadline};
 
 static PROCESS_LEASE_HELD: AtomicBool = AtomicBool::new(false);
 
-pub(crate) struct ProcessLeaseGuard {
+pub struct ProcessLeaseGuard {
     contention_count: u64,
 }
 
 impl ProcessLeaseGuard {
-    pub(crate) fn acquire(deadline: Deadline) -> Result<Self, AdapterError> {
+    pub fn acquire(deadline: Deadline) -> Result<Self, AdapterError> {
         let mut contention_count = 0_u64;
         loop {
             if PROCESS_LEASE_HELD
@@ -32,7 +32,7 @@ impl ProcessLeaseGuard {
         }
     }
 
-    pub(crate) fn contention_count(&self) -> u64 {
+    pub fn contention_count(&self) -> u64 {
         self.contention_count
     }
 }

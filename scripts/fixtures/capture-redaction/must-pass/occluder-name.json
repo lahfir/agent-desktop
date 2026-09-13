@@ -1,0 +1,16 @@
+{
+  "probe": "self-test-fixture",
+  "error": {
+    "details": {
+      "checks": [
+        {
+          "kind": "occlusion",
+          "occluder": {
+            "name": "<redacted:24 chars>",
+            "topmost": true
+          }
+        }
+      ]
+    }
+  }
+}

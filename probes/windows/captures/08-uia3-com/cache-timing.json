@@ -1,0 +1,31 @@
+{
+    "target":  "explorer.exe",
+    "targetKind":  "probe-opened folder window (CabinetWClass) over %WINDIR%\\System32, closed in teardown",
+    "shim":  {
+                 "stack":  "uia3-com",
+                 "binding":  "hand-declared ComImport, no GAC UIAutomationClient reference",
+                 "coclass":  "CUIAutomation8",
+                 "mainThreadId":  8356,
+                 "mainApartment":  "MTA",
+                 "discoveredPatternAvailabilityProperties":  35,
+                 "result":  {
+                                "mode":  "cache",
+                                "label":  "explorer",
+                                "hwnd":  "0x3503aa",
+                                "nodeCount":  220,
+                                "propertiesPerNode":  8,
+                                "propertyNames":  "Name,ControlType,AutomationId,ClassName,BoundingRectangle,IsEnabled,IsOffscreen,FrameworkId",
+                                "repetitions":  5,
+                                "perPropertyMs":  489.0013,
+                                "cachedMs":  181.4986,
+                                "timingPerPropertyFindMs":  117.3772,
+                                "timingCachedFindMs":  180.2522,
+                                "timingPerPropertyReadMs":  371.6241,
+                                "timingCachedReadMs":  1.2464,
+                                "timingReadPhaseMultiplier":  298.158,
+                                "timingMultiplier":  2.6942,
+                                "claimVerdict":  "below-3x-claim",
+                                "claimChecked":  "phases.md 3-5x batched-read speedup"
+                            }
+             }
+}

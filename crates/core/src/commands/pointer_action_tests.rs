@@ -3,7 +3,9 @@ use crate::adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOp
 use crate::refs::{RefEntry, RefMap};
 use crate::refs_store::RefStore;
 use crate::refs_test_support::HomeGuard;
-use crate::{AdapterError, ErrorCode, Rect, capability, hit_test::HitTestResult};
+use crate::{
+    AdapterError, DeliverySemantics, ErrorCode, Rect, capability, hit_test::HitTestResult,
+};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 #[test]
@@ -116,7 +118,9 @@ impl ObservationOps for TerminalAfterRetryAdapter {
             }));
         }
         std::thread::sleep(std::time::Duration::from_millis(120));
-        Err(AdapterError::stale_ref("terminal target"))
+        Err(AdapterError::new(ErrorCode::StaleRef, "terminal target")
+            .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+            .with_disposition(DeliverySemantics::not_delivered()))
     }
 }
 

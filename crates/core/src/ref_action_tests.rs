@@ -1,6 +1,7 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
+    DeliverySemantics, ErrorCode,
     action::Action,
     action_result::ActionResult,
     adapter::{NativeHandle, SnapshotSurface},
@@ -125,9 +126,12 @@ impl ActionOps for ProcessReplacingAdapter {
             .expected_process()
             .ok_or_else(|| AdapterError::internal("missing expected process identity"))?;
         if expected.instance != "replacement-generation" {
-            return Err(AdapterError::stale_ref(
+            return Err(AdapterError::new(
+                ErrorCode::StaleRef,
                 "process generation changed before physical dispatch",
-            ));
+            )
+            .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+            .with_disposition(DeliverySemantics::not_delivered()));
         }
         Ok(ActionResult::delivered_unverified("click"))
     }

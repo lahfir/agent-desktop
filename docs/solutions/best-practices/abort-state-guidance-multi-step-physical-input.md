@@ -50,5 +50,4 @@ was delivered.
 
 ## Related
 
-- [Document pointer actions from their own reliability pipeline](../documentation-gaps/hover-drag-skip-the-actionability-battery.md)
 - [Build desktop actions as an observe-resolve-preflight-dispatch contract](playwright-grade-desktop-reliability-2026-06-02.md)

@@ -206,6 +206,13 @@ pub(crate) struct FindArgs {
     )]
     #[serde(default)]
     pub states: Vec<String>,
+    #[arg(
+        long = "timeout-ms",
+        value_name = "MS",
+        help = "Traversal deadline in milliseconds (default 5000; raise for a large tree such as a shell file dialog)"
+    )]
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
     #[command(flatten)]
     #[serde(flatten)]
     pub selection: FindSelectionArgs,
@@ -243,7 +250,7 @@ pub(crate) struct GetArgs {
     #[arg(
         long,
         default_value = "text",
-        help = "Property: text, value, title, bounds, role, states"
+        help = "Property: text (what a person reads: content for text-bearing roles, otherwise the name), value, title, bounds, role, states"
     )]
     #[serde(default = "default_get_property")]
     pub property: String,

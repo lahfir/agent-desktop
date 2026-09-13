@@ -1,0 +1,14 @@
+{
+    "stage":  "interrupted drag on tbSlider after mouse-down",
+    "slider_label_before":  "slider:25",
+    "slider_label_mid_abort":  "slider:25",
+    "slider_label_after_guard":  "slider:25",
+    "origin_release_posted":  true,
+    "button_down_after_guard":  false,
+    "corrective_acknowledged":  true,
+    "branch":  "corrective_release_acknowledged",
+    "interference":  null,
+    "drag_target_note":  "tbSlider (TrackBar) is the staged drag target; A4-3 measured full drag viability on this control",
+    "button_down_before_exit":  false,
+    "exit_clean":  true
+}

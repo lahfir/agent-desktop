@@ -209,6 +209,7 @@ pub(crate) fn read_node(
                 LocatorField::Unknown
             },
             available_actions: actions,
+            descriptors: Default::default(),
         },
     };
     Ok(NodeRead {

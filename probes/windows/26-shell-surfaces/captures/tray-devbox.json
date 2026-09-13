@@ -1,0 +1,494 @@
+{
+    "probe":  "26-shell-surfaces/03-tray",
+    "label":  "devbox",
+    "measurable":  true,
+    "error_message":  null,
+    "result":  {
+                   "shell_probe":  {
+                                       "mode":  "trayscan",
+                                       "client_stack":  "uia3-com",
+                                       "binding":  "CUIAutomation8",
+                                       "taskbar_found":  true,
+                                       "tray_notify_wnd_child_present":  true,
+                                       "promoted_toolbar_windows_of_taskbar":  3,
+                                       "promoted_toolbar_via_tray_notify_found":  true,
+                                       "overflow_window_class_notify_icon_overflow_window_present":  true,
+                                       "overflow_window_visible":  false,
+                                       "overflow_inner_toolbar_found":  true,
+                                       "toolbars":  [
+                                                        {
+                                                            "label":  "promoted_via_tray_notify_wnd",
+                                                            "found":  true,
+                                                            "additional_unreported_instances":  false,
+                                                            "nativewindowhandle":  65876,
+                                                            "com_direct_children":  0,
+                                                            "button_shapes_recorded":  0,
+                                                            "buttons":  [
+
+                                                                        ],
+                                                            "stability_reread":  [
+
+                                                                                 ]
+                                                        },
+                                                        {
+                                                            "label":  "taskbar_toolbar_0",
+                                                            "found":  true,
+                                                            "additional_unreported_instances":  false,
+                                                            "nativewindowhandle":  65850,
+                                                            "com_direct_children":  1,
+                                                            "button_shapes_recorded":  1,
+                                                            "buttons":  [
+                                                                            {
+                                                                                "ct":  "Button",
+                                                                                "automation_id_present_nonempty":  false,
+                                                                                "pats":  [
+                                                                                             "Invoke",
+                                                                                             "LegacyIAccessible"
+                                                                                         ],
+                                                                                "bounds_positive_area":  false
+                                                                            }
+                                                                        ],
+                                                            "stability_reread":  [
+                                                                                     {
+                                                                                         "index":  0,
+                                                                                         "automation_id_value_unchanged":  true,
+                                                                                         "control_type_unchanged":  true,
+                                                                                         "pattern_set_size_unchanged":  true,
+                                                                                         "bounds_positive_unchanged":  true
+                                                                                     }
+                                                                                 ]
+                                                        },
+                                                        {
+                                                            "label":  "taskbar_toolbar_1",
+                                                            "found":  true,
+                                                            "additional_unreported_instances":  false,
+                                                            "nativewindowhandle":  65876,
+                                                            "com_direct_children":  0,
+                                                            "button_shapes_recorded":  0,
+                                                            "buttons":  [
+
+                                                                        ],
+                                                            "stability_reread":  [
+
+                                                                                 ]
+                                                        },
+                                                        {
+                                                            "label":  "taskbar_toolbar_2",
+                                                            "found":  true,
+                                                            "additional_unreported_instances":  false,
+                                                            "nativewindowhandle":  65880,
+                                                            "com_direct_children":  3,
+                                                            "button_shapes_recorded":  3,
+                                                            "buttons":  [
+                                                                            {
+                                                                                "ct":  "Button",
+                                                                                "automation_id_present_nonempty":  true,
+                                                                                "pats":  [
+                                                                                             "Invoke",
+                                                                                             "LegacyIAccessible"
+                                                                                         ],
+                                                                                "bounds_positive_area":  true
+                                                                            },
+                                                                            {
+                                                                                "ct":  "Button",
+                                                                                "automation_id_present_nonempty":  true,
+                                                                                "pats":  [
+                                                                                             "Invoke",
+                                                                                             "LegacyIAccessible"
+                                                                                         ],
+                                                                                "bounds_positive_area":  true
+                                                                            },
+                                                                            {
+                                                                                "ct":  "Button",
+                                                                                "automation_id_present_nonempty":  true,
+                                                                                "pats":  [
+                                                                                             "Invoke",
+                                                                                             "LegacyIAccessible"
+                                                                                         ],
+                                                                                "bounds_positive_area":  true
+                                                                            }
+                                                                        ],
+                                                            "stability_reread":  [
+                                                                                     {
+                                                                                         "index":  0,
+                                                                                         "automation_id_value_unchanged":  true,
+                                                                                         "control_type_unchanged":  true,
+                                                                                         "pattern_set_size_unchanged":  true,
+                                                                                         "bounds_positive_unchanged":  true
+                                                                                     },
+                                                                                     {
+                                                                                         "index":  1,
+                                                                                         "automation_id_value_unchanged":  true,
+                                                                                         "control_type_unchanged":  true,
+                                                                                         "pattern_set_size_unchanged":  true,
+                                                                                         "bounds_positive_unchanged":  true
+                                                                                     },
+                                                                                     {
+                                                                                         "index":  2,
+                                                                                         "automation_id_value_unchanged":  true,
+                                                                                         "control_type_unchanged":  true,
+                                                                                         "pattern_set_size_unchanged":  true,
+                                                                                         "bounds_positive_unchanged":  true
+                                                                                     }
+                                                                                 ]
+                                                        },
+                                                        {
+                                                            "label":  "overflow",
+                                                            "found":  true,
+                                                            "additional_unreported_instances":  false,
+                                                            "nativewindowhandle":  65866,
+                                                            "com_direct_children":  5,
+                                                            "button_shapes_recorded":  5,
+                                                            "buttons":  [
+                                                                            {
+                                                                                "ct":  "Button",
+                                                                                "automation_id_present_nonempty":  true,
+                                                                                "pats":  [
+                                                                                             "Invoke",
+                                                                                             "LegacyIAccessible"
+                                                                                         ],
+                                                                                "bounds_positive_area":  true
+                                                                            },
+                                                                            {
+                                                                                "ct":  "Button",
+                                                                                "automation_id_present_nonempty":  false,
+                                                                                "pats":  [
+                                                                                             "Invoke",
+                                                                                             "LegacyIAccessible"
+                                                                                         ],
+                                                                                "bounds_positive_area":  true
+                                                                            },
+                                                                            {
+                                                                                "ct":  "Button",
+                                                                                "automation_id_present_nonempty":  false,
+                                                                                "pats":  [
+                                                                                             "Invoke",
+                                                                                             "LegacyIAccessible"
+                                                                                         ],
+                                                                                "bounds_positive_area":  true
+                                                                            },
+                                                                            {
+                                                                                "ct":  "Button",
+                                                                                "automation_id_present_nonempty":  false,
+                                                                                "pats":  [
+                                                                                             "Invoke",
+                                                                                             "LegacyIAccessible"
+                                                                                         ],
+                                                                                "bounds_positive_area":  true
+                                                                            },
+                                                                            {
+                                                                                "ct":  "Button",
+                                                                                "automation_id_present_nonempty":  false,
+                                                                                "pats":  [
+                                                                                             "Invoke",
+                                                                                             "LegacyIAccessible"
+                                                                                         ],
+                                                                                "bounds_positive_area":  true
+                                                                            }
+                                                                        ],
+                                                            "stability_reread":  [
+                                                                                     {
+                                                                                         "index":  0,
+                                                                                         "automation_id_value_unchanged":  true,
+                                                                                         "control_type_unchanged":  true,
+                                                                                         "pattern_set_size_unchanged":  true,
+                                                                                         "bounds_positive_unchanged":  true
+                                                                                     },
+                                                                                     {
+                                                                                         "index":  1,
+                                                                                         "automation_id_value_unchanged":  true,
+                                                                                         "control_type_unchanged":  true,
+                                                                                         "pattern_set_size_unchanged":  true,
+                                                                                         "bounds_positive_unchanged":  true
+                                                                                     },
+                                                                                     {
+                                                                                         "index":  2,
+                                                                                         "automation_id_value_unchanged":  true,
+                                                                                         "control_type_unchanged":  true,
+                                                                                         "pattern_set_size_unchanged":  true,
+                                                                                         "bounds_positive_unchanged":  true
+                                                                                     },
+                                                                                     {
+                                                                                         "index":  3,
+                                                                                         "automation_id_value_unchanged":  true,
+                                                                                         "control_type_unchanged":  true,
+                                                                                         "pattern_set_size_unchanged":  true,
+                                                                                         "bounds_positive_unchanged":  true
+                                                                                     },
+                                                                                     {
+                                                                                         "index":  4,
+                                                                                         "automation_id_value_unchanged":  true,
+                                                                                         "control_type_unchanged":  true,
+                                                                                         "pattern_set_size_unchanged":  true,
+                                                                                         "bounds_positive_unchanged":  true
+                                                                                     }
+                                                                                 ]
+                                                        }
+                                                    ]
+                                   },
+                   "client_stack":  "uia3-com",
+                   "analysis":  {
+                                    "overflow_window_class_notify_icon_overflow_window_present":  true,
+                                    "overflow_window_visible":  false,
+                                    "overflow_inner_toolbar_found":  true,
+                                    "tray_notify_wnd_child_present":  true,
+                                    "promoted_toolbar_candidates_labels":  [
+                                                                               "taskbar_toolbar_2",
+                                                                               "overflow"
+                                                                           ],
+                                    "toolbars":  [
+                                                     {
+                                                         "label":  "promoted_via_tray_notify_wnd",
+                                                         "com_direct_children":  0,
+                                                         "stack_com":  "uia3-com",
+                                                         "managed_cross_check":  {
+                                                                                     "stack":  "managed",
+                                                                                     "authoritative":  false,
+                                                                                     "child_count":  0
+                                                                                 },
+                                                         "button_shapes_recorded":  0,
+                                                         "buttons":  [
+
+                                                                     ],
+                                                         "stability_reread":  [
+
+                                                                              ],
+                                                         "fits_promoted_shape_flags":  {
+                                                                                           "every_button_positive_area":  false,
+                                                                                           "any_automation_id_present_nonempty":  false,
+                                                                                           "classified_as_promoted_candidate":  false
+                                                                                       }
+                                                     },
+                                                     {
+                                                         "label":  "taskbar_toolbar_0",
+                                                         "com_direct_children":  1,
+                                                         "stack_com":  "uia3-com",
+                                                         "managed_cross_check":  {
+                                                                                     "stack":  "managed",
+                                                                                     "authoritative":  false,
+                                                                                     "child_count":  0
+                                                                                 },
+                                                         "button_shapes_recorded":  1,
+                                                         "buttons":  [
+                                                                         {
+                                                                             "ct":  "Button",
+                                                                             "automation_id_present_nonempty":  false,
+                                                                             "pats":  [
+                                                                                          "Invoke",
+                                                                                          "LegacyIAccessible"
+                                                                                      ],
+                                                                             "bounds_positive_area":  false
+                                                                         }
+                                                                     ],
+                                                         "stability_reread":  [
+                                                                                  {
+                                                                                      "index":  0,
+                                                                                      "automation_id_value_unchanged":  true,
+                                                                                      "control_type_unchanged":  true,
+                                                                                      "pattern_set_size_unchanged":  true,
+                                                                                      "bounds_positive_unchanged":  true
+                                                                                  }
+                                                                              ],
+                                                         "fits_promoted_shape_flags":  {
+                                                                                           "every_button_positive_area":  false,
+                                                                                           "any_automation_id_present_nonempty":  false,
+                                                                                           "classified_as_promoted_candidate":  false
+                                                                                       }
+                                                     },
+                                                     {
+                                                         "label":  "taskbar_toolbar_1",
+                                                         "com_direct_children":  0,
+                                                         "stack_com":  "uia3-com",
+                                                         "managed_cross_check":  {
+                                                                                     "stack":  "managed",
+                                                                                     "authoritative":  false,
+                                                                                     "child_count":  0
+                                                                                 },
+                                                         "button_shapes_recorded":  0,
+                                                         "buttons":  [
+
+                                                                     ],
+                                                         "stability_reread":  [
+
+                                                                              ],
+                                                         "fits_promoted_shape_flags":  {
+                                                                                           "every_button_positive_area":  false,
+                                                                                           "any_automation_id_present_nonempty":  false,
+                                                                                           "classified_as_promoted_candidate":  false
+                                                                                       }
+                                                     },
+                                                     {
+                                                         "label":  "taskbar_toolbar_2",
+                                                         "com_direct_children":  3,
+                                                         "stack_com":  "uia3-com",
+                                                         "managed_cross_check":  {
+                                                                                     "stack":  "managed",
+                                                                                     "authoritative":  false,
+                                                                                     "child_count":  0
+                                                                                 },
+                                                         "button_shapes_recorded":  3,
+                                                         "buttons":  [
+                                                                         {
+                                                                             "ct":  "Button",
+                                                                             "automation_id_present_nonempty":  true,
+                                                                             "pats":  [
+                                                                                          "Invoke",
+                                                                                          "LegacyIAccessible"
+                                                                                      ],
+                                                                             "bounds_positive_area":  true
+                                                                         },
+                                                                         {
+                                                                             "ct":  "Button",
+                                                                             "automation_id_present_nonempty":  true,
+                                                                             "pats":  [
+                                                                                          "Invoke",
+                                                                                          "LegacyIAccessible"
+                                                                                      ],
+                                                                             "bounds_positive_area":  true
+                                                                         },
+                                                                         {
+                                                                             "ct":  "Button",
+                                                                             "automation_id_present_nonempty":  true,
+                                                                             "pats":  [
+                                                                                          "Invoke",
+                                                                                          "LegacyIAccessible"
+                                                                                      ],
+                                                                             "bounds_positive_area":  true
+                                                                         }
+                                                                     ],
+                                                         "stability_reread":  [
+                                                                                  {
+                                                                                      "index":  0,
+                                                                                      "automation_id_value_unchanged":  true,
+                                                                                      "control_type_unchanged":  true,
+                                                                                      "pattern_set_size_unchanged":  true,
+                                                                                      "bounds_positive_unchanged":  true
+                                                                                  },
+                                                                                  {
+                                                                                      "index":  1,
+                                                                                      "automation_id_value_unchanged":  true,
+                                                                                      "control_type_unchanged":  true,
+                                                                                      "pattern_set_size_unchanged":  true,
+                                                                                      "bounds_positive_unchanged":  true
+                                                                                  },
+                                                                                  {
+                                                                                      "index":  2,
+                                                                                      "automation_id_value_unchanged":  true,
+                                                                                      "control_type_unchanged":  true,
+                                                                                      "pattern_set_size_unchanged":  true,
+                                                                                      "bounds_positive_unchanged":  true
+                                                                                  }
+                                                                              ],
+                                                         "fits_promoted_shape_flags":  {
+                                                                                           "every_button_positive_area":  true,
+                                                                                           "any_automation_id_present_nonempty":  true,
+                                                                                           "classified_as_promoted_candidate":  true
+                                                                                       }
+                                                     },
+                                                     {
+                                                         "label":  "overflow",
+                                                         "com_direct_children":  5,
+                                                         "stack_com":  "uia3-com",
+                                                         "managed_cross_check":  {
+                                                                                     "stack":  "managed",
+                                                                                     "authoritative":  false,
+                                                                                     "child_count":  0
+                                                                                 },
+                                                         "button_shapes_recorded":  5,
+                                                         "buttons":  [
+                                                                         {
+                                                                             "ct":  "Button",
+                                                                             "automation_id_present_nonempty":  true,
+                                                                             "pats":  [
+                                                                                          "Invoke",
+                                                                                          "LegacyIAccessible"
+                                                                                      ],
+                                                                             "bounds_positive_area":  true
+                                                                         },
+                                                                         {
+                                                                             "ct":  "Button",
+                                                                             "automation_id_present_nonempty":  false,
+                                                                             "pats":  [
+                                                                                          "Invoke",
+                                                                                          "LegacyIAccessible"
+                                                                                      ],
+                                                                             "bounds_positive_area":  true
+                                                                         },
+                                                                         {
+                                                                             "ct":  "Button",
+                                                                             "automation_id_present_nonempty":  false,
+                                                                             "pats":  [
+                                                                                          "Invoke",
+                                                                                          "LegacyIAccessible"
+                                                                                      ],
+                                                                             "bounds_positive_area":  true
+                                                                         },
+                                                                         {
+                                                                             "ct":  "Button",
+                                                                             "automation_id_present_nonempty":  false,
+                                                                             "pats":  [
+                                                                                          "Invoke",
+                                                                                          "LegacyIAccessible"
+                                                                                      ],
+                                                                             "bounds_positive_area":  true
+                                                                         },
+                                                                         {
+                                                                             "ct":  "Button",
+                                                                             "automation_id_present_nonempty":  false,
+                                                                             "pats":  [
+                                                                                          "Invoke",
+                                                                                          "LegacyIAccessible"
+                                                                                      ],
+                                                                             "bounds_positive_area":  true
+                                                                         }
+                                                                     ],
+                                                         "stability_reread":  [
+                                                                                  {
+                                                                                      "index":  0,
+                                                                                      "automation_id_value_unchanged":  true,
+                                                                                      "control_type_unchanged":  true,
+                                                                                      "pattern_set_size_unchanged":  true,
+                                                                                      "bounds_positive_unchanged":  true
+                                                                                  },
+                                                                                  {
+                                                                                      "index":  1,
+                                                                                      "automation_id_value_unchanged":  true,
+                                                                                      "control_type_unchanged":  true,
+                                                                                      "pattern_set_size_unchanged":  true,
+                                                                                      "bounds_positive_unchanged":  true
+                                                                                  },
+                                                                                  {
+                                                                                      "index":  2,
+                                                                                      "automation_id_value_unchanged":  true,
+                                                                                      "control_type_unchanged":  true,
+                                                                                      "pattern_set_size_unchanged":  true,
+                                                                                      "bounds_positive_unchanged":  true
+                                                                                  },
+                                                                                  {
+                                                                                      "index":  3,
+                                                                                      "automation_id_value_unchanged":  true,
+                                                                                      "control_type_unchanged":  true,
+                                                                                      "pattern_set_size_unchanged":  true,
+                                                                                      "bounds_positive_unchanged":  true
+                                                                                  },
+                                                                                  {
+                                                                                      "index":  4,
+                                                                                      "automation_id_value_unchanged":  true,
+                                                                                      "control_type_unchanged":  true,
+                                                                                      "pattern_set_size_unchanged":  true,
+                                                                                      "bounds_positive_unchanged":  true
+                                                                                  }
+                                                                              ],
+                                                         "fits_promoted_shape_flags":  {
+                                                                                           "every_button_positive_area":  true,
+                                                                                           "any_automation_id_present_nonempty":  true,
+                                                                                           "classified_as_promoted_candidate":  true
+                                                                                       }
+                                                     }
+                                                 ],
+                                    "overflow_children_count_measurable":  true,
+                                    "overflow_children_count_com":  5,
+                                    "stack_of_overflow_children_count":  "uia3-com"
+                                }
+               }
+}

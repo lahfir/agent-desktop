@@ -1,0 +1,120 @@
+{
+    "question":  "what makes RemoveXEventHandler on the MTA worker block for tens of seconds",
+    "method":  "same 20-repetition drive loop with one action class removed at a time; teardown timed per handler on the registering thread",
+    "arms":  [
+                 {
+                     "arm":  "full drive loop (value + click + focus + window hide/show), property reads inside callbacks",
+                     "driveActions":  "vcfw",
+                     "cheapCallbacks":  false,
+                     "totalEvents":  557,
+                     "quiescentTeardownElapsedMs":  86184.2359,
+                     "inflightTeardownElapsedMs":  72.4894,
+                     "quiescentTeardownPerHandler":  [
+                                                         {
+                                                             "handler":  "Invoke_Invoked",
+                                                             "elapsedMs":  8487.4945
+                                                         },
+                                                         {
+                                                             "handler":  "Text_TextChanged",
+                                                             "elapsedMs":  9586.8329
+                                                         },
+                                                         {
+                                                             "handler":  "SelectionItem_ElementSelected",
+                                                             "elapsedMs":  10374.2025
+                                                         },
+                                                         {
+                                                             "handler":  "Window_WindowOpened",
+                                                             "elapsedMs":  21078.9415
+                                                         },
+                                                         {
+                                                             "handler":  "Window_WindowClosed",
+                                                             "elapsedMs":  26631.8655
+                                                         },
+                                                         {
+                                                             "handler":  "PropertyChanged",
+                                                             "elapsedMs":  9999.5944
+                                                         },
+                                                         {
+                                                             "handler":  "FocusChanged",
+                                                             "elapsedMs":  22.8593
+                                                         }
+                                                     ]
+                 },
+                 {
+                     "arm":  "no window hide/show (value + click + focus only)",
+                     "driveActions":  "vcf",
+                     "cheapCallbacks":  false,
+                     "totalEvents":  532,
+                     "quiescentTeardownElapsedMs":  63.7518,
+                     "inflightTeardownElapsedMs":  69.5929,
+                     "quiescentTeardownPerHandler":  [
+                                                         {
+                                                             "handler":  "Invoke_Invoked",
+                                                             "elapsedMs":  15.1329
+                                                         },
+                                                         {
+                                                             "handler":  "Text_TextChanged",
+                                                             "elapsedMs":  8.0778
+                                                         },
+                                                         {
+                                                             "handler":  "SelectionItem_ElementSelected",
+                                                             "elapsedMs":  6.9446
+                                                         },
+                                                         {
+                                                             "handler":  "Window_WindowOpened",
+                                                             "elapsedMs":  6.8124
+                                                         },
+                                                         {
+                                                             "handler":  "Window_WindowClosed",
+                                                             "elapsedMs":  6.6948
+                                                         },
+                                                         {
+                                                             "handler":  "PropertyChanged",
+                                                             "elapsedMs":  8.4991
+                                                         },
+                                                         {
+                                                             "handler":  "FocusChanged",
+                                                             "elapsedMs":  9.3746
+                                                         }
+                                                     ]
+                 },
+                 {
+                     "arm":  "window hide/show only, with callbacks that do no property reads",
+                     "driveActions":  "w",
+                     "cheapCallbacks":  true,
+                     "totalEvents":  490,
+                     "quiescentTeardownElapsedMs":  22757.3847,
+                     "inflightTeardownElapsedMs":  99.6363,
+                     "quiescentTeardownPerHandler":  [
+                                                         {
+                                                             "handler":  "Invoke_Invoked",
+                                                             "elapsedMs":  2521.5184
+                                                         },
+                                                         {
+                                                             "handler":  "Text_TextChanged",
+                                                             "elapsedMs":  2480.4681
+                                                         },
+                                                         {
+                                                             "handler":  "SelectionItem_ElementSelected",
+                                                             "elapsedMs":  2515.5508
+                                                         },
+                                                         {
+                                                             "handler":  "Window_WindowOpened",
+                                                             "elapsedMs":  5928.1936
+                                                         },
+                                                         {
+                                                             "handler":  "Window_WindowClosed",
+                                                             "elapsedMs":  7430.8029
+                                                         },
+                                                         {
+                                                             "handler":  "PropertyChanged",
+                                                             "elapsedMs":  1864.7159
+                                                         },
+                                                         {
+                                                             "handler":  "FocusChanged",
+                                                             "elapsedMs":  13.6723
+                                                         }
+                                                     ]
+                 }
+             ]
+}

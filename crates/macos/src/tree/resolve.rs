@@ -1,6 +1,8 @@
 #[cfg(target_os = "macos")]
 use agent_desktop_core::ref_identity::has_meaningful_identity;
-use agent_desktop_core::{AdapterError, ErrorCode, NativeHandle, RefEntry, SnapshotSurface};
+use agent_desktop_core::{
+    AdapterError, DeliverySemantics, ErrorCode, NativeHandle, RefEntry, SnapshotSurface,
+};
 use std::time::{Duration, Instant};
 
 #[cfg(target_os = "macos")]
@@ -49,21 +51,33 @@ pub(crate) fn resolve_locator_anchor_with_deadline(
 #[cfg(target_os = "macos")]
 fn verify_process_instance(entry: &RefEntry) -> Result<(), AdapterError> {
     let Some(instance) = entry.process.process_instance.as_deref() else {
-        return Err(AdapterError::stale_ref(
+        return Err(stale_evidence_error(
             "Saved target has no process instance identity",
         ));
     };
     let pid = crate::system::process_identity::to_pid_t(entry.process.pid)?;
     match crate::system::process_identity::matches_instance(pid, instance) {
         Ok(true) => Ok(()),
-        Ok(false) => Err(AdapterError::stale_ref(
+        Ok(false) => Err(stale_evidence_error(
             "Saved target belongs to a process instance that is no longer running",
         )),
-        Err(error) if error.code == ErrorCode::InvalidArgs => Err(AdapterError::stale_ref(
+        Err(error) if error.code == ErrorCode::InvalidArgs => Err(stale_evidence_error(
             "Saved target carries a malformed process instance identity",
         )),
         Err(error) => Err(error),
     }
+}
+
+/// Builds a `STALE_REF` directly from what was observed, rather than through
+/// `AdapterError::stale_ref`, whose parameter is a **ref id** it interpolates
+/// into `"{ref_id} not found in current RefMap"`. None of these three
+/// failures is a missing RefMap entry - the ref was found and read, and it
+/// was the live process evidence that refused it.
+#[cfg(target_os = "macos")]
+fn stale_evidence_error(message: &str) -> AdapterError {
+    AdapterError::new(ErrorCode::StaleRef, message)
+        .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+        .with_disposition(DeliverySemantics::not_delivered())
 }
 
 #[cfg(target_os = "macos")]
@@ -236,22 +250,10 @@ fn sleep_before_retry(deadline: Instant) {
     }
 }
 
+/// Core owns the payload (`agent_desktop_core::resolve_errors::mark_deadline_elapsed`)
+/// because it is line-for-line identical to Windows's copy.
 #[cfg(target_os = "macos")]
-fn mark_deadline_elapsed(mut error: AdapterError) -> AdapterError {
-    let mut details = error
-        .details
-        .take()
-        .unwrap_or_else(|| serde_json::json!({}));
-    if let Some(object) = details.as_object_mut() {
-        object.insert("deadline_elapsed".into(), serde_json::json!(true));
-    } else {
-        details = serde_json::json!({
-            "evidence": details,
-            "deadline_elapsed": true,
-        });
-    }
-    error.with_details(details)
-}
+use agent_desktop_core::resolve_errors::mark_deadline_elapsed;
 
 #[cfg(target_os = "macos")]
 fn stale_ref_error(entry: &RefEntry, cause: &AdapterError) -> AdapterError {

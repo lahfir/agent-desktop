@@ -3,7 +3,7 @@ use crate::{AdapterError, ErrorCode};
 use serde::{Deserialize, Serialize};
 
 pub const MAX_CURSOR_LABEL_WORDS: usize = 12;
-const MAX_CURSOR_LABEL_BYTES: usize = 512;
+pub const MAX_CURSOR_LABEL_BYTES: usize = 512;
 const DEFAULT_CURSOR_LABEL_WORDS: usize = 6;
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]

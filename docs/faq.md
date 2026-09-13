@@ -32,13 +32,16 @@ No. The core workflow reads native accessibility trees and assigns refs to inter
 
 | Feature | macOS | Windows | Linux |
 |---------|:-----:|:-------:|:-----:|
-| Accessibility tree | **Yes** | Planned | Planned |
-| Click/type/keyboard | **Yes** | Planned | Planned |
-| Mouse input | **Yes** | Planned | Planned |
-| Screenshot | **Yes** | Planned | Planned |
-| Clipboard | **Yes** | Planned | Planned |
-| App/window management | **Yes** | Planned | Planned |
+| Accessibility tree | **Yes** | Yes* | Planned |
+| Click/type/keyboard | **Yes** | **Yes** | Planned |
+| Mouse input | **Yes** | **Yes** | Planned |
+| Screenshot | **Yes** | **Yes** | Planned |
+| Clipboard | **Yes** | **Yes** | Planned |
+| App/window management | **Yes** | Yes** | Planned |
 | Notifications | **Yes** | Planned | Planned |
+
+\* `list-surfaces` returns `PLATFORM_NOT_SUPPORTED` on Windows; window and focused-surface observation is fully available.
+\*\* `launch` on Windows resolves an absolute path or a bare name found under System32 or the Windows directory, not display names.
 
 ## How do I install agent-desktop?
 

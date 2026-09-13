@@ -1,0 +1,71 @@
+{
+    "target":  "obsidian",
+    "obsidianPreexisting":  false,
+    "obsidianVersion":  "1.12.7.0",
+    "shim":  {
+                 "stack":  "uia3-com",
+                 "binding":  "hand-declared ComImport, no GAC UIAutomationClient reference",
+                 "coclass":  "CUIAutomation8",
+                 "mainThreadId":  7856,
+                 "mainApartment":  "MTA",
+                 "discoveredPatternAvailabilityProperties":  35,
+                 "result":  {
+                                "settleMs":  8000,
+                                "viewsFirstContact":  [
+                                                          {
+                                                              "view":  "RawView",
+                                                              "nodeCount":  13,
+                                                              "deepestDepth":  9,
+                                                              "truncated":  false,
+                                                              "elapsedMs":  16.7195
+                                                          },
+                                                          {
+                                                              "view":  "ControlView",
+                                                              "nodeCount":  9,
+                                                              "deepestDepth":  7,
+                                                              "truncated":  false,
+                                                              "elapsedMs":  12.3082
+                                                          },
+                                                          {
+                                                              "view":  "ContentView",
+                                                              "nodeCount":  9,
+                                                              "deepestDepth":  7,
+                                                              "truncated":  false,
+                                                              "elapsedMs":  11.4191
+                                                          }
+                                                      ],
+                                "mode":  "walker",
+                                "label":  "obsidian",
+                                "hwnd":  "0x1e0634",
+                                "processId":  2056,
+                                "processName":  "Obsidian",
+                                "frameworkId":  "Win32",
+                                "maxNodes":  20000,
+                                "maxDepth":  60,
+                                "viewsAfterSettle":  [
+                                                         {
+                                                             "view":  "RawView",
+                                                             "nodeCount":  172,
+                                                             "deepestDepth":  21,
+                                                             "truncated":  false,
+                                                             "elapsedMs":  108.6732
+                                                         },
+                                                         {
+                                                             "view":  "ControlView",
+                                                             "nodeCount":  133,
+                                                             "deepestDepth":  14,
+                                                             "truncated":  false,
+                                                             "elapsedMs":  84.0019
+                                                         },
+                                                         {
+                                                             "view":  "ContentView",
+                                                             "nodeCount":  133,
+                                                             "deepestDepth":  14,
+                                                             "truncated":  false,
+                                                             "elapsedMs":  85.683
+                                                         }
+                                                     ],
+                                "rawMinusControl":  39
+                            }
+             }
+}

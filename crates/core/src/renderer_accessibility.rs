@@ -55,7 +55,13 @@ fn root_process(root: ObservationRoot<'_>) -> Result<crate::ProcessIdentity, App
             .map(|instance| crate::ProcessIdentity::new(entry.process.pid, instance)),
     }
     .ok_or_else(|| {
-        crate::AdapterError::stale_ref("renderer process instance is unavailable").into()
+        crate::AdapterError::new(
+            crate::ErrorCode::StaleRef,
+            "renderer process instance is unavailable",
+        )
+        .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+        .with_disposition(crate::DeliverySemantics::not_delivered())
+        .into()
     })
 }
 

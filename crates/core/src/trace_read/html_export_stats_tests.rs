@@ -4,9 +4,6 @@ use crate::trace_read::{ExportOptions, export_html};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-
-static HTML_EXPORT_STATS_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 fn write_segment(trace_dir: &Path, name: &str, lines: &[&str]) {
     fs::create_dir_all(trace_dir).unwrap();
@@ -22,9 +19,7 @@ fn setup_trace_session() -> (
     String,
     PathBuf,
 ) {
-    let lock = HTML_EXPORT_STATS_TEST_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let lock = super::tests::html_test_guard();
     super::clear_test_max_json_bytes();
     let home = HomeGuard::new();
     let manifest = start_session(StartSessionOptions {

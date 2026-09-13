@@ -1,0 +1,169 @@
+{
+    "measurements":  {
+                         "aria_properties":  {
+                                                 "aria_properties":  {
+                                                                         "carries_class_token":  0,
+                                                                         "distinct_shapes":  [
+                                                                                                 {
+                                                                                                     "length":  110,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "length":  108,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "length":  98,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 }
+                                                                                             ],
+                                                                         "non_empty_count":  11
+                                                                     },
+                                                 "aria_role":  {
+                                                                   "author_defined_token_passed_verbatim":  0,
+                                                                   "distinct_shapes":  [
+                                                                                           {
+                                                                                               "length":  6,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  8,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  6,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           }
+                                                                                       ],
+                                                                   "non_empty_count":  11
+                                                               },
+                                                 "elements":  12
+                                             },
+                         "child_process":  {
+                                               "attached":  true,
+                                               "descendants":  12,
+                                               "handle_int":  6752206,
+                                               "hosted":  false,
+                                               "root_class":  {
+                                                                  "length":  18,
+                                                                  "non_empty":  true,
+                                                                  "variant_type":  "VARENUM(8)"
+                                                              },
+                                               "root_resolved":  true
+                                           },
+                         "depth_to_content":  {
+                                                  "logical_nodes":  12,
+                                                  "logical_over_raw":  1.0,
+                                                  "raw_nodes":  12
+                                              },
+                         "extra_cost":  {
+                                            "base":  {
+                                                         "max_us":  1653693,
+                                                         "median_us":  359241,
+                                                         "min_us":  338384,
+                                                         "repeats":  7,
+                                                         "spread_ratio":  4.89,
+                                                         "warmup_discarded":  1
+                                                     },
+                                            "combined":  {
+                                                             "max_us":  526191,
+                                                             "median_us":  477945,
+                                                             "min_us":  457674,
+                                                             "repeats":  7,
+                                                             "spread_ratio":  1.15,
+                                                             "warmup_discarded":  1
+                                                         },
+                                            "extra":  {
+                                                          "max_us":  254450,
+                                                          "median_us":  233894,
+                                                          "min_us":  198566,
+                                                          "repeats":  7,
+                                                          "spread_ratio":  1.28,
+                                                          "warmup_discarded":  1
+                                                      },
+                                            "overhead_ratio":  {
+                                                                   "base":  338384,
+                                                                   "combined":  457674,
+                                                                   "ratio":  1.35
+                                                               }
+                                        },
+                         "localized_control_type":  {
+                                                        "rows":  [
+                                                                     {
+                                                                         "control_type":  50030,
+                                                                         "count":  2,
+                                                                         "distinct_localized":  [
+                                                                                                    "document"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50033,
+                                                                         "count":  10,
+                                                                         "distinct_localized":  [
+                                                                                                    "pane",
+                                                                                                    "region"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     }
+                                                                 ]
+                                                    },
+                         "pattern_arms":  {
+                                              "any_element_with_griditem":  0,
+                                              "any_element_with_tableitem":  0,
+                                              "button_with_toggle":  0,
+                                              "control_types_carrying_grid_or_tableitem":  [
+
+                                                                                           ],
+                                              "non_dataitem_carrying_grid_or_tableitem":  0,
+                                              "total_elements":  12
+                                          },
+                         "settle":  {
+                                        "final":  12,
+                                        "first_contact":  12,
+                                        "grew_after_first_contact":  false,
+                                        "max":  12,
+                                        "min":  12,
+                                        "series":  [
+                                                       12,
+                                                       12,
+                                                       12,
+                                                       12,
+                                                       12,
+                                                       12,
+                                                       12,
+                                                       12,
+                                                       12,
+                                                       12,
+                                                       12,
+                                                       12
+                                                   ],
+                                        "settled":  false,
+                                        "stable_for":  11,
+                                        "understatement_ratio":  1.0,
+                                        "walks":  12
+                                    },
+                         "wrapper_census":  {
+                                                "depth_note":  "depth arithmetic is a walk-tree measurement; see settle scan for raw depth to web content",
+                                                "empty_name_and_value":  0,
+                                                "group_or_custom_nodes":  0,
+                                                "named_groups":  0,
+                                                "total_elements":  12
+                                            }
+                     },
+    "probe":  "16-observation",
+    "stack":  "uia3-com",
+    "uiautomation_version":  "0.25.0"
+}

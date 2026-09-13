@@ -1,33 +1,130 @@
+use crate::live_locator::LocatorField;
 use crate::name_evidence::NameEvidence;
+use crate::name_slot_status::{NameSlotStatus, SlotStatus};
 
+/// The accessible-name precedence, and the only one in the product.
+///
+/// Both adapters call this. That is the point of it: the precedence was
+/// documented here and implemented a second time inside the macOS adapter,
+/// and the two disagreed - the shipped one ranked `description` fifth while
+/// the documented one ranked it last, and only the documented one had no
+/// caller. A second divergent copy for Windows is the outcome this function
+/// exists to prevent.
+///
+/// The order below is the **shipped** one, so the documented precedence and the
+/// one that actually produced every snapshot now agree.
+///
+/// Uncertainty travels downward, which is what a plain `Option`-returning
+/// version structurally cannot express: if a stronger source failed to read,
+/// the answer is `Unknown` even when a weaker source has a value, because the
+/// value that would have won may be the one that is missing. Falling through to
+/// the weaker source would publish a name the element may not have.
+pub fn resolve_name(evidence: &NameEvidence, status: &NameSlotStatus) -> LocatorField<String> {
+    let mut uncertain = false;
+    for (candidate, slot) in ordered_sources(evidence, status) {
+        match slot {
+            SlotStatus::Suppressed => continue,
+            SlotStatus::Uncertain => uncertain = true,
+            SlotStatus::Certain => {}
+        }
+        if let Some(value) = non_blank(candidate) {
+            return if uncertain {
+                LocatorField::Unknown
+            } else {
+                LocatorField::Known(value.to_string())
+            };
+        }
+    }
+    if uncertain {
+        LocatorField::Unknown
+    } else {
+        LocatorField::Absent
+    }
+}
+
+/// The description, which is only a description when something else is already
+/// the name.
+///
+/// An element whose only evidence is a description has that description as its
+/// name, so repeating it here would emit the same string twice under two
+/// labels and tell a calling agent nothing.
+pub fn resolve_description(
+    evidence: &NameEvidence,
+    status: &NameSlotStatus,
+) -> LocatorField<String> {
+    let stronger = stronger_sources(evidence, status);
+    let named = stronger.iter().any(|(candidate, slot)| {
+        *slot != SlotStatus::Suppressed && non_blank(*candidate).is_some()
+    });
+    let name_uncertain = stronger
+        .iter()
+        .any(|(_, slot)| *slot == SlotStatus::Uncertain);
+    let suppressed = status.description == SlotStatus::Suppressed;
+    let description = if suppressed {
+        None
+    } else {
+        non_blank(evidence.description.as_deref())
+    };
+    let uncertain = !suppressed && status.description == SlotStatus::Uncertain;
+    match (description, named, name_uncertain) {
+        (Some(_), true, _) if uncertain => LocatorField::Unknown,
+        (Some(value), true, _) => LocatorField::Known(value.to_string()),
+        (Some(_), false, true) => LocatorField::Unknown,
+        (None, true, _) if uncertain => LocatorField::Unknown,
+        (None, false, true) if uncertain => LocatorField::Unknown,
+        _ => LocatorField::Absent,
+    }
+}
+
+/// The name a caller with no uncertainty channel gets.
+///
+/// It delegates rather than repeating the order, so the two cannot drift apart
+/// again: there is one array of sources in this file and both entry points read
+/// it.
 pub fn compute_name(evidence: &NameEvidence) -> Option<String> {
-    [
-        evidence.explicit_label.as_deref(),
-        evidence.labelled_by_text.as_deref(),
-        evidence.native_title.as_deref(),
-        evidence.static_value.as_deref(),
-        evidence.child_label.as_deref(),
-        evidence.placeholder.as_deref(),
-        evidence.description.as_deref(),
-    ]
-    .into_iter()
-    .find_map(non_blank)
-    .map(str::to_string)
+    resolve_name(evidence, &NameSlotStatus::default())
+        .known()
+        .cloned()
 }
 
 pub fn compute_description(evidence: &NameEvidence) -> Option<String> {
-    let description = non_blank(evidence.description.as_deref())?;
+    resolve_description(evidence, &NameSlotStatus::default())
+        .known()
+        .cloned()
+}
+
+/// The precedence itself: strongest first.
+fn ordered_sources<'a>(
+    evidence: &'a NameEvidence,
+    status: &NameSlotStatus,
+) -> [(Option<&'a str>, SlotStatus); 7] {
+    let stronger = stronger_sources(evidence, status);
     [
-        evidence.explicit_label.as_deref(),
-        evidence.labelled_by_text.as_deref(),
-        evidence.native_title.as_deref(),
-        evidence.static_value.as_deref(),
-        evidence.child_label.as_deref(),
-        evidence.placeholder.as_deref(),
+        stronger[0],
+        stronger[1],
+        stronger[2],
+        stronger[3],
+        (evidence.description.as_deref(), status.description),
+        (evidence.child_label.as_deref(), status.child_label),
+        (evidence.placeholder.as_deref(), status.placeholder),
     ]
-    .into_iter()
-    .any(|candidate| non_blank(candidate).is_some())
-    .then(|| description.to_string())
+}
+
+/// The sources that outrank a description, which is what decides whether a
+/// description is a description at all.
+fn stronger_sources<'a>(
+    evidence: &'a NameEvidence,
+    status: &NameSlotStatus,
+) -> [(Option<&'a str>, SlotStatus); 4] {
+    [
+        (evidence.explicit_label.as_deref(), status.explicit_label),
+        (
+            evidence.labelled_by_text.as_deref(),
+            status.labelled_by_text,
+        ),
+        (evidence.native_title.as_deref(), status.native_title),
+        (evidence.static_value.as_deref(), status.static_value),
+    ]
 }
 
 fn non_blank(value: Option<&str>) -> Option<&str> {

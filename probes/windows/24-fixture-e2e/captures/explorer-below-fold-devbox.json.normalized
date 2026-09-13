@@ -1,0 +1,106 @@
+{
+    "probe":  "24-fixture-e2e-04-explorer-below-fold",
+    "question":  "can an Explorer surface be staged that forces the ancestor-scroll ladder: for N synthetic files (40, 200, 1000) at a deliberately small window height in Details (single-column) view, how many UIA children does the items container realize, how many intersect the container\u0027s own visible rect, how many are realized-but-below-fold (\u003e0 is the condition ladder_judged_for needs), and does the container expose ScrollPattern / do realized items expose ScrollItemPattern",
+    "cites":  [
+                  "2.7-dogfood-J3",
+                  "A19-7",
+                  "A18-2"
+              ],
+    "overall":  {
+                    "measurable":  true,
+                    "branch":  "ladder_never_forced_across_measured_ns",
+                    "any_n_forces_below_fold":  false
+                },
+    "runs":  [
+                 {
+                     "n_requested":  40,
+                     "files_on_disk":  40,
+                     "measurable":  true,
+                     "branch":  "no_below_fold_realized_ladder_not_forced",
+                     "window_placement":  {
+                                              "width":  760,
+                                              "height":  224
+                                          },
+                     "activation_confirmed":  true,
+                     "view_switch":  {
+                                         "chord_sent":  true,
+                                         "single_column_layout_observed":  false,
+                                         "distinct_left_x_count":  3
+                                     },
+                     "container":  {
+                                       "has_bounds":  true,
+                                       "has_scroll_pattern":  true
+                                   },
+                     "children":  {
+                                      "realized_total":  8,
+                                      "realized_nonempty_bounds":  8,
+                                      "realized_intersecting_visible_rect":  8,
+                                      "realized_partially_visible":  0,
+                                      "realized_below_fold":  0,
+                                      "any_item_has_scroll_item_pattern":  true,
+                                      "items_with_scroll_item_pattern":  5
+                                  },
+                     "stabilization_reads":  2
+                 },
+                 {
+                     "n_requested":  200,
+                     "files_on_disk":  200,
+                     "measurable":  true,
+                     "branch":  "no_below_fold_realized_ladder_not_forced",
+                     "window_placement":  {
+                                              "width":  760,
+                                              "height":  224
+                                          },
+                     "activation_confirmed":  true,
+                     "view_switch":  {
+                                         "chord_sent":  true,
+                                         "single_column_layout_observed":  false,
+                                         "distinct_left_x_count":  3
+                                     },
+                     "container":  {
+                                       "has_bounds":  true,
+                                       "has_scroll_pattern":  true
+                                   },
+                     "children":  {
+                                      "realized_total":  8,
+                                      "realized_nonempty_bounds":  8,
+                                      "realized_intersecting_visible_rect":  8,
+                                      "realized_partially_visible":  0,
+                                      "realized_below_fold":  0,
+                                      "any_item_has_scroll_item_pattern":  true,
+                                      "items_with_scroll_item_pattern":  5
+                                  },
+                     "stabilization_reads":  2
+                 },
+                 {
+                     "n_requested":  1000,
+                     "files_on_disk":  1000,
+                     "measurable":  true,
+                     "branch":  "no_below_fold_realized_ladder_not_forced",
+                     "window_placement":  {
+                                              "width":  760,
+                                              "height":  224
+                                          },
+                     "activation_confirmed":  true,
+                     "view_switch":  {
+                                         "chord_sent":  true,
+                                         "single_column_layout_observed":  false,
+                                         "distinct_left_x_count":  3
+                                     },
+                     "container":  {
+                                       "has_bounds":  true,
+                                       "has_scroll_pattern":  true
+                                   },
+                     "children":  {
+                                      "realized_total":  8,
+                                      "realized_nonempty_bounds":  8,
+                                      "realized_intersecting_visible_rect":  8,
+                                      "realized_partially_visible":  0,
+                                      "realized_below_fold":  0,
+                                      "any_item_has_scroll_item_pattern":  true,
+                                      "items_with_scroll_item_pattern":  5
+                                  },
+                     "stabilization_reads":  2
+                 }
+             ]
+}

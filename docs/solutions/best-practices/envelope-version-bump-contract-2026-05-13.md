@@ -10,6 +10,8 @@ applies_when:
   - Top-level JSON response fields change
   - Permission or status envelopes change shape
   - Error code semantics change for an existing command
+  - A path that returned a structured error now returns success
+  - A success payload gains an always-present field callers must read
   - CLI and batch output contracts are unified
 tags:
   - json-contract
@@ -43,11 +45,42 @@ Bump the envelope version for:
 - top-level response shape changes
 - nested shape changes in always-present fields such as permissions/status
 - command success becoming a structured error for a previously successful path
-- new required fields in success payloads
+- a structured error becoming a success, where the condition the error signalled
+  now has to be read from a field — a snapshot that exhausts its budget returns
+  `ok: true` with `complete: false` instead of `TIMEOUT`, so a caller that
+  branched on the error code to detect an oversized tree silently stops
+  detecting it
+- new required fields in success payloads, including a field that is always
+  present but only meaningful in one state, such as `complete`
 - error-code changes that callers reasonably branch on
 
 Do not bump it for additive optional fields, new commands, new flags, or more
 specific human-readable messages.
+
+## Blast Radius
+
+`ENVELOPE_VERSION` is the single source of truth for the *value*, but the value
+and the semantics behind it are restated by hand across non-test surfaces, and
+none of them is generated from the constant. A bump is not landed until each one
+is checked and, where it is wrong, corrected in the same change:
+
+- `docs/json-output.md` — envelope examples plus the prose that explains what the
+  current version changed for consumers
+- `.github/ISSUE_TEMPLATE/bug_report.yml` — the JSON output placeholder a
+  reporter is asked to imitate
+- `CLAUDE.md` — success and error envelope examples and the error-object prose
+- `docs/phases.md` — the typed-contract objective row, the `output.rs` line in
+  the source-tree map, the envelope examples, and the error-object prose
+- `skills/agent-desktop/SKILL.md` — the success and error envelope one-liners
+- `skills/agent-desktop/references/commands-observation.md` and
+  `commands-system.md` — the snapshot and status envelope examples
+- `crates/ffi/src/commands/snapshot.rs` — the rustdoc envelope example, and
+  `crates/ffi/include/agent_desktop.h`, which carries the same example and is
+  regenerated rather than hand-edited
+
+A surface that is bumped to the new number while still explaining only the old
+one is the failure this checklist exists to catch: the literal and the prose
+drift apart, and only the literal is easy to grep for.
 
 ## Release Notes
 

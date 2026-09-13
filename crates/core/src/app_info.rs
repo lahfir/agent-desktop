@@ -41,15 +41,34 @@ impl AppInfo {
 }
 
 pub fn app_name_matches(actual: &str, expected: &str) -> bool {
-    let mut actual = actual
+    if matches_exact_or_with_exe_suffix(actual, expected) {
+        return true;
+    }
+    false
+}
+
+fn matches_exact_or_with_exe_suffix(actual: &str, expected: &str) -> bool {
+    if matches_after_filtering(actual, expected) {
+        return true;
+    }
+    if expected.ends_with(".exe") {
+        return false;
+    }
+    let expected_with_exe = format!("{}.exe", expected);
+    matches_after_filtering(actual, &expected_with_exe)
+}
+
+fn matches_after_filtering(actual: &str, expected: &str) -> bool {
+    let mut actual_chars = actual
         .chars()
         .filter(|character| !crate::search_text::is_bidirectional_control(*character));
-    let mut expected = expected
+    let mut expected_chars = expected
         .chars()
         .filter(|character| !crate::search_text::is_bidirectional_control(*character));
     loop {
-        match (actual.next(), expected.next()) {
-            (Some(actual), Some(expected)) if actual.eq_ignore_ascii_case(&expected) => {}
+        match (actual_chars.next(), expected_chars.next()) {
+            (Some(actual_char), Some(expected_char))
+                if actual_char.eq_ignore_ascii_case(&expected_char) => {}
             (None, None) => return true,
             _ => return false,
         }
@@ -106,5 +125,40 @@ mod tests {
     #[test]
     fn does_not_match_an_unrelated_identifier() {
         assert!(!app("Fixture", Some("com.example.fixture")).matches_identifier("Other"));
+    }
+
+    #[test]
+    fn matches_name_with_exe_suffix() {
+        assert!(app("notepad.exe", None).matches_identifier("notepad"));
+        assert!(app("notepad.exe", None).matches_identifier("notepad.exe"));
+    }
+
+    #[test]
+    fn expected_exe_suffix_does_not_match_name_without_it() {
+        assert!(!app("notepad", None).matches_identifier("notepad.exe"));
+    }
+
+    #[test]
+    fn exe_suffix_matching_is_case_insensitive() {
+        assert!(app("Notepad.EXE", None).matches_identifier("notepad"));
+        assert!(app("NOTEPAD.exe", None).matches_identifier("Notepad"));
+    }
+
+    #[test]
+    fn a_substring_of_a_name_does_not_match() {
+        assert!(!app_name_matches("notepad.exe", "note"));
+        assert!(!app_name_matches("notepad.exe", "pad"));
+    }
+
+    #[test]
+    fn a_stem_matches_only_at_the_exe_boundary() {
+        assert!(app_name_matches("notepad.exe", "notepad"));
+        assert!(!app_name_matches("notepadx.exe", "notepad"));
+    }
+
+    #[test]
+    fn a_name_without_the_suffix_still_matches_itself() {
+        assert!(app_name_matches("TextEdit", "TextEdit"));
+        assert!(!app_name_matches("TextEdit", "TextEd"));
     }
 }

@@ -28,4 +28,16 @@ pub(crate) struct SnapshotArgs {
         help = "Snapshot ID to use when resolving --root"
     )]
     pub snapshot: Option<String>,
+    #[arg(
+        long,
+        value_name = "MS",
+        help = "Observation deadline in milliseconds (default 3000; raise for slow Chromium settles)"
+    )]
+    pub timeout_ms: Option<u64>,
+    #[arg(
+        long,
+        help = "Assume Chromium renderer accessibility is forced (skips activation guidance)"
+    )]
+    #[serde(default)]
+    pub force_electron_a11y: bool,
 }

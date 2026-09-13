@@ -1,0 +1,83 @@
+{
+  "recorded_at": "2026-08-25",
+  "unit": "2.13 U9 - release dry run and local install proof",
+  "dry_run": {
+    "run_url": "https://github.com/lahfir/agent-desktop/actions/runs/32897666249",
+    "workflow_ref": "feat/windows-2.13-ffi-npm-release",
+    "head_sha": "b570cd2",
+    "dispatched_version": "0.8.4-dryrun.1",
+    "inputs": {
+      "tag_name": "v0.8.4-dryrun.1",
+      "version": "0.8.4-dryrun.1",
+      "publish_npm": false,
+      "publish_skills": false,
+      "dry_run": true
+    },
+    "publish_jobs_skipped": [
+      "Publish to GitHub Release",
+      "Publish to npm",
+      "Publish Skills to ClawHub"
+    ],
+    "build_jobs_succeeded": [
+      "Build (aarch64-apple-darwin)",
+      "Build (x86_64-apple-darwin)",
+      "Build (x86_64-pc-windows-msvc)",
+      "Build (aarch64-pc-windows-msvc)",
+      "Build FFI (aarch64-apple-darwin)",
+      "Build FFI (x86_64-apple-darwin)",
+      "Build FFI (x86_64-unknown-linux-gnu)",
+      "Build FFI (aarch64-unknown-linux-gnu)",
+      "Build FFI (x86_64-pc-windows-msvc)",
+      "Build FFI (aarch64-pc-windows-msvc)",
+      "FFI Release Gates"
+    ],
+    "checkout_resolution_proof": "the dispatched tag does not exist; build legs compiled this branch's commit because the checkout ref resolves to github.sha under dry_run, proven by the Windows CLI binaries containing the working adapter (live snapshot with 17 refs through the installed x64 binary) rather than the main-line stub",
+    "first_attempt_failure_record": "run 32897071020 failed: the Windows archive listing assertion assigned a one-element pipeline to a scalar (its .Count was the character length), and ffi-release-gates still checked out the nonexistent tag; both fixed in b570cd2 before the recorded run"
+  },
+  "artifacts": {
+    "agent-desktop-v0.8.4-dryrun.1-x86_64-pc-windows-msvc.tar.gz": {
+      "bytes": 1117907,
+      "sha256": "514869bc598c158cb6c2b043fa9be559f44a221ce2cd07e94d7f3254d656af6f",
+      "sha256_sidecar_match": true,
+      "listing": ["agent-desktop.exe"]
+    },
+    "agent-desktop-v0.8.4-dryrun.1-aarch64-pc-windows-msvc.tar.gz": {
+      "bytes": 1083133,
+      "sha256": "857ffd9299ad301431f63e1d91cf144c77a8e2fbee40e5aadb3a3df5cf9bf46c",
+      "sha256_sidecar_match": true,
+      "listing": ["agent-desktop.exe"]
+    },
+    "agent-desktop-ffi-v0.8.4-dryrun.1-x86_64-pc-windows-msvc.zip": {
+      "bytes": 945554,
+      "sha256": "2517021ea4b53c7434d9b8c25b035ce5b6627a1da322fecd358aca8304ca43bc",
+      "sha256_sidecar_match": true,
+      "import_library_present": true
+    },
+    "agent-desktop-ffi-v0.8.4-dryrun.1-aarch64-pc-windows-msvc.zip": {
+      "bytes": 931702,
+      "sha256": "e80fb87e4d329b8df61425c085db4ca5478860494835230b2ef7b0d8df7e1ed5",
+      "sha256_sidecar_match": true,
+      "import_library_present": true
+    }
+  },
+  "arm64_smoke_on_arm64_runner": {
+    "job": "Build (aarch64-pc-windows-msvc) / Smoke-run the built binary (Windows)",
+    "output": "{\"version\":\"2.3\",\"ok\":true,\"command\":\"version\",\"data\":{\"os\":\"windows\",\"target\":\"aarch64\",\"version\":\"0.8.3\"}}",
+    "note": "executed on the windows-11-arm hosted runner before archiving; this dev box is x64 and cannot execute it"
+  },
+  "local_install_proof_x64": {
+    "validateArchive_real_archive": "accepted (expected entries exactly agent-desktop.exe)",
+    "tampered_archive": "second-entry copy rejected with 'Release archive has unexpected entries'",
+    "installArchive": "placed agent-desktop-win32-x64.exe (2429440 bytes) into scratch binDir; no .extract-* staging left behind",
+    "npm_pack": "npm/agent-desktop-0.8.3.tgz packed from the working tree",
+    "global_install": "installed into a scratch prefix via npm install -g <tarball>; postinstall ran against AGENT_DESKTOP_BINARY_PATH pointing at the installArchive output of the downloaded release archive",
+    "shim_version": "{\"version\":\"2.3\",\"ok\":true,\"command\":\"version\",\"data\":{\"os\":\"windows\",\"target\":\"x86_64\",\"version\":\"0.8.3\"}} exit=0",
+    "shim_snapshot_live": "snapshot --app notepad.exe -i => ok=true, ref_count=17, complete=true",
+    "shim_interaction": "set-value on the notepad textfield ref => ok=true delivery=delivered_verified; get --property value read back 'agent-desktop npm channel proof'",
+    "elevated_shell_note": "this dev shell is elevated; core's private-file ownership check refused ~/.agent-desktop (created non-elevated), so the shim ran with HOME pointed at a fresh directory it created itself - the security check working as designed across an integrity boundary, not a defect"
+  },
+  "not_proven_before_publication": {
+    "curl_fetch_of_release_url": "postinstall's download leg is platform-agnostic code unchanged by this sub-phase and exercised on every macOS install; no Windows asset is published yet, so the curl fetch of a GitHub Release URL is not exercised here",
+    "release_notes_text": "release-please composes notes from Conventional Commit subjects at publication time; this PR's feat: subjects name Windows explicitly, which is the mechanism - there is no separate notes file to edit"
+  }
+}

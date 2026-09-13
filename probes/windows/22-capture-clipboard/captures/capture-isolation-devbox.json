@@ -1,0 +1,11 @@
+{
+    "probe":  "22-capture-clipboard",
+    "question":  "CreateWindowStationW + SetProcessWindowStation clipboard isolation",
+    "measurable":  false,
+    "branch":  "create_window_station_failed",
+    "child_set_ok":  false,
+    "child_get_ok":  false,
+    "parent_seq_unchanged":  false,
+    "error_kind":  "CreateWindowStationW_1314",
+    "fallback":  "save_restore_with_serialization_lock"
+}

@@ -1,0 +1,344 @@
+{
+    "measurements":  {
+                         "census":  {
+                                        "bounds_census":  {
+                                                              "duplicate_bounds_elements":  0,
+                                                              "duplicate_bounds_groups":  0,
+                                                              "ref_able_positive_area":  27,
+                                                              "ref_able_with_id_positive_area":  19,
+                                                              "ref_able_zero_extent":  12,
+                                                              "ref_able_zero_extent_id_less":  2
+                                                          },
+                                        "id_census":  {
+                                                          "collision_groups":  [
+                                                                                   {
+                                                                                       "candidates":  5,
+                                                                                       "control_type":  50014
+                                                                                   },
+                                                                                   {
+                                                                                       "candidates":  2,
+                                                                                       "control_type":  50027
+                                                                                   },
+                                                                                   {
+                                                                                       "candidates":  2,
+                                                                                       "control_type":  50027
+                                                                                   },
+                                                                                   {
+                                                                                       "candidates":  5,
+                                                                                       "control_type":  50033
+                                                                                   },
+                                                                                   {
+                                                                                       "candidates":  2,
+                                                                                       "control_type":  50027
+                                                                                   },
+                                                                                   {
+                                                                                       "candidates":  5,
+                                                                                       "control_type":  50014
+                                                                                   },
+                                                                                   {
+                                                                                       "candidates":  2,
+                                                                                       "control_type":  50027
+                                                                                   }
+                                                                               ],
+                                                          "distinct_id_values":  32,
+                                                          "elements_carrying_id":  48,
+                                                          "ids_resolving_to_exactly_one":  25,
+                                                          "ids_resolving_to_two_or_more":  7
+                                                      },
+                                        "id_less_ref_able":  {
+                                                                 "distinct_role_and_name_keys":  9,
+                                                                 "role_and_name_collision_groups":  1
+                                                             },
+                                        "ref_able_approx":  39,
+                                        "total_elements":  83
+                                    },
+                         "child_process":  {
+                                               "attached":  true,
+                                               "descendants":  83,
+                                               "handle_int":  1247642,
+                                               "hosted":  false,
+                                               "root_resolved":  true
+                                           },
+                         "findall_vs_walk":  {
+                                                 "discipline":  {
+                                                                    "caller_boundable":  false,
+                                                                    "partial_result_signal":  "none - all-or-nothing Vec or Err",
+                                                                    "single_blocking_call":  true
+                                                                },
+                                                 "findall":  {
+                                                                 "absent_id_returns":  0,
+                                                                 "distinct_ids":  32,
+                                                                 "findall_union_count":  43,
+                                                                 "per_id":  [
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  7,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  9,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  5,
+                                                                                    "id_length":  17,
+                                                                                    "walk_count":  5
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  5,
+                                                                                    "id_length":  19,
+                                                                                    "walk_count":  5
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  false,
+                                                                                    "findall_count":  0,
+                                                                                    "id_length":  16,
+                                                                                    "walk_count":  5
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  8,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  9,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  9,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  13,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  18,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  18,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  20,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  18,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  17,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  8,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  15,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  9,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  12,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  11,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  9,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  19,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  8,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  8,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  10,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  7,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  9,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  2,
+                                                                                    "id_length":  22,
+                                                                                    "walk_count":  2
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  2,
+                                                                                    "id_length":  23,
+                                                                                    "walk_count":  2
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  27,
+                                                                                    "walk_count":  1
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  2,
+                                                                                    "id_length":  21,
+                                                                                    "walk_count":  2
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  2,
+                                                                                    "id_length":  24,
+                                                                                    "walk_count":  2
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  1,
+                                                                                    "id_length":  7,
+                                                                                    "walk_count":  1
+                                                                                }
+                                                                            ],
+                                                                 "union_counts_agree":  false,
+                                                                 "walk_union_count":  48
+                                                             },
+                                                 "target":  "attached",
+                                                 "timing_ms":  {
+                                                                   "findall_absent_id":  {
+                                                                                             "max":  118.0754,
+                                                                                             "median":  110.3066,
+                                                                                             "min":  74.45609999999999
+                                                                                         },
+                                                                   "findall_one_id":  {
+                                                                                          "max":  141.0728,
+                                                                                          "median":  93.1679,
+                                                                                          "min":  72.8069
+                                                                                      },
+                                                                   "resolve_scoped_walk":  {
+                                                                                               "max":  147.2863,
+                                                                                               "median":  100.7898,
+                                                                                               "min":  95.04360000000001
+                                                                                           }
+                                                               },
+                                                 "walk_candidate_reads":  83,
+                                                 "walked_elements":  83
+                                             },
+                         "secure_live_read":  {
+                                                  "name_contains_marker":  false,
+                                                  "password_control_present":  true,
+                                                  "product_live_read":  {
+                                                                            "drives":  [
+                                                                                           "properties::read_live_bounded",
+                                                                                           "name_evidence::read_label",
+                                                                                           "walker::walk_vocabulary",
+                                                                                           "ElementProperties::into_locator_evidence"
+                                                                                       ],
+                                                                            "name_contains_marker":  false,
+                                                                            "name_slot_published":  false,
+                                                                            "reached":  true,
+                                                                            "secure_gate_closed":  true,
+                                                                            "value_bearing_slots_published":  [
+
+                                                                                                              ],
+                                                                            "value_contains_marker":  false,
+                                                                            "value_slot_published":  false,
+                                                                            "withholding_applied":  true,
+                                                                            "withholding_observable":  false
+                                                                        },
+                                                  "provider_published_slots":  [
+
+                                                                               ],
+                                                  "value_contains_marker":  false,
+                                                  "value_length":  null
+                                              },
+                         "timing_ms":  {
+                                           "single_element_read":  {
+                                                                       "max":  0.0206,
+                                                                       "median":  0.0191,
+                                                                       "min":  0.0188
+                                                                   },
+                                           "single_strict_resolve":  {
+                                                                         "max":  283.67569999999995,
+                                                                         "median":  207.2658,
+                                                                         "min":  153.6168
+                                                                     }
+                                       },
+                         "zero_one_n":  {
+                                            "absent_id_candidates":  0,
+                                            "duplicate_id_candidates":  2,
+                                            "duplicate_key_present":  true,
+                                            "resolution_walk_elements":  83,
+                                            "resolved_against":  "an independent second walk, not the map the keys were selected from",
+                                            "selection_walk_elements":  83,
+                                            "unique_id_candidates":  1,
+                                            "unique_key_present":  true
+                                        }
+                     },
+    "probe":  "17-resolution",
+    "stack":  "uia3-com",
+    "uiautomation_version":  "0.25.0"
+}

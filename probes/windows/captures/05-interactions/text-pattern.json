@@ -1,0 +1,84 @@
+{
+    "probe":  "05-interactions",
+    "question":  "is TextPattern exposed on a classic Win32 Edit on Server 2019 at all, and does the managed stack agree with the COM stack about it",
+    "stack":  "managed-System.Windows.Automation",
+    "scope":  "app/provider",
+    "whyTwoLookups":  "GetSupportedPatterns is not a reliable negative: it is answered by the client-side proxy that happens to be bound. Every row therefore also records TryGetCurrentPattern per pattern, which is the call the adapter would actually make. Both lookups are recorded because they disagree.",
+    "comCounterpart":  "captures/08-uia3-com/census.json records the SAME notepad window through hand-declared UIA3 COM as one Document element carrying LegacyIAccessible, Scroll, Text, Text2 and Value. Any managed row below that reports Text absent is a client-stack divergence, not an absence of the provider.",
+    "p2o12Relevance":  "2.0(3) text get/selection/caret/insert and P2-O12 both assume a Text-capable Edit. The WPF row shows what a full managed TextPattern surface supports; the notepad rows show what the real Win32 Edit gives the two client stacks.",
+    "rows":  [
+                 {
+                     "target":  "wpf-txtValue",
+                     "stack":  "managed-System.Windows.Automation",
+                     "controlType":  "Edit",
+                     "className":  "TextBox",
+                     "supportedPatterns":  [
+                                               "Scroll",
+                                               "SynchronizedInput",
+                                               "Text",
+                                               "Value"
+                                           ],
+                     "textPatternExposed":  true,
+                     "getText":  {
+                                     "expectedShape":  {
+                                                           "utf16Units":  29,
+                                                           "codepoints":  28,
+                                                           "surrogatePairs":  1,
+                                                           "replacementChars":  0,
+                                                           "sha256Utf16":  "5783f6f2168ecd35d4775d850bf880d7dca2b3d8a3a811f6893d4c82a089f441"
+                                                       },
+                                     "observedShape":  {
+                                                           "utf16Units":  29,
+                                                           "codepoints":  28,
+                                                           "surrogatePairs":  1,
+                                                           "replacementChars":  0,
+                                                           "sha256Utf16":  "5783f6f2168ecd35d4775d850bf880d7dca2b3d8a3a811f6893d4c82a089f441"
+                                                       },
+                                     "exactMatch":  true,
+                                     "note":  "the value was set through ValuePattern and read back through TextPattern.DocumentRange.GetText - a cross-pattern read, not the same call returning its own argument"
+                                 },
+                     "selection":  {
+                                       "rangesBefore":  1,
+                                       "rangesAfter":  1,
+                                       "requestedUnits":  5,
+                                       "selectedShape":  {
+                                                             "utf16Units":  5,
+                                                             "codepoints":  5,
+                                                             "surrogatePairs":  0,
+                                                             "replacementChars":  0,
+                                                             "sha256Utf16":  "9d17cf8d7d1b14ceec751b8f91702aaea1d386a4ed188d5e279cbe02394b18ca"
+                                                         },
+                                       "matchesSubstring":  true
+                                   },
+                     "caret":  {
+                                   "method":  "a degenerate range (End collapsed onto Start) is Selected at character offset 4 and the selection is re-read",
+                                   "rangesAfter":  1,
+                                   "degenerate":  true
+                               },
+                     "insert":  {
+                                    "method":  "TextPattern is read-only by contract; insertion is done through ValuePattern.SetValue and verified through the TextPattern read above",
+                                    "verified":  true
+                                }
+                 },
+                 {
+                     "target":  "notepad-edit",
+                     "stack":  "managed-System.Windows.Automation",
+                     "lookup":  "FindFirst(Descendants, ControlType=Document)",
+                     "resolved":  false
+                 },
+                 {
+                     "target":  "notepad-edit",
+                     "stack":  "managed-System.Windows.Automation",
+                     "lookup":  "AutomationElement.FromHandle(the Edit child HWND found with FindWindowEx)",
+                     "resolved":  true,
+                     "controlType":  "Pane",
+                     "className":  "Edit",
+                     "supportedPatterns":  [
+
+                                           ],
+                     "tryGetCurrentPattern_Text":  false,
+                     "tryGetCurrentPattern_Value":  false,
+                     "tryGetCurrentPattern_Scroll":  false
+                 }
+             ]
+}

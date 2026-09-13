@@ -1,0 +1,254 @@
+{
+    "probe":  "16-observation-census",
+    "label":  "devbox",
+    "stack":  "n/a",
+    "scope":  "app/provider",
+    "window_census":  {
+                          "total_enumerated":  147,
+                          "shell_window_class":  "Progman",
+                          "desktop_window_class":  "#32769",
+                          "by_factor":  {
+                                            "invisible":  137,
+                                            "zero_size":  81,
+                                            "iconic":  8,
+                                            "visible_nonempty":  66,
+                                            "cloaked":  6,
+                                            "tool":  43
+                                        },
+                          "identifiable_class_rows":  [
+                                                          {
+                                                              "class":  "Shell_TrayWnd",
+                                                              "visible":  true,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  true,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x88",
+                                                              "width_bucket":  1640,
+                                                              "height_bucket":  40
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  true,
+                                                              "tool":  true,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x80",
+                                                              "width_bucket":  0,
+                                                              "height_bucket":  0
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  false,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x100",
+                                                              "width_bucket":  136,
+                                                              "height_bucket":  40
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  false,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x100",
+                                                              "width_bucket":  136,
+                                                              "height_bucket":  40
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  false,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x100",
+                                                              "width_bucket":  136,
+                                                              "height_bucket":  40
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  false,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x100",
+                                                              "width_bucket":  136,
+                                                              "height_bucket":  40
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  false,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x100",
+                                                              "width_bucket":  136,
+                                                              "height_bucket":  40
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  false,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x100",
+                                                              "width_bucket":  136,
+                                                              "height_bucket":  40
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  false,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x100",
+                                                              "width_bucket":  136,
+                                                              "height_bucket":  40
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  false,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x100",
+                                                              "width_bucket":  136,
+                                                              "height_bucket":  40
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  false,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x100",
+                                                              "width_bucket":  136,
+                                                              "height_bucket":  40
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  true,
+                                                              "tool":  true,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x8000080",
+                                                              "width_bucket":  0,
+                                                              "height_bucket":  0
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  false,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x100",
+                                                              "width_bucket":  136,
+                                                              "height_bucket":  40
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  false,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x100",
+                                                              "width_bucket":  136,
+                                                              "height_bucket":  40
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  false,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  false,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x100",
+                                                              "width_bucket":  136,
+                                                              "height_bucket":  40
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  true,
+                                                              "iconic":  true,
+                                                              "zero_size":  false,
+                                                              "tool":  true,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x80",
+                                                              "width_bucket":  160,
+                                                              "height_bucket":  32
+                                                          },
+                                                          {
+                                                              "class":  "WorkerW",
+                                                              "visible":  true,
+                                                              "iconic":  true,
+                                                              "zero_size":  false,
+                                                              "tool":  true,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x80000A0",
+                                                              "width_bucket":  160,
+                                                              "height_bucket":  32
+                                                          },
+                                                          {
+                                                              "class":  "Progman",
+                                                              "visible":  true,
+                                                              "iconic":  false,
+                                                              "zero_size":  false,
+                                                              "tool":  true,
+                                                              "cloaked":  false,
+                                                              "ex_style_hex":  "0x80",
+                                                              "width_bucket":  1640,
+                                                              "height_bucket":  736
+                                                          }
+                                                      ]
+                      },
+    "foreground_semantics":  {
+                                 "foreground_window_non_zero":  true,
+                                 "foreground_class":  "Shell_TrayWnd",
+                                 "foreground_pid_matches_session":  true,
+                                 "foreground_title_length":  0
+                             },
+    "process_enumeration":  {
+                                "toolhelp_snapshot_available":  true,
+                                "toolhelp_process_count":  133,
+                                "toolhelp_first_exe_shape":  "non-empty",
+                                "cim_process_count":  133,
+                                "cim_self_creation_date_present":  true,
+                                "has_net_process_replacement":  false
+                            },
+    "dpi":  {
+                "monitors":  [
+                                 {
+                                     "primary":  true,
+                                     "effective_dpi_x":  96,
+                                     "effective_dpi_y":  96,
+                                     "effective_dpi_over_96":  1,
+                                     "getdpi_error":  0,
+                                     "work_top":  0,
+                                     "work_left":  0
+                                 }
+                             ],
+                "system_dpi":  96
+            },
+    "virtual_desktop_manager":  {
+                                    "clsid_registered":  true,
+                                    "clsid_inproc_server":  "C:\\Windows\\system32\\twinapi.dll",
+                                    "clsid_lookup_error":  null,
+                                    "interface_in_pinned_crates":  "the VirtualDesktopManager CLSID constant exists in windows-sys 0.61 (Win32_UI_Shell), but no IVirtualDesktopManager interface is generated in windows-sys or the windows crate - reaching the interface requires a hand-declared COM declaration, i.e. a new dependency",
+                                    "verdict":  "the COM class is registered on this machine, but the interface is unreachable through the pinned crates without a new dependency"
+                                }
+}

@@ -37,6 +37,7 @@ impl LiveFindAdapter {
             ref_evidence: LocatorRefEvidence {
                 bounds: LocatorField::Absent,
                 available_actions: LocatorField::Known(Vec::new()),
+                descriptors: Default::default(),
             },
         }
     }

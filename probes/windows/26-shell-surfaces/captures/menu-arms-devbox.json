@@ -1,0 +1,385 @@
+{
+    "probe":  "26-shell-surfaces/05-menu-arms",
+    "question":  "which source of the two-source menu detector fires, if any, on a real UWP Settings host and on a real Chromium/Electron host under generic staging, with the corrected Chromium host population (A24-12 needles plus cursor) counted as running executable images",
+    "cites":  [
+                  "KTD9",
+                  "KTD10",
+                  "A24-12"
+              ],
+    "label":  "devbox",
+    "client_stack":  "uia3-com",
+    "winui_arm":  {
+                      "measurable":  false,
+                      "ktd9_branch":  "B_no_menu_surface_reachable_by_generic_staging",
+                      "preexisting_settings_frame_present":  true,
+                      "suspended_frames_closed_before_launch":  0,
+                      "launch_route":  "ms_settings_uri_shell_dispatch",
+                      "activation_confirmed":  true,
+                      "reused_existing_instance":  true,
+                      "foreground_class":  "ApplicationFrameWindow",
+                      "foreground_owner_host_token":  "frame_host",
+                      "core_window_child_present":  true,
+                      "hosted_owner_differs_from_frame":  true,
+                      "at_rest":  {
+                                      "classic_source_fired":  false,
+                                      "classic_source_thread_walk_reached_target":  true,
+                                      "classic_source_per_thread_reads_all_succeeded":  false,
+                                      "uia_source_fired":  false,
+                                      "tool_window_candidates_present":  false,
+                                      "candidate_class_set":  [
+
+                                                              ],
+                                      "candidates_hung_gated_skipped":  0,
+                                      "chromium_source_fired":  false,
+                                      "chromium_source_presented_candidates_present":  false,
+                                      "subtree_root_control_type":  "Window",
+                                      "subtree_read_nonempty":  true,
+                                      "subtree_menu_element_count":  0,
+                                      "subtree_menu_bar_element_count":  0,
+                                      "subtree_menu_item_element_count":  0
+                                  },
+                      "stagings":  [
+                                       {
+                                           "method":  "alt_tap",
+                                           "after_staging":  {
+                                                                 "classic_source_fired":  false,
+                                                                 "classic_source_thread_walk_reached_target":  true,
+                                                                 "classic_source_per_thread_reads_all_succeeded":  false,
+                                                                 "uia_source_fired":  false,
+                                                                 "tool_window_candidates_present":  false,
+                                                                 "candidate_class_set":  [
+
+                                                                                         ],
+                                                                 "candidates_hung_gated_skipped":  0,
+                                                                 "chromium_source_fired":  false,
+                                                                 "chromium_source_presented_candidates_present":  false,
+                                                                 "subtree_root_control_type":  "Window",
+                                                                 "subtree_read_nonempty":  true,
+                                                                 "subtree_menu_element_count":  0,
+                                                                 "subtree_menu_bar_element_count":  0,
+                                                                 "subtree_menu_item_element_count":  0
+                                                             },
+                                           "after_esc_restore":  {
+                                                                     "classic_source_fired":  false,
+                                                                     "classic_source_thread_walk_reached_target":  true,
+                                                                     "classic_source_per_thread_reads_all_succeeded":  false,
+                                                                     "uia_source_fired":  false,
+                                                                     "tool_window_candidates_present":  false,
+                                                                     "candidate_class_set":  [
+
+                                                                                             ],
+                                                                     "candidates_hung_gated_skipped":  0,
+                                                                     "chromium_source_fired":  false,
+                                                                     "chromium_source_presented_candidates_present":  false,
+                                                                     "subtree_root_control_type":  "Window",
+                                                                     "subtree_read_nonempty":  true,
+                                                                     "subtree_menu_element_count":  0,
+                                                                     "subtree_menu_bar_element_count":  0,
+                                                                     "subtree_menu_item_element_count":  0
+                                                                 },
+                                           "returned_to_rest":  true,
+                                           "menu_family_reached":  false
+                                       },
+                                       {
+                                           "method":  "shift_f10",
+                                           "after_staging":  {
+                                                                 "classic_source_fired":  false,
+                                                                 "classic_source_thread_walk_reached_target":  true,
+                                                                 "classic_source_per_thread_reads_all_succeeded":  false,
+                                                                 "uia_source_fired":  false,
+                                                                 "tool_window_candidates_present":  false,
+                                                                 "candidate_class_set":  [
+
+                                                                                         ],
+                                                                 "candidates_hung_gated_skipped":  0,
+                                                                 "chromium_source_fired":  false,
+                                                                 "chromium_source_presented_candidates_present":  false,
+                                                                 "subtree_root_control_type":  "Window",
+                                                                 "subtree_read_nonempty":  true,
+                                                                 "subtree_menu_element_count":  0,
+                                                                 "subtree_menu_bar_element_count":  0,
+                                                                 "subtree_menu_item_element_count":  0
+                                                             },
+                                           "after_esc_restore":  {
+                                                                     "classic_source_fired":  false,
+                                                                     "classic_source_thread_walk_reached_target":  true,
+                                                                     "classic_source_per_thread_reads_all_succeeded":  false,
+                                                                     "uia_source_fired":  false,
+                                                                     "tool_window_candidates_present":  false,
+                                                                     "candidate_class_set":  [
+
+                                                                                             ],
+                                                                     "candidates_hung_gated_skipped":  0,
+                                                                     "chromium_source_fired":  false,
+                                                                     "chromium_source_presented_candidates_present":  false,
+                                                                     "subtree_root_control_type":  "Window",
+                                                                     "subtree_read_nonempty":  true,
+                                                                     "subtree_menu_element_count":  0,
+                                                                     "subtree_menu_bar_element_count":  0,
+                                                                     "subtree_menu_item_element_count":  0
+                                                                 },
+                                           "returned_to_rest":  true,
+                                           "menu_family_reached":  false
+                                       },
+                                       {
+                                           "method":  "right_click_center",
+                                           "after_staging":  {
+                                                                 "classic_source_fired":  false,
+                                                                 "classic_source_thread_walk_reached_target":  true,
+                                                                 "classic_source_per_thread_reads_all_succeeded":  false,
+                                                                 "uia_source_fired":  false,
+                                                                 "tool_window_candidates_present":  false,
+                                                                 "candidate_class_set":  [
+
+                                                                                         ],
+                                                                 "candidates_hung_gated_skipped":  0,
+                                                                 "chromium_source_fired":  false,
+                                                                 "chromium_source_presented_candidates_present":  false,
+                                                                 "subtree_root_control_type":  "Window",
+                                                                 "subtree_read_nonempty":  true,
+                                                                 "subtree_menu_element_count":  0,
+                                                                 "subtree_menu_bar_element_count":  0,
+                                                                 "subtree_menu_item_element_count":  0
+                                                             },
+                                           "after_esc_restore":  {
+                                                                     "classic_source_fired":  false,
+                                                                     "classic_source_thread_walk_reached_target":  true,
+                                                                     "classic_source_per_thread_reads_all_succeeded":  false,
+                                                                     "uia_source_fired":  false,
+                                                                     "tool_window_candidates_present":  false,
+                                                                     "candidate_class_set":  [
+
+                                                                                             ],
+                                                                     "candidates_hung_gated_skipped":  0,
+                                                                     "chromium_source_fired":  false,
+                                                                     "chromium_source_presented_candidates_present":  false,
+                                                                     "subtree_root_control_type":  "Window",
+                                                                     "subtree_read_nonempty":  true,
+                                                                     "subtree_menu_element_count":  0,
+                                                                     "subtree_menu_bar_element_count":  0,
+                                                                     "subtree_menu_item_element_count":  0
+                                                                 },
+                                           "returned_to_rest":  true,
+                                           "menu_family_reached":  false
+                                       }
+                                   ],
+                      "staging_methods_attempted":  [
+                                                        "alt_tap",
+                                                        "shift_f10",
+                                                        "right_click_center"
+                                                    ],
+                      "menu_family_reached_by_any_staging":  false,
+                      "narrowed_to":  "WinUI3/MSIX",
+                      "branch_note":  "the UWP CoreWindow shape was reached, activation confirmed, and all detector sources were evaluated directly against the host at rest and after each staging attempt; no XAML menu surface could be staged from an external process on this host, so the menu-open half of the arm stays unevaluated and narrows to the WinUI3/MSIX population this box does not carry"
+                  },
+    "chromium_arm":  {
+                         "measurable":  true,
+                         "ktd10_branch":  "A_menu_staged_and_sources_evaluated",
+                         "target_present":  true,
+                         "target_top_level_class":  "Chrome_WidgetWin_1",
+                         "target_image_is_needle_leaf":  true,
+                         "activation_confirmed":  true,
+                         "foreground_class":  "Chrome_WidgetWin_1",
+                         "population_search":  {
+                                                   "scan_mode":  "toolhelp_process_snapshot",
+                                                   "needles_searched":  [
+                                                                            "brave",
+                                                                            "chrome",
+                                                                            "chrome_x86",
+                                                                            "cursor",
+                                                                            "edge",
+                                                                            "slack",
+                                                                            "teams",
+                                                                            "vscode"
+                                                                        ],
+                                                   "matched_needles":  [
+                                                                           "cursor"
+                                                                       ],
+                                                   "matched_processes_total":  16,
+                                                   "needles_hit_count":  1,
+                                                   "hits_by_needle":  [
+                                                                          {
+                                                                              "needle":  "brave",
+                                                                              "running_process_image_hits":  0
+                                                                          },
+                                                                          {
+                                                                              "needle":  "chrome",
+                                                                              "running_process_image_hits":  0
+                                                                          },
+                                                                          {
+                                                                              "needle":  "chrome_x86",
+                                                                              "running_process_image_hits":  0
+                                                                          },
+                                                                          {
+                                                                              "needle":  "cursor",
+                                                                              "running_process_image_hits":  16
+                                                                          },
+                                                                          {
+                                                                              "needle":  "edge",
+                                                                              "running_process_image_hits":  0
+                                                                          },
+                                                                          {
+                                                                              "needle":  "slack",
+                                                                              "running_process_image_hits":  0
+                                                                          },
+                                                                          {
+                                                                              "needle":  "teams",
+                                                                              "running_process_image_hits":  0
+                                                                          },
+                                                                          {
+                                                                              "needle":  "vscode",
+                                                                              "running_process_image_hits":  0
+                                                                          }
+                                                                      ],
+                                                   "install_location_hits_total":  1,
+                                                   "install_location_hits_by_needle":  [
+                                                                                           {
+                                                                                               "needle":  "brave",
+                                                                                               "installed_location_present":  false
+                                                                                           },
+                                                                                           {
+                                                                                               "needle":  "chrome",
+                                                                                               "installed_location_present":  false
+                                                                                           },
+                                                                                           {
+                                                                                               "needle":  "chrome_x86",
+                                                                                               "installed_location_present":  false
+                                                                                           },
+                                                                                           {
+                                                                                               "needle":  "cursor",
+                                                                                               "installed_location_present":  true
+                                                                                           },
+                                                                                           {
+                                                                                               "needle":  "edge",
+                                                                                               "installed_location_present":  false
+                                                                                           },
+                                                                                           {
+                                                                                               "needle":  "slack",
+                                                                                               "installed_location_present":  false
+                                                                                           },
+                                                                                           {
+                                                                                               "needle":  "teams",
+                                                                                               "installed_location_present":  false
+                                                                                           },
+                                                                                           {
+                                                                                               "needle":  "vscode",
+                                                                                               "installed_location_present":  false
+                                                                                           }
+                                                                                       ],
+                                                   "chromium_needles_includes_cursor":  true,
+                                                   "needle_count":  8,
+                                                   "counting_note":  "counts and flags only; no paths, no window titles, no pids"
+                                               },
+                         "at_rest":  {
+                                         "classic_source_fired":  false,
+                                         "classic_source_thread_walk_reached_target":  true,
+                                         "classic_source_per_thread_reads_all_succeeded":  false,
+                                         "uia_source_fired":  false,
+                                         "tool_window_candidates_present":  true,
+                                         "candidate_class_set":  [
+                                                                     "Chrome_WidgetWin_0"
+                                                                 ],
+                                         "candidates_hung_gated_skipped":  0,
+                                         "chromium_source_fired":  false,
+                                         "chromium_source_presented_candidates_present":  true,
+                                         "subtree_root_control_type":  "Window",
+                                         "subtree_read_nonempty":  true,
+                                         "subtree_menu_element_count":  0,
+                                         "subtree_menu_bar_element_count":  0,
+                                         "subtree_menu_item_element_count":  0
+                                     },
+                         "stagings":  [
+                                          {
+                                              "method":  "alt_tap",
+                                              "after_staging":  {
+                                                                    "classic_source_fired":  false,
+                                                                    "classic_source_thread_walk_reached_target":  true,
+                                                                    "classic_source_per_thread_reads_all_succeeded":  false,
+                                                                    "uia_source_fired":  false,
+                                                                    "tool_window_candidates_present":  true,
+                                                                    "candidate_class_set":  [
+                                                                                                "Chrome_WidgetWin_0"
+                                                                                            ],
+                                                                    "candidates_hung_gated_skipped":  0,
+                                                                    "chromium_source_fired":  false,
+                                                                    "chromium_source_presented_candidates_present":  true,
+                                                                    "subtree_root_control_type":  "Window",
+                                                                    "subtree_read_nonempty":  true,
+                                                                    "subtree_menu_element_count":  0,
+                                                                    "subtree_menu_bar_element_count":  0,
+                                                                    "subtree_menu_item_element_count":  0
+                                                                },
+                                              "after_esc_restore":  {
+                                                                        "classic_source_fired":  false,
+                                                                        "classic_source_thread_walk_reached_target":  true,
+                                                                        "classic_source_per_thread_reads_all_succeeded":  false,
+                                                                        "uia_source_fired":  false,
+                                                                        "tool_window_candidates_present":  true,
+                                                                        "candidate_class_set":  [
+                                                                                                    "Chrome_WidgetWin_0"
+                                                                                                ],
+                                                                        "candidates_hung_gated_skipped":  0,
+                                                                        "chromium_source_fired":  false,
+                                                                        "chromium_source_presented_candidates_present":  true,
+                                                                        "subtree_root_control_type":  "Window",
+                                                                        "subtree_read_nonempty":  true,
+                                                                        "subtree_menu_element_count":  0,
+                                                                        "subtree_menu_bar_element_count":  0,
+                                                                        "subtree_menu_item_element_count":  0
+                                                                    },
+                                              "returned_to_rest":  true,
+                                              "menu_family_reached":  false
+                                          },
+                                          {
+                                              "method":  "right_click_center",
+                                              "after_staging":  {
+                                                                    "classic_source_fired":  false,
+                                                                    "classic_source_thread_walk_reached_target":  true,
+                                                                    "classic_source_per_thread_reads_all_succeeded":  false,
+                                                                    "uia_source_fired":  false,
+                                                                    "tool_window_candidates_present":  true,
+                                                                    "candidate_class_set":  [
+                                                                                                "Chrome_WidgetWin_0"
+                                                                                            ],
+                                                                    "candidates_hung_gated_skipped":  0,
+                                                                    "chromium_source_fired":  true,
+                                                                    "chromium_source_presented_candidates_present":  true,
+                                                                    "subtree_root_control_type":  "Window",
+                                                                    "subtree_read_nonempty":  true,
+                                                                    "subtree_menu_element_count":  2,
+                                                                    "subtree_menu_bar_element_count":  0,
+                                                                    "subtree_menu_item_element_count":  1
+                                                                },
+                                              "after_esc_restore":  {
+                                                                        "classic_source_fired":  false,
+                                                                        "classic_source_thread_walk_reached_target":  true,
+                                                                        "classic_source_per_thread_reads_all_succeeded":  false,
+                                                                        "uia_source_fired":  false,
+                                                                        "tool_window_candidates_present":  true,
+                                                                        "candidate_class_set":  [
+                                                                                                    "Chrome_WidgetWin_0"
+                                                                                                ],
+                                                                        "candidates_hung_gated_skipped":  0,
+                                                                        "chromium_source_fired":  false,
+                                                                        "chromium_source_presented_candidates_present":  true,
+                                                                        "subtree_root_control_type":  "Window",
+                                                                        "subtree_read_nonempty":  true,
+                                                                        "subtree_menu_element_count":  0,
+                                                                        "subtree_menu_bar_element_count":  0,
+                                                                        "subtree_menu_item_element_count":  0
+                                                                    },
+                                              "returned_to_rest":  true,
+                                              "menu_family_reached":  true
+                                          }
+                                      ],
+                         "staging_methods_attempted":  [
+                                                           "alt_tap",
+                                                           "right_click_center"
+                                                       ],
+                         "classic_source_fired_by_any_staging":  false,
+                         "uia_source_fired_by_any_staging":  false,
+                         "chromium_source_fired_by_any_staging":  true,
+                         "menu_family_reached_by_any_staging":  true,
+                         "source_that_fired":  "chromium_only"
+                     }
+}

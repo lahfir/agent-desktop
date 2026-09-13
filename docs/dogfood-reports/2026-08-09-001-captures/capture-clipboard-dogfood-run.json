@@ -1,0 +1,299 @@
+{
+    "schema":  "capture-clipboard-dogfood-v1",
+    "branch":  "feat/windows-2.10-capture-clipboard",
+    "plan":  "docs/plans/2026-08-09-001-feat-windows-capture-clipboard-plan.md",
+    "unit":  "U10",
+    "os":  {
+               "product":  "Windows Server 2019 Datacenter",
+               "build":  17763,
+               "installation_type":  "Server"
+           },
+    "binary_bytes":  2275840,
+    "permissions":  {
+                        "ok":  true,
+                        "screen_recording":  "not_required"
+                    },
+    "wgc":  {
+                "is_supported":  true,
+                "modern_attempt_observed":  true,
+                "modern_fail_class":  "interop_activate_failed",
+                "legacy_fallback_observed":  true
+            },
+    "judgements":  [
+                       {
+                           "id":  "J1a",
+                           "target":  "Notepad",
+                           "stack":  "Win32/GDI",
+                           "result":  "pass",
+                           "verdict":  "legacy returned real content (PW_RENDERFULLCONTENT path)",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J1b",
+                           "target":  "ScratchForms",
+                           "stack":  "WinForms",
+                           "result":  "pass",
+                           "verdict":  "legacy returned real content",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J1c",
+                           "target":  "ScratchWpf",
+                           "stack":  "WPF",
+                           "result":  "pass",
+                           "verdict":  "legacy returned real content on DWM-composited WPF",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J1d",
+                           "target":  "Obsidian",
+                           "stack":  "Electron/Chromium",
+                           "result":  "pass",
+                           "verdict":  "legacy returned real content on Chromium compositor",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J2a",
+                           "target":  "FullScreen",
+                           "stack":  "BitBlt/display",
+                           "result":  "pass",
+                           "verdict":  "FullScreen maps to primary display; non-black frame",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J2b",
+                           "target":  "Screen(0)",
+                           "stack":  "BitBlt/display",
+                           "result":  "pass",
+                           "verdict":  "display index 0 matches FullScreen dims",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J2c",
+                           "target":  "partially occluded Notepad",
+                           "stack":  "Win32/GDI",
+                           "result":  "pass",
+                           "verdict":  "PrintWindow returned full window content despite partial occlusion",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J2d",
+                           "target":  "fully behind Notepad",
+                           "stack":  "Win32/GDI",
+                           "result":  "pass",
+                           "verdict":  "PrintWindow returned target window pixels while fully covered",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J3a",
+                           "target":  "Notepad text producer",
+                           "stack":  "clipboard/text",
+                           "result":  "disappointing",
+                           "verdict":  "clipboard-get text matched CF_UNICODETEXT from Forms producer fallback (headed Notepad copy missed)",
+                           "disposition":  "accepted",
+                           "owner":  "headed press foreground flakiness on Server 2019; CF_UNICODETEXT read path still judged",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J3b",
+                           "target":  "CF_DIB image producer",
+                           "stack":  "clipboard/image",
+                           "result":  "pass",
+                           "verdict":  "clipboard-get image decoded PNG with expected dims from real CF_DIB source",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J3b2",
+                           "target":  "product clipboard-set --image",
+                           "stack":  "clipboard/image",
+                           "result":  "pass",
+                           "verdict":  "product image write/read round-trip dims match",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J3c",
+                           "target":  "CF_HDROP file list producer",
+                           "stack":  "clipboard/files",
+                           "result":  "pass",
+                           "verdict":  "clipboard-get file-urls count=2 from SetFileDropList (Explorer-shaped)",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J3c2",
+                           "target":  "product clipboard-set --file-url",
+                           "stack":  "clipboard/files",
+                           "result":  "pass",
+                           "verdict":  "product file-url write/read count=2",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J3c3",
+                           "target":  "Explorer folder stage",
+                           "stack":  "clipboard/files",
+                           "result":  "pass",
+                           "verdict":  "Explorer folder window opened for scratch files; CF_HDROP judged via SetFileDropList (same format)",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J3d",
+                           "target":  "auto format precedence",
+                           "stack":  "clipboard/auto",
+                           "result":  "pass",
+                           "verdict":  "auto resolved to file_urls while files present (FileUrls-\u003eImage-\u003eText)",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J3e",
+                           "target":  "clipboard-clear",
+                           "stack":  "clipboard/clear",
+                           "result":  "pass",
+                           "verdict":  "clear emptied text content",
+                           "disposition":  "",
+                           "owner":  "",
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J0",
+                           "target":  "WGC modern backend",
+                           "stack":  "capture/modern",
+                           "result":  "disappointing",
+                           "verdict":  "IsSupported=true but modern capture fails activating IGraphicsCaptureItemInterop; silent legacy fallback succeeds",
+                           "disposition":  "accepted",
+                           "owner":  "host build 17763 / A22-1; silent Legacy fallback is the contracted behaviour (R2)",
+                           "notes":  "Not a product defect on this host; section 2.12 owns live modern verification on a capable session"
+                       }
+                   ],
+    "envelopes":  [
+                      {
+                          "leg":  "j1a-notepad.png",
+                          "ok":  true,
+                          "exit":  0,
+                          "width":  640,
+                          "height":  480,
+                          "bytes":  7046,
+                          "classification":  "real_content"
+                      },
+                      {
+                          "leg":  "j1b-winforms.png",
+                          "ok":  true,
+                          "exit":  0,
+                          "width":  700,
+                          "height":  520,
+                          "bytes":  25551,
+                          "classification":  "real_content"
+                      },
+                      {
+                          "leg":  "j1c-wpf",
+                          "ok":  true,
+                          "exit":  0,
+                          "width":  480,
+                          "height":  752,
+                          "bytes":  22434,
+                          "classification":  "real_content"
+                      },
+                      {
+                          "leg":  "j1d-electron",
+                          "ok":  true,
+                          "exit":  0,
+                          "width":  1024,
+                          "height":  691,
+                          "bytes":  53951,
+                          "classification":  "real_content"
+                      },
+                      {
+                          "leg":  "j2-fullscreen",
+                          "ok":  true,
+                          "exit":  0,
+                          "width":  1639,
+                          "height":  732,
+                          "bytes":  168087,
+                          "classification":  "real_content"
+                      },
+                      {
+                          "leg":  "j2-screen0",
+                          "ok":  true,
+                          "exit":  0,
+                          "width":  1639,
+                          "height":  732,
+                          "bytes":  166728,
+                          "classification":  "real_content"
+                      },
+                      {
+                          "leg":  "j2c-partial",
+                          "ok":  true,
+                          "exit":  0,
+                          "width":  500,
+                          "height":  400,
+                          "bytes":  6206,
+                          "classification":  "real_content"
+                      },
+                      {
+                          "leg":  "j2d-behind",
+                          "ok":  true,
+                          "exit":  0,
+                          "width":  500,
+                          "height":  400,
+                          "bytes":  6206,
+                          "classification":  "real_content"
+                      },
+                      {
+                          "leg":  "j3a-text",
+                          "ok":  true,
+                          "exit":  0,
+                          "width":  null,
+                          "height":  null,
+                          "bytes":  null,
+                          "classification":  ""
+                      },
+                      {
+                          "leg":  "j3b-image",
+                          "ok":  true,
+                          "exit":  0,
+                          "width":  48,
+                          "height":  32,
+                          "bytes":  182,
+                          "classification":  "real_content"
+                      },
+                      {
+                          "leg":  "j3c-files",
+                          "ok":  null,
+                          "exit":  -1,
+                          "width":  null,
+                          "height":  null,
+                          "bytes":  null,
+                          "classification":  ""
+                      }
+                  ],
+    "fail_count":  0,
+    "disappointing_count":  2,
+    "pass_count":  15,
+    "skipped_count":  0
+}

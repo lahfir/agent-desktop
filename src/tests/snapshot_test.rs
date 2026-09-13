@@ -1,23 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
     use std::process::Command;
 
-    fn agent_desktop_bin() -> PathBuf {
-        let mut path = std::env::current_exe().expect("test executable path must be available");
-        path.pop();
-        path.pop();
-        path.push("agent-desktop");
-        assert!(
-            path.is_file(),
-            "agent-desktop test binary is missing at {}; build the binary before running tests",
-            path.display()
-        );
-        path
-    }
-
     fn run(args: &[&str]) -> serde_json::Value {
-        let output = Command::new(agent_desktop_bin())
+        let output = Command::new(env!("CARGO_BIN_EXE_agent-desktop"))
             .args(args)
             .output()
             .expect("failed to run agent-desktop");
@@ -139,8 +125,17 @@ mod tests {
     }
 
     #[test]
-    fn list_apps_on_non_macos_errors_gracefully() {
-        #[cfg(not(target_os = "macos"))]
+    fn list_apps_inventory_matches_the_platform() {
+        #[cfg(target_os = "windows")]
+        {
+            let json = run(&["list-apps"]);
+            assert_eq!(json["ok"], true, "list-apps is live on Windows");
+            assert!(
+                json["data"]["apps"].is_array(),
+                "list-apps returns an apps array on Windows"
+            );
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             let json = run(&["list-apps"]);
             assert_eq!(json["ok"], false);

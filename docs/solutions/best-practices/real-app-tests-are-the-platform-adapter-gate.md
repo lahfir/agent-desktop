@@ -10,7 +10,7 @@ applies_when:
   - "Changing a platform adapter's tree, resolution, window, input, or accessibility code"
   - "Changing release-binary integration behavior"
   - "Fixing a bug that a mock adapter could not expose"
-tags: [e2e, fixture-app, accessibility, macos, regression, adapters]
+tags: [e2e, fixture-app, accessibility, macos, windows, regression, adapters]
 ---
 
 # Make permissioned fixture and real-app checks the adapter gate
@@ -57,6 +57,73 @@ deletion without treating a mock as a platform oracle.
 - Keep native tests opt-in and prerequisite-aware; never make them operate on
   user data or depend on an arbitrary foreground application.
 - Record a skipped native gate as skipped, not green.
+
+## Standing practice on Windows
+
+Through sub-phase 2.11, Windows carried no fixture harness, so the gate took
+the form of a scripted dogfood run against off-the-shelf software, and every
+sub-phase did one before it merged. Sub-phase 2.12 shipped `tests/e2e-windows/`
+alongside a WinForms fixture app at `tests/fixture-app-windows/`: a PowerShell
+5.1 harness that stages the real, hashed `agent-desktop.exe`, drives it against
+the fixture, and asserts every effect by independent re-observation — the same
+discipline as macOS's `tests/e2e/run.sh`. `Run-E2E.ps1` is the one
+process-terminating entry point; the hosted CI lane runs its seeded-failure
+self-test (`Run-E2E.ps1 -SelfTestSeedFailure`) on every PR, proving a failing
+leg reaches a non-zero exit code, while the live suite needs a real desktop and
+the `DesktopLease` exclusivity guard, so it runs locally rather than on hosted
+CI.
+
+Dogfood against real off-the-shelf software remains a separate, additional gate
+every sub-phase still runs regardless of fixture coverage: the fixture buys
+deterministic mutation coverage the way `tests/e2e/run.sh` does on macOS, while
+dogfood proves the adapter against native seams — Explorer's DirectUI shell,
+Chromium/Electron hosts, System Settings — that no fixture can emulate. The
+committed reports in `docs/dogfood-reports/` are the record: the macOS
+enhanced-reliability run that set the pattern, then vocabulary (sub-phase 2.3),
+the observation read path (2.4), resolution and the live locator (2.5),
+actionability and occlusion (2.6), on through the fixture/e2e harness sub-phase
+itself (2.12) and every sub-phase since. This is not a rule that recurred; it is
+how each layer of the adapter enters the product.
+
+The vocabulary run shows what the shape buys. `probes/windows/scratch/run-dogfood.ps1` drove the
+`ControlType`→`Role`, action, and state vocabulary against four real UI stacks nobody in this
+repository wrote — classic Notepad (Win32 `EDIT` proxy), Explorer (DirectUI shell), and
+WinForms/WPF scratch fixtures. It found one real defect no unit test had: `invalid` was
+emitted on every node of every target, because a UIA form-validity flag's `false` default was
+read as a positive claim rather than the absence of one. It also recorded two targets —
+Chromium/Electron and the modern Settings app — as **skipped with a reason** rather than
+silently green, exactly this doc's "record a skipped native gate as skipped" rule. The
+resulting report is committed at
+`docs/dogfood-reports/2026-07-31-feat-windows-2-3-vocabulary-dogfood.md`; the raw per-node
+census JSON it was produced from is deliberately gitignored (see `docs/plans/2026-07-31-001-captures/`
+in `.gitignore`), because a census can carry a real application's on-screen text where a
+report describing shapes and counts does not — the durable record is the report, not the
+capture.
+
+The 2.6 actionability-and-occlusion run sharpens the same discipline one level
+up: a dogfood judgement can accept the exact defect it was built to catch when
+two code paths share an error code. Sub-phase 2.6's J4 judgement treated any
+`PLATFORM_NOT_SUPPORTED` envelope as proof a below-fold Explorer scroll
+worked — but that code is also exactly what the defect produces, because
+`execute_action` is legitimately unimplemented at this sub-phase: a click
+whose `scroll_into_view` override is missing and falls through to the trait
+default answers with the identical code as a click that scrolled, passed the
+gate, and reached dispatch. Deleting the product fix left the gate reporting
+pass; three sibling judgements had the same hole. The fix is a positive
+discriminator, not a broader error-code check — the judgements now require
+the envelope's `message` to name `execute_action` by name, proving dispatch
+was actually reached, per the header comment in
+`probes/windows/scratch/run-actionability-dogfood.ps1:15-22` and the
+`Test-DispatchReached` / `Test-UnsupportedSeamBeforeDispatch` predicates at
+`:175-189` (commit `fd7fe3b`). It is this doc's own "verify effects
+independently of `ok: true`" guidance one level down: a structured error
+*code* is not enough discrimination either, when the healthy path and the
+defect share one. Report:
+`docs/dogfood-reports/2026-08-06-001-feat-windows-2-6-actionability-occlusion-dogfood.md`.
+
+A run substitutes for the fixture app only while it keeps the fixture app's discipline — real
+software, effects verified independently, skips recorded honestly, and raw captures kept out of
+the repository while the judgement drawn from them is kept in it.
 
 ## Related
 

@@ -1,0 +1,12 @@
+{
+    "probe":  "25-packaging-02-npm-global-install",
+    "question":  "what does one full agent-desktop distribution cycle cost on this box: npm pack followed by an npm global install of the packed tarball into a fresh scratch prefix",
+    "methodology":  "min-of-seven, warm-up discarded (A15-13)",
+    "warmup_discarded":  true,
+    "runs":  7,
+    "warmup_ms":  2713.8,
+    "min_ms":  2620.7,
+    "median_ms":  2698.8,
+    "max_ms":  2818.2,
+    "all_runs_exit_zero":  true
+}

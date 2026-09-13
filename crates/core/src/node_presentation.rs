@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::Rect;
+use crate::{NodeDescriptor, Rect};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NodePresentation {
@@ -12,4 +12,6 @@ pub struct NodePresentation {
     pub available_actions: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bounds: Option<Rect>,
+    #[serde(flatten)]
+    pub descriptors: NodeDescriptor,
 }

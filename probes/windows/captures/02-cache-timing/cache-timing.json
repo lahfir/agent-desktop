@@ -1,0 +1,77 @@
+{
+    "Probe":  "02-cache-timing",
+    "CapturedAtUtc":  "2026-07-26T23:51:52Z",
+    "Stack":  "managed",
+    "Scope":  "api-contract",
+    "Authority":  "NON-AUTHORITATIVE managed cross-check (KTD1). The authoritative CacheRequest measurement is U7 08-uia3-com/cache-timing.json on the UIA3 COM stack — the stack the Rust adapter uses.",
+    "Method":  "per-property pass calls FindAll(Subtree) then GetCurrentPropertyValue for each of 8 properties on each node; cached pass activates a CacheRequest carrying the same 8 properties over the same TreeScope.Subtree with the ControlView tree filter, then reads GetCachedPropertyValue. One discarded warm-up pass of each precedes the measured repetitions.",
+    "Targets":  [
+                    {
+                        "Label":  "notepad",
+                        "Stack":  "managed",
+                        "NodeCount":  3,
+                        "CachedNodeCount":  3,
+                        "PropertiesPerNode":  8,
+                        "PropertyNames":  "Name,ControlType,AutomationId,ClassName,BoundingRectangle,IsEnabled,IsOffscreen,FrameworkId",
+                        "Repetitions":  5,
+                        "PropertyReadsPerRepetition":  24,
+                        "CachedPropertyReadsPerRepetition":  24,
+                        "AutomationElementMode":  "Full (CacheRequest default) — matched to the per-property pass so the delta is caching, not element-mode weight",
+                        "timingPerPropertyTotalMs":  8.3474,
+                        "timingCachedTotalMs":  14.485,
+                        "timingPerPropertyFindMs":  6.1763,
+                        "timingCachedFindMs":  14.1648,
+                        "timingPerPropertyReadMs":  2.1711,
+                        "timingCachedReadMs":  0.3202,
+                        "timingOverallMultiplier":  0.5763,
+                        "timingFindPhaseMultiplier":  0.436,
+                        "timingReadPhaseMultiplier":  6.7804
+                    },
+                    {
+                        "Label":  "explorer",
+                        "Stack":  "managed",
+                        "NodeCount":  196,
+                        "CachedNodeCount":  196,
+                        "PropertiesPerNode":  8,
+                        "PropertyNames":  "Name,ControlType,AutomationId,ClassName,BoundingRectangle,IsEnabled,IsOffscreen,FrameworkId",
+                        "Repetitions":  5,
+                        "PropertyReadsPerRepetition":  1568,
+                        "CachedPropertyReadsPerRepetition":  1568,
+                        "AutomationElementMode":  "Full (CacheRequest default) — matched to the per-property pass so the delta is caching, not element-mode weight",
+                        "timingPerPropertyTotalMs":  3825.822,
+                        "timingCachedTotalMs":  2950.4104,
+                        "timingPerPropertyFindMs":  1101.6988,
+                        "timingCachedFindMs":  2943.8284,
+                        "timingPerPropertyReadMs":  2724.1232,
+                        "timingCachedReadMs":  6.582,
+                        "timingOverallMultiplier":  1.2967,
+                        "timingFindPhaseMultiplier":  0.3742,
+                        "timingReadPhaseMultiplier":  413.8747
+                    }
+                ],
+    "Uia3ComReference":  {
+                             "Source":  "probes/windows/captures/08-uia3-com/cache-timing.json",
+                             "Stack":  "uia3-com",
+                             "Target":  "explorer folder window over %WINDIR%\\System32",
+                             "NodeCount":  220,
+                             "timingComOverallMultiplier":  2.6942,
+                             "timingComReadPhaseMultiplier":  298.158,
+                             "ComFindPhaseFinding":  "the cache-building find phase is SLOWER than the uncached find (180.25 ms vs 117.38 ms): building the cache costs time up front and pays it back on reads",
+                             "ClaimVerdict":  "below-3x-claim against the phases.md 3-5x batched-read claim"
+                         },
+    "Comparison":  "stated in ComparisonToAuthoritative below; the managed numbers are reported to show whether the managed stack reproduces the COM shape, not to replace it",
+    "Interpretation":  {
+                           "Notepad":  "NEW-EDGE: batching is a PESSIMIZATION here — timingOverallMultiplier is below 1.0 on classic Notepad. Notepad is a plain Win32 control tree served by UIAutomationClientsideProviders, which run inside the client process, so an uncached property read costs no cross-process RPC and the CacheRequest adds pure setup cost. A Windows adapter that batches unconditionally will make simple Win32 windows slower.",
+                           "Explorer":  "on a genuinely out-of-process provider the managed stack reproduces the COM shape exactly: timingFindPhaseMultiplier below 1.0 (building the cache makes the find phase slower) and timingReadPhaseMultiplier in the hundreds, leaving a modest overall multiplier.",
+                           "Headline":  "U7 uia3-com stays authoritative at 2.6942x overall and 298.158x on the read phase. The managed cross-check reproduces the direction and the phase split, not the magnitude, and adds the client-side-provider caveat above."
+                       },
+    "ComparisonToAuthoritative":  {
+                                      "ComOverallMultiplier":  2.6942,
+                                      "timingManagedOverallMultiplier":  1.2967,
+                                      "ComReadPhaseMultiplier":  298.158,
+                                      "timingManagedReadPhaseMultiplier":  413.8747,
+                                      "timingManagedFindPhaseMultiplier":  0.3742,
+                                      "SameTargetShape":  "both measure an explorer folder window over %WINDIR%\\System32 with the same 8 properties and 5 repetitions; managed NodeCount differs from the COM NodeCount because the two client stacks do not present the same control view (KTD1)",
+                                      "Note":  "a find-phase multiplier below 1.0 reproduces the COM finding that cache-building makes the find phase slower; the payback is entirely in the read phase"
+                                  }
+}

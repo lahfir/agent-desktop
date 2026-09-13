@@ -1,0 +1,10 @@
+{
+    "label":  "devbox",
+    "hosts_found":  1,
+    "chromium_host_count":  1,
+    "descendant_count_initial":  109,
+    "descendant_count_after_15s":  109,
+    "descendant_count_after_30s":  109,
+    "exposure_floor":  34,
+    "exceeded_floor":  true
+}

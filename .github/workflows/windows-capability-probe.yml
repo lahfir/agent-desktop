@@ -1,0 +1,282 @@
+name: Windows capability probe
+
+# Measure-before-design evidence for the Windows adapter sub-phases. The
+# trigger is pull_request, not only workflow_dispatch: GitHub dispatches a
+# workflow only when the file exists on the default branch, and every Windows
+# sub-phase lands on feat/windows-adapter rather than on main, so a dispatch
+# trigger alone would never run on the branch that needs the measurement. The
+# path filter keeps this job off every unrelated pull request.
+on:
+  pull_request:
+    paths:
+      - 'probes/windows/14-ci-capability/**'
+      - 'probes/windows/15-vocabulary/**'
+      - 'probes/windows/16-observation/**'
+      - 'probes/windows/17-resolution/**'
+      - 'probes/windows/18-actionability/**'
+      - 'probes/windows/19-semantic-actions/**'
+      - 'probes/windows/20-input-synthesis/**'
+      - 'probes/windows/21-system-lifecycle/**'
+      - 'probes/windows/22-capture-clipboard/**'
+      - 'probes/windows/23-signals-menus/**'
+      - 'probes/windows/24-fixture-e2e/**'
+      - 'probes/windows/25-packaging/**'
+      - 'probes/windows/26-shell-surfaces/**'
+      - 'probes/windows/27-contract-decisions.ps1'
+      - 'probes/windows/27-elevation-required.ps1'
+      - 'probes/windows/27-elevation-required.cs'
+      - 'probes/windows/28-chromium-exposure.ps1'
+      - 'probes/windows/28-tray-read-diagnosis.ps1'
+      - 'probes/windows/FINDINGS.md'
+      - 'probes/windows/13-ledger-check.ps1'
+      - 'probes/windows/13-ledger-content.ps1'
+      - '.github/workflows/windows-capability-probe.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: windows-capability-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  capability-probe:
+    name: Measure the hosted Windows runner
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install pinned Rust toolchain
+        run: rustup show
+
+      # Windows PowerShell 5.1, matching the rest of the probe corpus; pwsh is
+      # not used anywhere in probes/windows.
+      - name: Run the capability probe
+        shell: powershell
+        run: |
+          .\probes\windows\14-ci-capability\probe.ps1 -Label ci
+
+      - name: Run the vocabulary probe
+        shell: powershell
+        run: |
+          .\probes\windows\15-vocabulary\probe.ps1 -Label ci
+
+      - name: Run the observation probe
+        shell: powershell
+        run: |
+          .\probes\windows\16-observation\probe.ps1 -Label ci -SkipChromium
+
+      - name: Run the resolution probe
+        shell: powershell
+        run: |
+          .\probes\windows\17-resolution\probe.ps1 -Label ci -SkipChromium
+
+      - name: Run the actionability probe
+        shell: powershell
+        run: |
+          .\probes\windows\18-actionability\probe.ps1 -Label ci -SkipChromium
+
+      - name: Run the semantic-actions probe
+        shell: powershell
+        run: |
+          .\probes\windows\19-semantic-actions\probe.ps1 -Label ci
+
+      - name: Run the input-synthesis probe
+        shell: powershell
+        run: |
+          .\probes\windows\20-input-synthesis\probe.ps1 -Label ci
+
+      - name: Run the system-lifecycle probe
+        shell: powershell
+        run: |
+          .\probes\windows\21-system-lifecycle\probe.ps1 -Label ci
+
+      - name: Run the capture-clipboard probe
+        shell: powershell
+        run: |
+          .\probes\windows\22-capture-clipboard\probe.ps1 -Label ci
+
+      - name: Run the signals-menus probe
+        shell: powershell
+        run: |
+          .\probes\windows\23-signals-menus\probe.ps1 -Label ci
+
+      # Area 24 (the fixture E2E harness, sub-phase 2.12): only the probes
+      # that need nothing beyond the in-box csc.exe and this runner's own
+      # desktop run here. 02 (split-integrity staging), 03 and 08 (a
+      # Chromium/Electron target) and 07 (split-integrity effects) need
+      # staged low-privilege tokens or an installed Electron application
+      # this hosted image does not carry - they are dev-box/self-hosted
+      # only, and the paths filter above deliberately does not imply
+      # coverage this job does not execute for them.
+      - name: Run the fixture-toolchain probe
+        shell: powershell
+        run: |
+          .\probes\windows\24-fixture-e2e\01-fixture-toolchain.ps1 -Label ci
+
+      - name: Run the cell-role stock-DataGridView probe
+        shell: powershell
+        run: |
+          .\probes\windows\24-fixture-e2e\09-cell-role-stock-dgv.ps1 -Label ci
+
+      - name: Run the hosted modern-capture probe
+        shell: powershell
+        run: |
+          .\probes\windows\24-fixture-e2e\10-hosted-modern-capture.ps1 -Label ci
+
+      # Area 25 (the packaging environment, sub-phase 2.13): in-box tar/curl
+      # and their PATH order, npm global-install mechanics, Mark-of-the-Web
+      # execution behavior, the FFI cdylib artifact set, and the pack-install
+      # cost baseline. Every leg needs nothing beyond this image's own
+      # System32 tools, bundled npm, in-box csc.exe and the pinned cargo.
+      - name: Run the archive-and-download-tools probe
+        shell: powershell
+        run: |
+          .\probes\windows\25-packaging\01-archive-and-download-tools.ps1 -Label ci
+
+      - name: Run the npm-global-install probe
+        shell: powershell
+        run: |
+          .\probes\windows\25-packaging\02-npm-global-install.ps1 -Label ci
+
+      - name: Run the motw-and-execution probe
+        shell: powershell
+        run: |
+          .\probes\windows\25-packaging\03-motw-and-execution.ps1 -Label ci
+
+      - name: Run the cdylib-artifacts probe
+        shell: powershell
+        run: |
+          .\probes\windows\25-packaging\04-cdylib-artifacts.ps1 -Label ci
+
+      # Area 26 (the shell surfaces and notifications, sub-phase 2.14 U1):
+      # reach and predicate readings for the immersive/tray surfaces, the
+      # Action Center shape and listener readings, tray rows on the COM
+      # stack, frame identity, and the platform-cost baseline. Every script
+      # binds the UIA3 COM shim (KTD3) through probes/windows/26-shell-
+      # surfaces/lib.ps1 and needs nothing beyond this image's csc.exe and
+      # desktop.
+      - name: Run the shell-surface reach probe
+        shell: powershell
+        run: |
+          .\probes\windows\26-shell-surfaces\probe.ps1 -Label ci
+
+      - name: Run the notifications shape and listener probe
+        shell: powershell
+        run: |
+          .\probes\windows\26-shell-surfaces\02-notifications.ps1 -Label ci
+
+      - name: Run the tray probe
+        shell: powershell
+        run: |
+          .\probes\windows\26-shell-surfaces\03-tray.ps1 -Label ci
+
+      - name: Run the frame-identity probe
+        shell: powershell
+        run: |
+          .\probes\windows\26-shell-surfaces\04-frame-identity.ps1 -Label ci
+
+      - name: Run the shell platform-cost probe
+        shell: powershell
+        run: |
+          .\probes\windows\26-shell-surfaces\06-cost.ps1 -Label ci
+
+      - name: Run the contract-decisions probe
+        shell: powershell
+        run: |
+          .\probes\windows\27-contract-decisions.ps1 -Label ci
+
+      - name: Run the elevation-required probe
+        shell: powershell
+        run: |
+          .\probes\windows\27-elevation-required.ps1 -Label ci
+
+      - name: Run the chromium-exposure probe
+        shell: powershell
+        run: |
+          .\probes\windows\28-chromium-exposure.ps1 -Label ci
+
+      - name: Run the tray-read-diagnosis probe
+        shell: powershell
+        run: |
+          .\probes\windows\28-tray-read-diagnosis.ps1 -Label ci
+
+      # Runs after the area probes so the ledger it audits reflects every
+      # capture this job just wrote. Registered here rather than the main CI
+      # lane (ci.yml) per KTD12: the gate reads the probe corpus and diffs
+      # docs/phases.md against another branch, which is this capability lane's
+      # concern, not the per-PR compile-and-test lane's. Its own PROBE-RESULT
+      # line, not just its exit code, is what names which rule failed.
+      # The hunk-index metric diffs docs/phases.md against main, and a pull
+      # request checkout has no main ref at all. Fetching it lets the gate
+      # measure here instead of reporting the metric unavailable. Best-effort:
+      # the gate degrades honestly without a base ref rather than failing, so a
+      # network hiccup must not turn a ledger gate red.
+      - name: Fetch the base ref for the hunk-index metric
+        shell: powershell
+        continue-on-error: true
+        run: |
+          git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+
+      - name: Run the ledger completeness gate
+        shell: powershell
+        run: |
+          .\probes\windows\13-ledger-check.ps1
+
+      # Gated, and gated before the upload runs, the same ordering the live e2e lane carried before it was retired's
+      # own redaction-gate step: this job writes fresh *-ci.json captures on
+      # every leg above, committed corpus or not, and uploading them as a
+      # workflow-run artifact from a PUBLIC repository with no redaction
+      # step in between was a second, ungated path around R21's committed-
+      # capture scope. The default (no -Path) scan derives its file set from
+      # tracked files (finding #8), which already covers every path this
+      # job's own upload step lists below.
+      - name: Redact and gate the measured captures
+        id: redaction-gate
+        if: ${{ !cancelled() }}
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-capture-redaction.ps1
+
+      # Uploads on failure as well as success. A probe that fails its mandatory
+      # measurement gate has already written the placeholder captures naming
+      # what did not measure, and on a red run those are the entire evidence
+      # trail - skipping the upload would leave a debugger with an exit code and
+      # nothing else. !cancelled() rather than always(): the concurrency group
+      # above supersedes runs routinely, always() keeps running through a
+      # cancellation and is the documented cause of runs that will not cancel.
+      # Also requires the redaction gate above to have passed - not job
+      # success alone, which would either skip the gate on a red suite
+      # (losing the debugging payload) or upload regardless of the gate's
+      # own result.
+      - name: Upload the measured captures
+        if: ${{ !cancelled() && steps.redaction-gate.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-capability-probe-captures
+          path: |
+            probes/windows/14-ci-capability/captures/*-ci.json
+            probes/windows/15-vocabulary/captures/*-ci.json
+            probes/windows/16-observation/captures/*-ci.json
+            probes/windows/17-resolution/captures/*-ci.json
+            probes/windows/18-actionability/captures/*-ci.json
+            probes/windows/19-semantic-actions/captures/*-ci.json
+            probes/windows/20-input-synthesis/captures/*-ci.json
+            probes/windows/21-system-lifecycle/captures/*-ci.json
+            probes/windows/22-capture-clipboard/captures/*-ci.json
+            probes/windows/23-signals-menus/captures/*-ci.json
+            probes/windows/24-fixture-e2e/captures/*-ci.json
+            probes/windows/25-packaging/captures/*-ci.json
+            probes/windows/26-shell-surfaces/captures/*-ci.json
+            probes/windows/captures/13-ledger-check/*.json
+            probes/windows/captures/27-*/*.json
+            probes/windows/captures/28-*/*.json
+          # warn, not error. A probe that fails before writing anything leaves
+          # nothing to match, and erroring would stack a second "No files were
+          # found" failure on top of the real one and read as the cause. What
+          # asserts that a run measured something is the mandatory measurement
+          # gate inside each probe, which names the missing or degraded capture
+          # instead of firing only when every capture in the job is absent.
+          if-no-files-found: warn

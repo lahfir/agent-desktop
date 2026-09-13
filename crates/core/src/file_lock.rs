@@ -5,6 +5,9 @@ use std::time::Duration;
 use crate::{AdapterError, Deadline, ErrorCode};
 
 /// A private state-file lock held until this guard is dropped.
+///
+/// Releases by closing rather than unlocking: a duplicated descriptor shares
+/// the lock, so unlocking would release it for the other holder too.
 pub struct FileLock {
     _file: File,
     #[cfg(unix)]
@@ -86,6 +89,8 @@ impl FileLock {
     }
 }
 
+/// Drops a contended lock without unlocking: shared file descriptions need drop,
+/// not unlock. On the adopt path, shared descriptions exist and must be left alone.
 fn lock_file(
     file: File,
     deadline: Deadline,

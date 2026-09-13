@@ -35,6 +35,18 @@ Errors include machine-readable codes and recovery hints:
 }
 ```
 
+Version 2.2 replaces the 2.1 `TIMEOUT` error for a budget-exhausted snapshot
+with a successful, explicitly partial response, and adds `data.complete`.
+Snapshot data always carries `complete`. A snapshot that runs out of budget now
+returns `ok: true` with `"complete": false`, the tree it did observe,
+`"truncated": true`, and `nodes_observed`, instead of a `TIMEOUT` error and no
+tree. Every node whose descendants were cut short carries
+`"subtree_truncated": true`, so a reader can walk from the root to each
+boundary. Consumers must read `data.complete` to decide whether a tree is whole;
+a `TIMEOUT` error no longer signals an oversized tree. A `--root` drill-down is
+unaffected: it replaces refs inside an existing snapshot, so an incomplete
+observation still returns `TIMEOUT` rather than a partial tree.
+
 Version 2.1 replaces the 2.0 `error.retry_command` string with the structured
 `error.recovery` object and adds `error.disposition`. Consumers must select a
 recovery strategy from `recovery.strategy` only when `disposition.retry` is

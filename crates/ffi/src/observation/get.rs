@@ -109,3 +109,7 @@ pub unsafe extern "C" fn ad_get(
         }
     })
 }
+
+#[cfg(test)]
+#[path = "get_abi_tests.rs"]
+mod tests;

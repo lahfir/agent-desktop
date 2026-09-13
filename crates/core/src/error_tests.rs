@@ -79,3 +79,32 @@ fn non_adapter_app_errors_yield_internal_code_and_no_suggestion() {
         assert!(error.suggestion().is_none());
     }
 }
+
+/// A permission denial reaching the envelope as `INTERNAL` tells a caller the
+/// tool broke, when in fact it refused for a reason they can act on. The
+/// narrowness matters as much as the mapping: an unrelated io failure must not
+/// acquire a confident, wrong label on the way out.
+#[test]
+fn a_permission_denied_io_error_keeps_its_own_code_and_others_do_not() {
+    use std::io::{Error, ErrorKind};
+
+    let denied = AppError::Io(Error::new(ErrorKind::PermissionDenied, "owned elsewhere"));
+    assert_eq!(
+        denied.code(),
+        "PERM_DENIED",
+        "a refusal the caller can act on must not read as an internal fault"
+    );
+
+    for kind in [
+        ErrorKind::NotFound,
+        ErrorKind::UnexpectedEof,
+        ErrorKind::InvalidData,
+    ] {
+        let other = AppError::Io(Error::new(kind, "unrelated"));
+        assert_eq!(
+            other.code(),
+            "INTERNAL",
+            "{kind:?} carries no caller-actionable meaning and must stay INTERNAL"
+        );
+    }
+}

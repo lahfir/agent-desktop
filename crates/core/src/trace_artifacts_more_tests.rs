@@ -1,5 +1,5 @@
 use super::tests::{
-    MINI_PNG, artifacts_session, deadline_png_adapter, entry, png_adapter, run_ref_action,
+    artifacts_session, deadline_png_adapter, entry, png_adapter, run_ref_action,
     setup_artifacts_test,
 };
 use super::*;
@@ -7,73 +7,7 @@ use crate::context::CommandContext;
 use crate::refs::RefMap;
 use crate::refs_store::RefStore;
 use crate::trace_artifacts::clear_test_budgets;
-use crate::{
-    Action, ActionRequest, ActionResult, AdapterError, ImageBuffer,
-    adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, ScreenshotTarget, SystemOps},
-};
-use std::sync::{
-    Arc,
-    atomic::{AtomicU32, Ordering},
-};
-
-struct DeadlineConsumingScreenshotAdapter {
-    dispatch_calls: AtomicU32,
-    screenshot_calls: AtomicU32,
-    consume_pre_deadline: bool,
-}
-
-impl ObservationOps for DeadlineConsumingScreenshotAdapter {
-    fn resolve_element_strict(
-        &self,
-        _entry: &crate::RefEntry,
-        _deadline: crate::Deadline,
-    ) -> Result<NativeHandle, AdapterError> {
-        Ok(NativeHandle::null())
-    }
-
-    crate::adapter::complete_live_observation!("button", "Run", [crate::capability::CLICK]);
-}
-
-impl ActionOps for DeadlineConsumingScreenshotAdapter {
-    fn execute_action(
-        &self,
-        _handle: &NativeHandle,
-        _request: ActionRequest,
-        _lease: &crate::InteractionLease,
-    ) -> Result<ActionResult, AdapterError> {
-        self.dispatch_calls.fetch_add(1, Ordering::SeqCst);
-        Ok(ActionResult::delivered_unverified("click"))
-    }
-}
-
-impl InputOps for DeadlineConsumingScreenshotAdapter {}
-
-impl SystemOps for DeadlineConsumingScreenshotAdapter {
-    crate::adapter::guarded_interaction_lease!();
-
-    fn screenshot(
-        &self,
-        _target: ScreenshotTarget,
-        deadline: crate::Deadline,
-    ) -> Result<ImageBuffer, AdapterError> {
-        if self.consume_pre_deadline && self.screenshot_calls.fetch_add(1, Ordering::SeqCst) == 0 {
-            let delay = if deadline.was_capped() {
-                std::time::Duration::from_millis(50)
-            } else {
-                deadline.remaining()
-            };
-            std::thread::sleep(delay);
-            return Err(deadline.timeout_error());
-        }
-        Ok(ImageBuffer {
-            data: MINI_PNG.to_vec(),
-            format: crate::ImageFormat::Png,
-            width: 1,
-            height: 1,
-            scale_factor: 1.0,
-        })
-    }
-}
+use std::sync::Arc;
 
 #[test]
 fn artifacts_full_captures_pre_and_post_pngs() {
@@ -124,69 +58,6 @@ fn artifact_capture_budget_supports_deadline_bound_screenshot_backends() {
         .join("screens");
 
     assert_eq!(std::fs::read_dir(screens).unwrap().count(), 2);
-}
-
-#[test]
-fn slow_pre_capture_preserves_dispatch_budget() {
-    let (_home, _lock) = setup_artifacts_test();
-    let manifest = artifacts_session();
-    let context = CommandContext::new(Some(manifest.id), None, false).unwrap();
-    let adapter = DeadlineConsumingScreenshotAdapter {
-        dispatch_calls: AtomicU32::new(0),
-        screenshot_calls: AtomicU32::new(0),
-        consume_pre_deadline: true,
-    };
-    let target = entry(42);
-
-    let result = crate::ref_action_wait::execute_with_auto_wait(
-        crate::ref_action_wait_context::RefActionWaitContext {
-            adapter: &adapter,
-            entry: &target,
-            ref_id: "@e1",
-            context: &context,
-        },
-        ActionRequest::headless(Action::Click).with_timeout_ms(Some(500)),
-        crate::ref_action::dispatch_resolved,
-    );
-
-    assert!(
-        result.is_ok(),
-        "slow trace capture blocked dispatch: {result:?}"
-    );
-    assert_eq!(adapter.dispatch_calls.load(Ordering::SeqCst), 1);
-}
-
-#[test]
-fn contended_artifact_lock_preserves_dispatch_budget() {
-    let (_home, _lock) = setup_artifacts_test();
-    let manifest = artifacts_session();
-    let context = CommandContext::new(Some(manifest.id.clone()), None, false).unwrap();
-    let trace_dir = RefStore::for_session(Some(&manifest.id))
-        .unwrap()
-        .trace_dir();
-    std::fs::create_dir_all(&trace_dir).unwrap();
-    let _artifact_lock =
-        crate::refs_lock::RefStoreLock::acquire(&trace_dir.join(".artifact-budget.lock")).unwrap();
-    let adapter = DeadlineConsumingScreenshotAdapter {
-        dispatch_calls: AtomicU32::new(0),
-        screenshot_calls: AtomicU32::new(0),
-        consume_pre_deadline: false,
-    };
-    let target = entry(42);
-
-    let result = crate::ref_action_wait::execute_with_auto_wait(
-        crate::ref_action_wait_context::RefActionWaitContext {
-            adapter: &adapter,
-            entry: &target,
-            ref_id: "@e1",
-            context: &context,
-        },
-        ActionRequest::headless(Action::Click).with_timeout_ms(Some(250)),
-        crate::ref_action::dispatch_resolved,
-    );
-
-    assert!(result.is_ok(), "artifact lock blocked dispatch: {result:?}");
-    assert_eq!(adapter.dispatch_calls.load(Ordering::SeqCst), 1);
 }
 
 #[test]

@@ -1,0 +1,858 @@
+{
+    "measurements":  {
+                         "aria_properties":  {
+                                                 "aria_properties":  {
+                                                                         "carries_class_token":  0,
+                                                                         "distinct_shapes":  [
+                                                                                                 {
+                                                                                                     "length":  110,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "length":  98,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "length":  84,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "length":  83,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "length":  98,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "length":  147,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "length":  84,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "length":  83,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "length":  84,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "length":  83,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "length":  98,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "length":  98,
+                                                                                                     "non_empty":  true,
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 }
+                                                                                             ],
+                                                                         "non_empty_count":  164
+                                                                     },
+                                                 "aria_role":  {
+                                                                   "author_defined_token_passed_verbatim":  0,
+                                                                   "distinct_shapes":  [
+                                                                                           {
+                                                                                               "length":  6,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  8,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  9,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  9,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  6,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  6,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  6,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  6,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  7,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  6,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  6,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  11,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  6,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  8,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  3,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  5,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  8,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           },
+                                                                                           {
+                                                                                               "length":  6,
+                                                                                               "non_empty":  true,
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           }
+                                                                                       ],
+                                                                   "non_empty_count":  164
+                                                               },
+                                                 "elements":  165
+                                             },
+                         "child_process":  {
+                                               "attached":  true,
+                                               "descendants":  165,
+                                               "handle_int":  6752206,
+                                               "hosted":  false,
+                                               "root_class":  {
+                                                                  "length":  18,
+                                                                  "non_empty":  true,
+                                                                  "variant_type":  "VARENUM(8)"
+                                                              },
+                                               "root_resolved":  true
+                                           },
+                         "depth_to_content":  {
+                                                  "logical_nodes":  111,
+                                                  "logical_over_raw":  0.67,
+                                                  "raw_nodes":  165
+                                              },
+                         "extra_cost":  {
+                                            "base":  {
+                                                         "max_us":  422261,
+                                                         "median_us":  378671,
+                                                         "min_us":  367876,
+                                                         "repeats":  7,
+                                                         "spread_ratio":  1.15,
+                                                         "warmup_discarded":  1
+                                                     },
+                                            "combined":  {
+                                                             "max_us":  535798,
+                                                             "median_us":  483321,
+                                                             "min_us":  449423,
+                                                             "repeats":  7,
+                                                             "spread_ratio":  1.19,
+                                                             "warmup_discarded":  1
+                                                         },
+                                            "extra":  {
+                                                          "max_us":  805660,
+                                                          "median_us":  236981,
+                                                          "min_us":  198655,
+                                                          "repeats":  7,
+                                                          "spread_ratio":  4.06,
+                                                          "warmup_discarded":  1
+                                                      },
+                                            "overhead_ratio":  {
+                                                                   "base":  367876,
+                                                                   "combined":  449423,
+                                                                   "ratio":  1.22
+                                                               }
+                                        },
+                         "localized_control_type":  {
+                                                        "rows":  [
+                                                                     {
+                                                                         "control_type":  50000,
+                                                                         "count":  7,
+                                                                         "distinct_localized":  [
+                                                                                                    "button"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50004,
+                                                                         "count":  1,
+                                                                         "distinct_localized":  [
+                                                                                                    "edit"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50006,
+                                                                         "count":  41,
+                                                                         "distinct_localized":  [
+                                                                                                    "graphic",
+                                                                                                    "image"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50020,
+                                                                         "count":  19,
+                                                                         "distinct_localized":  [
+                                                                                                    "text"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50026,
+                                                                         "count":  81,
+                                                                         "distinct_localized":  [
+                                                                                                    "group"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50030,
+                                                                         "count":  4,
+                                                                         "distinct_localized":  [
+                                                                                                    "document"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50033,
+                                                                         "count":  10,
+                                                                         "distinct_localized":  [
+                                                                                                    "pane",
+                                                                                                    "region"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50038,
+                                                                         "count":  2,
+                                                                         "distinct_localized":  [
+                                                                                                    "separator"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     }
+                                                                 ]
+                                                    },
+                         "pattern_arms":  {
+                                              "any_element_with_griditem":  0,
+                                              "any_element_with_tableitem":  0,
+                                              "button_with_toggle":  0,
+                                              "control_types_carrying_grid_or_tableitem":  [
+
+                                                                                           ],
+                                              "non_dataitem_carrying_grid_or_tableitem":  0,
+                                              "total_elements":  165
+                                          },
+                         "settle":  {
+                                        "final":  165,
+                                        "first_contact":  165,
+                                        "grew_after_first_contact":  false,
+                                        "max":  165,
+                                        "min":  165,
+                                        "series":  [
+                                                       165,
+                                                       165,
+                                                       165,
+                                                       165,
+                                                       165,
+                                                       165,
+                                                       165,
+                                                       165,
+                                                       165,
+                                                       165,
+                                                       165,
+                                                       165
+                                                   ],
+                                        "settled":  false,
+                                        "stable_for":  11,
+                                        "understatement_ratio":  1.0,
+                                        "walks":  12
+                                    },
+                         "wrapper_census":  {
+                                                "depth_note":  "depth arithmetic is a walk-tree measurement; see settle scan for raw depth to web content",
+                                                "empty_name_and_value":  54,
+                                                "group_or_custom_nodes":  81,
+                                                "named_groups":  27,
+                                                "total_elements":  165
+                                            }
+                     },
+    "probe":  "16-observation",
+    "stack":  "uia3-com",
+    "uiautomation_version":  "0.25.0"
+}

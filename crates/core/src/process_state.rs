@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Liveness/responsiveness classification for a target process, per KTD8.
+/// Liveness/responsiveness classification for a target process.
 ///
 /// macOS can only emit `Running`, `Exited { code: None }`, and
 /// `Unresponsive` — it has no way to read the exit code of a detached

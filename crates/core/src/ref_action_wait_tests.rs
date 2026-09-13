@@ -228,6 +228,89 @@ fn transient_ambiguity_is_recorded_in_result_details() {
     );
 }
 
+struct DisabledPolicyBlockedAdapter {
+    preflight_reads: AtomicU32,
+}
+
+impl ObservationOps for DisabledPolicyBlockedAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    fn get_live_element(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::LiveElement, AdapterError> {
+        self.preflight_reads.fetch_add(1, Ordering::SeqCst);
+        Ok(crate::LiveElement {
+            identity: crate::LiveIdentity {
+                name: crate::LocatorField::Known("Run".into()),
+                description: crate::LocatorField::Absent,
+                identifiers: crate::IdentifierEvidence::absent(),
+            },
+            state: crate::ElementState {
+                role: "button".into(),
+                states: Vec::new(),
+                value: None,
+                enabled: Some(false),
+                hidden: Some(false),
+                offscreen: Some(false),
+            },
+            states_complete: true,
+            bounds: Some(crate::Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+            }),
+            available_actions: vec![capability::CLICK.into()],
+        })
+    }
+}
+
+impl ActionOps for DisabledPolicyBlockedAdapter {}
+impl InputOps for DisabledPolicyBlockedAdapter {}
+impl SystemOps for DisabledPolicyBlockedAdapter {}
+
+/// Regression for a target that is simultaneously disabled (transient,
+/// waitable) and policy-blocked (permanent): `terminal_code()` used to
+/// surface the first blocking check it found rather than the most severe
+/// one, so this misread as a retryable `ActionFailed` and the auto-wait
+/// loop polled it until the entire wait budget was gone. It must instead
+/// classify as the permanent `PolicyDenied` on the first read and return
+/// immediately.
+#[test]
+fn policy_denied_disabled_target_fails_fast_without_exhausting_wait_budget() {
+    let adapter = DisabledPolicyBlockedAdapter {
+        preflight_reads: AtomicU32::new(0),
+    };
+    let started = std::time::Instant::now();
+    let err = execute_with_auto_wait(
+        RefActionWaitCtx {
+            adapter: &adapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
+        ActionRequest::headless(Action::RightClick).with_timeout_ms(Some(5_000)),
+        crate::ref_action::dispatch_resolved,
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::PolicyDenied);
+    assert_eq!(adapter.preflight_reads.load(Ordering::SeqCst), 1);
+    assert!(
+        started.elapsed().as_millis() < 500,
+        "fail-fast target should not consume the wait budget, took {:?}",
+        started.elapsed()
+    );
+}
+
 #[path = "ref_action_wait_lease_tests.rs"]
 mod lease_tests;
 

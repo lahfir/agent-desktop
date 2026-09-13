@@ -28,6 +28,7 @@ fn named_find(window_id: &str, name: &str) -> FindArgs {
             exact: false,
         },
         states: Vec::new(),
+        timeout_ms: None,
         selection: FindSelectionArgs {
             count: false,
             first: false,
@@ -55,6 +56,7 @@ fn unfiltered_find(window_id: &str, selection: FindSelectionArgs) -> FindArgs {
             exact: false,
         },
         states: Vec::new(),
+        timeout_ms: None,
         selection,
     }
 }
@@ -273,5 +275,30 @@ fn strict_live_resolution_reports_bounded_ambiguous_candidates() {
     assert_eq!(
         error.details.as_ref().unwrap()["candidate_count_exact"],
         true
+    );
+}
+
+/// Proves the remedy is wired, not merely written. A budget of zero expires
+/// before the traversal can answer, so this drives the whole command and fails
+/// if the mapping is ever dropped from `execute` — which a test calling the
+/// mapping function directly would not notice.
+#[test]
+fn a_timed_out_find_reaches_the_caller_with_the_budget_named() {
+    let _guard = HomeGuard::new();
+    let adapter = LiveFindAdapter::complete();
+    let mut args = named_find("w-2", "OnlyInWindowTwo");
+    args.timeout_ms = Some(0);
+
+    let error = execute(args, &adapter, &CommandContext::default())
+        .expect_err("a zero budget cannot produce an authoritative answer");
+    let AppError::Adapter(error) = error else {
+        panic!("find's timeout is an adapter error");
+    };
+
+    assert_eq!(error.code, crate::ErrorCode::Timeout);
+    let suggestion = error.suggestion.expect("a timeout carries a suggestion");
+    assert!(
+        suggestion.contains("--timeout-ms"),
+        "the caller must reach the budget lever through the command, got: {suggestion}"
     );
 }

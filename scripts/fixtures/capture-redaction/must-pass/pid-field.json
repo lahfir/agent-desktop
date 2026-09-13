@@ -1,0 +1,7 @@
+{
+  "probe": "self-test-fixture",
+  "data": {
+    "process_present": true,
+    "session_process_present": true
+  }
+}

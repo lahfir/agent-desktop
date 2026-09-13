@@ -1,10 +1,40 @@
-#![cfg(unix)]
-
 use super::*;
+#[cfg(unix)]
 use std::ffi::CString;
+#[cfg(unix)]
 use std::os::fd::AsRawFd;
+#[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use std::sync::{Mutex, MutexGuard};
+
+static CURRENT_DIRECTORY_LOCK: Mutex<()> = Mutex::new(());
+
+struct CurrentDirectoryGuard {
+    previous: PathBuf,
+    _lock: MutexGuard<'static, ()>,
+}
+
+impl CurrentDirectoryGuard {
+    fn enter(target: &Path) -> Self {
+        let lock = CURRENT_DIRECTORY_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let previous = std::env::current_dir().unwrap();
+        std::env::set_current_dir(target).unwrap();
+        Self {
+            previous,
+            _lock: lock,
+        }
+    }
+}
+
+impl Drop for CurrentDirectoryGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.previous);
+    }
+}
 
 fn directory(label: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!(
@@ -12,10 +42,12 @@ fn directory(label: &str) -> PathBuf {
         crate::refs::new_snapshot_id()
     ));
     std::fs::create_dir_all(&path).unwrap();
+    #[cfg(unix)]
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
     path
 }
 
+#[cfg(unix)]
 #[test]
 fn private_open_sets_nonblocking_and_close_on_exec() {
     let directory = directory("flags");
@@ -29,6 +61,7 @@ fn private_open_sets_nonblocking_and_close_on_exec() {
     std::fs::remove_dir_all(directory).unwrap();
 }
 
+#[cfg(unix)]
 #[test]
 fn private_open_rejects_symlink_fifo_device_and_hardlink() {
     let directory = directory("special");
@@ -70,6 +103,7 @@ fn private_read_enforces_the_bound_before_allocating() {
     std::fs::remove_dir_all(directory).unwrap();
 }
 
+#[cfg(unix)]
 #[test]
 fn private_writes_and_locks_reject_group_accessible_parent() {
     let directory = directory("hostile-parent");
@@ -89,6 +123,7 @@ fn private_writes_and_locks_reject_group_accessible_parent() {
     std::fs::remove_dir_all(directory).unwrap();
 }
 
+#[cfg(unix)]
 #[test]
 fn private_write_rejects_an_intermediate_directory_symlink() {
     let directory = directory("intermediate-symlink");
@@ -107,6 +142,7 @@ fn private_write_rejects_an_intermediate_directory_symlink() {
     std::fs::remove_dir_all(directory).unwrap();
 }
 
+#[cfg(unix)]
 #[test]
 fn user_write_overwrites_an_existing_group_readable_file() {
     let directory = directory("user-overwrite");
@@ -125,6 +161,7 @@ fn user_write_overwrites_an_existing_group_readable_file() {
     std::fs::remove_dir_all(directory).unwrap();
 }
 
+#[cfg(unix)]
 #[test]
 fn user_write_refuses_symlink_and_directory_destinations() {
     let directory = directory("user-refuse");
@@ -156,6 +193,7 @@ fn user_write_refuses_symlink_and_directory_destinations() {
     std::fs::remove_dir_all(directory).unwrap();
 }
 
+#[cfg(unix)]
 #[test]
 fn private_write_still_rejects_a_group_readable_destination() {
     let directory = directory("private-loose-destination");
@@ -170,6 +208,7 @@ fn private_write_still_rejects_a_group_readable_destination() {
     std::fs::remove_dir_all(directory).unwrap();
 }
 
+#[cfg(unix)]
 #[test]
 fn user_write_allows_the_system_temporary_directory() {
     let path = Path::new("/tmp").join(format!(
@@ -185,4 +224,76 @@ fn user_write_allows_the_system_temporary_directory() {
         0o600
     );
     std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn atomic_write_lands_content_and_replaces_the_previous_file() {
+    let directory = directory("atomic-replace");
+    let path = directory.join("data");
+
+    write_atomic(&path, b"first").unwrap();
+    write_atomic(&path, b"second").unwrap();
+
+    assert_eq!(read_private_bounded(&path, 64).unwrap(), b"second");
+    assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 1);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn appended_writes_accumulate_across_reopens() {
+    let directory = directory("append-accumulate");
+    let path = directory.join("trace.jsonl");
+
+    open_private_append(&path)
+        .unwrap()
+        .write_all(b"one\n")
+        .unwrap();
+    open_private_append(&path)
+        .unwrap()
+        .write_all(b"two\n")
+        .unwrap();
+
+    assert_eq!(read_private_bounded(&path, 64).unwrap(), b"one\ntwo\n");
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn private_lock_creates_and_reopens_the_lock_file() {
+    let directory = directory("lock-create");
+    let path = directory.join("lock");
+
+    drop(open_private_lock(&path, true).unwrap());
+
+    assert!(path.is_file());
+    drop(open_private_lock(&path, false).unwrap());
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn user_write_accepts_a_bare_relative_filename() {
+    let directory = directory("bare-relative");
+    let guard = CurrentDirectoryGuard::enter(&directory);
+
+    write_user_atomic(Path::new("bare-name.txt"), b"relative").unwrap();
+
+    assert_eq!(std::fs::read("bare-name.txt").unwrap(), b"relative");
+    assert!(directory.join("bare-name.txt").is_file());
+    drop(guard);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn ensure_private_creates_the_nested_parent_chain() {
+    let directory = directory("nested-parents");
+    let nested = directory.join("outer").join("inner");
+
+    crate::private_file_parent::ensure_private(&nested).unwrap();
+
+    assert!(nested.is_dir());
+    write_atomic(&nested.join("data"), b"nested").unwrap();
+    assert_eq!(
+        read_private_bounded(&nested.join("data"), 16).unwrap(),
+        b"nested"
+    );
+    std::fs::remove_dir_all(directory).unwrap();
 }

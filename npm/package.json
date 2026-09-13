@@ -16,6 +16,7 @@
   },
   "files": [
     "bin",
+    "lib",
     "scripts"
   ],
   "engines": {
