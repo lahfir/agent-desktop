@@ -226,6 +226,15 @@ impl SystemOps for WindowsAdapter {
         crate::system::screenshot::screenshot(target, deadline)
     }
 
+    #[cfg(target_os = "windows")]
+    fn screenshot_window_frame(
+        &self,
+        window: &WindowInfo,
+        deadline: Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
+        crate::system::screenshot::capture_window(window, deadline)
+    }
+
     /// Verify-only composition over the keyboard primitive. Core's headed
     /// path already activated; this never raises (A9-3: SendInput has no
     /// per-pid targeting).
