@@ -101,6 +101,61 @@ fn an_expandable_role_without_its_availability_gate_is_incomplete() {
 }
 
 #[test]
+fn a_menuitem_advertising_expand_collapse_with_a_read_state_is_complete() {
+    assert!(complete(
+        "menuitem",
+        vec![
+            flag(TreeProperty::ExpandCollapseAvailable, true),
+            number(TreeProperty::ExpandCollapseState, 1),
+        ],
+    ));
+}
+
+#[test]
+fn a_menuitem_advertising_expand_collapse_whose_state_read_failed_is_incomplete() {
+    assert!(!complete(
+        "menuitem",
+        vec![
+            flag(TreeProperty::ExpandCollapseAvailable, true),
+            unknown(TreeProperty::ExpandCollapseState),
+        ],
+    ));
+}
+
+#[test]
+fn a_menuitem_advertising_expand_collapse_whose_state_is_absent_is_incomplete() {
+    assert!(!complete(
+        "menuitem",
+        vec![
+            flag(TreeProperty::ExpandCollapseAvailable, true),
+            absent(TreeProperty::ExpandCollapseState),
+        ],
+    ));
+}
+
+#[test]
+fn a_menuitem_without_expand_collapse_completes_because_neither_half_applies() {
+    assert!(complete(
+        "menuitem",
+        vec![
+            absent(TreeProperty::ExpandCollapseAvailable),
+            absent(TreeProperty::ExpandCollapseState),
+        ],
+    ));
+}
+
+#[test]
+fn an_expandable_role_without_the_pattern_gate_is_incomplete() {
+    assert!(!complete(
+        "combobox",
+        vec![
+            absent(TreeProperty::ExpandCollapseAvailable),
+            absent(TreeProperty::ExpandCollapseState),
+        ],
+    ));
+}
+
+#[test]
 fn a_toggleable_role_reports_completeness_only_when_toggle_state_was_read() {
     assert!(complete(
         "checkbox",
