@@ -114,6 +114,43 @@ fn wait_for_menu_reaches_the_windows_override_instead_of_the_not_supported_defau
     assert_ne!(error.code, ErrorCode::PlatformNotSupported);
 }
 
+/// Pins the `screenshot_window_frame` override itself: the trait default fails
+/// closed with `PLATFORM_NOT_SUPPORTED`, so an un-wired override would be
+/// indistinguishable from the method never having been implemented. A window
+/// carrying no process-instance token is refused by the exact-window capture's
+/// own first guard, which is what distinguishes "wired to `capture_window`"
+/// from "still the trait default".
+#[cfg(target_os = "windows")]
+#[test]
+fn screenshot_window_frame_is_wired_through_system_ops_to_the_exact_window_capture() {
+    use agent_desktop_core::{ErrorCode, ProcessId, WindowState};
+
+    let window = WindowInfo {
+        id: "w-1".into(),
+        title: String::new(),
+        app: String::new(),
+        pid: ProcessId::from(std::process::id()),
+        process_instance: None,
+        bounds: None,
+        state: WindowState::default(),
+    };
+
+    let error = SystemOps::screenshot_window_frame(
+        &WindowsAdapter::new(),
+        &window,
+        Deadline::after(1_000).unwrap(),
+    )
+    .expect_err("a tokenless window must be refused by the exact-window capture");
+
+    assert_eq!(error.code, ErrorCode::InvalidArgs);
+    assert_ne!(error.code, ErrorCode::PlatformNotSupported);
+    assert!(
+        error.message.contains("process instance token"),
+        "refusal must come from the exact-window capture, got {}",
+        error.message
+    );
+}
+
 /// The surfaces gate: the adapter advertises exactly the surfaces it can
 /// observe - a named window, the focused window, a Chromium modal
 /// classified as a sheet, an open application menu, and the shell kinds

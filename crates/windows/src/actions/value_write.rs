@@ -16,7 +16,7 @@ pub(crate) const RANGE_LABEL: &str = "RangeValuePattern.SetValue";
 
 pub(crate) const VALUE_WRITE_CHAIN: ChainDef = ChainDef {
     suggestion: "Refresh the snapshot and retry, or target a writable Value or RangeValue control.",
-    continue_after_unverified_delivery: true,
+    continue_after_unverified_delivery: false,
 };
 
 pub(crate) const CLEAR_CHAIN: ChainDef = ChainDef {

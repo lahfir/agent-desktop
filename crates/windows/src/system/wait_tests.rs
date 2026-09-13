@@ -336,3 +336,55 @@ fn a_non_timeout_predicate_error_propagates_on_the_first_poll_without_spinning_t
         started.elapsed()
     );
 }
+
+/// Pins the terminal error arm's mapping in both directions without racing a
+/// real process. `forced_predicate_error` supplies the `AppUnresponsive` that
+/// `menu_state` returns for a target that vanished mid-read, and
+/// `forced_process_death` makes the loop's own liveness re-check observe that
+/// death after the pre-read check already passed. A regression that
+/// propagated the predicate error without re-checking liveness would answer
+/// the first case with the transient `AppUnresponsive` instead of the
+/// contract's `StaleRef` and fail here, while the second case proves the same
+/// error still propagates untouched when the target is alive.
+#[test]
+fn an_evaluation_error_surfaces_as_stale_ref_when_the_target_is_gone_and_unchanged_when_it_is_alive()
+ {
+    let pid = ProcessId::from(std::process::id());
+    let token = process_identity::token_for_pid(pid)
+        .expect("token read for this process")
+        .expect("this process has a live process instance token");
+    let identity = ProcessIdentity::new(pid, token);
+
+    forced_predicate_error::arm(AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "The target process could not be found",
+    ));
+    let alive = wait_for_menu(
+        identity.clone(),
+        true,
+        Deadline::after(10_000).expect("deadline"),
+    )
+    .expect_err("a non-Timeout predicate error must propagate");
+    assert_eq!(
+        alive.code,
+        ErrorCode::AppUnresponsive,
+        "a live-but-unresponsive target must keep the predicate's own error"
+    );
+    assert_eq!(
+        alive.message, "The target process could not be found",
+        "the original error must propagate unchanged"
+    );
+
+    forced_process_death::arm_after(1);
+    forced_predicate_error::arm(AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "The target process could not be found",
+    ));
+    let gone = wait_for_menu(identity, true, Deadline::after(10_000).expect("deadline"))
+        .expect_err("a target that exited mid-read must not report a satisfied wait");
+    assert_eq!(
+        gone.code,
+        ErrorCode::StaleRef,
+        "an evaluation error raised while the target is gone must surface as StaleRef"
+    );
+}

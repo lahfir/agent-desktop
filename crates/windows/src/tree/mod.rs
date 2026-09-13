@@ -15,6 +15,7 @@ pub mod roles;
 pub mod states;
 pub(crate) mod surface_inventory;
 pub mod surfaces;
+pub(crate) mod text_selection;
 pub mod wrapper;
 
 #[cfg(test)]

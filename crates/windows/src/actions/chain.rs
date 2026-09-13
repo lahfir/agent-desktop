@@ -2,9 +2,9 @@
 //!
 //! Rung closures return a delivery outcome or `Err`. A genuine `Err` always
 //! aborts the chain and never falls through to a later rung. Its disposition,
-//! however, is not always the classifier's: chains that continue after an
-//! unverified delivery (`VALUE_WRITE_CHAIN`) can hard-error on a later rung
-//! after an earlier one already mutated the control, so an `Err` raised once
+//! however, is not always the classifier's: a chain that opts into continuing
+//! after an unverified delivery can hard-error on a later rung after an
+//! earlier one already mutated the control, so an `Err` raised once
 //! `delivery_occurred` on the recorded steps is upgraded to
 //! `delivered_unverified` before it leaves this function — the code,
 //! message, suggestion and platform detail are left untouched. Only a clean
@@ -208,3 +208,10 @@ mod tests;
 #[cfg(test)]
 #[path = "chain_budget_tests.rs"]
 mod budget_tests;
+
+/// Split from `chain_tests.rs` for the per-file line cap: this module owns the
+/// fallthrough policy the shipped value-write chain declares, as distinct from
+/// the general engine mechanism `chain_tests.rs` exercises.
+#[cfg(test)]
+#[path = "chain_policy_tests.rs"]
+mod policy_tests;

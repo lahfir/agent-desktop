@@ -111,6 +111,18 @@ impl ObservationOps for WindowsAdapter {
         Ok(crate::tree::live_read::live_value(&read))
     }
 
+    /// The Text pattern selection read, in UTF-16 code units, that `TypeText`
+    /// verification uses to predict the post-insertion value. Absent evidence
+    /// (no pattern, no selection, any read failure) is `Ok(None)`, which core
+    /// degrades to an unverified delivery.
+    fn get_text_selection(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<Option<std::ops::Range<usize>>, AdapterError> {
+        crate::tree::text_selection::get_text_selection(handle, deadline)
+    }
+
     fn get_live_state(
         &self,
         handle: &NativeHandle,
