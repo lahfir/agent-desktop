@@ -33,7 +33,7 @@ fn set_value_verified_when_readback_equals() {
 }
 
 #[test]
-fn unequal_readback_continues_to_range_value() {
+fn unequal_readback_stops_without_reaching_range_value() {
     let value_calls = Cell::new(0u8);
     let range_calls = Cell::new(0u8);
     let steps = set_value_judged_for(
@@ -51,12 +51,12 @@ fn unequal_readback_continues_to_range_value() {
             Ok(DeliveryOutcome::DeliveredVerified)
         },
     )
-    .expect("continues");
+    .expect("an unverified delivery terminates the chain");
     assert_eq!(value_calls.get(), 1);
-    assert_eq!(range_calls.get(), 1);
+    assert_eq!(range_calls.get(), 0);
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].label(), "ValuePattern.SetValue");
     assert_eq!(steps[0].verified(), Some(false));
-    assert_eq!(steps[1].label(), "RangeValuePattern.SetValue");
-    assert_eq!(steps[1].verified(), Some(true));
 }
 
 #[test]
