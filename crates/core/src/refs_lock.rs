@@ -14,6 +14,16 @@ impl RefStoreLock {
         Self::acquire_with_deadline(path, deadline)
     }
 
+    /// Recovery-path lock: the budget is detached from the (possibly already
+    /// expired) inherited command deadline. Use ONLY for post-deadline
+    /// diagnostic work — e.g. persisting the last built snapshot after a wait
+    /// timeout — which must run after the operation's own deadline has expired
+    /// and must not collapse to an immediate `lock_timeout`.
+    pub(crate) fn acquire_detached(path: &Path) -> Result<Self, AppError> {
+        let deadline = Deadline::detached_after(LOCK_TIMEOUT_MS)?;
+        Self::acquire_with_deadline(path, deadline)
+    }
+
     pub(crate) fn acquire_with_deadline(path: &Path, deadline: Deadline) -> Result<Self, AppError> {
         Ok(Self {
             _lock: FileLock::acquire(path, deadline, "ref store lock")?,
@@ -64,5 +74,33 @@ mod tests {
         };
         assert_eq!(error.code(), "TIMEOUT");
         assert!(deadline.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn acquire_collapses_to_lock_timeout_under_an_expired_inherited_deadline() {
+        let path = lock_path("expired-inherited");
+        let inherited = Deadline::after(0).unwrap();
+        let _scope = crate::deadline::enter_scope(Some(inherited));
+        let error = match RefStoreLock::acquire(&path) {
+            Ok(_) => panic!("expired inherited deadline must not acquire the lock"),
+            Err(error) => error,
+        };
+        assert_eq!(error.code(), "TIMEOUT");
+        let AppError::Adapter(adapter_err) = error else {
+            panic!("expected adapter error");
+        };
+        let details = adapter_err.details.expect("lock timeout details");
+        assert_eq!(details["kind"], "lock_timeout");
+        assert_eq!(details["purpose"], "ref store lock");
+        assert!(!lock_holder_is_live(&path));
+    }
+
+    #[test]
+    fn acquire_detached_survives_an_expired_inherited_deadline() {
+        let path = lock_path("detached");
+        let inherited = Deadline::after(0).unwrap();
+        let _scope = crate::deadline::enter_scope(Some(inherited));
+        let _lock = RefStoreLock::acquire_detached(&path).unwrap();
+        assert!(lock_holder_is_live(&path));
     }
 }

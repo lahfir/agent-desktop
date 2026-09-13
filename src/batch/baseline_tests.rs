@@ -107,3 +107,37 @@ fn action_then_event_wait_uses_a_pre_action_baseline() {
     assert_eq!(value["results"][1]["ok"], true, "{value}");
     assert_eq!(value["results"][1]["data"]["event"]["window_id"], "w-sync");
 }
+
+#[test]
+fn wait_as_first_entry_runs_with_event_baseline_none() {
+    let args = BatchArgs {
+        commands_json: serde_json::json!([
+            {
+                "command": "wait",
+                "args": {"event": "window-opened", "app": "Fixture", "timeout": 100}
+            },
+            {"command": "version", "args": {}}
+        ])
+        .to_string(),
+        stop_on_error: false,
+        timeout_ms: 60_000,
+    };
+    let adapter = AtomicEventAdapter {
+        opened: AtomicBool::new(false),
+    };
+
+    let value = execute(
+        args,
+        &adapter,
+        &PermissionReport::default(),
+        &agent_desktop_core::CommandContext::default(),
+    )
+    .unwrap();
+
+    assert_eq!(value["results"][0]["execution"], "completed", "{value}");
+    assert_eq!(value["results"][0]["ok"], false, "{value}");
+    assert_eq!(value["results"][0]["error"]["code"], "TIMEOUT", "{value}");
+    assert_eq!(value["results"][1]["execution"], "completed", "{value}");
+    assert_eq!(value["results"][1]["ok"], true, "{value}");
+    assert!(value.get("stopped").is_none(), "{value}");
+}

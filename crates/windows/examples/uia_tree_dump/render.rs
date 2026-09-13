@@ -343,12 +343,19 @@ fn walk_verdict(root: &UIAElement, deadline: Deadline) -> Value {
         &ObservationRoot::Window(&window),
         WalkBudget::new(u8::MAX, deadline),
     ) {
-        Ok(outcome) => json!({
-            "structurally_complete": outcome.tree.is_complete(),
-            "nodes_observed": outcome.tree.node_count(),
-            "enumeration_failures": outcome.failures.len(),
-            "cycles_skipped": outcome.stats.traversal.cycles_skipped,
-        }),
+        Ok(outcome) => {
+            let failures = outcome.failures.len();
+            let cycles_skipped = outcome.stats.traversal.cycles_skipped;
+            match outcome.tree.into_accessibility_tree_partial() {
+                Ok((_, structurally_complete, nodes_observed)) => json!({
+                    "structurally_complete": structurally_complete,
+                    "nodes_observed": nodes_observed,
+                    "enumeration_failures": failures,
+                    "cycles_skipped": cycles_skipped,
+                }),
+                Err(error) => json!({ "failed": error.message }),
+            }
+        }
         Err(error) => json!({ "failed": error.message }),
     }
 }

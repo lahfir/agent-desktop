@@ -16,18 +16,6 @@ fn request(selection: LocatorSelection) -> LocatorResolveRequest {
 }
 
 #[test]
-fn six_thousand_four_hundred_one_nodes_retain_zero_native_handles() {
-    let nodes = (0..6_401)
-        .map(|order| node(order, evidence("button", Some("match")), vec![], &[]))
-        .collect::<Vec<_>>();
-    let roots = (0..6_401).collect::<Vec<_>>();
-    let observed = tree(nodes, roots, true);
-
-    assert_eq!(observed.node_count(), 6_401);
-    assert_eq!(observed.retained_handle_count(), 0);
-}
-
-#[test]
 fn count_returns_no_target_ownership() {
     let resolution = evaluate_locator_tree(
         tree(

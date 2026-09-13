@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.1](https://github.com/lahfir/agent-desktop/compare/v0.9.0...v0.9.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* stop the inspector shutdown test failing on an expected reset ([22cad9e](https://github.com/lahfir/agent-desktop/commit/22cad9ec21136562ed191a8cfb827dc22378c554))
+* **drag:** scope `--wait-for` to the drop target by default, with `--wait-for-scope from|to` ([cefc80a](https://github.com/lahfir/agent-desktop/commit/cefc80a89c95b21061573e366e3832bff6baa231))
+* preserve `wait_timeout` envelope when an inherited deadline expires ([07913a7](https://github.com/lahfir/agent-desktop/commit/07913a7cdb85d79e1708063fd398c9f8571894e9))
+* prevent `wait --count` false positives on incomplete snapshots ([319e9c6](https://github.com/lahfir/agent-desktop/commit/319e9c6c2e7c175fdec42d19b2f1614b9238a909))
+* split acronym boundaries in trace key redaction ([3042e0c](https://github.com/lahfir/agent-desktop/commit/3042e0c7a823508fd5417584f0459d428832c8a0))
+* **cursor:** gate `agent_id` stamping on multi-agent mode ([58612ea](https://github.com/lahfir/agent-desktop/commit/58612eac673a45634e00a651872da043297e68d3))
+* skip ended-session batch entries before wait baseline pre-capture ([899ce27](https://github.com/lahfir/agent-desktop/commit/899ce2702a68716a7704b7403050dd7f54161208))
+* restore cursor overlay lifecycle for keyboard and clipboard actions ([c827cf9](https://github.com/lahfir/agent-desktop/commit/c827cf96560629265ea34451a1a66fe839adab8f))
+* clear remembered cursor landing when the overlay is hidden ([6adff7a](https://github.com/lahfir/agent-desktop/commit/6adff7af0f50344924f8e8874be72ded1b72a8b3))
+* reject percent-encoded NUL in `file_url_to_path` ([de5df38](https://github.com/lahfir/agent-desktop/commit/de5df38ede3d45ed7e4d438e732724972351dbe4))
+
 ## [0.9.0](https://github.com/lahfir/agent-desktop/compare/v0.8.5...v0.9.0) (2026-09-12)
 
 

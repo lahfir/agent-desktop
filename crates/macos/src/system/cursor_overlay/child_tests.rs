@@ -120,3 +120,155 @@ fn click_effect_returns_immediately_to_the_control_loop() {
     assert_eq!(frames[1].point, destination);
     assert_eq!(frames[1].ripple, 1.0);
 }
+
+fn overlay_config() -> CursorOverlayConfig {
+    CursorOverlayConfig::enabled(None, 6).expect("valid config")
+}
+
+fn drag_instruction(drag_from: Point, destination: Point) -> CursorOverlayInstruction {
+    CursorOverlayInstruction::new(destination, &overlay_config(), false)
+        .expect("valid instruction")
+        .with_drag_from(Some(drag_from))
+        .with_phase(agent_desktop_core::CursorPhase::Drag)
+}
+
+fn presented(session: &str, instruction: CursorOverlayInstruction) -> CursorOverlayControl {
+    CursorOverlayControl::present(session.into(), instruction)
+}
+
+#[test]
+fn hide_clears_the_remembered_landing_for_the_next_travel() {
+    let mut remembered = state(Some(Point { x: 100.0, y: 100.0 }));
+    let control = CursorOverlayControl::hide("run-failed-drag".into());
+
+    apply_landing_memory(&control, &mut remembered, None);
+
+    assert_eq!(remembered.at, None);
+}
+
+#[test]
+fn show_leaves_the_remembered_landing_unchanged() {
+    let previous = Point { x: 100.0, y: 100.0 };
+    let mut remembered = state(Some(previous.clone()));
+    let control = CursorOverlayControl::show("run-resume".into());
+
+    apply_landing_memory(&control, &mut remembered, None);
+
+    assert_eq!(remembered.at, Some(previous));
+}
+
+#[test]
+fn drag_phase_pins_the_remembered_landing_to_the_grab_origin() {
+    let drag_from = Point { x: 100.0, y: 100.0 };
+    let instruction = drag_instruction(drag_from.clone(), Point { x: 500.0, y: 400.0 });
+    let control = presented("run-drag", instruction.clone());
+    let mut remembered = state(None);
+
+    apply_landing_memory(&control, &mut remembered, Some(&instruction));
+
+    assert_eq!(remembered.at, Some(drag_from));
+}
+
+#[test]
+fn drag_phase_without_a_grab_origin_remembers_the_destination() {
+    let destination = Point { x: 500.0, y: 400.0 };
+    let instruction = CursorOverlayInstruction::new(destination.clone(), &overlay_config(), false)
+        .expect("valid instruction")
+        .with_phase(agent_desktop_core::CursorPhase::Drag);
+    let control = presented("run-drag", instruction.clone());
+    let mut remembered = state(None);
+
+    apply_landing_memory(&control, &mut remembered, Some(&instruction));
+
+    assert_eq!(remembered.at, Some(destination));
+}
+
+#[test]
+fn travel_phase_remembers_the_destination_as_the_landing() {
+    let destination = Point { x: 800.0, y: 300.0 };
+    let instruction = instruction(destination.clone(), false);
+    let control = presented("run-travel", instruction.clone());
+    let mut remembered = state(None);
+
+    apply_landing_memory(&control, &mut remembered, Some(&instruction));
+
+    assert_eq!(remembered.at, Some(destination));
+}
+
+#[test]
+fn effect_phase_remembers_the_destination_as_the_landing() {
+    let destination = Point { x: 800.0, y: 300.0 };
+    let instruction =
+        instruction(destination.clone(), false).with_phase(agent_desktop_core::CursorPhase::Effect);
+    let control = presented("run-effect", instruction.clone());
+    let mut remembered = state(None);
+
+    apply_landing_memory(&control, &mut remembered, Some(&instruction));
+
+    assert_eq!(remembered.at, Some(destination));
+}
+
+#[test]
+fn travel_after_a_failed_drag_starts_near_the_new_destination_not_the_stale_grab_origin() {
+    let screen = screen();
+    let drag_from = Point { x: 100.0, y: 100.0 };
+    let new_destination = Point { x: 800.0, y: 300.0 };
+
+    let drag = drag_instruction(drag_from.clone(), Point { x: 500.0, y: 400.0 });
+    let drag_control = presented("run-failed-drag", drag.clone());
+    let mut remembered = state(None);
+
+    apply_landing_memory(&drag_control, &mut remembered, Some(&drag));
+    assert_eq!(remembered.at, Some(drag_from.clone()));
+
+    let hide_control = CursorOverlayControl::hide("run-failed-drag".into());
+    apply_landing_memory(&hide_control, &mut remembered, None);
+
+    let fresh_travel = instruction(new_destination.clone(), false);
+    let frames = motion_frames(&remembered, &fresh_travel, &screen, 120);
+
+    let fresh_entry = Point {
+        x: (new_destination.x - 180.0).clamp(screen.x, screen.x + screen.width),
+        y: (new_destination.y + 108.0).clamp(screen.y, screen.y + screen.height),
+    };
+    assert_eq!(frames.first().map(|pose| &pose.point), Some(&fresh_entry));
+    assert_ne!(frames.first().map(|pose| &pose.point), Some(&drag_from));
+    assert_eq!(
+        frames.last().map(|pose| &pose.point),
+        Some(&new_destination)
+    );
+}
+
+#[test]
+fn travel_after_a_successful_drag_animates_from_the_drag_destination() {
+    let screen = screen();
+    let drag_from = Point { x: 100.0, y: 100.0 };
+    let drag_destination = Point { x: 500.0, y: 400.0 };
+    let new_destination = Point { x: 800.0, y: 300.0 };
+
+    let drag = drag_instruction(drag_from.clone(), drag_destination.clone());
+    let drag_control = presented("run-drag", drag.clone());
+    let mut remembered = state(None);
+    apply_landing_memory(&drag_control, &mut remembered, Some(&drag));
+    assert_eq!(remembered.at, Some(drag_from.clone()));
+
+    let effect = CursorOverlayInstruction::new(drag_destination.clone(), &overlay_config(), false)
+        .expect("valid instruction")
+        .with_drag_from(Some(drag_from))
+        .with_phase(agent_desktop_core::CursorPhase::Effect);
+    let effect_control = presented("run-drag", effect.clone());
+    apply_landing_memory(&effect_control, &mut remembered, Some(&effect));
+    assert_eq!(remembered.at, Some(drag_destination.clone()));
+
+    let fresh_travel = instruction(new_destination.clone(), false);
+    let frames = motion_frames(&remembered, &fresh_travel, &screen, 120);
+
+    assert_eq!(
+        frames.first().map(|pose| &pose.point),
+        Some(&drag_destination)
+    );
+    assert_eq!(
+        frames.last().map(|pose| &pose.point),
+        Some(&new_destination)
+    );
+}

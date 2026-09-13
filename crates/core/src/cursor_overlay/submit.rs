@@ -115,7 +115,7 @@ pub(crate) fn cancel_drag(adapter: &dyn PlatformAdapter, context: &CommandContex
         return;
     };
     let control = super::CursorOverlayControl::hide(session_id.to_owned())
-        .with_agent_id(context.agent_id().map(str::to_owned));
+        .with_agent_id(agent_route(context));
     let _ = update(adapter, &control);
 }
 
@@ -139,8 +139,16 @@ fn send(
         instruction,
         context.cursor_overlay().style().clone(),
     )
-    .with_agent_id(context.agent_id().map(str::to_owned));
+    .with_agent_id(agent_route(context));
     update(adapter, &control)
+}
+
+fn agent_route(context: &CommandContext) -> Option<String> {
+    context
+        .cursor_overlay()
+        .is_multi_agent()
+        .then(|| context.agent_id().map(str::to_owned))
+        .flatten()
 }
 
 fn enabled_session(context: &CommandContext) -> Option<&str> {

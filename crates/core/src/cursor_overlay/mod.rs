@@ -28,6 +28,8 @@ pub use timing::{
 };
 
 #[cfg(test)]
+mod routing_tests;
+#[cfg(test)]
 mod tests;
 
 #[cfg(test)]

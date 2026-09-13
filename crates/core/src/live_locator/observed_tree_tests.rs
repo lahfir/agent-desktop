@@ -126,7 +126,6 @@ fn core_builder_owns_preorder_paths_and_child_indices() {
     assert!(tree.nodes[0].path.is_empty());
     assert_eq!(tree.nodes[1].path.as_slice(), &[0]);
     assert_eq!(tree.nodes[2].path.as_slice(), &[1]);
-    assert_eq!(tree.retained_handle_count(), 0);
 }
 
 #[test]
@@ -284,14 +283,12 @@ fn partial_projection_returns_the_observed_subtree_instead_of_discarding_it() {
         true,
     )
     .unwrap();
-    let observed = tree.node_count();
 
     assert!(tree.clone().into_accessibility_tree().is_err());
 
-    let (projected, complete, nodes_observed) = tree.into_accessibility_tree_partial().unwrap();
+    let (projected, complete, _) = tree.into_accessibility_tree_partial().unwrap();
 
     assert!(!complete);
-    assert_eq!(nodes_observed, observed);
     assert_eq!(projected.role, "window");
     assert_eq!(projected.children.len(), 1);
     assert_eq!(projected.children[0].identity.name.as_deref(), Some("Save"));

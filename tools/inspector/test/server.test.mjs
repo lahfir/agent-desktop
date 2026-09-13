@@ -22,6 +22,7 @@ test('shutdown closes incomplete HTTP connections and removes private state', {t
   });
   assert.equal((await readdir(root)).length, 1);
   const connection = createConnection({host: '127.0.0.1', port});
+  connection.on('error', () => {});
   t.after(() => connection.destroy());
   await once(connection, 'connect');
   connection.write('GET / HTTP/1.1\r\n');

@@ -218,6 +218,7 @@ fn drag_none_scrolls_once_then_dispatches_revalidated_endpoints_once() {
             duration_ms: None,
             drop_delay_ms: None,
             timeout_ms: None,
+            wait_for_scope: drag::WaitForScope::default(),
         },
         &adapter,
         &CommandContext::default().with_headed(true),

@@ -146,6 +146,7 @@ fn xy_args(drop_delay_ms: Option<u64>) -> DragArgs {
         duration_ms: None,
         drop_delay_ms,
         timeout_ms: None,
+        wait_for_scope: WaitForScope::default(),
     }
 }
 
@@ -228,7 +229,7 @@ fn uncertain_drag_hides_the_overlay_without_claiming_a_landing() {
     let cancel = presented.last().expect("cancel control");
     assert!(cancel.is_hide());
     assert!(cancel.instruction().is_none());
-    assert_eq!(cancel.agent_id(), Some("agent-a"));
+    assert_eq!(cancel.agent_id(), None);
 }
 
 #[test]
@@ -305,6 +306,7 @@ fn cross_app_args(snapshot_id: String) -> DragArgs {
         duration_ms: None,
         drop_delay_ms: None,
         timeout_ms: None,
+        wait_for_scope: WaitForScope::default(),
     }
 }
 
@@ -391,3 +393,6 @@ mod retry_tests;
 
 #[path = "drag_occlusion_retry_tests.rs"]
 mod occlusion_retry_tests;
+
+#[path = "drag_wait_scope_tests.rs"]
+mod wait_scope_tests;

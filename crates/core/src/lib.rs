@@ -220,7 +220,7 @@ pub use live_locator::{
     LocatorResolveRequest, LocatorSelection, LocatorSemanticReadStats, LocatorStats,
     LocatorTraversalStats, ObservationBudget, ObservationMode, ObservationRequest, ObservationRoot,
     ObservationSource, ObservedSubtree, ObservedTree, classify_query_result, evaluate_locator_tree,
-    find_first_entry, require_unique, resolve_query,
+    require_unique, resolve_query,
 };
 pub use locator::{
     LocatorQuery, accessibility_node_matches, node_context, node_matches, role_matches,

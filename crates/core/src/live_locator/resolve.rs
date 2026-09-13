@@ -2,10 +2,7 @@ use super::{
     LocatorResolution, LocatorResolveRequest, LocatorStats, ObservationRequest, ObservationRoot,
     evaluate_locator_tree, validate_query, validate_request,
 };
-use crate::{
-    AdapterError, AppError, ErrorCode, WindowInfo, adapter::PlatformAdapter, locator::LocatorQuery,
-    refs::RefEntry,
-};
+use crate::{AdapterError, AppError, ErrorCode, adapter::PlatformAdapter, locator::LocatorQuery};
 use serde_json::json;
 use std::time::{Duration, Instant};
 
@@ -194,53 +191,4 @@ fn resolve_query_attempt(
         }
     }
     Ok(resolution)
-}
-
-pub fn find_first_entry(
-    adapter: &dyn PlatformAdapter,
-    window: &WindowInfo,
-    query: &LocatorQuery,
-    timeout: Duration,
-) -> Result<RefEntry, AdapterError> {
-    let resolution = resolve_query(
-        adapter,
-        query,
-        ObservationRoot::Window(window),
-        &LocatorResolveRequest {
-            selection: super::LocatorSelection::First,
-            deadline: crate::Deadline::from_duration(timeout)?,
-            max_raw_depth: 50,
-            surface: None,
-            materialization: super::LocatorMaterialization::SelectedMatches,
-        },
-    )
-    .map_err(app_error_to_adapter)?;
-    if !resolution.meta.selection_complete {
-        return Err(
-            AdapterError::timeout("Locator traversal was incomplete").with_details(json!({
-                "kind": "locator_incomplete",
-                "observed_matches": resolution.meta.total_matches,
-                "query_stats": resolution.stats,
-            })),
-        );
-    }
-    resolution
-        .matches
-        .into_iter()
-        .next()
-        .map(|matched| matched.entry)
-        .ok_or_else(|| {
-            AdapterError::new(
-                ErrorCode::ElementNotFound,
-                "Locator query matched no elements",
-            )
-            .with_suggestion("Use a broader locator or inspect the accessibility tree")
-        })
-}
-
-fn app_error_to_adapter(error: AppError) -> AdapterError {
-    match error {
-        AppError::Adapter(error) => error,
-        other => AdapterError::internal(other.to_string()),
-    }
 }
