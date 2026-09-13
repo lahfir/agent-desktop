@@ -19,6 +19,30 @@ fn test_deadline() -> crate::Deadline {
     crate::Deadline::standard().unwrap()
 }
 
+/// Calls a write whose subject is a **budget**, retrying only while the
+/// artifact lock reports its own `lock_failed`.
+///
+/// `ARTIFACT_LOCK_WAIT_MS` is 50 ms, and that budget is a product decision:
+/// an artifact write gives the command back rather than blocking it on a
+/// contended lock. A loaded CI runner can miss 50 ms acquiring even an
+/// uncontended lock file, and when it does the write reports the lock outcome
+/// before it ever evaluates the budget these tests are about. Retrying keeps
+/// the subject reachable; matching on the exact string keeps the tolerance
+/// narrow, so any other failure is still a failure, and the two tests whose
+/// subject *is* the lock call the writers directly rather than through here.
+fn past_lock_contention<F>(mut write: F) -> Result<(), &'static str>
+where
+    F: FnMut() -> Result<(), &'static str>,
+{
+    for _ in 0..16 {
+        match write() {
+            Err("lock_failed") => std::thread::sleep(std::time::Duration::from_millis(20)),
+            result => return result,
+        }
+    }
+    write()
+}
+
 #[test]
 fn artifact_writes_scan_once_then_use_the_private_ledger() {
     let trace = prepare_trace("scan-once");
@@ -88,7 +112,7 @@ fn failed_artifact_write_rolls_back_its_reservation() {
     set_test_limits(1, 1, 100);
 
     assert_eq!(
-        write_screenshot(&trace, &blocked, &[1], test_deadline()),
+        past_lock_contention(|| write_screenshot(&trace, &blocked, &[1], test_deadline())),
         Err("write_failed")
     );
     std::fs::remove_dir(&blocked).unwrap();
@@ -107,12 +131,12 @@ fn reserved_usage_without_an_artifact_remains_fail_safe() {
     set_test_limits(1, 1, 100);
 
     assert_eq!(
-        write_screenshot(
+        past_lock_contention(|| write_screenshot(
             &trace,
             &trace.join("screens/next.png"),
             &[1],
             test_deadline(),
-        ),
+        )),
         Err("count_budget")
     );
 
@@ -144,7 +168,9 @@ fn preexisting_files_consume_the_persisted_session_budget() {
     std::fs::write(screens.join("existing.png"), [1]).unwrap();
     set_test_limits(100, 1, 100);
 
-    let result = write_screenshot(&trace, &screens.join("next.png"), &[2], test_deadline());
+    let result = past_lock_contention(|| {
+        write_screenshot(&trace, &screens.join("next.png"), &[2], test_deadline())
+    });
 
     assert_eq!(result, Err("count_budget"));
     clear_test_limits();
