@@ -13,8 +13,12 @@ mod trace;
 #[cfg(test)]
 mod test_support;
 
+#[cfg(test)]
+mod cursor_overlay_lifecycle_tests;
+
 use agent_desktop_core::{
-    AppError, PermissionReport, PlatformAdapter, commands, context::CommandContext,
+    AppError, CursorOverlayControl, PermissionReport, PlatformAdapter, commands,
+    context::CommandContext,
 };
 use serde_json::Value;
 
@@ -27,11 +31,20 @@ pub(crate) fn dispatch(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     tracing::debug!("dispatch: {}", cmd.name());
+    let overlay_session =
+        if cmd.is_mutating() && context.is_headed() && context.cursor_overlay().is_enabled() {
+            context.session_id().map(str::to_owned)
+        } else {
+            None
+        };
     let scope = if cmd.is_mutating() {
         context.mutating_command_scope(cmd.name())?
     } else {
         context.command_scope(cmd.name())?
     };
+    if let Some(session_id) = overlay_session.as_ref() {
+        let _ = adapter.update_cursor_overlay(&CursorOverlayControl::hide(session_id.clone()));
+    }
     let result = match cmd {
         Commands::Snapshot(args) => observation::snapshot(args, adapter, context),
         Commands::Find(args) => observation::find(args, adapter, context),
@@ -100,6 +113,9 @@ pub(crate) fn dispatch(
         Commands::CursorOverlay(args) => cursor_overlay::dispatch(args, adapter, context),
         Commands::Trace(args) => trace::dispatch(args, context),
     };
+    if let Some(session_id) = overlay_session {
+        let _ = adapter.update_cursor_overlay(&CursorOverlayControl::show(session_id));
+    }
     scope.complete(&result)?;
     result
 }

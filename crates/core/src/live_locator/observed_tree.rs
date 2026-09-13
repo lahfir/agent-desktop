@@ -41,14 +41,6 @@ impl ObservedTree {
         Ok(tree)
     }
 
-    pub fn retained_handle_count(&self) -> usize {
-        0
-    }
-
-    pub fn node_count(&self) -> usize {
-        self.nodes.len()
-    }
-
     pub fn is_complete(&self) -> bool {
         self.structurally_complete
     }

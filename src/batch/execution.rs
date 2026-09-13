@@ -42,6 +42,21 @@ pub(super) fn execute(
         }
 
         let current_baseline = pending_baseline.take();
+
+        if let Some(ended_session) = session_ended_for(&commands[index]) {
+            let error = batch_session_ended(index, &commands[index].name, &ended_session);
+            push_small_entry(
+                &mut results,
+                &mut results_bytes,
+                not_started_entry(index, &commands[index].name, "session_ended", error),
+            );
+            if args.stop_on_error {
+                stopped = Some(json!({ "reason": "stop_on_error", "index": index }));
+                break;
+            }
+            continue;
+        }
+
         pending_baseline = match commands.get(index + 1).and_then(event_filter) {
             Some(filter) => match adapter.capture_signal_baseline(&filter, deadline) {
                 Ok(baseline) => Some(Ok(baseline)),
@@ -78,19 +93,6 @@ pub(super) fn execute(
             None => None,
         };
 
-        if let Some(ended_session) = session_ended_for(&commands[index]) {
-            let error = batch_session_ended(index, &commands[index].name, &ended_session);
-            push_small_entry(
-                &mut results,
-                &mut results_bytes,
-                not_started_entry(index, &commands[index].name, "session_ended", error),
-            );
-            if args.stop_on_error {
-                stopped = Some(json!({ "reason": "stop_on_error", "index": index }));
-                break;
-            }
-            continue;
-        }
         let item_context = commands[index]
             .context
             .clone()

@@ -138,10 +138,12 @@ fn handle(control: &CursorOverlayControl, state: &mut OverlayState) -> Result<bo
     }
     if control.is_hide() {
         bridge::hide();
+        apply_landing_memory(control, state, None);
         return Ok(true);
     }
     if control.is_show() {
         bridge::show();
+        apply_landing_memory(control, state, None);
         return Ok(true);
     }
     let owned;
@@ -153,6 +155,25 @@ fn handle(control: &CursorOverlayControl, state: &mut OverlayState) -> Result<bo
         &owned
     };
     render(instruction, state)?;
+    apply_landing_memory(control, state, Some(instruction));
+    Ok(true)
+}
+
+fn apply_landing_memory(
+    control: &CursorOverlayControl,
+    state: &mut OverlayState,
+    instruction: Option<&CursorOverlayInstruction>,
+) {
+    if control.is_hide() {
+        state.at = None;
+        return;
+    }
+    if control.is_show() {
+        return;
+    }
+    let Some(instruction) = instruction else {
+        return;
+    };
     state.at = Some(
         if instruction.phase() == agent_desktop_core::CursorPhase::Drag {
             instruction
@@ -163,7 +184,6 @@ fn handle(control: &CursorOverlayControl, state: &mut OverlayState) -> Result<bo
             instruction.destination().clone()
         },
     );
-    Ok(true)
 }
 
 fn render(

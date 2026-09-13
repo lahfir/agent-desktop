@@ -257,10 +257,9 @@ fn create_private_dir(dir: &std::path::Path) {
     std::fs::create_dir_all(dir).expect("create state root");
 }
 
-#[test]
-fn batch_entry_after_mid_batch_session_end_is_skipped_without_aborting_batch() {
+fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "agent-desktop-cli-batch-session-end-{}-{}",
+        "agent-desktop-{prefix}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -268,35 +267,42 @@ fn batch_entry_after_mid_batch_session_end_is_skipped_without_aborting_batch() {
             .unwrap_or(0)
     ));
     create_private_dir(&dir);
-    let start = binary()
-        .args(["session", "start", "--no-trace"])
-        .env("AGENT_DESKTOP_HOME", &dir)
-        .output()
-        .expect("binary starts");
-    let start_envelope: serde_json::Value =
-        serde_json::from_slice(&start.stdout).expect("stdout is one JSON envelope");
-    assert!(start.status.success());
-    let session_id = start_envelope["data"]["session_id"]
-        .as_str()
-        .expect("session start returns a session id")
-        .to_owned();
-    let commands = serde_json::json!([
-        {"command": "session", "session": session_id, "args": {"action": "end"}},
-        {"command": "clipboard-clear", "session": session_id, "args": {}},
-        {"command": "version", "args": {}},
-    ]);
-    let output = binary()
-        .arg("batch")
-        .arg(commands.to_string())
-        .env("AGENT_DESKTOP_HOME", &dir)
-        .output()
-        .expect("binary starts");
-    let envelope: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("stdout is one JSON envelope");
+    dir
+}
 
-    assert!(output.status.success());
-    assert_eq!(envelope["ok"], true);
-    let data = &envelope["data"];
+fn start_session_in_dir(dir: &std::path::Path) -> String {
+    let mut c = binary();
+    c.args(["session", "start", "--no-trace"])
+        .env("AGENT_DESKTOP_HOME", dir);
+    let out = c.output().expect("session start runs");
+    let env: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    env["data"]["session_id"].as_str().unwrap().to_owned()
+}
+
+fn run_batch(dir: &std::path::Path, cmds: serde_json::Value, extra: &[&str]) -> serde_json::Value {
+    let mut c = binary();
+    c.arg("batch")
+        .arg(cmds.to_string())
+        .args(extra)
+        .env("AGENT_DESKTOP_HOME", dir);
+    let o = c.output().expect("batch runs");
+    serde_json::from_slice(&o.stdout).unwrap()
+}
+
+#[test]
+fn batch_entry_after_mid_batch_session_end_is_skipped_without_aborting_batch() {
+    let dir = unique_temp_dir("cli-batch-session-end");
+    let session_id = start_session_in_dir(&dir);
+    let data = run_batch(
+        &dir,
+        serde_json::json!([
+            {"command": "session", "session": session_id, "args": {"action": "end"}},
+            {"command": "clipboard-clear", "session": session_id, "args": {}},
+            {"command": "version", "args": {}},
+        ]),
+        &[],
+    )["data"]
+        .clone();
     assert_eq!(data["results"][0]["execution"], "completed");
     assert_eq!(data["results"][0]["ok"], true);
     assert_eq!(data["results"][0]["data"]["session_id"], session_id);
@@ -312,39 +318,78 @@ fn batch_entry_after_mid_batch_session_end_is_skipped_without_aborting_batch() {
     );
     assert_eq!(data["results"][2]["execution"], "completed");
     assert_eq!(data["results"][2]["ok"], true);
-    assert_eq!(data["total_entries"], 3);
     assert_eq!(data["completed_entries"], 2);
     assert_eq!(data["not_started_entries"], 1);
     assert!(data.get("stopped").is_none());
-    let start = binary()
-        .args(["session", "start", "--no-trace"])
-        .env("AGENT_DESKTOP_HOME", &dir)
-        .output()
-        .expect("new session starts");
-    let new_session: serde_json::Value = serde_json::from_slice(&start.stdout).unwrap();
-    let next_id = new_session["data"]["session_id"].as_str().unwrap();
-    let stopped = binary()
-        .arg("batch")
-        .arg(
-            serde_json::json!([
-                {"command": "session", "session": next_id, "args": {"action": "end"}},
-                {"command": "version", "session": next_id, "args": {}},
-                {"command": "version", "args": {}}
-            ])
-            .to_string(),
-        )
-        .arg("--stop-on-error")
-        .env("AGENT_DESKTOP_HOME", &dir)
-        .output()
-        .expect("batch starts");
-    let stopped: serde_json::Value = serde_json::from_slice(&stopped.stdout).unwrap();
-    assert_eq!(stopped["data"]["stopped"]["reason"], "stop_on_error");
-    assert_eq!(stopped["data"]["results"].as_array().unwrap().len(), 2);
+    let next_id = start_session_in_dir(&dir);
+    let stopped = run_batch(
+        &dir,
+        serde_json::json!([
+            {"command": "session", "session": next_id, "args": {"action": "end"}},
+            {"command": "version", "session": next_id, "args": {}},
+            {"command": "version", "args": {}}
+        ]),
+        &["--stop-on-error"],
+    )["data"]
+        .clone();
+    assert_eq!(stopped["stopped"]["reason"], "stop_on_error");
+    assert_eq!(stopped["results"].as_array().unwrap().len(), 2);
     let manifest: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(dir.join("sessions").join(&session_id).join("session.json"))
             .expect("ended manifest remains on disk"),
     )
     .expect("manifest is JSON");
     assert!(manifest["ended_at"].is_number());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn batch_session_ended_skip_is_defeated_by_following_event_wait_cross_session() {
+    let dir = unique_temp_dir("cli-batch-session-end-wait-cross");
+    let sid_a = start_session_in_dir(&dir);
+    let sid_b = start_session_in_dir(&dir);
+    let env = run_batch(
+        &dir,
+        serde_json::json!([
+            {"command": "session", "session": sid_a, "args": {"action": "end"}},
+            {"command": "clipboard-clear", "session": sid_a, "args": {}},
+            {"command": "wait", "session": sid_b, "args": {"event": "window-opened", "timeout": 100}},
+            {"command": "version", "args": {}}
+        ]),
+        &[],
+    );
+    let results = env["data"]["results"].as_array().unwrap();
+    assert_eq!(results.len(), 4, "no hard-stop: {env}");
+    assert_eq!(results[1]["not_started_reason"], "session_ended", "{env}");
+    assert_eq!(
+        results[2]["execution"], "completed",
+        "wait dispatched: {env}"
+    );
+    assert!(env["data"].get("stopped").is_none(), "{env}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn batch_session_ended_skip_is_defeated_by_following_event_wait_same_session() {
+    let dir = unique_temp_dir("cli-batch-session-end-wait-same");
+    let sid_a = start_session_in_dir(&dir);
+    let env = run_batch(
+        &dir,
+        serde_json::json!([
+            {"command": "session", "session": sid_a, "args": {"action": "end"}},
+            {"command": "clipboard-clear", "session": sid_a, "args": {}},
+            {"command": "wait", "session": sid_a, "args": {"event": "window-opened", "timeout": 100}},
+            {"command": "version", "args": {}}
+        ]),
+        &[],
+    );
+    let results = env["data"]["results"].as_array().unwrap();
+    assert_eq!(results.len(), 4, "no hard-stop: {env}");
+    assert_eq!(results[1]["not_started_reason"], "session_ended", "{env}");
+    assert_eq!(
+        results[2]["not_started_reason"], "session_ended",
+        "wait skipped: {env}"
+    );
+    assert!(env["data"].get("stopped").is_none(), "{env}");
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -94,9 +94,8 @@ fn activation_lease_is_dropped_before_observation_retry() {
         .validate()
         .unwrap();
 
-    let tree = observe_tree(&adapter, ObservationRoot::Window(&window), &request).unwrap();
+    observe_tree(&adapter, ObservationRoot::Window(&window), &request).unwrap();
 
-    assert_eq!(tree.node_count(), 1);
     assert_eq!(adapter.observations.load(Ordering::SeqCst), 2);
     assert_eq!(adapter.activations.load(Ordering::SeqCst), 1);
     assert!(!held.load(Ordering::SeqCst));

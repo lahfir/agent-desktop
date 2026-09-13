@@ -1,10 +1,22 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use serde::Deserialize;
 
 use super::drag_target::DragTargetArgs;
 
 fn default_ref_timeout_ms() -> u64 {
     5000
+}
+
+/// Selects which drag endpoint's window scopes the post-action
+/// `--wait-for` / `--wait-for-gone` verification. Maps 1:1 to
+/// [`agent_desktop_core::commands::drag::WaitForScope`]; the conversion lives
+/// in the dispatch layer so the core enum stays free of `clap`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum WaitForScopeArg {
+    From,
+    #[default]
+    To,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -34,4 +46,12 @@ pub(crate) struct DragCliArgs {
     )]
     #[serde(default = "default_ref_timeout_ms")]
     pub timeout_ms: u64,
+    #[arg(
+        long = "wait-for-scope",
+        value_name = "SCOPE",
+        value_enum,
+        help = "Window a drag's --wait-for/--wait-for-gone verification polls: 'to' (drop target, default) or 'from' (pickup). Needed when the confirmation appears only in the destination window of a cross-window drag"
+    )]
+    #[serde(default)]
+    pub wait_for_scope: Option<WaitForScopeArg>,
 }
