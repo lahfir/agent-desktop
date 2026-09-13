@@ -163,6 +163,16 @@ impl CursorOverlayControl {
         })
     }
 
+    pub fn expects_acknowledgement(&self) -> bool {
+        self.is_hide()
+            || self.is_show()
+            || self.is_disable()
+            || self.is_travel()
+            || self
+                .instruction()
+                .is_some_and(|instruction| instruction.phase() == CursorPhase::Effect)
+    }
+
     pub const fn is_hide(&self) -> bool {
         matches!(self, Self::Hide { .. })
     }

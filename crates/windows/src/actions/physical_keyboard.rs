@@ -54,11 +54,10 @@ pub(crate) fn press_key_global(
 ) -> Result<ActionResult, AdapterError> {
     ensure_budget(deadline)?;
     synthesize_key(combo, deadline)?;
-    ActionResult::from_execution(
+    Ok(ActionResult::from_execution(
         &Action::PressKey(combo.clone()),
         vec![physical_step(PRESS_KEY_LABEL)],
-        None,
-    )
+    ))
 }
 
 /// The shipped `type` leg past the focus gate, with the per-chunk verifier

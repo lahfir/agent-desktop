@@ -94,6 +94,21 @@ mod imp {
         window: &WindowInfo,
         deadline: Deadline,
     ) -> Result<ImageBuffer, AdapterError> {
+        capture_window_options(window, deadline, false)
+    }
+
+    pub fn capture_window_frame(
+        window: &WindowInfo,
+        deadline: Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
+        capture_window_options(window, deadline, true)
+    }
+
+    fn capture_window_options(
+        window: &WindowInfo,
+        deadline: Deadline,
+        omit_shadow: bool,
+    ) -> Result<ImageBuffer, AdapterError> {
         if window.process_instance.is_none() {
             return Err(AdapterError::new(
                 ErrorCode::InvalidArgs,
@@ -108,7 +123,13 @@ mod imp {
         let window_id = parse_window_id(&verified.id)?;
         let scale = crate::system::display::scale_for_bounds(verified.bounds, deadline)?;
         ensure_budget(deadline)?;
-        let captured = capture(scale, deadline, |path| Ok(window_args(window_id, path)))?;
+        let captured = capture(scale, deadline, |path| {
+            let mut args = window_args(window_id, path);
+            if omit_shadow {
+                args.insert(0, OsString::from("-o"));
+            }
+            Ok(args)
+        })?;
         crate::system::window_resolve::resolve_capture_window(
             &verified,
             deadline_instant(deadline)?,
@@ -337,6 +358,10 @@ mod imp {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
+pub(crate) use imp::capture_window as capture_window_frame;
+#[cfg(target_os = "macos")]
+pub(crate) use imp::capture_window_frame;
 pub(crate) use imp::{capture_display, capture_screen, capture_window};
 
 #[cfg(all(test, target_os = "macos"))]

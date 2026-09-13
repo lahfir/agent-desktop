@@ -50,11 +50,11 @@ impl DragDeliveryState {
                 details.insert("emergency_release_acknowledged".into(), false.into());
             }
         }
-        error
-            .with_details(details)
-            .with_suggestion(
-                "Inspect the source and destination before retrying; the emergency release was posted without an OS acknowledgement",
-            )
+        error.with_details(details).with_suggestion(if self.armed {
+            "Inspect the source and destination before retrying; the emergency release was posted without an OS acknowledgement"
+        } else {
+            "Inspect the source and destination before retrying; the normal release was posted without an OS acknowledgement"
+        })
     }
 }
 
@@ -91,5 +91,26 @@ mod tests {
 
         assert_eq!(details["delivered_events"], 4);
         assert_eq!(details["emergency_release_posted"], true);
+    }
+
+    #[test]
+    fn timeout_after_normal_release_does_not_claim_emergency_cleanup() {
+        let mut state = DragDeliveryState::default();
+        state.arm();
+        state.mark_down_posted();
+        state.disarm();
+        let error = state.enrich_error(AdapterError::timeout("after release"));
+        assert!(!error.suggestion.unwrap().contains("emergency release"));
+        assert!(
+            error
+                .details
+                .unwrap()
+                .get("emergency_release_posted")
+                .is_none()
+        );
+        assert_eq!(
+            error.disposition.retry(),
+            agent_desktop_core::RetryDisposition::Unsafe
+        );
     }
 }

@@ -19,8 +19,8 @@ pub(crate) fn press_sequence(
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
     let mut delivery = crate::actions::DeliveryTracker::default();
-    let identity =
-        prepare_target(element, policy, deadline).map_err(|error| delivery.annotate(error))?;
+    let identity = prepare_target(element, policy, deadline, &mut delivery)
+        .map_err(|error| delivery.annotate(error))?;
     let pid = identity.pid();
     for combo in combos {
         verify_delivery_target(element, identity, deadline)
@@ -39,17 +39,21 @@ pub(crate) fn type_text(
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
     crate::input::keyboard::preflight_text(text, deadline)?;
-    let identity = prepare_target(element, policy, deadline)?;
+    let mut delivery = crate::actions::DeliveryTracker::default();
+    let identity = prepare_target(element, policy, deadline, &mut delivery)
+        .map_err(|error| delivery.annotate(error))?;
     let pid = identity.pid();
     crate::input::keyboard::synthesize_text(text, pid, deadline, |deadline| {
         verify_delivery_target(element, identity, deadline)
     })
+    .map_err(|error| delivery.annotate(error))
 }
 
 fn prepare_target(
     element: &AXElement,
     policy: InteractionPolicy,
     deadline: Deadline,
+    delivery: &mut crate::actions::DeliveryTracker,
 ) -> Result<crate::system::process_identity::ProcessIdentity, AdapterError> {
     if !policy.allow_focus_steal {
         return Err(AdapterError::policy_denied_for_policy(
@@ -84,6 +88,7 @@ fn prepare_target(
         )
         .with_disposition(agent_desktop_core::DeliverySemantics::not_delivered()));
     }
+    delivery.mark_delivered();
     wait_for_focused_element(element, pid, deadline)?;
     crate::system::focus::verify_app_focused(pid, deadline)?;
     verify_delivery_target(element, identity, deadline)?;

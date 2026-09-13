@@ -216,8 +216,14 @@ fn exhaustion_after_unverified_delivery_reports_delivered_unverified() {
         true,
     ));
 
+    let error = super::exhaustion_error(&steps, "Inspect the current state");
+    assert_eq!(error.code, agent_desktop_core::ErrorCode::ActionFailed);
     assert_eq!(
-        exhaustion_disposition(&steps),
+        error.suggestion.as_deref(),
+        Some("Inspect the current state")
+    );
+    assert_eq!(
+        error.disposition,
         agent_desktop_core::DeliverySemantics::delivered_unverified()
     );
 }
@@ -239,6 +245,52 @@ fn exhaustion_without_any_delivery_reports_not_delivered() {
     assert_eq!(
         exhaustion_disposition(&[]),
         agent_desktop_core::DeliverySemantics::not_delivered()
+    );
+}
+
+#[test]
+fn value_writes_stop_fallback_without_claiming_verification() {
+    for definition in [
+        &crate::actions::chain_defs::SET_VALUE_CHAIN,
+        &crate::actions::chain_defs::CLEAR_CHAIN,
+    ] {
+        for step in definition.steps {
+            let mut steps = Vec::new();
+            assert!(record_step_outcome(
+                &mut steps,
+                step,
+                DeliveryOutcome::DeliveredUnverified,
+                definition.continue_after_unverified_delivery
+            ));
+            assert_eq!(steps[0].verified(), Some(false));
+            assert!(!record_step_outcome(
+                &mut Vec::new(),
+                step,
+                DeliveryOutcome::NotDelivered,
+                definition.continue_after_unverified_delivery
+            ));
+        }
+    }
+}
+
+#[test]
+fn later_step_failure_retains_earlier_delivery() {
+    use agent_desktop_core::{AdapterError, DeliverySemantics};
+    let steps = [build_step(
+        &ChainStep::SetDynamic { attr: "AXValue" },
+        DeliveryOutcome::DeliveredUnverified,
+    )];
+    let error = AdapterError::timeout("later step failed")
+        .with_disposition(DeliverySemantics::not_delivered());
+    assert_eq!(
+        super::after_steps(&steps, error).disposition,
+        DeliverySemantics::delivered_unverified()
+    );
+    let uncertain = AdapterError::timeout("later step uncertain")
+        .with_disposition(DeliverySemantics::uncertain());
+    assert_eq!(
+        super::after_steps(&steps, uncertain).disposition,
+        DeliverySemantics::uncertain()
     );
 }
 

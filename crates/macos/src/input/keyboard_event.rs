@@ -83,6 +83,7 @@ fn post_pair(
     delivery: &mut crate::actions::DeliveryTracker,
     total: usize,
 ) -> Result<(), AdapterError> {
+    ensure_budget(deadline, total, *delivery)?;
     let (down, up) = events;
     let mut release = KeyReleaseGuard {
         event: Some(up),

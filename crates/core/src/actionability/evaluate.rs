@@ -188,6 +188,12 @@ fn finish(
     let code = report.terminal_code().unwrap_or(ErrorCode::ActionFailed);
     let suggestion = if code == ErrorCode::ActionFailed {
         "Wait for the target to become actionable, refresh the snapshot, or use an explicit physical/focus command if intended."
+    } else if evidence.state.role == "cell"
+        && report.checks.iter().any(|check| {
+            check.check == "editable" && check.status == super::status::ActionabilityStatus::Fail
+        })
+    {
+        "This cell is not directly editable. Activate the cell, take a fresh snapshot, then target the text editor it exposes. --headed alone does not enter cell editing."
     } else {
         "Waiting will not help: this element cannot satisfy the action as targeted. Target an element that advertises the action (check available_actions in a fresh snapshot) or adjust the interaction policy (e.g. pass --headed)."
     };

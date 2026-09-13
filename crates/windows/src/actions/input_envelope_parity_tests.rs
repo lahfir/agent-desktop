@@ -76,7 +76,7 @@ fn assert_no_forbidden_detail_keys(error: &AdapterError) {
 }
 
 fn serialize_action_result(action: &Action, steps: Vec<ActionStep>) -> Value {
-    let result = ActionResult::from_execution(action, steps, None).expect("ActionResult");
+    let result = ActionResult::from_execution(action, steps);
     serde_json::to_value(&result).expect("ActionResult serializes")
 }
 

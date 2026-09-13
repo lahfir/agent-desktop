@@ -1,6 +1,19 @@
 use super::*;
 
 #[test]
+fn process_preflight_failure_reports_no_key_delivery() {
+    let error = press_for_app_impl(
+        ProcessIdentity::new(u32::MAX, "invalid"),
+        &combo(Vec::new()),
+        agent_desktop_core::InteractionPolicy::default(),
+        Deadline::standard().unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, ErrorCode::InvalidArgs);
+    assert_eq!(error.disposition, DeliverySemantics::not_delivered());
+}
+
+#[test]
 fn key_dispatch_rejects_non_unique_display_names() {
     let error = match [10, 11].as_slice() {
         [pid] => Ok(*pid),

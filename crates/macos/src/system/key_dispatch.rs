@@ -21,6 +21,16 @@ pub(crate) fn press_for_app_impl(
     policy: agent_desktop_core::InteractionPolicy,
     deadline: Deadline,
 ) -> Result<ActionResult, AdapterError> {
+    press_for_app(process, combo, policy, deadline)
+        .map_err(|error| crate::actions::DeliveryTracker::default().annotate(error))
+}
+
+fn press_for_app(
+    process: ProcessIdentity,
+    combo: &KeyCombo,
+    policy: agent_desktop_core::InteractionPolicy,
+    deadline: Deadline,
+) -> Result<ActionResult, AdapterError> {
     tracing::debug!(
         pid = process.pid.get(),
         key = combo.key,
@@ -29,7 +39,6 @@ pub(crate) fn press_for_app_impl(
     let identity = crate::system::process_identity::require_core(&process)?;
     let pid = identity.pid();
     let app = crate::tree::element_for_pid(pid);
-    prepare(&app, deadline)?;
 
     if !combo.modifiers.is_empty() {
         match try_menu_bar_shortcut(&app, combo, deadline) {
@@ -79,7 +88,9 @@ fn try_simple_key_action(
     let Some(focused) = focused_element(app, deadline)? else {
         return Ok(false);
     };
-    prepare(&focused, deadline)?;
+    if crate::actions::ax_helpers::advertises_action(&focused, action, deadline) != Some(true) {
+        return Ok(false);
+    }
     crate::actions::ax_helpers::try_ax_action_or_err(&focused, action, deadline)
 }
 
@@ -108,7 +119,6 @@ fn try_menu_bar_shortcut(
             .is_some_and(|value| value.to_uppercase() == target_char)
             && read_menu_item_modifiers(&element, deadline)? == Some(target_modifiers)
         {
-            prepare(&element, deadline)?;
             return crate::actions::ax_helpers::try_ax_action_or_err(&element, "AXPress", deadline);
         }
         if depth >= MAX_MENU_DEPTH {
@@ -155,7 +165,6 @@ fn element_attribute(
     attribute: &str,
     deadline: Deadline,
 ) -> Result<Option<AXElement>, AdapterError> {
-    prepare(element, deadline)?;
     let result = crate::tree::attributes::copy_element_attr_result(element, attribute, deadline);
     ensure_budget(deadline)?;
     result.map_err(|error| read_error(attribute, error))
@@ -230,7 +239,6 @@ fn read_string(
     attribute: &str,
     deadline: Deadline,
 ) -> Result<Option<String>, AdapterError> {
-    prepare(element, deadline)?;
     let result = crate::tree::attributes::copy_string_attr_result(element, attribute, deadline);
     ensure_budget(deadline)?;
     result.map_err(|error| read_error(attribute, error))
@@ -243,7 +251,6 @@ fn read_menu_item_modifiers(
     use accessibility_sys::kAXErrorSuccess;
     use core_foundation::{base::TCFType, string::CFString};
 
-    prepare(element, deadline)?;
     let attribute = CFString::new("AXMenuItemCmdModifiers");
     let (error, value) = crate::tree::ax_ipc::copy_attribute_value(
         element,
@@ -329,10 +336,6 @@ fn is_bounded_menu_incomplete(error: &AdapterError) -> bool {
             .and_then(|details| details.get("kind"))
             .and_then(serde_json::Value::as_str)
             .is_some_and(|kind| matches!(kind, "node_limit" | "child_limit" | "depth_limit"))
-}
-
-fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {
-    crate::tree::attributes::set_messaging_timeout(element, deadline)
 }
 
 fn ensure_budget(deadline: Deadline) -> Result<(), AdapterError> {

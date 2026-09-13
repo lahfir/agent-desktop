@@ -14,12 +14,11 @@
 //! ships.
 
 use agent_desktop_core::{
-    ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionPolicy,
-    StepMechanism,
+    ActionStep, ActionStepOutcome, AdapterError, Deadline, DeliverySemantics, ErrorCode,
+    InteractionPolicy, StepMechanism,
 };
 use std::time::{Duration, Instant};
 
-use crate::actions::post_state::delivery_occurred;
 use crate::system::permissions::ensure_budget;
 
 pub(crate) const INVOKE_LABEL: &str = "InvokePattern.Invoke";
@@ -153,6 +152,19 @@ pub(crate) fn execute_chain(
 
 pub(crate) fn rung_allowed(rung: &ChainRung<'_>, policy: InteractionPolicy) -> bool {
     !rung.requires_headed || policy.is_headed()
+}
+
+/// Re-dispositions an error raised after a rung already mutated the control.
+/// The caller has positive evidence of delivery, so the retry permission the
+/// inner error carried no longer describes the world the caller is in.
+pub(crate) fn after_delivery(error: AdapterError) -> AdapterError {
+    error.with_disposition(DeliverySemantics::delivered_unverified())
+}
+
+pub(crate) fn delivery_occurred(steps: &[ActionStep]) -> bool {
+    steps
+        .iter()
+        .any(|step| matches!(step.outcome, ActionStepOutcome::Succeeded))
 }
 
 pub(crate) fn exhaustion_disposition(steps: &[ActionStep]) -> DeliverySemantics {

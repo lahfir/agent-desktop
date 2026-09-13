@@ -124,6 +124,50 @@ mod imp {
             .ok_or(MALFORMED_AX_VALUE)
     }
 
+    pub(crate) fn selected_text_range(
+        element: &AXElement,
+        deadline: agent_desktop_core::Deadline,
+    ) -> Option<std::ops::Range<usize>> {
+        use accessibility_sys::{
+            AXValueGetTypeID, AXValueGetValue, kAXErrorSuccess, kAXValueTypeCFRange,
+        };
+        use core_foundation::{
+            base::{CFType, TCFType},
+            string::CFString,
+        };
+        use core_foundation_sys::base::CFRange;
+
+        let attribute = CFString::new("AXSelectedTextRange");
+        let (error, raw) = crate::tree::ax_ipc::copy_attribute_value(
+            element,
+            attribute.as_concrete_TypeRef(),
+            deadline,
+        );
+        if raw.is_null() {
+            return None;
+        }
+        let value = unsafe { CFType::wrap_under_create_rule(raw) };
+        if error != kAXErrorSuccess || value.type_of() != unsafe { AXValueGetTypeID() } {
+            return None;
+        }
+        let mut range = CFRange {
+            location: 0,
+            length: 0,
+        };
+        if !unsafe {
+            AXValueGetValue(
+                raw as _,
+                kAXValueTypeCFRange,
+                (&mut range as *mut CFRange).cast(),
+            )
+        } {
+            return None;
+        }
+        let start = usize::try_from(range.location).ok()?;
+        let length = usize::try_from(range.length).ok()?;
+        Some(start..start.checked_add(length)?)
+    }
+
     fn ax_array_items(arr: CFArray<CFType>) -> Vec<AXElement> {
         arr.into_iter()
             .filter_map(|item| ax_value::retained_ax_element(&item))
@@ -198,3 +242,6 @@ pub(crate) use imp::{
 
 #[cfg(not(target_os = "macos"))]
 pub(crate) use imp::copy_ax_array_result;
+
+#[cfg(target_os = "macos")]
+pub(crate) use imp::selected_text_range;

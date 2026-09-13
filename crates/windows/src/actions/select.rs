@@ -55,10 +55,9 @@ mod imp {
         RefCell, SELECT_LABEL, SelectOps, SelectPlan, UIAElement, VERIFY_TIMEOUT, build_step,
         resolve_select_verification,
     };
-    use crate::actions::chain::capped_verification_end;
+    use crate::actions::chain::{after_delivery, capped_verification_end};
     use crate::actions::disclosure::{EXPAND_LABEL, ExpandKind};
     use crate::actions::mutation::{classify_success, classify_write};
-    use crate::actions::post_state::after_delivery;
     use crate::actions::select_search::{
         find_named_selection_item, name_matches, scroll_to_realize, selection_item_available,
     };

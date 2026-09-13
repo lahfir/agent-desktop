@@ -1,6 +1,6 @@
 use crate::{
-    Action, AdapterError, DeliverySemantics, ErrorCode, action_step::ActionStep,
-    action_step_outcome::ActionStepOutcome, element_state::ElementState,
+    Action, DeliverySemantics, action_step::ActionStep, action_step_outcome::ActionStepOutcome,
+    element_state::ElementState,
 };
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -26,27 +26,23 @@ pub struct ActionResult {
 }
 
 impl ActionResult {
-    pub fn from_execution(
-        action: &Action,
-        steps: Vec<ActionStep>,
-        post_state: Option<ElementState>,
-    ) -> Result<Self, AdapterError> {
+    pub fn from_execution(action: &Action, steps: Vec<ActionStep>) -> Self {
         let label = action.name();
         let (delivered, verified) = delivery_summary(&steps);
         if !delivered {
-            return Ok(Self::satisfied_without_delivery(label).with_steps(steps));
-        }
-        if let Some(state) = post_state.as_ref() {
-            verify_post_state(action, state)?;
+            return Self::satisfied_without_delivery(label).with_steps(steps);
         }
         let mut result = Self::delivered_unverified(label).with_steps(steps);
         if verified {
             result = result.with_verified_delivery();
+            if action.writes_element_value() {
+                result = result.with_details(serde_json::json!({
+                    "verification_scope": "element_value",
+                    "application_commit": "not_verified",
+                }));
+            }
         }
-        if let Some(state) = post_state {
-            result = result.with_state(state);
-        }
-        Ok(result)
+        result
     }
 
     pub fn satisfied_without_delivery(action: impl Into<String>) -> Self {
@@ -93,6 +89,13 @@ impl ActionResult {
         self
     }
 
+    pub(crate) fn with_unverified_delivery(mut self) -> Self {
+        if self.disposition == DeliverySemantics::delivered_verified() {
+            self.disposition = DeliverySemantics::delivered_unverified();
+        }
+        self
+    }
+
     pub const fn disposition(&self) -> DeliverySemantics {
         self.disposition
     }
@@ -110,23 +113,6 @@ fn delivery_summary(steps: &[ActionStep]) -> (bool, bool) {
         }
     }
     (delivered, verification.unwrap_or(false))
-}
-
-fn verify_post_state(action: &Action, state: &ElementState) -> Result<(), AdapterError> {
-    if matches!(action, Action::Clear)
-        && state
-            .value
-            .as_deref()
-            .is_some_and(|value| !value.is_empty())
-    {
-        return Err(AdapterError::new(
-            ErrorCode::ActionFailed,
-            "Clear reported success but element value is still non-empty",
-        )
-        .with_suggestion("Retry 'clear', or use 'press cmd+a' then 'press delete'.")
-        .with_disposition(DeliverySemantics::delivered_unverified()));
-    }
-    Ok(())
 }
 
 const fn default_action_disposition() -> DeliverySemantics {

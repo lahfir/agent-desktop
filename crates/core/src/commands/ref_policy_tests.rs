@@ -79,8 +79,22 @@ impl ObservationOps for RecordingAdapter {
             crate::capability::SCROLL,
             crate::capability::SCROLL_TO,
             crate::capability::TYPE_TEXT,
-        ]
+        ],
+        adapter => crate::adapter::recorded_action_state(&adapter.requests.lock().unwrap())
     );
+
+    fn get_text_selection(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<Option<std::ops::Range<usize>>, AdapterError> {
+        let len = crate::adapter::recorded_action_state(&self.requests.lock().unwrap())
+            .value
+            .unwrap_or_default()
+            .encode_utf16()
+            .count();
+        Ok(Some(0..len))
+    }
 }
 
 impl ActionOps for RecordingAdapter {

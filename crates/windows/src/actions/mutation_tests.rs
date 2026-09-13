@@ -235,7 +235,7 @@ fn a_planted_read_classification_call_is_caught() {
     );
 }
 
-fn mutation_sources() -> [(&'static str, &'static str); 13] {
+fn mutation_sources() -> [(&'static str, &'static str); 12] {
     [
         ("actions/mutation.rs", include_str!("mutation.rs")),
         (
@@ -247,7 +247,6 @@ fn mutation_sources() -> [(&'static str, &'static str); 13] {
         ("actions/focus.rs", include_str!("focus.rs")),
         ("actions/chain.rs", include_str!("chain.rs")),
         ("actions/value_write.rs", include_str!("value_write.rs")),
-        ("actions/post_state.rs", include_str!("post_state.rs")),
         ("actions/toggle_state.rs", include_str!("toggle_state.rs")),
         ("actions/disclosure.rs", include_str!("disclosure.rs")),
         ("actions/select.rs", include_str!("select.rs")),

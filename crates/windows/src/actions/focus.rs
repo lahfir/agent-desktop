@@ -86,15 +86,14 @@ mod imp {
             )
             .with_disposition(DeliverySemantics::not_delivered()));
         }
-        ActionResult::from_execution(
+        Ok(ActionResult::from_execution(
             &Action::SetFocus,
             vec![
                 ActionStep::succeeded(SET_FOCUS_API)
                     .with_mechanism(StepMechanism::SemanticApi)
                     .with_verified(verified),
             ],
-            None,
-        )
+        ))
     }
 
     pub(crate) fn headless_denied(policy: InteractionPolicy) -> AdapterError {

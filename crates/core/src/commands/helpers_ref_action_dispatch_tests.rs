@@ -27,7 +27,26 @@ impl ObservationOps for RecordingAdapter {
     crate::adapter::complete_live_observation!(
         "textfield",
         "OK",
-        [crate::capability::CLICK, crate::capability::TYPE_TEXT]
+        [crate::capability::CLICK, crate::capability::TYPE_TEXT],
+        adapter => ElementState {
+            role: "textfield".into(),
+            states: vec!["focused".into()],
+            value: Some(
+                adapter
+                    .request
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .and_then(|request| match &request.action {
+                        Action::TypeText(text) => Some(text.clone()),
+                        _ => None,
+                    })
+                    .unwrap_or_default(),
+            ),
+            enabled: Some(true),
+            hidden: Some(false),
+            offscreen: Some(false),
+        }
     );
 }
 

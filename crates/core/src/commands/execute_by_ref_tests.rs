@@ -139,7 +139,20 @@ impl ObservationOps for PolicyCaptureAdapter {
             crate::capability::CLICK,
             crate::capability::PRESS_KEY,
             crate::capability::SET_VALUE
-        ]
+        ],
+        adapter => crate::ElementState {
+            role: "textfield".into(),
+            states: Vec::new(),
+            value: adapter.captured.lock().unwrap().as_ref().and_then(|request| {
+                match &request.action {
+                    Action::SetValue(value) => Some(value.clone()),
+                    _ => None,
+                }
+            }),
+            enabled: Some(true),
+            hidden: Some(false),
+            offscreen: Some(false),
+        }
     );
 }
 

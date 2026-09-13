@@ -5,37 +5,6 @@ use agent_desktop_core::{AdapterError, Direction, ErrorCode};
 use super::repeat_action;
 
 #[test]
-fn optional_visibility_pre_step_ignores_recoverable_ax_failures() {
-    for code in [
-        ErrorCode::ActionFailed,
-        ErrorCode::ActionNotSupported,
-        ErrorCode::AppUnresponsive,
-    ] {
-        let result =
-            super::accept_optional_visibility_result(Err(AdapterError::new(code.clone(), "ax")));
-        assert!(
-            result.is_ok(),
-            "{code:?} should not abort the real scroll path"
-        );
-    }
-}
-
-#[test]
-fn optional_visibility_pre_step_preserves_terminal_failures() {
-    for code in [
-        ErrorCode::PermDenied,
-        ErrorCode::StaleRef,
-        ErrorCode::Timeout,
-        ErrorCode::Internal,
-    ] {
-        let error =
-            super::accept_optional_visibility_result(Err(AdapterError::new(code.clone(), "ax")))
-                .expect_err("terminal pre-step failure must remain visible");
-        assert_eq!(error.code, code);
-    }
-}
-
-#[test]
 fn horizontal_wheel_delta_matches_direction() {
     assert_eq!(super::scroll_wheel_delta(&Direction::Right, 2), (0, 2));
     assert_eq!(super::scroll_wheel_delta(&Direction::Left, 2), (0, -2));

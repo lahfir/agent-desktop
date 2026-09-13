@@ -6,15 +6,18 @@ use crate::{
     adapter::NativeHandle, commands::stale_retry_test_support::StaleRetryCounter, refs::RefEntry,
     refs_test_support::HomeGuard,
 };
+use std::sync::Mutex;
 
 struct StaleThenOkAdapter {
     retry: StaleRetryCounter,
+    value: Mutex<String>,
 }
 
 impl StaleThenOkAdapter {
     fn new(fail_until: u32) -> Self {
         Self {
             retry: StaleRetryCounter::new(fail_until),
+            value: Mutex::new(String::new()),
         }
     }
 }
@@ -31,7 +34,15 @@ impl ObservationOps for StaleThenOkAdapter {
     crate::adapter::complete_live_observation!(
         "textfield",
         "Target",
-        [crate::capability::TYPE_TEXT]
+        [crate::capability::TYPE_TEXT],
+        adapter => crate::ElementState {
+            role: "textfield".into(),
+            states: Vec::new(),
+            value: Some(adapter.value.lock().unwrap().clone()),
+            enabled: Some(true),
+            hidden: Some(false),
+            offscreen: Some(false),
+        }
     );
 }
 
@@ -39,9 +50,12 @@ impl ActionOps for StaleThenOkAdapter {
     fn execute_action(
         &self,
         _handle: &NativeHandle,
-        _request: ActionRequest,
+        request: ActionRequest,
         _lease: &crate::InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
+        if let crate::Action::TypeText(text) = request.action {
+            self.value.lock().unwrap().push_str(&text);
+        }
         Ok(ActionResult::delivered_unverified("type_text"))
     }
 }

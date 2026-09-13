@@ -82,7 +82,7 @@ mod imp {
                 continue;
             }
             if let Some(error) = node_attribute_decode::slot_error(&item) {
-                status.record_slot_error(index, error);
+                status.record_native_slot_error(index, error);
                 continue;
             }
             match index {
@@ -172,7 +172,7 @@ mod imp {
                         Some(item) if node_attribute_decode::is_null(&item) => {}
                         Some(item) => {
                             if let Some(error) = node_attribute_decode::slot_error(&item) {
-                                status.record_slot_error(VALUE, error);
+                                status.record_native_slot_error(VALUE, error);
                             } else {
                                 match node_attribute_decode::text(VALUE, &item, usage) {
                                     Some(value) if value.complete => {

@@ -12,6 +12,7 @@ SNAPSHOT_PATTERN = re.compile(rf"^{SNAPSHOT_TOKEN}$")
 SAFE_NAMED_TARGETS = {
     ("button", "primary-button"),
     ("textfield", "text-input"),
+    ("textfield", "silent-text-input"),
     ("checkbox", "toggle-box"),
 }
 SAFE_STATUS_IDS = {
@@ -148,6 +149,12 @@ def validate_command(argv, fixture_app, window_id, mutation_armed):
     if command == "list-windows":
         if argv not in (["list-windows"], ["list-windows", "--app", fixture_app]):
             raise SafetyError("list-windows must be global or fixture-scoped")
+        return
+    if command == "get":
+        if not window_id or len(argv) != 6 or not REF_PATTERN.fullmatch(argv[1]) \
+                or argv[2] != "--snapshot" or not SNAPSHOT_PATTERN.fullmatch(argv[3]) \
+                or argv[4:] != ["--property", "value"]:
+            raise SafetyError("get requires a snapshot-scoped fixture value target")
         return
     if command == "find":
         if not window_id:

@@ -287,8 +287,10 @@ fn zero_bounds_click_reports_visible_fail_after_scroll_seam() {
     assert_eq!(adapter.scroll_calls.load(Ordering::SeqCst), 1);
     assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_ne!(error.code, ErrorCode::PlatformNotSupported);
-    assert_not_delivered(&error);
+    assert_eq!(error.disposition, DeliverySemantics::uncertain());
+    assert_eq!(error.disposition.retry(), RetryDisposition::Unsafe);
     let details = error.details.expect("actionability details");
+    assert_eq!(details["preparatory_scroll"], "may_have_changed_view");
     let visible = find_check(&details, "visible");
     assert_eq!(visible["status"], "fail");
     assert_eq!(visible["reason"], "bounds are zero-sized");
@@ -378,19 +380,16 @@ fn unoccluded_headed_passes_gate_then_platform_not_supported() {
 }
 
 #[test]
-fn occluded_auto_wait_times_out_carrying_receives_events() {
+fn occluded_headed_auto_wait_reports_receives_events_without_timing_out() {
     let adapter = EnvelopeAdapter::new(live_button(true, area(40.0, 20.0))).occluded("window");
     let error = click(
         &adapter,
         ActionRequest::headed(Action::Click).with_timeout_ms(Some(80)),
     );
-    assert_eq!(error.code, ErrorCode::Timeout);
+    assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_not_delivered(&error);
-    let details = error.details.expect("timeout details");
-    assert_eq!(details["kind"], "actionability_timeout");
-    let last = details.get("last_report").expect("last_report");
-    let report = last.get("report").cloned().unwrap_or_else(|| last.clone());
-    let check = find_check(&report, "receives_events");
+    let details = error.details.expect("occlusion details");
+    let check = find_check(&details, "receives_events");
     assert_eq!(check["status"], "fail");
     assert_eq!(check["reason"], "occluded by window");
     assert_eq!(check["occluder"]["role"], "window");

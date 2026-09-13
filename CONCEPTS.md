@@ -10,6 +10,11 @@ A structured representation of an application's user interface exposed by the op
 ### Snapshot
 An observation of an accessibility tree at a point in time, persisted with the element refs allocated from that observation.
 
+### Visual Debug Artifact
+A standalone, opt-in visualization that pairs a snapshot's returned nodes or a click's pre-dispatch target with window screenshots, using labeled bounds and role-group filters for human inspection.
+
+Its filters change only the visualization, not the recorded command result or the desktop. Before/after images are separate observations, not a recording or proof of action delivery.
+
 ### Snapshot ID
 A compact identifier for one persisted snapshot. Lookup is confined to the selected session namespace, so an ID created in a session is not a cross-session handle.
 

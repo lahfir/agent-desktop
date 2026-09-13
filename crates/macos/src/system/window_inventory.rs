@@ -69,6 +69,42 @@ pub(crate) fn list_windows_until(
     })
 }
 
+#[cfg(target_os = "macos")]
+pub(crate) fn focused_window_until(deadline: Instant) -> Result<Option<WindowInfo>, AdapterError> {
+    let Some(pid) = focused_application_pid(deadline)? else {
+        return Ok(None);
+    };
+    let records =
+        cg_window::window_records_until(deadline, cg_window::WindowRecordScope::Pid(pid))?;
+    let windows = windows_from_records_with_focus(
+        records,
+        true,
+        |owner| crate::system::window_ax_state::read_until(owner, deadline),
+        crate::system::process_identity::matches_instance,
+    )?;
+    if focused_application_pid(deadline)? != Some(pid) {
+        return Err(AdapterError::app_unresponsive(
+            "Foreground application changed during focus verification",
+        ));
+    }
+    Ok(windows.into_iter().next())
+}
+
+#[cfg(target_os = "macos")]
+fn focused_application_pid(deadline: Instant) -> Result<Option<i32>, AdapterError> {
+    let system =
+        crate::tree::AXElement(unsafe { accessibility_sys::AXUIElementCreateSystemWide() });
+    crate::tree::surface_read::element(&system, "AXFocusedApplication", deadline)?
+        .map(|app| crate::tree::ax_ipc::pid(&app, deadline))
+        .transpose()
+        .map_err(|error| crate::system::focus::map_ax_read_error(error, "read focused application"))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn focused_window_until(_deadline: Instant) -> Result<Option<WindowInfo>, AdapterError> {
+    Err(AdapterError::not_supported("focused_window"))
+}
+
 fn require_running_app(
     pids: &rustc_hash::FxHashSet<i32>,
     app_filter: &str,

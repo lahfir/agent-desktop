@@ -1,7 +1,7 @@
 {
   "name": "agent-desktop",
-  "version": "0.8.5",
-  "description": "AI agent tool for observing and controlling desktop applications via native OS accessibility trees",
+  "version": "0.9.0",
+  "description": "Reliable computer use for AI agents — observe and operate desktop apps via native accessibility trees",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -23,6 +23,7 @@
     "node": ">=18"
   },
   "keywords": [
+    "computer-use",
     "desktop",
     "automation",
     "accessibility",

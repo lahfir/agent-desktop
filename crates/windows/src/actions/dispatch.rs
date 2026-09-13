@@ -1,9 +1,9 @@
 //! `execute_action` match over every `Action` variant.
 //!
 //! Click routes through the Invoke + Legacy chain. SetValue / Clear route
-//! through `value_write` with post-state attachment. Toggle / Check / Uncheck
-//! and Expand / Collapse attach post-state after delivery. Select and Scroll
-//! route through their dedicated modules. SetFocus routes through `focus`.
+//! through `value_write`. Toggle / Check / Uncheck and Expand / Collapse route
+//! through `toggle_state` and `disclosure`. Select and Scroll route through
+//! their dedicated modules. SetFocus routes through `focus`.
 //! ScrollTo runs the ScrollIntoView spine plus the ancestor ladder when
 //! ScrollItem is absent or leaves geometry unchanged. Physical keyboard and
 //! click legs route through `physical_keyboard` and `physical_click`.
@@ -31,7 +31,6 @@ mod imp {
     use crate::actions::physical_keyboard::{
         press_key_element_steps, press_key_global, type_text_steps,
     };
-    use crate::actions::post_state::post_state_for_steps;
     use crate::actions::scroll::scroll_steps;
     use crate::actions::scroll_into_view::scroll_into_view_outcome;
     use crate::actions::select::select_steps;
@@ -65,11 +64,11 @@ mod imp {
             Action::ScrollTo => execute_scroll_to(handle, lease),
             Action::TypeText(text) => {
                 let steps = type_text_steps(element, text, request.policy, deadline)?;
-                ActionResult::from_execution(&request.action, steps, None)
+                Ok(ActionResult::from_execution(&request.action, steps))
             }
             Action::PressKey(combo) => {
                 let steps = press_key_element_steps(element, combo, request.policy, deadline)?;
-                ActionResult::from_execution(&request.action, steps, None)
+                Ok(ActionResult::from_execution(&request.action, steps))
             }
             Action::DoubleClick => {
                 let steps = double_click_steps(
@@ -78,7 +77,7 @@ mod imp {
                     deadline,
                     request.verified_point().cloned(),
                 )?;
-                ActionResult::from_execution(&request.action, steps, None)
+                Ok(ActionResult::from_execution(&request.action, steps))
             }
             Action::TripleClick => {
                 let steps = triple_click_steps(
@@ -87,7 +86,7 @@ mod imp {
                     deadline,
                     request.verified_point().cloned(),
                 )?;
-                ActionResult::from_execution(&request.action, steps, None)
+                Ok(ActionResult::from_execution(&request.action, steps))
             }
             Action::RightClick => {
                 let steps = right_click_steps(
@@ -96,7 +95,7 @@ mod imp {
                     deadline,
                     request.verified_point().cloned(),
                 )?;
-                ActionResult::from_execution(&request.action, steps, None)
+                Ok(ActionResult::from_execution(&request.action, steps))
             }
             Action::KeyDown(_) | Action::KeyUp(_) | Action::Hover | Action::Drag(_) => {
                 adapter_level_rejection(request.action.name())
@@ -121,7 +120,10 @@ mod imp {
         deadline: Deadline,
     ) -> Result<ActionResult, AdapterError> {
         let steps = select_steps(element, value, deadline)?;
-        ActionResult::from_execution(&Action::Select(value.to_string()), steps, None)
+        Ok(ActionResult::from_execution(
+            &Action::Select(value.to_string()),
+            steps,
+        ))
     }
 
     fn execute_scroll(
@@ -132,7 +134,10 @@ mod imp {
         deadline: Deadline,
     ) -> Result<ActionResult, AdapterError> {
         let steps = scroll_steps(element, direction, amount, policy, deadline)?;
-        ActionResult::from_execution(&Action::Scroll(direction.clone(), amount), steps, None)
+        Ok(ActionResult::from_execution(
+            &Action::Scroll(direction.clone(), amount),
+            steps,
+        ))
     }
 
     fn execute_set_value(
@@ -143,8 +148,7 @@ mod imp {
     ) -> Result<ActionResult, AdapterError> {
         let action = Action::SetValue(value.to_string());
         let steps = set_value_steps(element, value, policy, deadline)?;
-        let post_state = post_state_for_steps(element, &action, &steps, deadline)?;
-        ActionResult::from_execution(&action, steps, post_state)
+        Ok(ActionResult::from_execution(&action, steps))
     }
 
     fn execute_clear(
@@ -153,8 +157,7 @@ mod imp {
         deadline: Deadline,
     ) -> Result<ActionResult, AdapterError> {
         let steps = clear_steps(element, policy, deadline)?;
-        let post_state = post_state_for_steps(element, &Action::Clear, &steps, deadline)?;
-        ActionResult::from_execution(&Action::Clear, steps, post_state)
+        Ok(ActionResult::from_execution(&Action::Clear, steps))
     }
 
     fn execute_toggle(
@@ -163,8 +166,7 @@ mod imp {
         deadline: Deadline,
     ) -> Result<ActionResult, AdapterError> {
         let steps = toggle_steps(element, policy, deadline)?;
-        let post_state = post_state_for_steps(element, &Action::Toggle, &steps, deadline)?;
-        ActionResult::from_execution(&Action::Toggle, steps, post_state)
+        Ok(ActionResult::from_execution(&Action::Toggle, steps))
     }
 
     fn execute_check(
@@ -173,8 +175,7 @@ mod imp {
         deadline: Deadline,
     ) -> Result<ActionResult, AdapterError> {
         let steps = check_steps(element, policy, deadline)?;
-        let post_state = post_state_for_steps(element, &Action::Check, &steps, deadline)?;
-        ActionResult::from_execution(&Action::Check, steps, post_state)
+        Ok(ActionResult::from_execution(&Action::Check, steps))
     }
 
     fn execute_uncheck(
@@ -183,8 +184,7 @@ mod imp {
         deadline: Deadline,
     ) -> Result<ActionResult, AdapterError> {
         let steps = uncheck_steps(element, policy, deadline)?;
-        let post_state = post_state_for_steps(element, &Action::Uncheck, &steps, deadline)?;
-        ActionResult::from_execution(&Action::Uncheck, steps, post_state)
+        Ok(ActionResult::from_execution(&Action::Uncheck, steps))
     }
 
     fn execute_expand(
@@ -193,8 +193,7 @@ mod imp {
         deadline: Deadline,
     ) -> Result<ActionResult, AdapterError> {
         let steps = expand_steps(element, policy, deadline)?;
-        let post_state = post_state_for_steps(element, &Action::Expand, &steps, deadline)?;
-        ActionResult::from_execution(&Action::Expand, steps, post_state)
+        Ok(ActionResult::from_execution(&Action::Expand, steps))
     }
 
     fn execute_collapse(
@@ -203,8 +202,7 @@ mod imp {
         deadline: Deadline,
     ) -> Result<ActionResult, AdapterError> {
         let steps = collapse_steps(element, policy, deadline)?;
-        let post_state = post_state_for_steps(element, &Action::Collapse, &steps, deadline)?;
-        ActionResult::from_execution(&Action::Collapse, steps, post_state)
+        Ok(ActionResult::from_execution(&Action::Collapse, steps))
     }
 
     fn null_handle_action(
@@ -244,11 +242,10 @@ mod imp {
         lease: &InteractionLease,
     ) -> Result<ActionResult, AdapterError> {
         let done = scroll_into_view_outcome(handle, lease)?;
-        ActionResult::from_execution(
+        Ok(ActionResult::from_execution(
             &Action::ScrollTo,
             vec![build_step(done.label, done.outcome)],
-            None,
-        )
+        ))
     }
 
     fn execute_click(
@@ -266,7 +263,7 @@ mod imp {
             || invoke_pattern(element),
             || legacy_default_action(element),
         )?;
-        ActionResult::from_execution(&Action::Click, steps, None)
+        Ok(ActionResult::from_execution(&Action::Click, steps))
     }
 
     pub(crate) fn click_invoke_available(element: &UIAElement) -> bool {

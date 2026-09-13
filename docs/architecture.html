@@ -1,949 +1,105 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>agent-desktop · architecture</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <style>
-      :root {
-        --bg: #08090c;
-        --surface-hi: #1e2128;
-        --surface-mid: #14171e;
-        --surface-lo: #0b0d12;
-        --edge-hi: rgba(255, 255, 255, 0.08);
-        --edge-lo: rgba(0, 0, 0, 0.6);
-        --ink: #f0ece1;
-        --ink-2: #b4b1a5;
-        --ink-dim: #6b6d76;
-        --muted: #3d3f48;
-        --line: #2a2d36;
-        --amber: #f5a623;
-        --amber-soft: #fbd47c;
-      }
-      * { box-sizing: border-box; }
-      html, body {
-        margin: 0;
-        min-height: 100%;
-        background: var(--bg);
-        color: var(--ink);
-        font-family: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
-        font-weight: 500;
-        -webkit-font-smoothing: antialiased;
-      }
-      body {
-        padding: 44px 56px;
-        display: flex;
-        flex-direction: column;
-        gap: 40px;
-        background-image:
-          radial-gradient(ellipse 60% 40% at 50% 0%, rgba(245, 166, 35, 0.05), transparent 70%);
-      }
-
-      /* ============ HEADER ============ */
-      .head-wrap {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 32px;
-        align-items: end;
-        max-width: 1400px;
-        margin: 0 auto;
-        width: 100%;
-      }
-      .head { display: flex; flex-direction: column; gap: 6px; max-width: 820px; }
-      .head .kicker {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 12px;
-        letter-spacing: 0.24em;
-        text-transform: uppercase;
-        color: var(--ink-dim);
-        font-weight: 500;
-      }
-      .head h1 {
-        margin: 0;
-        font-size: 36px;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        color: var(--ink);
-        line-height: 1.1;
-      }
-      .head h1 em {
-        font-style: italic;
-        font-weight: 700;
-        color: var(--amber);
-      }
-      .head p {
-        margin: 4px 0 0;
-        font-size: 15px;
-        font-weight: 400;
-        color: var(--ink-2);
-        line-height: 1.55;
-        max-width: 720px;
-      }
-      .head p strong { color: var(--ink); font-weight: 600; }
-
-      .hero-pills {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 18px;
-      }
-      .hero-pills .hp {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        padding: 5px 11px;
-        border: 1px solid var(--line);
-        border-radius: 99px;
-        font-family: "JetBrains Mono", monospace;
-        font-size: 10.5px;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        color: var(--ink-2);
-        font-weight: 600;
-        background: rgba(255, 255, 255, 0.015);
-      }
-      .hero-pills .hp .d {
-        width: 5px; height: 5px; border-radius: 50%;
-        background: var(--amber);
-      }
-      .hero-pills .hp:first-child {
-        border-color: rgba(245, 166, 35, 0.55);
-        color: var(--amber);
-        background: rgba(245, 166, 35, 0.06);
-      }
-
-      /* platform strip in header */
-      .platforms {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        align-items: flex-end;
-        font-family: "JetBrains Mono", monospace;
-      }
-      .platforms .ph {
-        font-size: 10px;
-        letter-spacing: 0.24em;
-        text-transform: uppercase;
-        color: var(--ink-dim);
-        font-weight: 600;
-      }
-      .platforms .row { display: flex; gap: 8px; }
-      .platforms .p {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 11px;
-        border: 1px solid var(--line);
-        border-radius: 99px;
-        font-size: 11px;
-        letter-spacing: 0.08em;
-        color: var(--ink-2);
-        font-weight: 600;
-      }
-      .platforms .p .d {
-        width: 6px; height: 6px; border-radius: 50%;
-        background: var(--ink-dim);
-      }
-      .platforms .p.on {
-        color: var(--ink);
-        border-color: rgba(127, 198, 164, 0.5);
-        background: rgba(127, 198, 164, 0.06);
-      }
-      .platforms .p.on .d { background: #7fc6a4; box-shadow: 0 0 0 3px rgba(127, 198, 164, 0.18); }
-      .platforms .p.next {
-        color: var(--ink-dim);
-        border-style: dashed;
-      }
-
-      /* ============ FLOW ROW ============ */
-      .flow {
-        display: grid;
-        grid-template-columns: 1fr 180px 1fr 180px 1fr;
-        grid-template-rows: auto auto;
-        column-gap: 0;
-        row-gap: 22px;
-        max-width: 1400px;
-        margin: 0 auto;
-        width: 100%;
-      }
-
-      .obj-cell {
-        grid-row: 1;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
-      .label-cell {
-        grid-row: 2;
-        text-align: center;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: flex-start;
-      }
-      .arrow-col {
-        grid-row: 1;
-        align-self: center;
-      }
-      /* lock columns explicitly so labels always sit directly under their objects */
-      .flow > .c1 { grid-column: 1; }
-      .flow > .c2 { grid-column: 2; }
-      .flow > .c3 { grid-column: 3; }
-      .flow > .c4 { grid-column: 4; }
-      .flow > .c5 { grid-column: 5; }
-      .node {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 22px;
-      }
-      .obj {
-        position: relative;
-        width: 100%;
-        aspect-ratio: 1 / 1;
-        max-width: 240px;
-        margin: 0 auto;
-        border-radius: 18px;
-        background:
-          linear-gradient(180deg, var(--surface-hi) 0%, var(--surface-mid) 55%, var(--surface-lo) 100%);
-        box-shadow:
-          inset 0 1px 0 var(--edge-hi),
-          inset 0 -1px 0 var(--edge-lo),
-          inset 0 0 0 1px rgba(255, 255, 255, 0.02),
-          0 24px 60px -20px rgba(0, 0, 0, 0.7),
-          0 60px 100px -40px rgba(0, 0, 0, 0.55);
-        overflow: hidden;
-      }
-      .obj::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(255, 255, 255, 0.06), transparent 60%);
-        pointer-events: none;
-      }
-
-      .label { text-align: center; }
-      .label .name {
-        display: block;
-        font-size: 17px;
-        font-weight: 700;
-        letter-spacing: -0.01em;
-        color: var(--ink);
-      }
-      .label .role {
-        display: block;
-        margin-top: 6px;
-        font-family: "JetBrains Mono", monospace;
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: var(--ink-dim);
-        line-height: 1.4;
-        min-height: 2.8em;
-      }
-
-      /* --- AGENT (laptop) --- */
-      .agent { display: flex; align-items: center; justify-content: center; }
-      .laptop { width: 64%; transform: perspective(700px) rotateX(8deg); }
-      .laptop .screen {
-        position: relative;
-        width: 100%;
-        aspect-ratio: 16 / 10;
-        border-radius: 8px 8px 4px 4px;
-        background: linear-gradient(180deg, #1a1d24, #0c0e13);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        box-shadow: inset 0 0 0 4px #0a0b0f, 0 8px 16px -4px rgba(0, 0, 0, 0.6);
-        padding: 10px 12px;
-        overflow: hidden;
-      }
-      .laptop .screen .dots { display: flex; gap: 4px; margin-bottom: 8px; }
-      .laptop .screen .dots span { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,0.18); }
-      .laptop .screen .ln { height: 1.5px; background: rgba(255, 255, 255, 0.14); border-radius: 1px; margin-bottom: 4px; }
-      .laptop .screen .ln.s { width: 50%; }
-      .laptop .screen .ln.amber { background: var(--amber); width: 36%; }
-      .laptop .screen .caret { display: inline-block; width: 4px; height: 8px; background: var(--amber); animation: blink 1.1s steps(2) infinite; }
-      @keyframes blink { 50% { opacity: 0; } }
-      .laptop .base { margin: 4px auto 0; width: 112%; height: 6px; background: linear-gradient(180deg, #2a2d35, #14161c); border-radius: 0 0 6px 6px; margin-left: -6%; box-shadow: 0 6px 12px -4px rgba(0,0,0,0.6); }
-
-      /* --- agent-desktop (cube) --- */
-      .binary { display: flex; align-items: center; justify-content: center; }
-      .cube {
-        position: relative;
-        width: 58%;
-        aspect-ratio: 1;
-        background: linear-gradient(160deg, #20232b 0%, #14161d 50%, #0a0c11 100%);
-        border-radius: 14px;
-        box-shadow:
-          inset 0 1px 0 rgba(255,255,255,0.1),
-          inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-          0 16px 30px -10px rgba(0,0,0,0.7);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .cube::before {
-        content: "";
-        position: absolute;
-        top: 12%; left: 12%; right: 12%; bottom: 12%;
-        border: 1.5px solid var(--amber);
-        border-radius: 6px;
-      }
-      .cube .mark {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 26px;
-        font-weight: 700;
-        letter-spacing: -0.04em;
-        color: var(--amber);
-      }
-
-      /* --- TARGET APP (mac window) --- */
-      .app { display: flex; align-items: center; justify-content: center; }
-      .winmock {
-        width: 78%;
-        aspect-ratio: 4 / 3;
-        background: linear-gradient(180deg, #f0e9d4, #e1d6b6);
-        border-radius: 10px;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 16px 30px -8px rgba(0, 0, 0, 0.55);
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-      }
-      .winmock .chrome {
-        height: 22px;
-        padding: 0 10px;
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        background: rgba(20, 24, 31, 0.07);
-        border-bottom: 1px solid rgba(20, 24, 31, 0.1);
-      }
-      .winmock .chrome span { width: 8px; height: 8px; border-radius: 50%; background: rgba(20, 24, 31, 0.2); }
-      .winmock .chrome span:nth-child(1) { background: #ed6a5e; }
-      .winmock .chrome span:nth-child(2) { background: #f4be4f; }
-      .winmock .chrome span:nth-child(3) { background: #61c554; }
-      .winmock .body { flex: 1; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; color: #14181f; }
-      .winmock .body .t { font-size: 11px; font-weight: 800; letter-spacing: -0.01em; }
-      .winmock .body .l { height: 4px; border-radius: 1px; background: rgba(20, 24, 31, 0.15); }
-      .winmock .body .l.s { width: 60%; }
-      .winmock .body .l.btn {
-        margin-top: auto;
-        height: 14px;
-        width: 50%;
-        background: #14181f;
-        border-radius: 3px;
-        position: relative;
-      }
-      .winmock .body .l.btn::after {
-        content: "";
-        position: absolute;
-        inset: -3px;
-        border: 1.5px solid var(--amber);
-        border-radius: 5px;
-        animation: focus-pulse 1.8s ease-in-out infinite;
-      }
-      @keyframes focus-pulse {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.5); }
-        50%      { box-shadow: 0 0 0 4px rgba(245, 166, 35, 0.18); }
-      }
-
-      /* ============ ARROWS ============ */
-      .arrow-col {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 32px;
-      }
-      .arrow {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      .arrow .cap {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 10px;
-        font-weight: 600;
-        letter-spacing: 0.22em;
-        text-transform: uppercase;
-        text-align: center;
-        line-height: 1;
-      }
-      .arrow.fwd .cap { color: var(--amber); }
-      .arrow.ret .cap { color: var(--ink-2); }
-
-      .arrow .rail {
-        display: flex;
-        align-items: center;
-        gap: 0;
-        height: 28px;
-      }
-      .arrow .line {
-        flex: 1;
-        height: 2px;
-        border-radius: 1px;
-      }
-      .arrow.fwd .line { background: var(--amber); }
-      .arrow.ret .line { background: var(--ink-2); }
-      .arrow .head {
-        width: 0;
-        height: 0;
-        border-top: 6px solid transparent;
-        border-bottom: 6px solid transparent;
-        flex-shrink: 0;
-      }
-      .arrow.fwd .head {
-        border-left: 10px solid var(--amber);
-        margin-left: -2px;
-      }
-      .arrow.ret .head {
-        border-right: 10px solid var(--ink-2);
-        margin-right: -2px;
-      }
-      .arrow .badge {
-        flex-shrink: 0;
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        background: var(--bg);
-        border: 1.5px solid var(--amber);
-        color: var(--amber);
-        font-family: "JetBrains Mono", monospace;
-        font-size: 12.5px;
-        font-weight: 700;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-        z-index: 2;
-      }
-      .arrow.ret .badge {
-        border-color: var(--ink-2);
-        color: var(--ink-2);
-      }
-
-      /* ============ TREE BAND ============ */
-      .tree-band {
-        margin: 0 auto;
-        width: 100%;
-        max-width: 1400px;
-        display: grid;
-        grid-template-columns: 1fr 1.4fr 1fr;
-        align-items: center;
-        gap: 32px;
-      }
-      .tree-band .side {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 11px;
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
-        color: var(--ink-dim);
-        line-height: 1.7;
-      }
-      .tree-band .side strong { color: var(--ink); font-weight: 600; letter-spacing: 0.1em; }
-      .tree-band .side.right { text-align: right; }
-      .tree-card {
-        background: linear-gradient(180deg, #14171e, #0b0d12);
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        padding: 22px 26px;
-        box-shadow: 0 16px 40px -16px rgba(0,0,0,0.7);
-      }
-      .tree-card .h {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 10.5px;
-        letter-spacing: 0.24em;
-        text-transform: uppercase;
-        color: var(--ink-dim);
-        margin-bottom: 14px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-      .tree-card .h .sid {
-        color: var(--amber);
-        padding: 2px 8px;
-        border: 1px solid rgba(245, 166, 35, 0.4);
-        border-radius: 99px;
-        background: rgba(245, 166, 35, 0.06);
-        letter-spacing: 0.1em;
-      }
-      .tree-list {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 13px;
-        line-height: 1.85;
-        color: var(--ink-2);
-      }
-      .tree-list .row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      .tree-list .indent { color: var(--muted); }
-      .tree-list .role { color: var(--ink); }
-      .tree-list .name { color: var(--ink-dim); }
-      .tree-list .ref {
-        margin-left: auto;
-        font-size: 11px;
-        color: var(--amber);
-        padding: 1px 7px;
-        border: 1px solid rgba(245, 166, 35, 0.4);
-        border-radius: 4px;
-        background: rgba(245, 166, 35, 0.06);
-      }
-      .tree-list .row.active .role { color: var(--amber); font-weight: 700; }
-      .tree-list .row.active .ref {
-        background: var(--amber);
-        color: #0a0b0f;
-        border-color: var(--amber);
-      }
-
-      /* ============ REAL EXAMPLE ============ */
-      .real {
-        max-width: 1400px;
-        margin: 0 auto;
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-        gap: 26px;
-      }
-      .real-head {
-        display: grid;
-        grid-template-columns: 1.1fr 1.4fr;
-        gap: 40px;
-        align-items: end;
-      }
-      .real-kicker {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 11px;
-        letter-spacing: 0.24em;
-        text-transform: uppercase;
-        color: var(--amber);
-        font-weight: 600;
-      }
-      .real-title {
-        margin: 8px 0 10px;
-        font-size: 24px;
-        font-weight: 700;
-        letter-spacing: -0.015em;
-        color: var(--ink);
-        line-height: 1.15;
-      }
-      .real-tag {
-        margin: 0;
-        font-size: 13.5px;
-        font-weight: 400;
-        color: var(--ink-2);
-        line-height: 1.55;
-        max-width: 460px;
-      }
-      .real-tag strong { color: var(--ink); font-weight: 600; }
-
-      .real-stats {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 12px;
-      }
-      .rs {
-        background: linear-gradient(180deg, #14171e, #0b0d12);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 16px 18px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-      .rs.amber { border-color: rgba(245, 166, 35, 0.45); }
-      .rs.green { border-color: rgba(127, 198, 164, 0.45); }
-      .rs .k {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 10px;
-        letter-spacing: 0.22em;
-        text-transform: uppercase;
-        color: var(--ink-dim);
-        font-weight: 600;
-      }
-      .rs .v {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 30px;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        color: var(--ink);
-        line-height: 1;
-        display: flex;
-        align-items: baseline;
-        gap: 6px;
-      }
-      .rs.amber .v { color: var(--amber); }
-      .rs.green .v { color: #7fc6a4; }
-      .rs .v .u {
-        font-size: 11px;
-        font-weight: 500;
-        color: var(--ink-dim);
-        letter-spacing: 0.08em;
-      }
-      .rs .t {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 10.5px;
-        color: var(--ink-dim);
-        letter-spacing: 0.1em;
-        margin-top: 2px;
-      }
-
-      .real-tree-card {
-        background: linear-gradient(180deg, #14171e, #0b0d12);
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        overflow: hidden;
-        box-shadow: 0 20px 50px -20px rgba(0,0,0,0.8);
-      }
-      .real-tree-card .tree-h {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 14px 20px;
-        background: rgba(255,255,255,0.02);
-        border-bottom: 1px solid var(--line);
-        font-family: "JetBrains Mono", monospace;
-        font-size: 12px;
-        color: var(--ink-2);
-        font-weight: 500;
-        letter-spacing: 0.02em;
-      }
-      .real-tree-card .tree-h .sid {
-        font-size: 10px;
-        color: var(--amber);
-        padding: 3px 9px;
-        border: 1px solid rgba(245, 166, 35, 0.4);
-        border-radius: 99px;
-        background: rgba(245, 166, 35, 0.06);
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-      }
-      .real-tree {
-        margin: 0;
-        padding: 20px 24px;
-        font-family: "JetBrains Mono", monospace;
-        font-size: 12.5px;
-        line-height: 1.85;
-        color: var(--ink-2);
-        white-space: pre-wrap;
-        overflow-x: auto;
-      }
-      .real-tree .c { color: var(--muted); }
-      .real-tree .r { color: var(--ink); font-weight: 600; }
-      .real-tree .n { color: var(--ink-dim); font-weight: 400; }
-      .real-tree .ref {
-        color: var(--amber);
-        padding: 1px 7px;
-        border: 1px solid rgba(245, 166, 35, 0.4);
-        border-radius: 4px;
-        background: rgba(245, 166, 35, 0.06);
-        font-size: 11px;
-      }
-      .real-tree .ref.active {
-        background: var(--amber);
-        color: #0a0b0f;
-        border-color: var(--amber);
-        font-weight: 700;
-      }
-      .real-tree .trunc {
-        color: #7fc6a4;
-        font-size: 11px;
-        letter-spacing: 0.04em;
-      }
-      .real-tree .dim { color: var(--muted); font-size: 11.5px; }
-
-      .real-tree-card .tree-foot {
-        padding: 14px 20px;
-        background: rgba(255,255,255,0.015);
-        border-top: 1px solid var(--line);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 24px;
-        font-family: "Manrope", sans-serif;
-        font-size: 13px;
-        color: var(--ink-2);
-      }
-      .real-tree-card .tree-foot strong { color: var(--ink); font-weight: 600; }
-      .real-tree-card .tree-foot code {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 11.5px;
-        color: var(--amber);
-        background: rgba(245, 166, 35, 0.08);
-        padding: 2px 6px;
-        border-radius: 3px;
-      }
-      .real-tree-card .tree-foot .ms {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 10px;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: var(--ink-dim);
-        text-align: right;
-      }
-
-      /* ============ LEGEND ============ */
-      .legend {
-        max-width: 1400px;
-        margin: 0 auto;
-        width: 100%;
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 36px;
-      }
-      .legend .item {
-        display: flex;
-        gap: 16px;
-        align-items: flex-start;
-      }
-      .legend .item .n {
-        flex-shrink: 0;
-        width: 30px; height: 30px;
-        border-radius: 50%;
-        border: 1.5px solid var(--amber);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-family: "JetBrains Mono", monospace;
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--amber);
-      }
-      .legend .item.b .n {
-        border-color: var(--ink-2);
-        color: var(--ink-2);
-      }
-      .legend .item .body { flex: 1; padding-top: 3px; }
-      .legend .item .body .t {
-        font-size: 14.5px;
-        font-weight: 700;
-        color: var(--ink);
-        letter-spacing: -0.005em;
-        margin-bottom: 4px;
-      }
-      .legend .item .body .d {
-        font-size: 12.5px;
-        font-weight: 400;
-        color: var(--ink-dim);
-        line-height: 1.55;
-      }
-      .legend .item .body .d code {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 11.5px;
-        color: var(--amber);
-        background: rgba(245, 166, 35, 0.08);
-        padding: 1px 6px;
-        border-radius: 3px;
-      }
-
-      footer {
-        max-width: 1400px;
-        margin: 0 auto;
-        width: 100%;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding-top: 24px;
-        border-top: 1px solid var(--line);
-        font-family: "JetBrains Mono", monospace;
-        font-size: 11px;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: var(--ink-dim);
-      }
-      footer .meta { display: flex; gap: 28px; }
-      footer strong { color: var(--ink); font-weight: 600; }
-
-      /* responsive: keep flow always horizontal, scale arrow column */
-      @media (max-width: 1100px) {
-        body { padding: 32px 28px; gap: 36px; }
-        .head-wrap { grid-template-columns: 1fr; gap: 16px; align-items: start; }
-        .platforms { align-items: flex-start; }
-        .flow { grid-template-columns: 1fr 130px 1fr 130px 1fr; }
-        .real-head { grid-template-columns: 1fr; gap: 24px; }
-        .legend { grid-template-columns: repeat(2, 1fr); gap: 24px; }
-        footer { flex-direction: column; gap: 12px; align-items: flex-start; }
-      }
-      @media (max-width: 760px) {
-        body { padding: 24px 16px; }
-        .flow { grid-template-columns: 1fr 90px 1fr 90px 1fr; }
-        .arrow .cap { font-size: 9px; letter-spacing: 0.16em; }
-        .arrow .badge { width: 26px; height: 26px; font-size: 11px; }
-        .tree-band { grid-template-columns: 1fr; }
-        .tree-band .side { text-align: left !important; }
-        .real-stats { grid-template-columns: 1fr; }
-        .real-tree { font-size: 10.5px; }
-        .real-tree-card .tree-foot { flex-direction: column; align-items: flex-start; gap: 10px; }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="head-wrap">
-      <header class="head">
-        <span class="kicker">agent-desktop · architecture</span>
-        <h1>Computer use, done <em>natively</em>.</h1>
-        <p>Most computer-use stacks feed the agent a screenshot and hope it can find a button by pixel. <strong>agent-desktop reads the OS accessibility tree directly</strong> — every element has a deterministic name, every action goes through the same native API a screen reader uses. Faster, cheaper, repeatable. Works with any harness, any model.</p>
-        <div class="hero-pills">
-          <span class="hp"><span class="d"></span>computer use</span>
-          <span class="hp"><span class="d"></span>native accessibility</span>
-          <span class="hp"><span class="d"></span>open source · apache-2.0</span>
-        </div>
-      </header>
-      <aside class="platforms" aria-label="platform support">
-        <span class="ph">platforms</span>
-        <div class="row">
-          <span class="p on"><span class="d"></span>macOS</span>
-          <span class="p next"><span class="d"></span>windows</span>
-          <span class="p next"><span class="d"></span>linux</span>
-        </div>
-      </aside>
-    </div>
-
-    <!-- ============ MAIN FLOW: row 1 = objects + arrows, row 2 = labels ============ -->
-    <section class="flow">
-      <!-- ROW 1 -->
-      <div class="obj-cell c1">
-        <div class="obj agent">
-          <div class="laptop">
-            <div class="screen">
-              <div class="dots"><span></span><span></span><span></span></div>
-              <div class="ln"></div>
-              <div class="ln s"></div>
-              <div class="ln"></div>
-              <div class="ln amber"></div>
-              <div class="ln s"></div>
-              <span class="caret"></span>
-            </div>
-            <div class="base"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="arrow-col c2">
-        <div class="arrow fwd">
-          <span class="cap">command</span>
-          <div class="rail">
-            <span class="line"></span>
-            <span class="badge">1</span>
-            <span class="line"></span>
-            <span class="head"></span>
-          </div>
-        </div>
-        <div class="arrow ret">
-          <div class="rail">
-            <span class="head"></span>
-            <span class="line"></span>
-            <span class="badge">4</span>
-            <span class="line"></span>
-          </div>
-          <span class="cap">refs · json</span>
-        </div>
-      </div>
-
-      <div class="obj-cell c3">
-        <div class="obj binary">
-          <div class="cube">
-            <span class="mark">a–d</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="arrow-col c4">
-        <div class="arrow fwd">
-          <span class="cap">ax query</span>
-          <div class="rail">
-            <span class="line"></span>
-            <span class="badge">2</span>
-            <span class="line"></span>
-            <span class="head"></span>
-          </div>
-        </div>
-        <div class="arrow ret">
-          <div class="rail">
-            <span class="head"></span>
-            <span class="line"></span>
-            <span class="badge">3</span>
-            <span class="line"></span>
-          </div>
-          <span class="cap">tree</span>
-        </div>
-      </div>
-
-      <div class="obj-cell c5">
-        <div class="obj app">
-          <div class="winmock">
-            <div class="chrome"><span></span><span></span><span></span></div>
-            <div class="body">
-              <div class="t">Image Upload</div>
-              <div class="l"></div>
-              <div class="l s"></div>
-              <div class="l btn"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ROW 2: labels under each object, explicit columns -->
-      <div class="label-cell label c1">
-        <span class="name">AI agent</span>
-        <span class="role">LLM · script · host</span>
-      </div>
-      <div class="label-cell label c3">
-        <span class="name">agent-desktop</span>
-        <span class="role">cli · cdylib · ffi</span>
-      </div>
-      <div class="label-cell label c5">
-        <span class="name">Target app</span>
-        <span class="role">macOS · windows · linux</span>
-      </div>
-    </section>
-
-    <!-- ============ LEGEND ============ -->
-    <section class="legend">
-      <div class="item">
-        <span class="n">1</span>
-        <div class="body">
-          <div class="t">Agent calls the binary</div>
-          <div class="d">An LLM or script invokes <code>agent-desktop snapshot --app MySwiftApp</code>.</div>
-        </div>
-      </div>
-      <div class="item">
-        <span class="n">2</span>
-        <div class="body">
-          <div class="t">Binary queries the OS</div>
-          <div class="d">Reads the live accessibility tree of the target app via native <code>AXUIElement</code> APIs.</div>
-        </div>
-      </div>
-      <div class="item b">
-        <span class="n">3</span>
-        <div class="body">
-          <div class="t">Tree returns</div>
-          <div class="d">Every interactive element gets a stable handle: <code>@e1</code> … <code>@eN</code>, scoped to a snapshot id.</div>
-        </div>
-      </div>
-      <div class="item b">
-        <span class="n">4</span>
-        <div class="body">
-          <div class="t">Agent acts on a ref</div>
-          <div class="d">Follow-up call like <code>click @e7</code> drives the app through the same native AX path.</div>
-        </div>
-      </div>
-    </section>
-
-    <footer>
-      <div class="meta">
-        <span><strong>92%</strong> fewer tokens vs screenshots</span>
-        <span><strong>54</strong> commands</span>
-        <span><strong>Refs</strong> deterministic per snapshot</span>
-      </div>
-      <div>macOS active · windows + linux planned</div>
-    </footer>
-  </body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>agent-desktop · architecture</title><style>
+:root {color-scheme:light;--ink:#12355a;--blue:#1974ee;--orange:#ff9954;--pink:#ff79b7;--green:#38dab1;}
+* {box-sizing:border-box;} body {margin:0;background:#e6f5ff;} main {max-width:1600px;margin:auto;}
+svg {display:block;width:100%;height:auto;color:var(--ink);} text {font-family:ui-rounded,"Arial Rounded MT Bold","Trebuchet MS",sans-serif;fill:var(--ink);}
+.cursor {stroke:var(--ink);stroke-width:3.5;stroke-linejoin:round;}
+.line {fill:none;stroke:var(--ink);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;}
+</style></head><body><main>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title description"><title id="title">agent-desktop · architecture</title><desc id="description">An AI agent sends commands to agent-desktop, which reads and operates desktop apps through native accessibility. App state returns as JSON and snapshot-scoped refs. The agent observes, drills, acts and verifies.</desc><defs>
+      <linearGradient id="sky" x2="0" y2="1">
+        <stop stop-color="oklch(83% .09 235)"/>
+        <stop offset="1" stop-color="oklch(94% .04 228)"/>
+      </linearGradient>
+      <linearGradient id="screen" x2="1" y2="1">
+        <stop stop-color="oklch(91% .07 244)"/>
+        <stop offset="1" stop-color="oklch(95% .045 290)"/>
+      </linearGradient>
+      <linearGradient id="case" x2="0" y2="1">
+        <stop stop-color="white"/>
+        <stop offset="1" stop-color="oklch(89% .025 244)"/>
+      </linearGradient>
+      <linearGradient id="pointer-light" x1="0" y1="0" x2=".8" y2="1">
+        <stop stop-color="white" stop-opacity=".55"/>
+        <stop offset=".45" stop-color="white" stop-opacity="0"/>
+        <stop offset="1" stop-color="oklch(25% .09 254)" stop-opacity=".2"/>
+      </linearGradient>
+      <filter id="cursor-shadow" x="-50%" y="-50%" width="220%" height="220%">
+        <feDropShadow dx="3" dy="7" stdDeviation="3" flood-color="oklch(30% .09 254)" flood-opacity=".22"/>
+      </filter>
+      <path id="pointer-shape" d="M0 0 9 56 23 40 36 64 49 57 35 34 57 30Z"/>
+      <g id="pointer" filter="url(#cursor-shadow)">
+        <use href="#pointer-shape" transform="translate(2 5)" fill="oklch(37% .09 254)"/>
+        <use href="#pointer-shape"/>
+        <use href="#pointer-shape" fill="url(#pointer-light)" stroke="none"/>
+        <path d="m5 10 6 34M8 7 33 21" fill="none" stroke="white" stroke-opacity=".65" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <g id="spark" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+        <path d="M0-7V7M-7 0H7"/>
+      </g>
+      <g id="cloud" fill="white">
+        <path d="M0 48C0 34 10 24 24 24 24 10 36 0 51 0 69 0 80 11 82 27 101 23 118 34 118 48 118 59 109 65 98 65H22C9 65 0 59 0 48Z"/>
+      </g>
+    <linearGradient id="wide-sky" x2="0" y2="1"><stop stop-color="#82d4ff"/><stop offset="1" stop-color="#e1f7ff"/></linearGradient></defs><path d="M0 0H1600V1000H0Z" fill="url(#wide-sky)"/><circle cx="1498" cy="104" r="43" fill="#ffe16a"/><circle cx="1498" cy="104" r="58" fill="none" stroke="#fff5bc" stroke-width="2"/>
+<use href="#cloud" transform="translate(-54 224) scale(1.6)" opacity=".65"/><use href="#cloud" transform="translate(1470 234) scale(1.4)" opacity=".8"/><use href="#cloud" transform="translate(-40 701) scale(1.6)" opacity=".65"/><use href="#cloud" transform="translate(1451 707) scale(1.8)" opacity=".75"/>
+<text x="72" y="60" font-size="25" font-weight="700">agent-desktop · Computer Use</text>
+<text x="72" y="150" font-size="58" font-weight="800" letter-spacing="-1.5">Computer Use through native accessibility.</text>
+<text x="72" y="206" font-size="29">The agent calls the CLI or C library. agent-desktop reads and operates the app through OS APIs.</text>
+<text x="72" y="249" font-size="25">Observation returns structured JSON. Actions use snapshot-scoped refs to identify live controls.</text>
+<path d="M0 617C200 617 300 708 510 617S900 705 1090 617 1430 590 1600 617" fill="none" stroke="#66b3d9" stroke-width="3" stroke-dasharray="2 12" stroke-linecap="round"/>
+<g transform="translate(115 302) rotate(-4 150 110)">
+<rect x="8" y="10" width="300" height="220" rx="14" fill="#b95375"/><rect width="300" height="220" rx="14" fill="#fff7fa" stroke="#12355a" stroke-width="3"/>
+<path d="M0 40V14Q0 0 14 0H286Q300 0 300 14V40Z" fill="#ff91b3"/><path d="M0 40H300" class="line"/>
+<circle cx="22" cy="20" r="5" fill="white"/><circle cx="39" cy="20" r="5" fill="white"/><circle cx="56" cy="20" r="5" fill="white"/>
+<path d="m27 76 14 12-14 12M55 100H88" class="line"/><text x="26" y="145" font-size="31" font-weight="800">snapshot</text>
+<rect x="24" y="168" width="252" height="31" rx="7" fill="#ffd5e3"/><path d="M41 183H193" stroke="#d37899" stroke-width="7" stroke-linecap="round"/>
+<path d="M-20 223H320L308 236H-8Z" fill="#f7bdd1" stroke="#12355a" stroke-width="3"/>
+</g>
+<g transform="translate(677 301)">
+<path d="M0 35 48 0H258L210 35Z" fill="#a4f6df" stroke="#12355a" stroke-width="3" stroke-linejoin="round"/>
+<path d="M210 35 258 0V200L210 235Z" fill="#1da997" stroke="#12355a" stroke-width="3" stroke-linejoin="round"/>
+<rect y="35" width="210" height="200" rx="10" fill="#4ee0b6" stroke="#12355a" stroke-width="3"/>
+<path d="M12 48H197M12 49V211" stroke="#dafff0" stroke-width="3" fill="none"/>
+<g transform="translate(80 70) scale(.75)" class="cursor" fill="#ffe078"><use href="#pointer"/></g>
+<text x="105" y="178" text-anchor="middle" font-size="26" font-weight="800">CLI + C library</text>
+<text x="105" y="210" text-anchor="middle" font-size="22">native access</text>
+</g>
+<g transform="translate(1185 302) rotate(4 150 110)">
+<path d="M123 214 117 252H193L187 214M108 252H202L212 264H98Z" fill="#d7e7f3" stroke="#12355a" stroke-width="3"/>
+<rect x="8" y="10" width="300" height="220" rx="14" fill="#31567e"/><rect width="300" height="220" rx="14" fill="url(#case)" stroke="#12355a" stroke-width="3"/>
+<rect x="12" y="13" width="276" height="178" rx="7" fill="white" stroke="#12355a" stroke-width="2"/>
+<path d="M13 48H287" class="line"/><circle cx="29" cy="31" r="5" fill="#ff938d"/><circle cx="46" cy="31" r="5" fill="#ffe078"/><circle cx="63" cy="31" r="5" fill="#38dab1"/>
+<text x="30" y="85" font-size="25" font-weight="700">Your app</text><path d="M31 107H237M31 123H190" stroke="#aec6dc" stroke-width="7" stroke-linecap="round"/>
+<rect x="30" y="143" width="150" height="33" rx="7" fill="#ffe078"/><text x="105" y="167" text-anchor="middle" font-size="23" font-weight="700">Save</text>
+<circle cx="158" cy="155" r="23" fill="none" stroke="#ff9954" stroke-width="3"/>
+<g transform="translate(158 155) rotate(-12) scale(.72)" class="cursor" fill="#ff9954"><use href="#pointer"/></g>
+</g>
+<text x="530" y="347" text-anchor="middle" font-size="24" font-weight="700">Commands</text><path d="M440 371H613m-12-10 12 10-12 10" class="line"/>
+<path d="M613 455H440m12-10-12 10 12 10" class="line"/><text x="527" y="493" text-anchor="middle" font-size="24" font-weight="700">JSON + refs</text>
+<text x="1064" y="347" text-anchor="middle" font-size="24" font-weight="700">Native API</text><path d="M968 371H1151m-12-10 12 10-12 10" class="line"/>
+<path d="M1151 455H968m12-10-12 10 12 10" class="line"/><text x="1064" y="493" text-anchor="middle" font-size="24" font-weight="700">UI tree / result</text>
+<text x="265" y="622" text-anchor="middle" font-size="35" font-weight="800">AI agent</text><text x="800" y="622" text-anchor="middle" font-size="35" font-weight="800">agent-desktop</text><text x="1335" y="622" text-anchor="middle" font-size="35" font-weight="800">Desktop apps</text>
+<text x="265" y="665" text-anchor="middle" font-size="24">Chooses commands and actions.</text><text x="800" y="665" text-anchor="middle" font-size="24">CLI · C library · FFI</text><text x="1335" y="665" text-anchor="middle" font-size="24">OS accessibility APIs</text>
+<path d="M72 714H1528" stroke="#72b4d6" stroke-width="2"/>
+<g>
+<text x="72" y="766" font-size="27" font-weight="800">1. Request a snapshot</text>
+<text x="72" y="804" font-size="23">The agent asks for the app’s UI.</text>
+<text x="72" y="837" font-size="23">Read the full UI, or start with a</text>
+<text x="72" y="870" font-size="23">skeleton overview and drill in.</text>
+<text x="447" y="766" font-size="27" font-weight="800">2. Read the native tree</text>
+<text x="447" y="804" font-size="23">agent-desktop queries the OS.</text>
+<text x="447" y="837" font-size="23">On macOS: AXUIElement.</text>
+<text x="447" y="870" font-size="23">Returns roles, states and actions.</text>
+<text x="822" y="766" font-size="27" font-weight="800">3. Return JSON + refs</text>
+<text x="822" y="804" font-size="23">Actionable or drillable nodes get</text>
+<text x="822" y="837" font-size="23">refs scoped to that snapshot.</text>
+<text x="822" y="870" font-size="23">Example: @s8f3k2p9:e7</text>
+<text x="1197" y="766" font-size="27" font-weight="800">4. Act and verify</text>
+<text x="1197" y="804" font-size="23">click @s8f3k2p9:e7</text>
+<text x="1197" y="837" font-size="23">Re-identify the control, then act.</text>
+<text x="1197" y="870" font-size="23">Read again to verify the change.</text>
+</g>
+<text x="72" y="927" font-size="23">Headless by default: semantic actions without moving the cursor or stealing focus.</text>
+<text x="72" y="974" font-size="22">Refs can go stale when the UI changes. Refresh the affected region before continuing.</text>
+<text x="1528" y="974" text-anchor="end" font-size="22">macOS active · Windows + Linux planned</text>
+</svg></main></body></html>

@@ -54,7 +54,8 @@ pub(crate) fn check_live_with_stability(
         target
             .adapter
             .get_live_element(target.handle, target.deadline),
-    )?;
+    )
+    .map_err(crate::ref_action::mark_pre_dispatch_resolution_failure)?;
     check_with_stability(
         stability,
         &evidence,
@@ -62,6 +63,7 @@ pub(crate) fn check_live_with_stability(
         Some((target.handle, target.adapter)),
         target.deadline,
     )
+    .map_err(crate::ref_action::mark_pre_dispatch_resolution_failure)
 }
 
 /// [`check_live_with_stability`]'s report-preserving counterpart - see

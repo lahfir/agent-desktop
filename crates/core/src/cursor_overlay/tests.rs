@@ -150,6 +150,7 @@ fn drag_phase_is_serialized_and_requires_acknowledgement() {
     let control = CursorOverlayControl::present("run-1".into(), instruction);
 
     assert!(control.is_travel());
+    assert!(control.expects_acknowledgement());
     assert_eq!(
         serde_json::to_value(control).expect("control serializes")["instruction"]["phase"],
         "drag"
@@ -166,6 +167,10 @@ fn control_protocol_carries_the_session_lifecycle() {
     assert!(enable.is_enable());
     assert_eq!(disable.session_id(), "run-1");
     assert!(disable.is_disable());
+    assert!(disable.expects_acknowledgement());
+    assert!(!enable.expects_acknowledgement());
+    assert!(CursorOverlayControl::show("run-1".into()).expects_acknowledgement());
+    assert!(CursorOverlayControl::hide("run-1".into()).expects_acknowledgement());
 }
 
 #[test]

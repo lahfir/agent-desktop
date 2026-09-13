@@ -13,7 +13,7 @@ pub(crate) use system::SystemOps;
 #[cfg(test)]
 pub(crate) use test_support::{
     complete_live_observation, exact_window_focus, guarded_interaction_lease, live_identity,
-    observed_tree,
+    observed_tree, recorded_action_state,
 };
 
 pub(crate) use crate::live_element::LiveElement;

@@ -31,8 +31,8 @@ mod imp {
         DeliverySemantics, ErrorCode, InteractionPolicy, RANGE_LABEL, UIAElement, VALUE_LABEL,
         VALUE_WRITE_CHAIN, execute_chain,
     };
+    use crate::actions::chain::after_delivery;
     use crate::actions::mutation::{classify_success, classify_write};
-    use crate::actions::post_state::after_delivery;
     use crate::tree::element_properties::ElementProperties;
     use crate::tree::properties::read_one;
     use crate::tree::property_ids::TreeProperty;
@@ -349,7 +349,7 @@ pub(crate) use imp::{clear_steps, set_value_steps};
 pub(crate) use imp::{gated_pattern_value_equals, gated_range_compare, gated_value_compare};
 
 #[cfg(all(test, target_os = "windows"))]
-pub(crate) use imp::{clear_judged_for, parse_finite_f64, set_value_judged_for};
+pub(crate) use imp::{parse_finite_f64, set_value_judged_for};
 
 #[cfg(all(test, target_os = "windows"))]
 #[path = "value_write_tests.rs"]

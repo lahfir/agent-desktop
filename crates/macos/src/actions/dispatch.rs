@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     Action, ActionResult, ActionStep, AdapterError, Deadline, ErrorCode, StepMechanism,
-    action_request::ActionRequest, action_step_outcome::ActionStepOutcome,
+    action_request::ActionRequest,
 };
 
 #[cfg(target_os = "macos")]
@@ -198,13 +198,7 @@ mod imp {
             }
         }
 
-        let post_state = if delivery_occurred(&steps) && !deadline.is_expired() {
-            crate::actions::post_state::read_post_state(el, action, deadline)
-                .map_err(after_delivery)?
-        } else {
-            None
-        };
-        ActionResult::from_execution(action, steps, post_state)
+        Ok(ActionResult::from_execution(action, steps))
     }
 
     fn run_chain(
@@ -235,16 +229,6 @@ mod imp {
             Err(error) if error.code == ErrorCode::AppUnresponsive => Ok(None),
             result => result,
         }
-    }
-
-    fn after_delivery(error: AdapterError) -> AdapterError {
-        error.with_disposition(agent_desktop_core::DeliverySemantics::delivered_unverified())
-    }
-
-    fn delivery_occurred(steps: &[ActionStep]) -> bool {
-        steps
-            .iter()
-            .any(|step| matches!(step.outcome, ActionStepOutcome::Succeeded))
     }
 }
 

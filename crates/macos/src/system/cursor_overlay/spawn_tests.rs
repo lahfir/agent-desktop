@@ -11,6 +11,11 @@ fn drag_requires_acknowledgement_before_tracking_is_considered_ready() {
     check_acknowledgement(agent_desktop_core::CursorPhase::Drag, false);
 }
 
+#[test]
+fn effect_requires_acknowledgement_before_it_is_considered_delivered() {
+    check_acknowledgement(agent_desktop_core::CursorPhase::Effect, false);
+}
+
 fn check_acknowledgement(phase: agent_desktop_core::CursorPhase, accepted: bool) {
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

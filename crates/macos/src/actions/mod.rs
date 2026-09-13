@@ -4,6 +4,7 @@ mod adapter;
 pub(crate) mod ax_helpers;
 #[cfg(target_os = "macos")]
 pub(crate) mod ax_mutation;
+pub(crate) mod ax_perform;
 pub(crate) mod chain;
 mod chain_context;
 mod chain_def;

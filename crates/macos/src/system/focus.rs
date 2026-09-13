@@ -8,12 +8,17 @@ const VERIFY_LIMIT: Duration = Duration::from_millis(500);
 
 #[cfg(target_os = "macos")]
 pub(crate) fn ensure_app_focused(pid: i32, deadline: Deadline) -> Result<(), AdapterError> {
+    focus_app(pid, deadline).map(|_| ())
+}
+
+#[cfg(target_os = "macos")]
+fn focus_app(pid: i32, deadline: Deadline) -> Result<bool, AdapterError> {
     use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
 
     tracing::debug!("system: ensure app focused pid={pid}");
     let app = crate::tree::element_for_pid(pid);
     if read_frontmost(&app, deadline)? {
-        return Ok(());
+        return Ok(false);
     }
     prepare(&app, deadline)?;
     let attribute = CFString::new("AXFrontmost");
@@ -30,6 +35,7 @@ pub(crate) fn ensure_app_focused(pid: i32, deadline: Deadline) -> Result<(), Ada
         deadline,
         "application did not become frontmost",
     )
+    .map(|()| true)
     .map_err(after_delivery)
 }
 
@@ -62,9 +68,11 @@ pub(crate) fn focus_window_impl(
         window.title
     );
     let pid = crate::system::process_identity::to_pid_t(window.pid)?;
-    ensure_app_focused(pid, deadline)?;
     let element = crate::system::window_resolve::window_element_for_info(window, deadline)?;
-    crate::system::window_ops::raise_window(&element, deadline)?;
+    let focused = focus_app(pid, deadline)?;
+    crate::system::window_ops::raise_window(&element, deadline).map_err(|error| {
+        crate::actions::DeliveryTracker::from_delivered_units(usize::from(focused)).annotate(error)
+    })?;
     verify_app_focused(pid, deadline).map_err(after_delivery)
 }
 
@@ -187,7 +195,7 @@ pub(crate) fn finish_mutation(
 }
 
 #[cfg(target_os = "macos")]
-fn map_ax_read_error(error: i32, operation: &str) -> AdapterError {
+pub(crate) fn map_ax_read_error(error: i32, operation: &str) -> AdapterError {
     use accessibility_sys::{
         kAXErrorAPIDisabled, kAXErrorCannotComplete, kAXErrorInvalidUIElement,
     };

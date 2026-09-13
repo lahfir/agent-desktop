@@ -172,7 +172,7 @@ fn format_response(
     let matches = resolution
         .matches
         .into_iter()
-        .map(|found| serde_json::to_value(found.data))
+        .map(|found| format_match(found.data, found.entry.geometry.bounds))
         .collect::<Result<Vec<_>, _>>()?;
     if args.selection.first || args.selection.last || args.selection.nth.is_some() {
         let mut response = single_match_response(matches.into_iter().next(), query, roles_present);
@@ -188,6 +188,18 @@ fn format_response(
     attach_roles_present(&mut response, is_empty, query, roles_present);
     attach_snapshot_id(&mut response, snapshot_id);
     Ok(response)
+}
+
+fn format_match(
+    data: crate::live_locator::LocatorMatchData,
+    bounds: Option<crate::Rect>,
+) -> Result<Value, serde_json::Error> {
+    let needs_geometry = data.ref_id.is_none();
+    let mut value = serde_json::to_value(data)?;
+    if needs_geometry && let Some(bounds) = bounds {
+        value["bounds"] = serde_json::to_value(bounds)?;
+    }
+    Ok(value)
 }
 
 fn attach_snapshot_id(response: &mut Value, snapshot_id: Option<&str>) {
@@ -272,6 +284,30 @@ mod tests {
             "omitting the flag must leave the shipped default alone"
         );
     }
+    #[test]
+    fn context_matches_expose_geometry_without_inventing_action_refs() {
+        let data = crate::live_locator::LocatorMatchData {
+            ref_id: None,
+            role: "group".into(),
+            name: "(unnamed group)".into(),
+            value: None,
+            states: Vec::new(),
+            interactive: false,
+            path: vec!["list".into()],
+        };
+        let bounds = crate::Rect {
+            x: 10.0,
+            y: 20.0,
+            width: 100.0,
+            height: 30.0,
+        };
+        let response = format_match(data.clone(), Some(bounds)).unwrap();
+
+        assert_eq!(response["bounds"], json!(bounds));
+        assert!(response["ref_id"].is_null());
+        assert!(format_match(data, None).unwrap().get("bounds").is_none());
+    }
+
     #[test]
     fn zero_limit_requests_all_matches() {
         let request = resolve_request(&args(Some(0)), crate::Deadline::standard().unwrap());

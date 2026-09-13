@@ -6,7 +6,11 @@ mod imp {
     use accessibility_sys::{
         kAXPositionAttribute, kAXSizeAttribute, kAXValueTypeCGPoint, kAXValueTypeCGSize,
     };
-    use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
+    use core_foundation::{
+        base::{CFType, TCFType},
+        boolean::CFBoolean,
+        string::CFString,
+    };
     use core_graphics::geometry::{CGPoint, CGSize};
     use std::ffi::c_void;
 
@@ -44,7 +48,9 @@ mod imp {
         )?;
         let work_area = crate::system::display_work_area::for_window(current, deadline)?;
         set_position(el, work_area.x, work_area.y, deadline)?;
-        set_size(el, work_area.width, work_area.height, deadline)
+        set_size(el, work_area.width, work_area.height, deadline).map_err(|error| {
+            crate::actions::DeliveryTracker::from_delivered_units(1).annotate(error)
+        })
     }
 
     fn set_size(
@@ -62,13 +68,13 @@ mod imp {
             return Err(AdapterError::internal("Failed to create AXValue for size"));
         }
         let cf_attr = CFString::new(kAXSizeAttribute);
+        let ax_value = unsafe { CFType::wrap_under_create_rule(ax_value as _) };
         let err = crate::tree::ax_ipc::set_attribute_value(
             el,
             cf_attr.as_concrete_TypeRef(),
-            ax_value as _,
+            ax_value.as_CFTypeRef(),
             deadline,
         )?;
-        unsafe { core_foundation::base::CFRelease(ax_value as _) };
         finish(el, err, "resize window", deadline)?;
         crate::system::window_postcondition::wait_for_geometry(
             el,
@@ -100,13 +106,13 @@ mod imp {
             ));
         }
         let cf_attr = CFString::new(kAXPositionAttribute);
+        let ax_value = unsafe { CFType::wrap_under_create_rule(ax_value as _) };
         let err = crate::tree::ax_ipc::set_attribute_value(
             el,
             cf_attr.as_concrete_TypeRef(),
-            ax_value as _,
+            ax_value.as_CFTypeRef(),
             deadline,
         )?;
-        unsafe { core_foundation::base::CFRelease(ax_value as _) };
         finish(el, err, "move window", deadline)?;
         crate::system::window_postcondition::wait_for_geometry(
             el,
@@ -225,10 +231,6 @@ mod imp {
 
 #[cfg(target_os = "macos")]
 mod raise {
-    use accessibility_sys::{
-        kAXErrorActionUnsupported, kAXErrorAttributeUnsupported, kAXErrorNotImplemented,
-        kAXErrorSuccess,
-    };
     use agent_desktop_core::{AdapterError, Deadline, DeliverySemantics};
     use core_foundation::{base::TCFType, boolean::CFBoolean, string::CFString};
 
@@ -240,36 +242,77 @@ mod raise {
         let raise = CFString::new("AXRaise");
         let raise_err =
             crate::tree::ax_ipc::perform_action(window, raise.as_concrete_TypeRef(), deadline)?;
-        if raise_err == kAXErrorSuccess {
-            return crate::system::focus::wait_until_main(window, deadline).map_err(after_delivery);
+        let outcome = crate::actions::ax_mutation::classify_result(
+            window,
+            "AXRaise",
+            crate::actions::ax_mutation::PERFORM_API,
+            raise_err,
+        );
+        if !needs_main_fallback(outcome, || {
+            crate::system::focus::wait_until_main(window, deadline)
+        })? {
+            return Ok(());
         }
-        if safe_to_fallback(raise_err) {
-            prepare(window, deadline)?;
-            let main_attr = CFString::new("AXMain");
-            let ax_err = crate::tree::ax_ipc::set_attribute_value(
-                window,
-                main_attr.as_concrete_TypeRef(),
-                CFBoolean::true_value().as_CFTypeRef(),
-                deadline,
-            )?;
-            crate::system::focus::finish_mutation(window, ax_err, "raise window", deadline)?;
-            return crate::system::focus::wait_until_main(window, deadline).map_err(after_delivery);
+        prepare(window, deadline)?;
+        let main_attr = CFString::new("AXMain");
+        let ax_err = crate::tree::ax_ipc::set_attribute_value(
+            window,
+            main_attr.as_concrete_TypeRef(),
+            CFBoolean::true_value().as_CFTypeRef(),
+            deadline,
+        )?;
+        crate::system::focus::finish_mutation(window, ax_err, "raise window", deadline)?;
+        crate::system::focus::wait_until_main(window, deadline).map_err(after_delivery)
+    }
+
+    fn needs_main_fallback(
+        outcome: Result<bool, AdapterError>,
+        verify: impl FnOnce() -> Result<(), AdapterError>,
+    ) -> Result<bool, AdapterError> {
+        match outcome {
+            Ok(false) => Ok(true),
+            Ok(true) => verify().map(|()| false).map_err(after_delivery),
+            Err(error) if error.disposition == DeliverySemantics::uncertain() => {
+                verify().map(|()| false).map_err(|_| error)
+            }
+            Err(error) => Err(error),
         }
-        crate::system::focus::finish_mutation(window, raise_err, "raise window", deadline)
     }
 
     fn prepare(window: &crate::tree::AXElement, deadline: Deadline) -> Result<(), AdapterError> {
         crate::tree::attributes::set_messaging_timeout(window, deadline)
     }
 
-    fn safe_to_fallback(error: i32) -> bool {
-        error == kAXErrorActionUnsupported
-            || error == kAXErrorAttributeUnsupported
-            || error == kAXErrorNotImplemented
-    }
-
     fn after_delivery(error: AdapterError) -> AdapterError {
         error.with_disposition(DeliverySemantics::delivered_unverified())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn uncertain_raise_requires_main_window_evidence_and_never_falls_back() {
+            let error = AdapterError::timeout("raise uncertain")
+                .with_disposition(DeliverySemantics::uncertain());
+            assert!(!needs_main_fallback(Err(error.clone()), || Ok(())).unwrap());
+            let failure =
+                needs_main_fallback(Err(error), || Err(AdapterError::timeout("readback")))
+                    .unwrap_err();
+            assert_eq!(failure.message, "raise uncertain");
+            assert_eq!(failure.disposition, DeliverySemantics::uncertain());
+        }
+
+        #[test]
+        fn only_unsupported_raise_authorizes_the_main_attribute_fallback() {
+            assert!(needs_main_fallback(Ok(false), || panic!("no read needed")).unwrap());
+            assert!(!needs_main_fallback(Ok(true), || Ok(())).unwrap());
+            let error = needs_main_fallback(Err(AdapterError::permission_denied()), || {
+                panic!("no probe after permission denial")
+            })
+            .unwrap_err();
+            assert_eq!(error.code, agent_desktop_core::ErrorCode::PermDenied);
+        }
     }
 }
 

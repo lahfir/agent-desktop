@@ -93,7 +93,7 @@ impl ObservationOps for DispatchGuardAdapter {
                 states: Vec::new(),
                 value: None,
                 enabled: Some(true),
-                hidden: Some(false),
+                hidden: Some(self.mode == "hidden_after_scroll"),
                 offscreen: Some(self.mode == "offscreen_slow"),
             },
             states_complete: true,
@@ -229,6 +229,19 @@ fn execute(adapter: &DispatchGuardAdapter, timeout_ms: u64) -> Result<ActionResu
         ActionRequest::headless(Action::Click).with_timeout_ms(Some(timeout_ms)),
         crate::ref_action::dispatch_resolved,
     )
+}
+
+#[test]
+fn failed_preflight_after_scroll_cannot_authorize_an_automatic_retry() {
+    let adapter = DispatchGuardAdapter::new("hidden_after_scroll", 0);
+    let error = execute(&adapter, 500).unwrap_err();
+    assert_eq!(error.disposition, crate::DeliverySemantics::uncertain());
+    assert_eq!(
+        error.details.unwrap()["preparatory_scroll"],
+        "may_have_changed_view"
+    );
+    assert_eq!(adapter.scroll_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(adapter.dispatch_calls.load(Ordering::SeqCst), 0);
 }
 
 #[test]

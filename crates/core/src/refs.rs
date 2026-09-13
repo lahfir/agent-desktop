@@ -85,8 +85,23 @@ impl RefMap {
     }
 
     pub fn remove_by_root_ref(&mut self, root: &str) {
-        self.inner
-            .retain(|_, entry| entry.scope.root_ref.as_deref() != Some(root));
+        let root_entry = self.inner.get(root).cloned();
+        self.inner.retain(|ref_id, entry| {
+            if ref_id == root {
+                return true;
+            }
+            let owned = entry.scope.root_ref.as_deref() == Some(root);
+            let descendant = root_entry.as_ref().is_some_and(|parent| {
+                entry.process == parent.process
+                    && entry.source == parent.source
+                    && (parent.scope.root_ref.is_none() || parent.scope.path_is_absolute)
+                    && (entry.scope.root_ref.is_none() || entry.scope.path_is_absolute)
+                    && entry.scope.path.starts_with(&parent.scope.path)
+                    && (entry.scope.path.len() > parent.scope.path.len()
+                        || entry.scope.root_ref.is_some())
+            });
+            !owned && !descendant
+        });
     }
 
     pub fn validate(&self) -> Result<(), AppError> {

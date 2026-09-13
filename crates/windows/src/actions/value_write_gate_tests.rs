@@ -62,9 +62,7 @@ fn secure_is_password_skips_get_value_and_reports_unobserved() {
     let result = agent_desktop_core::ActionResult::from_execution(
         &Action::SetValue("secret-marker-zz".into()),
         steps,
-        None,
-    )
-    .expect("result");
+    );
     assert_eq!(
         result.disposition().delivery(),
         DeliveryDisposition::DeliveredUnverified
@@ -125,7 +123,6 @@ fn pattern_get_value_lives_only_inside_value_write_gate() {
         ("actions/dispatch.rs", include_str!("dispatch.rs")),
         ("actions/focus.rs", include_str!("focus.rs")),
         ("actions/chain.rs", include_str!("chain.rs")),
-        ("actions/post_state.rs", include_str!("post_state.rs")),
         ("actions/value_write.rs", include_str!("value_write.rs")),
         ("actions/select.rs", include_str!("select.rs")),
         ("actions/select_search.rs", include_str!("select_search.rs")),
@@ -210,11 +207,6 @@ fn live_fixture_set_value_round_trips_when_value_pattern_exists() {
                     .any(|step| matches!(step.outcome, ActionStepOutcome::Succeeded)),
                 "expected a delivered SetValue step"
             );
-            if let Some(state) = &ok.post_state {
-                if let Some(value) = &state.value {
-                    assert_eq!(value, payload);
-                }
-            }
         }
         Err(error) => {
             assert!(

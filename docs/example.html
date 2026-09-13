@@ -1,292 +1,86 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>agent-desktop · real example</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <style>
-      :root {
-        --bg: #08090c;
-        --ink: #f0ece1;
-        --ink-2: #b4b1a5;
-        --ink-dim: #6b6d76;
-        --muted: #3d3f48;
-        --line: #2a2d36;
-        --amber: #f5a623;
-      }
-      * { box-sizing: border-box; }
-      html, body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--ink);
-        font-family: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
-        font-weight: 500;
-        -webkit-font-smoothing: antialiased;
-      }
-      body {
-        padding: 44px 56px;
-        display: flex;
-        flex-direction: column;
-        gap: 28px;
-        background-image:
-          radial-gradient(ellipse 60% 40% at 50% 0%, rgba(245, 166, 35, 0.05), transparent 70%);
-      }
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>agent-desktop · Slack example</title><style>
+:root {color-scheme:light;--ink:#12355a;--blue:#1974ee;--orange:#ff9954;--pink:#ff79b7;--green:#38dab1;}
+* {box-sizing:border-box;} body {margin:0;background:#e6f5ff;} main {max-width:1600px;margin:auto;}
+svg {display:block;width:100%;height:auto;color:var(--ink);} text {font-family:ui-rounded,"Arial Rounded MT Bold","Trebuchet MS",sans-serif;fill:var(--ink);}
+.cursor {stroke:var(--ink);stroke-width:3.5;stroke-linejoin:round;}
+.line {fill:none;stroke:var(--ink);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;}
+</style></head><body><main>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title description"><title id="title">agent-desktop · Slack example</title><desc id="description">Measured Slack snapshots: regular 30,743 tokens, skeleton overview 383 tokens. A focused composer drill measured 1,440 tokens. Illustrations are simplified.</desc><defs>
+      <linearGradient id="sky" x2="0" y2="1">
+        <stop stop-color="oklch(83% .09 235)"/>
+        <stop offset="1" stop-color="oklch(94% .04 228)"/>
+      </linearGradient>
+      <linearGradient id="screen" x2="1" y2="1">
+        <stop stop-color="oklch(91% .07 244)"/>
+        <stop offset="1" stop-color="oklch(95% .045 290)"/>
+      </linearGradient>
+      <linearGradient id="case" x2="0" y2="1">
+        <stop stop-color="white"/>
+        <stop offset="1" stop-color="oklch(89% .025 244)"/>
+      </linearGradient>
+      <linearGradient id="pointer-light" x1="0" y1="0" x2=".8" y2="1">
+        <stop stop-color="white" stop-opacity=".55"/>
+        <stop offset=".45" stop-color="white" stop-opacity="0"/>
+        <stop offset="1" stop-color="oklch(25% .09 254)" stop-opacity=".2"/>
+      </linearGradient>
+      <filter id="cursor-shadow" x="-50%" y="-50%" width="220%" height="220%">
+        <feDropShadow dx="3" dy="7" stdDeviation="3" flood-color="oklch(30% .09 254)" flood-opacity=".22"/>
+      </filter>
+      <path id="pointer-shape" d="M0 0 9 56 23 40 36 64 49 57 35 34 57 30Z"/>
+      <g id="pointer" filter="url(#cursor-shadow)">
+        <use href="#pointer-shape" transform="translate(2 5)" fill="oklch(37% .09 254)"/>
+        <use href="#pointer-shape"/>
+        <use href="#pointer-shape" fill="url(#pointer-light)" stroke="none"/>
+        <path d="m5 10 6 34M8 7 33 21" fill="none" stroke="white" stroke-opacity=".65" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <g id="spark" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+        <path d="M0-7V7M-7 0H7"/>
+      </g>
+      <g id="cloud" fill="white">
+        <path d="M0 48C0 34 10 24 24 24 24 10 36 0 51 0 69 0 80 11 82 27 101 23 118 34 118 48 118 59 109 65 98 65H22C9 65 0 59 0 48Z"/>
+      </g>
+    <linearGradient id="wide-sky" x2="0" y2="1"><stop stop-color="#82d4ff"/><stop offset="1" stop-color="#e1f7ff"/></linearGradient><g id="slack-mark"><path d="M0 14h22M14 0v22" stroke="#36c5f0"/><path d="M34 0v22M26 14h22" stroke="#2eb67d"/><path d="M48 34H26M34 26v22" stroke="#ecb22e"/><path d="M14 48V26M22 34H0" stroke="#e01e5a"/></g></defs><path d="M0 0H1600V900H0Z" fill="url(#wide-sky)"/><circle cx="1498" cy="104" r="43" fill="#ffe16a"/><circle cx="1498" cy="104" r="58" fill="none" stroke="#fff5bc" stroke-width="2"/>
+<use href="#cloud" transform="translate(-54 224) scale(1.6)" opacity=".65"/><use href="#cloud" transform="translate(1470 234) scale(1.4)" opacity=".8"/><use href="#cloud" transform="translate(-40 701) scale(1.6)" opacity=".65"/><use href="#cloud" transform="translate(1451 707) scale(1.8)" opacity=".75"/>
+<text x="72" y="60" font-size="25" font-weight="700">agent-desktop · Computer Use</text>
+<text x="72" y="150" font-size="67" font-weight="800" letter-spacing="-2">Slack: read less. Keep going.</text>
+<text x="72" y="206" font-size="29">Start with a small map. Read the controls you need when you need them.</text>
+<path d="M0 568C200 568 280 642 470 568S1020 647 1210 568 1420 535 1600 568" fill="none" stroke="#66b3d9" stroke-width="3" stroke-dasharray="2 12" stroke-linecap="round"/>
+<g transform="translate(100 288) scale(1.12) rotate(-3 220 114)">
+<rect x="8" y="10" width="440" height="228" rx="14" fill="#a34a52"/>
+<rect width="440" height="228" rx="14" fill="#fff6f5" stroke="#12355a" stroke-width="3"/>
+<path d="M0 38V14Q0 0 14 0H426Q440 0 440 14V38Z" fill="#ff938d"/>
+<path d="M0 38H440" stroke="#12355a" stroke-width="3"/>
+<rect x="14" y="7" width="200" height="7" rx="3.5" fill="white" opacity=".55"/>
+<circle cx="22" cy="20" r="5" fill="white"/><circle cx="39" cy="20" r="5" fill="white"/><circle cx="56" cy="20" r="5" fill="white"/>
+<text x="418" y="27" text-anchor="end" font-size="19" font-weight="700">Full snapshot</text>
+<rect x="14" y="52" width="84" height="162" rx="6" fill="#f2d7e3"/>
+<g transform="translate(31 64) scale(.6)" fill="none" stroke-width="9" stroke-linecap="round"><use href="#slack-mark"/></g>
+<path d="M27 126H78M27 146H68M27 166H76M27 186H66M27 206H77" stroke="#bd82a2" stroke-width="6" stroke-linecap="round"/>
+<g fill="#ffb0aa"><rect x="110" y="56" width="23" height="23" rx="5"/><rect x="110" y="96" width="23" height="23" rx="5"/><rect x="110" y="136" width="23" height="23" rx="5"/><rect x="110" y="176" width="23" height="23" rx="5"/></g>
+<path d="M145 62H272M145 74H344M145 86H304M145 102H288M145 114H346M145 126H316M145 142H262M145 154H342M145 166H300M145 182H284M145 194H338M145 206H314" stroke="#c4a0ac" stroke-width="5" stroke-linecap="round"/>
+</g>
+<g transform="translate(1000 288) scale(1.12) rotate(3 220 114)">
+<rect x="8" y="10" width="440" height="228" rx="14" fill="#177a6b"/>
+<rect width="440" height="228" rx="14" fill="#f4fffc" stroke="#12355a" stroke-width="3"/>
+<path d="M0 38V14Q0 0 14 0H426Q440 0 440 14V38Z" fill="#54e3bb"/>
+<path d="M0 38H440" stroke="#12355a" stroke-width="3"/>
+<rect x="14" y="7" width="200" height="7" rx="3.5" fill="white" opacity=".55"/>
+<circle cx="22" cy="20" r="5" fill="white"/><circle cx="39" cy="20" r="5" fill="white"/><circle cx="56" cy="20" r="5" fill="white"/>
+<text x="418" y="27" text-anchor="end" font-size="19" font-weight="700">Skeleton overview</text>
+<g transform="translate(196 54) scale(.48)" fill="none" stroke-width="9" stroke-linecap="round"><use href="#slack-mark"/></g>
+<path d="M220 90V114H100V136M220 114H340V136M220 114V136" stroke="#12355a" stroke-width="3" fill="none"/>
+<rect x="22" y="136" width="116" height="52" rx="8" fill="#d4f5eb" stroke="#12355a" stroke-width="2"/><rect x="152" y="136" width="116" height="52" rx="8" fill="#d4f5eb" stroke="#12355a" stroke-width="2"/><rect x="282" y="136" width="116" height="52" rx="8" fill="#ffe078" stroke="#12355a" stroke-width="2.5"/>
+<text x="80" y="169" text-anchor="middle" font-size="19" font-weight="700">Sidebar</text><text x="210" y="169" text-anchor="middle" font-size="19" font-weight="700">Chat</text><text x="340" y="169" text-anchor="middle" font-size="19" font-weight="700">Tools</text>
+<text x="210" y="212" text-anchor="middle" font-size="19">Read the map first.</text>
+</g>
 
-      .wrap { max-width: 1400px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 26px; }
-
-      .head {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-      @media (max-width: 720px) {
-        .stats { grid-template-columns: 1fr !important; }
-        body { padding: 28px 24px; }
-      }
-      .kicker {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 12px;
-        letter-spacing: 0.24em;
-        text-transform: uppercase;
-        color: var(--amber);
-        font-weight: 600;
-      }
-      h1 {
-        margin: 8px 0 10px;
-        font-size: 38px;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        color: var(--ink);
-        line-height: 1.1;
-      }
-      .tag {
-        margin: 0;
-        font-size: 15.5px;
-        font-weight: 400;
-        color: var(--ink-2);
-        line-height: 1.55;
-        max-width: none;
-      }
-      .tag strong { color: var(--ink); font-weight: 600; }
-
-      .stats {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 14px;
-      }
-      .s {
-        background: linear-gradient(180deg, #14171e, #0b0d12);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 18px 20px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-      .s.amber { border-color: rgba(245, 166, 35, 0.45); }
-      .s.green { border-color: rgba(127, 198, 164, 0.45); }
-      .s .k {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 10px;
-        letter-spacing: 0.22em;
-        text-transform: uppercase;
-        color: var(--ink-dim);
-        font-weight: 600;
-      }
-      .s .v {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 34px;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        color: var(--ink);
-        line-height: 1;
-        display: flex;
-        align-items: baseline;
-        gap: 6px;
-      }
-      .s.amber .v { color: var(--amber); }
-      .s.green .v { color: #7fc6a4; }
-      .s .v .u {
-        font-size: 11px;
-        font-weight: 500;
-        color: var(--ink-dim);
-        letter-spacing: 0.08em;
-      }
-      .s .t {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 10.5px;
-        color: var(--ink-dim);
-        letter-spacing: 0.1em;
-        margin-top: 2px;
-      }
-
-      .card {
-        background: linear-gradient(180deg, #14171e, #0b0d12);
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        overflow: hidden;
-        box-shadow: 0 20px 50px -20px rgba(0,0,0,0.8);
-      }
-      .card .h {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 14px 22px;
-        background: rgba(255,255,255,0.02);
-        border-bottom: 1px solid var(--line);
-        font-family: "JetBrains Mono", monospace;
-        font-size: 12px;
-        color: var(--ink-2);
-        font-weight: 500;
-      }
-      .card .h .sid {
-        font-size: 10px;
-        color: var(--amber);
-        padding: 3px 9px;
-        border: 1px solid rgba(245, 166, 35, 0.4);
-        border-radius: 99px;
-        background: rgba(245, 166, 35, 0.06);
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-      }
-      pre.tree {
-        margin: 0;
-        padding: 22px 26px;
-        font-family: "JetBrains Mono", monospace;
-        font-size: 13px;
-        line-height: 1.95;
-        color: var(--ink-2);
-        white-space: pre-wrap;
-        overflow-x: auto;
-      }
-      pre.tree .c { color: var(--muted); }
-      pre.tree .r { color: var(--ink); font-weight: 600; }
-      pre.tree .n { color: var(--ink-dim); font-weight: 400; }
-      pre.tree .ref {
-        color: var(--amber);
-        padding: 1px 7px;
-        border: 1px solid rgba(245, 166, 35, 0.4);
-        border-radius: 4px;
-        background: rgba(245, 166, 35, 0.06);
-        font-size: 11.5px;
-      }
-      pre.tree .ref.active {
-        background: var(--amber);
-        color: #0a0b0f;
-        border-color: var(--amber);
-        font-weight: 700;
-      }
-      pre.tree .trunc {
-        color: #7fc6a4;
-        font-size: 11.5px;
-        letter-spacing: 0.04em;
-      }
-      pre.tree .dim { color: var(--muted); font-size: 12px; }
-
-      .foot {
-        padding: 16px 22px;
-        background: rgba(255,255,255,0.015);
-        border-top: 1px solid var(--line);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 24px;
-        font-family: "Manrope", sans-serif;
-        font-size: 13px;
-        color: var(--ink-2);
-      }
-      .foot strong { color: var(--ink); font-weight: 600; }
-      .foot code {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 11.5px;
-        color: var(--amber);
-        background: rgba(245, 166, 35, 0.08);
-        padding: 2px 7px;
-        border-radius: 3px;
-      }
-      .foot .ms {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 10px;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: var(--ink-dim);
-      }
-
-      footer.brand {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding-top: 18px;
-        border-top: 1px solid var(--line);
-        font-family: "JetBrains Mono", monospace;
-        font-size: 11px;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: var(--ink-dim);
-      }
-      footer.brand strong { color: var(--ink); font-weight: 600; }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <header class="head">
-        <span class="kicker">real example · dense desktop app</span>
-        <h1>Slack — a window with 1,432 nodes.</h1>
-        <p class="tag">A full snapshot of Slack's main window is a wall of text. Skeleton mode (depth&nbsp;3) returns the same actionable refs at <strong>~3% of the token cost</strong>. Same approach works for VS&nbsp;Code, Figma, Notion, Excel — anything with an accessibility tree.</p>
-      </header>
-
-      <section class="stats">
-        <div class="s">
-          <span class="k">full tree</span>
-          <span class="v">1,432<span class="u">nodes</span></span>
-          <span class="t">~28,000 tokens</span>
-        </div>
-        <div class="s amber">
-          <span class="k">skeleton · depth 3</span>
-          <span class="v">41<span class="u">nodes</span></span>
-          <span class="t">~900 tokens</span>
-        </div>
-        <div class="s green">
-          <span class="k">savings</span>
-          <span class="v">97<span class="u">%</span></span>
-          <span class="t">same refs · same actions</span>
-        </div>
-      </section>
-
-      <div class="card">
-        <div class="h">
-          <span>$ agent-desktop snapshot --skeleton --app Slack</span>
-          <span class="sid">snapshot k3p9w2x4</span>
-        </div>
-        <pre class="tree"><span class="c">▾</span> <span class="r">Window</span> <span class="n">"Slack | #engineering"</span>
-  <span class="c">▾</span> <span class="r">Toolbar</span>
-    <span class="c">·</span> <span class="r">Button</span> <span class="n">"Workspace switcher"</span>                        <span class="ref">@e1</span>
-    <span class="c">·</span> <span class="r">SearchField</span> <span class="n">"Search Acme"</span>                          <span class="ref">@e3</span>
-  <span class="c">▾</span> <span class="r">Group</span> <span class="n">"sidebar"</span>                                          <span class="trunc">children_count: 247</span>
-    <span class="dim">  [+247 more · drill <span class="ref">@e5</span>]</span>
-  <span class="c">▾</span> <span class="r">Group</span> <span class="n">"active channel"</span>                                  <span class="ref">@e9</span>
-    <span class="c">▾</span> <span class="r">Group</span> <span class="n">"messages"</span>                                    <span class="trunc">children_count: 1,043 · virtualized</span>
-    <span class="c">▾</span> <span class="r">Group</span> <span class="n">"compose"</span>
-      <span class="c">·</span> <span class="r">TextField</span> <span class="n">"Message #engineering"</span>                <span class="ref active">@e12</span>
-      <span class="c">·</span> <span class="r">Button</span> <span class="n">"Send"</span>                                       <span class="ref">@e15</span>
-  <span class="c">▾</span> <span class="r">Group</span> <span class="n">"thread pane"</span>                                     <span class="trunc">children_count: 89</span>
-  <span class="c">·</span> <span class="r">StatusBar</span> <span class="n">"connected"</span></pre>
-        <div class="foot">
-          <span><strong>Then act:</strong> <code>agent-desktop type @e12 "ship it"</code> → <code>agent-desktop click @e15</code>.</span>
-          <span class="ms">native AX · no cursor · no screenshot</span>
-        </div>
-      </div>
-
-      <footer class="brand">
-        <span><strong>agent-desktop</strong> · computer use for AI agents</span>
-        <span>macOS active · windows + linux planned</span>
-      </footer>
-    </div>
-  </body>
-</html>
+<path d="M688 425H906m-16-13 16 13-16 13" class="line"/><text x="800" y="395" text-anchor="middle" font-size="24" font-weight="700">Start shallow</text>
+<g transform="translate(1390 468) rotate(-8) scale(.85)" class="cursor" fill="#ff9954"><use href="#pointer"/></g>
+<text x="346" y="650" text-anchor="middle" font-size="56" font-weight="800">30,743 tokens</text><text x="1246" y="650" text-anchor="middle" font-size="56" font-weight="800">383 tokens</text>
+<text x="346" y="691" text-anchor="middle" font-size="26">Regular snapshot</text><text x="1246" y="691" text-anchor="middle" font-size="26">Skeleton overview</text>
+<g transform="translate(579 616) rotate(-3 221 35)"><rect x="4" y="5" width="442" height="70" rx="12" fill="#d39a39"/><rect width="442" height="70" rx="12" fill="#ffe078" stroke="#12355a" stroke-width="2"/><text x="221" y="47" text-anchor="middle" font-size="35" font-weight="800">98.8% less to read</text></g>
+<text x="800" y="767" text-anchor="middle" font-size="30" font-weight="800">Then drill into one region. Our composer read: 1,440 tokens.</text>
+<text x="800" y="811" text-anchor="middle" font-size="25">The overview finds your starting point; a focused read reveals the controls.</text>
+<text x="800" y="864" text-anchor="middle" font-size="21">One Slack window · median of 3 captures · 6 Sep 2026 · both -i --compact · simplified illustrations</text>
+</svg></main></body></html>

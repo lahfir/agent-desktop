@@ -71,4 +71,20 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn later_non_delivery_cannot_erase_an_earlier_mutation() {
+        let error = AdapterError::internal("second mutation rejected")
+            .with_disposition(DeliverySemantics::not_delivered());
+        assert_eq!(
+            DeliveryTracker::from_delivered_units(1)
+                .annotate(error.clone())
+                .disposition,
+            DeliverySemantics::delivered_unverified(),
+        );
+        assert_eq!(
+            DeliveryTracker::default().annotate(error).disposition,
+            DeliverySemantics::not_delivered(),
+        );
+    }
 }

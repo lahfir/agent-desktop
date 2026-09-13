@@ -22,7 +22,7 @@ fn execution_result(verifications: &[Option<bool>]) -> ActionResult {
             }
         })
         .collect();
-    ActionResult::from_execution(&Action::Click, steps, None).expect("execution result")
+    ActionResult::from_execution(&Action::Click, steps)
 }
 
 #[test]
@@ -59,6 +59,19 @@ fn verified_action_uses_verified_delivery() {
             .with_verified_delivery()
             .disposition(),
         DeliverySemantics::delivered_verified()
+    );
+}
+
+#[test]
+fn unavailable_verification_preserves_no_delivery_and_demotes_verified_delivery() {
+    let satisfied = ActionResult::satisfied_without_delivery("clear").with_unverified_delivery();
+    assert_eq!(satisfied.disposition(), DeliverySemantics::not_delivered());
+    let delivered = ActionResult::delivered_unverified("set-value")
+        .with_verified_delivery()
+        .with_unverified_delivery();
+    assert_eq!(
+        delivered.disposition(),
+        DeliverySemantics::delivered_unverified()
     );
 }
 
@@ -112,8 +125,7 @@ fn successful_action_deserializes_satisfied_without_delivery() {
 #[test]
 fn execution_without_succeeded_steps_is_satisfied_without_delivery() {
     let steps = vec![ActionStep::skipped("AlreadyInState").with_verified(true)];
-    let result = ActionResult::from_execution(&Action::Check, steps, Some(state(Some("1"))))
-        .expect("no-op result");
+    let result = ActionResult::from_execution(&Action::Check, steps);
 
     assert_eq!(result.disposition(), DeliverySemantics::not_delivered());
     assert_eq!(result.steps.len(), 1);
@@ -143,12 +155,8 @@ fn execution_derives_disposition_from_succeeded_step_evidence() {
 fn execution_attaches_post_state_without_changing_serialization() {
     let steps = vec![ActionStep::succeeded("AXValue").with_verified(false)];
     let post_state = state(Some("done"));
-    let actual = ActionResult::from_execution(
-        &Action::SetValue("done".into()),
-        steps.clone(),
-        Some(post_state.clone()),
-    )
-    .expect("result");
+    let actual = ActionResult::from_execution(&Action::SetValue("done".into()), steps.clone())
+        .with_state(post_state.clone());
     let expected = ActionResult::delivered_unverified("set-value")
         .with_steps(steps)
         .with_state(post_state);
@@ -160,31 +168,16 @@ fn execution_attaches_post_state_without_changing_serialization() {
 }
 
 #[test]
-fn clear_postcondition_preserves_exact_error_contract() {
-    for post_state in [state(Some("")), state(None)] {
-        ActionResult::from_execution(
-            &Action::Clear,
-            vec![ActionStep::succeeded("AXValue").with_verified(true)],
-            Some(post_state),
-        )
-        .expect("clear result");
-    }
-
-    let error = ActionResult::from_execution(
-        &Action::Clear,
+fn verified_text_value_does_not_claim_application_commit() {
+    let result = ActionResult::from_execution(
+        &Action::SetValue("8".into()),
         vec![ActionStep::succeeded("AXValue").with_verified(true)],
-        Some(state(Some("still here"))),
-    )
-    .expect_err("non-empty clear must fail");
-
-    assert_eq!(error.code, ErrorCode::ActionFailed);
-    assert_eq!(
-        error.message,
-        "Clear reported success but element value is still non-empty"
     );
     assert_eq!(
-        error.suggestion.as_deref(),
-        Some("Retry 'clear', or use 'press cmd+a' then 'press delete'.")
+        result.disposition(),
+        DeliverySemantics::delivered_verified()
     );
-    assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
+    let details = result.details.unwrap();
+    assert_eq!(details["verification_scope"], "element_value");
+    assert_eq!(details["application_commit"], "not_verified");
 }
