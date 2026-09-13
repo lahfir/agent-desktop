@@ -40,6 +40,12 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 /// this method reports the exited-or-recycled target as `StaleRef`, the code
 /// this crate already uses for a resolved reference that no longer matches
 /// live state, rather than the transient-condition code macOS reuses there.
+///
+/// The same precedence covers a non-`Timeout` predicate error: `menu_state`
+/// reports a target that vanished mid-read as a transient `AppUnresponsive`,
+/// so the loop re-checks liveness before that error leaves the method and a
+/// gone target surfaces as `StaleRef`, while a live-but-unresponsive target
+/// still propagates the predicate's own error unchanged.
 pub(crate) fn wait_for_menu(
     process: ProcessIdentity,
     open: bool,
@@ -54,7 +60,10 @@ pub(crate) fn wait_for_menu(
             }
             Ok(_) => {}
             Err(error) if error.code == ErrorCode::Timeout => {}
-            Err(error) => return Err(error),
+            Err(error) => {
+                verify_process_alive(&process)?;
+                return Err(error);
+            }
         }
         if deadline.is_expired() {
             return Err(deadline
@@ -89,6 +98,10 @@ fn evaluate_menu_state(pid: ProcessId, deadline: Deadline) -> Result<bool, Adapt
 }
 
 fn verify_process_alive(process: &ProcessIdentity) -> Result<(), AdapterError> {
+    #[cfg(test)]
+    if forced_process_death::take() {
+        return Err(stale_process_error(process));
+    }
     if process_identity::matches_instance(process.pid, &process.instance)? {
         Ok(())
     } else {
@@ -163,6 +176,38 @@ pub(super) mod forced_predicate_error {
 
     pub(super) fn take() -> Option<AdapterError> {
         FORCED.with(|cell| cell.borrow_mut().take())
+    }
+}
+
+/// Forces the process-liveness check to report the target gone after a chosen
+/// number of successful checks, so a test can stage the race where a process
+/// exits between the loop's pre-read liveness check and the predicate read -
+/// `forced_predicate_error` supplies the intervening evaluation failure -
+/// without racing a real termination.
+#[cfg(test)]
+pub(super) mod forced_process_death {
+    use std::cell::Cell;
+
+    thread_local! {
+        static SKIPS_REMAINING: Cell<Option<usize>> = const { Cell::new(None) };
+    }
+
+    pub(super) fn arm_after(skips: usize) {
+        SKIPS_REMAINING.with(|cell| cell.set(Some(skips)));
+    }
+
+    pub(super) fn take() -> bool {
+        SKIPS_REMAINING.with(|cell| match cell.get() {
+            None => false,
+            Some(0) => {
+                cell.set(None);
+                true
+            }
+            Some(remaining) => {
+                cell.set(Some(remaining - 1));
+                false
+            }
+        })
     }
 }
 
