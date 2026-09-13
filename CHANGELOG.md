@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/lahfir/agent-desktop/compare/v0.9.0...v0.9.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* stop the inspector shutdown test failing on an expected reset ([22cad9e](https://github.com/lahfir/agent-desktop/commit/22cad9ec21136562ed191a8cfb827dc22378c554))
+
 ## [0.9.0](https://github.com/lahfir/agent-desktop/compare/v0.8.5...v0.9.0) (2026-09-12)
 
 
