@@ -103,6 +103,7 @@ fn decode_wide_paths(list: &[u8]) -> Result<Vec<String>, AdapterError> {
     }
 
     let mut paths = Vec::new();
+    let mut total_units = 0_usize;
     let mut start = 0_usize;
     let mut index = 0_usize;
     while index + 1 < units.len() {
@@ -126,6 +127,12 @@ fn decode_wide_paths(list: &[u8]) -> Result<Vec<String>, AdapterError> {
             return Err(payload_error(
                 "CF_HDROP path exceeds the supported length budget",
             ));
+        }
+        total_units = total_units
+            .checked_add(slice.len())
+            .ok_or_else(|| payload_error("CF_HDROP path list text budget overflowed"))?;
+        if total_units > MAX_HDROP_TOTAL_UTF16 {
+            return Err(payload_error("CF_HDROP paths exceed the total text budget"));
         }
         paths.push(String::from_utf16_lossy(slice));
         index += 1;

@@ -114,6 +114,13 @@ mod imp {
         }
     }
 
+    /// Opens the renderer's pipe, waiting out `ERROR_PIPE_BUSY` within the
+    /// deadline.
+    ///
+    /// The wait floor is load-bearing: `WaitNamedPipeW` reads zero as
+    /// `NMPWAIT_USE_DEFAULT_WAIT` and parks for the server's own default
+    /// rather than returning, so a remaining budget that rounds to zero must
+    /// still ask for a millisecond.
     fn connect(name: &str, deadline: Instant) -> Result<OwnedHandle, ReachOutcome> {
         let wide_name = wide(name);
         loop {
@@ -150,7 +157,12 @@ mod imp {
                 ));
             }
             let remaining = deadline.saturating_duration_since(Instant::now());
-            unsafe { WaitNamedPipeW(wide_name.as_ptr(), remaining.as_millis().min(1000) as u32) };
+            unsafe {
+                WaitNamedPipeW(
+                    wide_name.as_ptr(),
+                    remaining.as_millis().clamp(1, 1000) as u32,
+                )
+            };
         }
     }
 
