@@ -392,6 +392,15 @@ jobs:
             }
           }
           Write-Host "Total lib tests passed: $passed across $suites whole-suite runs"
+          # A parse that matches nothing yields 0 and 0, and the parity gate
+          # then compares this lane's 0 equal to the other architecture's 0.
+          # The counter has to fail loudly when it counted nothing, or a
+          # harness format change turns both lanes green while measuring
+          # neither.
+          if ($suites -eq 0 -or $passed -eq 0) {
+            Write-Error "Parsed $passed passing tests across $suites suites; the lib-test output format changed and this counter measured nothing."
+            exit 1
+          }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "lib_tests=$passed"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "lib_suites=$suites"
 
@@ -593,6 +602,15 @@ jobs:
             }
           }
           Write-Host "Total lib tests passed: $passed across $suites whole-suite runs"
+          # A parse that matches nothing yields 0 and 0, and the parity gate
+          # then compares this lane's 0 equal to the other architecture's 0.
+          # The counter has to fail loudly when it counted nothing, or a
+          # harness format change turns both lanes green while measuring
+          # neither.
+          if ($suites -eq 0 -or $passed -eq 0) {
+            Write-Error "Parsed $passed passing tests across $suites suites; the lib-test output format changed and this counter measured nothing."
+            exit 1
+          }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "lib_tests=$passed"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "lib_suites=$suites"
 

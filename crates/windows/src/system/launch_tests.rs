@@ -142,6 +142,23 @@ fn environment_merge_folds_case_so_override_replaces_inherited_variable() {
 }
 
 #[cfg(target_os = "windows")]
+#[test]
+fn absolute_cwd_refuses_a_relative_working_directory() {
+    let error = super::absolute_cwd(Path::new(r"relative\dir"))
+        .expect_err("a relative cwd must be refused before CreateProcessW");
+    assert_eq!(error.code, ErrorCode::InvalidArgs);
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn absolute_cwd_returns_an_absolute_path_unchanged() {
+    let absolute = Path::new(r"C:\agent-desktop-launch-cwd-probe");
+    let returned =
+        super::absolute_cwd(absolute).expect("an absolute cwd must be accepted unchanged");
+    assert_eq!(returned, absolute);
+}
+
+#[cfg(target_os = "windows")]
 use crate::system::test_time::deadline;
 
 #[cfg(target_os = "windows")]

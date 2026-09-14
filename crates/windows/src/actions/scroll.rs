@@ -152,14 +152,14 @@ mod imp {
                 if completed == 0 {
                     error
                 } else {
-                    partial_scroll_error(completed, plan.amount)
+                    partial_scroll_error(error, completed, plan.amount)
                 }
             })?;
             scroll_once().map_err(|error| {
                 if completed == 0 {
                     error
                 } else {
-                    partial_scroll_error(completed, plan.amount)
+                    partial_scroll_error(error, completed, plan.amount)
                 }
             })?;
         }
@@ -231,11 +231,21 @@ mod imp {
         )
     }
 
-    fn partial_scroll_error(completed: u32, requested: u32) -> AdapterError {
+    /// Re-frames a mid-run failure as a partial scroll without replacing what
+    /// went wrong.
+    ///
+    /// The steps already delivered change the *disposition* - the caller must
+    /// re-read before retrying - but not the cause. Stamping every partial
+    /// scroll `ACTION_FAILED` erased exactly the distinction a caller acts on:
+    /// a budget that ran out is retryable with a longer one, and a control
+    /// that refused the step is not. The original code is kept and its
+    /// message carried in `platform_detail`.
+    fn partial_scroll_error(cause: AdapterError, completed: u32, requested: u32) -> AdapterError {
         AdapterError::new(
-            ErrorCode::ActionFailed,
+            cause.code,
             format!("ScrollPattern.Scroll stopped after {completed} of {requested} requested scroll steps"),
         )
+        .with_platform_detail(cause.message)
         .with_details(serde_json::json!({
             "action_may_have_completed": true,
             "completed_steps": completed,

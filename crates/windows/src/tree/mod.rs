@@ -10,6 +10,7 @@ pub(crate) mod observe;
 pub(crate) mod resolve;
 pub(crate) mod resolve_anchor;
 pub(crate) mod resolve_match;
+pub(crate) mod resolve_pacing;
 pub(crate) mod resolve_search;
 pub mod roles;
 pub mod states;

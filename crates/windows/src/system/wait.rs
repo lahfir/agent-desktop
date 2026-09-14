@@ -51,6 +51,7 @@ pub(crate) fn wait_for_menu(
     open: bool,
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
+    let mut state_never_read = true;
     loop {
         verify_process_alive(&process)?;
         match evaluate_menu_state(process.pid, deadline) {
@@ -58,7 +59,7 @@ pub(crate) fn wait_for_menu(
                 verify_process_alive(&process)?;
                 return Ok(());
             }
-            Ok(_) => {}
+            Ok(_) => state_never_read = false,
             Err(error) if error.code == ErrorCode::Timeout => {}
             Err(error) => {
                 verify_process_alive(&process)?;
@@ -68,7 +69,7 @@ pub(crate) fn wait_for_menu(
         if deadline.is_expired() {
             return Err(deadline
                 .timeout_error()
-                .with_platform_detail(direction_message(open)));
+                .with_platform_detail(expiry_detail(open, state_never_read)));
         }
         let pause = deadline
             .remaining_slice(POLL_INTERVAL)
@@ -82,6 +83,22 @@ fn direction_message(open: bool) -> &'static str {
         "No menu opened before the deadline"
     } else {
         "Menu did not close before the deadline"
+    }
+}
+
+/// Separates "the menu never reached the state" from "the menu state was
+/// never read at all".
+///
+/// Every poll that times out is absorbed so a slow read does not end the
+/// wait early, which is right - but if *no* poll ever returned an answer,
+/// the deadline message describes a menu this code never actually observed.
+/// Saying so points at the provider rather than at the menu.
+fn expiry_detail(open: bool, state_never_read: bool) -> String {
+    let direction = direction_message(open);
+    if state_never_read {
+        format!("{direction}; no poll read the menu state before the deadline")
+    } else {
+        direction.to_string()
     }
 }
 

@@ -52,6 +52,22 @@ fn a_string_past_the_bound_is_unknown_and_is_never_truncated_into_evidence() {
     );
 }
 
+/// The ASCII boundary test above cannot catch a `.len()`-for-`.chars().count()`
+/// swap: for a one-byte-per-char string the two counts agree. A two-byte
+/// character exposes it - at exactly the bound its byte length is already
+/// past `MAX_EVIDENCE_CHARS` while its char count is not.
+#[test]
+fn a_multi_byte_char_string_is_bounded_by_char_count_not_byte_length() {
+    let at_bound = "é".repeat(MAX_EVIDENCE_CHARS);
+    let past_bound = "é".repeat(MAX_EVIDENCE_CHARS + 1);
+
+    assert_eq!(
+        bounded_text(at_bound.clone()).text(),
+        LocatorField::Known(at_bound)
+    );
+    assert_eq!(bounded_text(past_bound).text(), LocatorField::Unknown);
+}
+
 /// The secure-field gate, asserted on the projection rather than on a
 /// provider: every value-bearing property is withheld when `IsPassword` is
 /// true, and nothing else is.

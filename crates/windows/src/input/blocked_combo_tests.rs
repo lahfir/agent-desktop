@@ -101,3 +101,79 @@ fn a_superset_of_the_modifiers_alone_is_not_blocked() {
         "ctrl+tab cycles within an application and is not a blocked shortcut"
     );
 }
+
+/// Each shell-surface shortcut raises a surface over the run exactly as
+/// `alt+f4`/`win+l`/`win+d`/`alt+tab` do, so each is blocked the same way.
+#[test]
+fn each_shell_surface_shortcut_is_blocked() {
+    assert!(
+        is_blocked(&combo("r", vec![Modifier::Meta])),
+        "win+r opens Run"
+    );
+    assert!(
+        is_blocked(&combo("x", vec![Modifier::Meta])),
+        "win+x opens the Quick Link menu"
+    );
+    assert!(
+        is_blocked(&combo("e", vec![Modifier::Meta])),
+        "win+e opens File Explorer"
+    );
+    assert!(
+        is_blocked(&combo("esc", vec![Modifier::Ctrl, Modifier::Shift])),
+        "ctrl+shift+esc opens Task Manager"
+    );
+}
+
+#[test]
+fn a_modifier_superset_of_each_shell_surface_shortcut_is_still_blocked() {
+    assert!(
+        is_blocked(&combo("r", vec![Modifier::Meta, Modifier::Shift])),
+        "win+shift+r is still Run"
+    );
+    assert!(
+        is_blocked(&combo("x", vec![Modifier::Meta, Modifier::Ctrl])),
+        "ctrl+win+x is still the Quick Link menu"
+    );
+    assert!(
+        is_blocked(&combo("e", vec![Modifier::Meta, Modifier::Alt])),
+        "alt+win+e is still File Explorer"
+    );
+    assert!(
+        is_blocked(&combo(
+            "esc",
+            vec![Modifier::Ctrl, Modifier::Shift, Modifier::Alt]
+        )),
+        "alt+ctrl+shift+esc is still Task Manager"
+    );
+}
+
+#[test]
+fn a_near_miss_of_a_shell_surface_shortcut_is_not_blocked() {
+    assert!(
+        !is_blocked(&combo("r", vec![Modifier::Ctrl])),
+        "ctrl+r is not win+r"
+    );
+    assert!(
+        !is_blocked(&combo("esc", vec![Modifier::Ctrl])),
+        "ctrl+esc is missing the shift that ctrl+shift+esc needs"
+    );
+    assert!(
+        !is_blocked(&combo("esc", vec![Modifier::Shift])),
+        "shift+esc is missing the ctrl that ctrl+shift+esc needs"
+    );
+}
+
+/// `canonical_key` folds `escape` and `esc` to the same spelling before the
+/// blocked-key comparison, so either spelling must reach Task Manager's
+/// guard.
+#[test]
+fn both_escape_and_esc_spellings_reach_the_task_manager_guard() {
+    assert!(is_blocked(&combo(
+        "escape",
+        vec![Modifier::Ctrl, Modifier::Shift]
+    )));
+    assert!(is_blocked(&combo(
+        "esc",
+        vec![Modifier::Ctrl, Modifier::Shift]
+    )));
+}

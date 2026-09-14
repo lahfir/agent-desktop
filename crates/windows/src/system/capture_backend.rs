@@ -92,6 +92,7 @@ pub(crate) fn capture_with_precedence(
     deadline: Deadline,
 ) -> Result<ImageBuffer, AdapterError> {
     ensure_budget(deadline)?;
+    let mut modern_failure = None;
     if modern_is_supported() {
         let modern_deadline = modern_deadline_slice(deadline);
         match capture_modern(subject, modern_deadline) {
@@ -101,6 +102,7 @@ pub(crate) fn capture_with_precedence(
                     error = %error,
                     "modern capture unavailable or failed; falling back to legacy"
                 );
+                modern_failure = Some(error);
             }
         }
     } else {
@@ -108,6 +110,28 @@ pub(crate) fn capture_with_precedence(
     }
     ensure_budget(deadline)?;
     capture_legacy(subject, deadline)
+        .map_err(|legacy_error| attach_modern_failure(legacy_error, modern_failure.as_ref()))
+}
+
+/// Names the Modern attempt in the error the caller actually receives.
+///
+/// When Legacy succeeds the Modern failure is a routing detail and belongs in
+/// the debug log only. When both fail, reporting Legacy's error alone
+/// describes the fallback and hides the first refusal - and the two rarely
+/// fail for the same reason, so an operator handed only the second one is
+/// told the less useful half of what went wrong.
+fn attach_modern_failure(
+    legacy_error: AdapterError,
+    modern_failure: Option<&AdapterError>,
+) -> AdapterError {
+    let Some(modern_error) = modern_failure else {
+        return legacy_error;
+    };
+    let detail = match &legacy_error.platform_detail {
+        Some(existing) => format!("{existing}; modern capture first failed: {modern_error}"),
+        None => format!("modern capture first failed: {modern_error}"),
+    };
+    legacy_error.with_platform_detail(detail)
 }
 
 fn modern_deadline_slice(deadline: Deadline) -> Deadline {
@@ -178,3 +202,7 @@ pub(crate) mod test_hooks {
         crate::system::test_support::with_flag(&DISABLE_DEADLINE_SLICE, true, run)
     }
 }
+
+#[cfg(test)]
+#[path = "capture_backend_tests.rs"]
+mod tests;

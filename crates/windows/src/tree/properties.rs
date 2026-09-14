@@ -10,7 +10,7 @@ pub use super::property_outcome::{MAX_EVIDENCE_CHARS, PropertyOutcome, PropertyV
 /// A value longer than the bound is not truncated into evidence; the caller
 /// marks it `Unknown`.
 pub fn bounded_text(value: String) -> PropertyOutcome {
-    if value.chars().count() > MAX_EVIDENCE_CHARS {
+    if value.chars().take(MAX_EVIDENCE_CHARS + 1).count() > MAX_EVIDENCE_CHARS {
         PropertyOutcome::Unknown
     } else {
         PropertyOutcome::Known(PropertyValue::Text(value))

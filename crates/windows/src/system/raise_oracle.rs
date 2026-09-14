@@ -182,3 +182,6 @@ fn uia_shell_core_window_root_children() -> Option<Vec<isize>> {
     handles.sort_unstable();
     Some(handles)
 }
+
+#[path = "raise_oracle_tests.rs"]
+mod tests;

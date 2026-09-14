@@ -1,7 +1,8 @@
 use super::{SCROLL_LABEL, ScrollPlan, axis_name, scroll_effect_verified, scroll_judged_for};
 use crate::system::test_time::deadline;
 use agent_desktop_core::{
-    ActionStepOutcome, AdapterError, DeliveryDisposition, Direction, ErrorCode, Rect,
+    ActionStepOutcome, AdapterError, DeliveryDisposition, DeliverySemantics, Direction, ErrorCode,
+    Rect,
 };
 use std::cell::Cell;
 
@@ -152,5 +153,46 @@ fn mid_scroll_failure_is_delivered_unverified() {
     assert_eq!(
         error.disposition.delivery(),
         DeliveryDisposition::DeliveredUnverified
+    );
+}
+
+/// A scroll that stops part-way is re-framed as a partial delivery, but the
+/// reason it stopped is what the caller acts on: a deadline is retryable with
+/// a longer budget and a refusing control is not. Stamping both `ACTION_FAILED`
+/// erased that difference.
+#[test]
+fn a_partial_scroll_keeps_the_code_of_whatever_stopped_it() {
+    let attempts = Cell::new(0u32);
+    let error = scroll_judged_for(
+        deadline(5_000),
+        plan(3, true),
+        &mut || {
+            attempts.set(attempts.get() + 1);
+            if attempts.get() == 1 {
+                Ok(())
+            } else {
+                Err(AdapterError::new(ErrorCode::Timeout, "provider went away"))
+            }
+        },
+        &mut || true,
+    )
+    .expect_err("the second step fails");
+
+    assert_eq!(
+        error.code,
+        ErrorCode::Timeout,
+        "the cause survives re-framing"
+    );
+    assert_eq!(
+        error.disposition,
+        DeliverySemantics::delivered_unverified(),
+        "one step landed, so the caller must re-read before retrying"
+    );
+    assert_eq!(
+        error
+            .details
+            .as_ref()
+            .and_then(|d| d.get("completed_steps")),
+        Some(&serde_json::json!(1))
     );
 }

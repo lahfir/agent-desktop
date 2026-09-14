@@ -1,6 +1,9 @@
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode, NativeHandle, RefEntry};
 
 #[cfg(target_os = "windows")]
+use super::resolve_pacing::{FIRST_RETRY_PAUSE, next_retry_pause, sleep_before_retry};
+
+#[cfg(target_os = "windows")]
 use super::element::UIAElement;
 #[cfg(all(test, target_os = "windows"))]
 use super::resolve_match::CandidateOutcome;
@@ -233,6 +236,7 @@ pub(crate) fn retry_incomplete_until(
     mut operation: impl FnMut() -> Result<NativeHandle, AdapterError>,
 ) -> Result<NativeHandle, AdapterError> {
     let mut last_incomplete: Option<AdapterError> = None;
+    let mut pause = FIRST_RETRY_PAUSE;
     loop {
         if deadline.is_expired() {
             return Err(last_incomplete
@@ -243,7 +247,8 @@ pub(crate) fn retry_incomplete_until(
             Ok(value) => return Ok(value),
             Err(error) if is_retryable_resolution_error(&error) => {
                 last_incomplete = Some(error);
-                sleep_before_retry(deadline);
+                sleep_before_retry(deadline, pause);
+                pause = next_retry_pause(pause);
             }
             Err(error) if error.code == ErrorCode::Timeout => {
                 return Err(match last_incomplete {
@@ -268,12 +273,6 @@ pub(crate) fn retry_incomplete_until(
 pub(crate) fn is_retryable_resolution_error(error: &AdapterError) -> bool {
     error.is_explicitly_retryable()
         && matches!(error.code, ErrorCode::AppUnresponsive | ErrorCode::Timeout)
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) fn sleep_before_retry(deadline: Deadline) {
-    let remaining = deadline.remaining();
-    std::thread::sleep(remaining.min(std::time::Duration::from_millis(25)));
 }
 
 /// Stamps the final incomplete diagnosis with `deadline_elapsed` so the

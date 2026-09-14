@@ -107,6 +107,11 @@ fn budget_for(control: &CursorOverlayControl) -> Duration {
 const MINIMUM_REACH: Duration = Duration::from_millis(16);
 
 const RETRY_INTERVAL: Duration = Duration::from_millis(8);
+/// The retry pause doubles from `RETRY_INTERVAL` up to this ceiling: a
+/// renderer that is merely slow to register its pipe is caught by the first
+/// few polls, and one that is not coming stops being asked sixty times a
+/// second for the rest of the budget.
+const MAXIMUM_RETRY_INTERVAL: Duration = Duration::from_millis(128);
 
 /// Reaches until a renderer answers or the budget is gone, handing each
 /// attempt what is actually left rather than the full budget again.
@@ -123,6 +128,7 @@ fn retry_until_reached(
     deadline: std::time::Instant,
     mut reach: impl FnMut(Duration) -> ReachOutcome,
 ) -> Result<(), AdapterError> {
+    let mut pause = RETRY_INTERVAL;
     loop {
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         if remaining < MINIMUM_REACH {
@@ -136,7 +142,8 @@ fn retry_until_reached(
             ReachOutcome::Unreachable(error) => return Err(error),
             ReachOutcome::NoRenderer => {}
         }
-        std::thread::sleep(RETRY_INTERVAL);
+        std::thread::sleep(pause.min(remaining));
+        pause = (pause * 2).min(MAXIMUM_RETRY_INTERVAL);
     }
 }
 

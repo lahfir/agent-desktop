@@ -211,8 +211,13 @@ fn zero_budget_check_times_out_without_sleeping_past_deadline() {
     assert_eq!(toggles.get(), 0);
 }
 
+/// A provider that reports the same state after a delivered toggle is
+/// ambiguous: the toggle may have landed unseen. Firing again on that
+/// ambiguity is the one move that can leave the control back at its starting
+/// state while every step claims delivery, so the run stops at one toggle and
+/// hands the caller an unverified delivery to re-read.
 #[test]
-fn check_does_not_invoke_after_unverified_toggle_delivery() {
+fn check_does_not_refire_a_toggle_the_provider_never_showed_moving() {
     let toggles = Cell::new(0u8);
     let invokes = Cell::new(0u8);
     let steps = check_uncheck_judged_for(
@@ -233,7 +238,7 @@ fn check_does_not_invoke_after_unverified_toggle_delivery() {
         },
     )
     .expect("delivered unverified");
-    assert_eq!(toggles.get(), 2);
+    assert_eq!(toggles.get(), 1, "a second toggle would undo the first");
     assert_eq!(invokes.get(), 0);
     assert!(steps.iter().all(|step| step.verified() == Some(false)));
 }

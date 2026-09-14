@@ -4,9 +4,15 @@
 //! (`crates/core/src/adapter/system.rs`); until this module is wired in,
 //! Windows advertises a dangerous-shortcut guard in the skill docs that it
 //! never enforced. The list is reasoned from Windows semantics, not
-//! translated from macOS's `cmd+q`-shaped set, which has no Windows meaning:
-//! `alt+f4` closes the active window, `win+l` locks the session, `win+d`
-//! shows the desktop, and `alt+tab` steals the foreground mid-run. Every
+//! translated from macOS's `cmd+q`-shaped set, which has no Windows meaning.
+//! One question decides membership: does the shortcut take the foreground
+//! away from the run, or change the session out from under it? `alt+f4`
+//! closes the active window, `win+l` locks the session, `win+d` shows the
+//! desktop, and `alt+tab` steals the foreground mid-run. `win+r` (Run),
+//! `win+x` (Quick Link), `win+e` (File Explorer) and `ctrl+shift+esc` (Task
+//! Manager) each raise a shell surface over the target and answer that same
+//! question the same way, so they are listed for the same reason rather than
+//! left out because they open something rather than close it. Every
 //! modifier order, key-name alias, and modifier superset of a blocked
 //! shortcut is caught by canonicalizing before comparison - the superset
 //! rule is this list's own, because `alt+shift+tab` is as dangerous as the
@@ -18,7 +24,16 @@
 
 use agent_desktop_core::{KeyCombo, Modifier};
 
-const BLOCKED: &[&str] = &["alt+f4", "win+l", "win+d", "alt+tab"];
+const BLOCKED: &[&str] = &[
+    "alt+f4",
+    "win+l",
+    "win+d",
+    "alt+tab",
+    "win+r",
+    "win+x",
+    "win+e",
+    "ctrl+shift+esc",
+];
 
 /// Blocks a combo whose key matches a listed shortcut and whose modifiers
 /// are a superset of that shortcut's.
