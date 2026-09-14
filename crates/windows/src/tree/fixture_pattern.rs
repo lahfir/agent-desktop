@@ -1,13 +1,13 @@
-use std::io::{BufRead, BufReader};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
 use std::sync::MutexGuard;
 use std::sync::mpsc::channel;
 use std::thread::{JoinHandle, spawn};
 use std::time::Duration;
 
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows_sys::Win32::UI::WindowsAndMessaging::{GetClassInfoExW, IsWindow, WNDCLASSEXW};
+use windows_sys::Win32::UI::WindowsAndMessaging::{GetClassInfoExW, WNDCLASSEXW};
 
+use super::fixture_spawn;
 use super::fixture_window;
 
 #[path = "fixture_pattern_gdi.rs"]
@@ -17,7 +17,6 @@ const HOST_ENVIRONMENT_FLAG: &str = "AGENT_DESKTOP_PATTERN_FIXTURE_HOST";
 const HOST_TEST_NAME: &str = "tree::fixture_pattern::tests::pattern_fixture_host_process_entry";
 const HANDLE_PREFIX: &str = "AGENT_DESKTOP_PATTERN_HWND=";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
-const HOST_WATCHDOG_LIFETIME: Duration = Duration::from_secs(300);
 
 pub(crate) const PATTERN_WIDTH: i32 = 240;
 pub(crate) const PATTERN_HEIGHT: i32 = 160;
@@ -177,7 +176,7 @@ impl Drop for LocalPatternFixture {
             let _ = pump.join();
         }
         fixture_window::destroy_window(self.handle);
-        gdi::unregister_pattern_class(&self.class_name);
+        fixture_window::unregister_class(&self.class_name);
     }
 }
 
@@ -191,37 +190,20 @@ pub(crate) struct HostedPatternFixture {
 impl HostedPatternFixture {
     pub(crate) fn spawn() -> Result<Self, String> {
         let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-        let mut child = Command::new(executable)
+        let mut command = Command::new(executable);
+        command
             .args(["--exact", HOST_TEST_NAME, "--ignored", "--nocapture"])
-            .env(HOST_ENVIRONMENT_FLAG, "1")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|error| error.to_string())?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| String::from("the pattern host exposed no stdout"))?;
-        let (sender, receiver) = channel();
-        spawn(move || {
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                if let Some(handle) = line.trim().strip_prefix(HANDLE_PREFIX) {
-                    let _ = sender.send(handle.trim().parse::<isize>().unwrap_or(0));
-                    return;
-                }
-            }
-            let _ = sender.send(0);
-        });
-        let handle = match receiver.recv_timeout(READY_TIMEOUT) {
-            Ok(handle) if handle != 0 => handle,
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(String::from(
-                    "the pattern host never reported a window handle",
-                ));
-            }
-        };
+            .env(HOST_ENVIRONMENT_FLAG, "1");
+        let (child, handle, _reader) = fixture_spawn::spawn_host(
+            command,
+            fixture_spawn::first_line(|line| {
+                line.strip_prefix(HANDLE_PREFIX)
+                    .map(|handle| handle.trim().parse::<isize>().unwrap_or(0))
+            }),
+            |handle| *handle != 0,
+            "the pattern host exposed no stdout",
+            "the pattern host never reported a window handle",
+        )?;
         Ok(Self {
             child: Some(child),
             handle,
@@ -243,8 +225,7 @@ impl HostedPatternFixture {
 
     pub(crate) fn terminate(&mut self) {
         if let Some(mut child) = self.child.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+            fixture_spawn::kill_and_wait(&mut child);
         }
     }
 }
@@ -260,15 +241,15 @@ pub(crate) fn is_pattern_host_process() -> bool {
 }
 
 pub(crate) fn run_as_pattern_host() {
+    super::fixture_menu::run_with_watchdog(host_pattern_fixture_window);
+}
+
+fn host_pattern_fixture_window() {
     let (sender, receiver) = channel::<Result<fixture_window::PumpHandle, String>>();
     spawn(move || {
         if let Ok(Ok(running)) = receiver.recv_timeout(READY_TIMEOUT) {
             println!("{HANDLE_PREFIX}{}", running.window);
         }
-    });
-    spawn(|| {
-        std::thread::sleep(HOST_WATCHDOG_LIFETIME);
-        std::process::exit(0);
     });
     let stage = crate::tree::offscreen_origin::stage(None, PATTERN_WIDTH, PATTERN_HEIGHT);
     let (left, top) = stage.origin();
@@ -276,7 +257,7 @@ pub(crate) fn run_as_pattern_host() {
 }
 
 pub(crate) fn window_still_exists(handle: isize) -> bool {
-    handle != 0 && unsafe { IsWindow(handle as *mut std::ffi::c_void) } != 0
+    crate::tree::automation::window_exists(handle)
 }
 
 pub(crate) fn class_still_registered(class_name: &str) -> bool {

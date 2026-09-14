@@ -9,29 +9,14 @@ const TARGET_NAME: &str = "fixture-button";
 fn catalogue(
     source: &UiaTreeSource,
     element: &UIAElement,
-    depth: u8,
     budget: &WalkBudget,
-    prefix: &mut Vec<usize>,
     out: &mut Vec<(RefPath, LocatorEvidence)>,
 ) {
-    if depth >= 8 {
-        return;
-    }
-    let (_, evidence, _) = source.evidence(element);
-    let mut path = RefPath::default();
-    path.extend_from_slice(prefix);
-    out.push((path, evidence));
-    let mut ignored = false;
-    let Ok(children) =
-        crate::tree::resolve_search::enumerate_children(source, element, budget, &mut ignored)
-    else {
-        return;
-    };
-    for (index, child) in children.iter().enumerate() {
-        prefix.push(index);
-        catalogue(source, child, depth + 1, budget, prefix, out);
-        prefix.pop();
-    }
+    crate::tree::walker_fake::walk_all(source, element, budget, 8, &mut |prefix, evidence| {
+        let mut path = RefPath::default();
+        path.extend_from_slice(prefix);
+        out.push((path, evidence));
+    });
 }
 
 fn stored_entry(
@@ -41,43 +26,22 @@ fn stored_entry(
     path: RefPath,
 ) -> RefEntry {
     let pid = agent_desktop_core::ProcessId::from(pid);
-    RefEntry {
-        process: agent_desktop_core::RefProcess {
-            pid,
-            process_instance: Some(
-                crate::system::process_identity::token_for_pid(pid)
-                    .expect("the token read answers")
-                    .expect("a live fixture process has a token"),
-            ),
-        },
-        identity: agent_desktop_core::RefEntryIdentity {
-            role: evidence.role.known().cloned().unwrap_or_default(),
-            name: evidence.name.known().cloned(),
-            value: None,
-            description: None,
-            native_id: None,
-        },
-        geometry: agent_desktop_core::RefGeometry {
-            bounds: None,
-            bounds_hash: None,
-        },
-        capabilities: agent_desktop_core::RefCapabilities {
-            states: Vec::new(),
-            available_actions: Vec::new(),
-        },
-        source: agent_desktop_core::RefSource {
-            source_app: Some("fixture.exe".into()),
-            source_window_id: Some(format!("w-{fixture_handle}")),
-            source_window_title: None,
-            source_window_bounds_hash: None,
-            source_surface: agent_desktop_core::SnapshotSurface::Window,
-        },
-        scope: agent_desktop_core::RefScope {
-            root_ref: None,
-            path_is_absolute: true,
-            path,
-        },
-    }
+    let mut entry =
+        crate::tree::walker_fake::ref_entry(&evidence.role.known().cloned().unwrap_or_default());
+    entry.process = agent_desktop_core::RefProcess {
+        pid,
+        process_instance: Some(
+            crate::system::process_identity::token_for_pid(pid)
+                .expect("the token read answers")
+                .expect("a live fixture process has a token"),
+        ),
+    };
+    entry.identity.name = evidence.name.known().cloned();
+    entry.source.source_app = Some("fixture.exe".into());
+    entry.source.source_window_id = Some(format!("w-{fixture_handle}"));
+    entry.scope.path_is_absolute = true;
+    entry.scope.path = path;
+    entry
 }
 
 /// The path tier's positive half, driven against a live tree, and the shape a
@@ -102,9 +66,8 @@ fn the_path_tier_settles_on_the_element_the_stored_path_names_and_on_no_other() 
     let prepared = source.prepare_root(&root).expect("a prepared root");
     let budget = WalkBudget::new(10, deadline);
 
-    let mut prefix = Vec::new();
     let mut catalogued = Vec::new();
-    catalogue(&source, &prepared, 0, &budget, &mut prefix, &mut catalogued);
+    catalogue(&source, &prepared, &budget, &mut catalogued);
 
     let (target_path, target) = catalogued
         .iter()
@@ -171,9 +134,8 @@ fn a_refuted_element_at_the_stored_path_falls_through_to_the_broad_search() {
     let prepared = source.prepare_root(&root).expect("a prepared root");
     let budget = WalkBudget::new(10, deadline);
 
-    let mut prefix = Vec::new();
     let mut catalogued = Vec::new();
-    catalogue(&source, &prepared, 0, &budget, &mut prefix, &mut catalogued);
+    catalogue(&source, &prepared, &budget, &mut catalogued);
 
     let (target_path, target) = catalogued
         .iter()

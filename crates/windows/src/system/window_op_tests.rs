@@ -1,5 +1,5 @@
 use super::*;
-use agent_desktop_core::{DeliveryDisposition, InteractionLease, ProcessId, WindowState};
+use agent_desktop_core::{DeliveryDisposition, InteractionLease};
 
 #[test]
 fn geometry_rejects_non_finite_and_extreme_values() {
@@ -20,13 +20,11 @@ fn geometry_accepts_negative_screen_coordinates() {
 }
 
 #[cfg(target_os = "windows")]
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("deadline")
-}
+use crate::system::test_time::deadline;
 
 #[cfg(target_os = "windows")]
 fn lease() -> InteractionLease {
-    InteractionLease::guarded(deadline(), ()).expect("lease")
+    InteractionLease::guarded(deadline(10_000), ()).expect("lease")
 }
 
 #[cfg(target_os = "windows")]
@@ -41,20 +39,7 @@ fn staged_fixture() -> (crate::tree::fixture::LocalFixture, WindowInfo) {
 
 #[cfg(target_os = "windows")]
 fn window_info_for(handle: isize) -> WindowInfo {
-    let pid = ProcessId::from(std::process::id());
-    let token = crate::system::process_identity::token_for_pid(pid)
-        .expect("token read")
-        .expect("live token");
-    let app = crate::system::process_identity::process_image_name(pid).unwrap_or_default();
-    WindowInfo {
-        id: format!("w-{}", handle as usize),
-        title: String::new(),
-        app,
-        pid,
-        process_instance: Some(token),
-        bounds: None,
-        state: WindowState::default(),
-    }
+    crate::system::live_identity::window_info_for_current_process(handle)
 }
 
 #[cfg(target_os = "windows")]

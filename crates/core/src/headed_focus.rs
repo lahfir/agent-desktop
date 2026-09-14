@@ -1,9 +1,6 @@
 use serde_json::json;
 
-use crate::{
-    AdapterError, AppError, DeliverySemantics, ErrorCode, PlatformAdapter, ProcessIdentity,
-    WindowInfo,
-};
+use crate::{AdapterError, AppError, ErrorCode, PlatformAdapter, ProcessIdentity, WindowInfo};
 
 pub(crate) fn focus_entry_window(
     entry: &crate::RefEntry,
@@ -53,12 +50,9 @@ fn focus_exact_window(
         || live.pid != expected.pid
         || live.process_instance != expected.process_instance
     {
-        return Err(AdapterError::new(
-            ErrorCode::StaleRef,
+        return Err(AdapterError::stale_ref_because(
             "Headed target window belongs to a different process instance",
         )
-        .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
-        .with_disposition(DeliverySemantics::not_delivered())
         .into());
     }
     adapter.focus_window(&live, lease)?;

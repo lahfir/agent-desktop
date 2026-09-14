@@ -33,20 +33,17 @@ unsafe fn envelope_json(pointer: *mut c_char) -> serde_json::Value {
 }
 
 fn find_button_ref(node: &serde_json::Value, searched: &mut usize) -> Option<String> {
-    *searched += 1;
-    if node["role"] == "button"
-        && node["name"]
-            .as_str()
-            .is_some_and(|name| name.contains("ffi-fixture-button"))
-    {
-        return node["ref_id"].as_str().map(str::to_string);
-    }
-    for child in node["children"].as_array()? {
-        if let Some(found) = find_button_ref(child, searched) {
-            return Some(found);
+    common::find_ref_in_tree(node, searched, &|value| {
+        if value["role"] == "button"
+            && value["name"]
+                .as_str()
+                .is_some_and(|name| name.contains("ffi-fixture-button"))
+        {
+            value["ref_id"].as_str().map(str::to_string)
+        } else {
+            None
         }
-    }
-    None
+    })
 }
 
 #[test]

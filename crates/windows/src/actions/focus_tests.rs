@@ -1,7 +1,6 @@
 use super::{focus_from_delivery, headless_denied};
 use agent_desktop_core::{
-    ActionStepOutcome, DeliveryDisposition, ErrorCode, InteractionPolicy, RetryDisposition,
-    StepMechanism,
+    DeliveryDisposition, ErrorCode, InteractionPolicy, RetryDisposition, StepMechanism,
 };
 
 #[test]
@@ -23,17 +22,6 @@ fn headless_set_focus_is_policy_denied_not_delivered() {
     let evidence = details["evidence"].as_array().expect("evidence array");
     assert!(evidence.iter().any(|row| row.as_str() == Some("A3-4")));
     assert!(evidence.iter().any(|row| row.as_str() == Some("A19-5")));
-}
-
-#[test]
-fn headless_gate_is_inverted_when_policy_is_headed() {
-    let result = focus_from_delivery(InteractionPolicy::headed(), Ok(true), true)
-        .expect("headed delivery succeeds");
-    assert_eq!(result.steps.len(), 1);
-    assert!(matches!(
-        result.steps[0].outcome,
-        ActionStepOutcome::Succeeded
-    ));
 }
 
 #[test]

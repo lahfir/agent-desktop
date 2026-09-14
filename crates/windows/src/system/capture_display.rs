@@ -28,11 +28,6 @@ pub(crate) fn capture_display_at(
     capture_display_bounds(display.bounds, display.scale, deadline)
 }
 
-/// Captures the primary display — the cross-platform `FullScreen` mapping.
-pub(crate) fn capture_fullscreen(deadline: Deadline) -> Result<ImageBuffer, AdapterError> {
-    capture_display_at(0, deadline)
-}
-
 pub(super) fn capture_display_bounds(
     bounds: Rect,
     scale_factor: f64,

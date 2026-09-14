@@ -35,9 +35,28 @@ pub(super) fn resolve_immersive(
     host_images: &[&str],
     landmarks: &[&str],
 ) -> Result<Option<WindowInfo>, AdapterError> {
-    use uiautomation::types::TreeScope;
     let narrow = super::listing_retry::narrow_to_permitted_codes;
     let client = crate::tree::automation::automation_client().map_err(narrow)?;
+    let children = desktop_root_children(&client)?;
+    for child in children {
+        if let Some(info) =
+            immersive_candidate(&client, &child, expected_class, host_images, landmarks)?
+        {
+            return Ok(Some(info));
+        }
+    }
+    Ok(None)
+}
+
+/// The UIA desktop root's immediate children - the population every
+/// immersive-family walk in this module scans, since the immersive surfaces
+/// never appear in the Win32 top-level walk (A26-1).
+fn desktop_root_children(
+    client: &uiautomation::UIAutomation,
+) -> Result<Vec<uiautomation::UIElement>, AdapterError> {
+    use uiautomation::types::TreeScope;
+
+    let narrow = super::listing_retry::narrow_to_permitted_codes;
     let root = client.get_root_element().map_err(|error| {
         narrow(crate::tree::automation::uia_error(
             &error,
@@ -50,22 +69,56 @@ pub(super) fn resolve_immersive(
             "build the desktop children condition",
         ))
     })?;
-    let children = root
-        .find_all(TreeScope::Children, &condition)
+    root.find_all(TreeScope::Children, &condition)
         .map_err(|error| {
             narrow(crate::tree::automation::uia_error(
                 &error,
                 "read the UIA desktop root's children",
             ))
-        })?;
-    for child in children {
-        if let Some(info) =
-            immersive_candidate(&client, &child, expected_class, host_images, landmarks)?
-        {
-            return Ok(Some(info));
-        }
+        })
+}
+
+/// The identity a shell-host child names once its class, live handle, cloak
+/// state, owning process and host image all agree with the caller's kind -
+/// the common prefix every immersive-family child filter shares, up to but
+/// not including the kind-specific landmark decision.
+///
+/// `fallback_to_live_owner` distinguishes the two shapes this walk needs:
+/// the resolve path (`immersive_candidate`) falls back to
+/// [`super::window_identity::live_window_owner`] when the element's own PID
+/// read fails, because a raced read must not cost a caller the surface it is
+/// resolving; the foreign-shape diagnosis and witness walks below have no
+/// such requirement and simply skip a child whose PID they cannot read.
+fn shell_host_child(
+    child: &uiautomation::UIElement,
+    expected_class: &str,
+    host_images: &[&str],
+    fallback_to_live_owner: bool,
+) -> Option<(isize, ProcessId, String)> {
+    let classname = child.get_classname().ok()?;
+    if classname.ne(expected_class) {
+        return None;
     }
-    Ok(None)
+    let handle: isize = child.get_native_window_handle().ok()?.into();
+    if handle == 0 || super::window_enum::is_cloaked(handle as WindowHandle) {
+        return None;
+    }
+    let pid = match child.get_process_id() {
+        Ok(pid) => ProcessId::from(pid),
+        Err(_) if fallback_to_live_owner => {
+            super::window_identity::live_window_owner(handle as WindowHandle)?
+        }
+        Err(_) => return None,
+    };
+    let image = super::process_identity::process_image_name(pid)?;
+    let image_stem = image.strip_suffix(".exe").unwrap_or(&image);
+    if !host_images
+        .iter()
+        .any(|host| host.eq_ignore_ascii_case(image_stem))
+    {
+        return None;
+    }
+    Some((handle, pid, image))
 }
 
 fn immersive_candidate(
@@ -75,36 +128,10 @@ fn immersive_candidate(
     host_images: &[&str],
     landmarks: &[&str],
 ) -> Result<Option<WindowInfo>, AdapterError> {
-    let Some(classname) = child.get_classname().ok() else {
+    let Some((handle, pid, image)) = shell_host_child(child, expected_class, host_images, true)
+    else {
         return Ok(None);
     };
-    if classname.ne(expected_class) {
-        return Ok(None);
-    }
-    let handle: isize = match child.get_native_window_handle().ok() {
-        Some(handle) => handle.into(),
-        None => return Ok(None),
-    };
-    if handle == 0 || super::window_enum::is_cloaked(handle as WindowHandle) {
-        return Ok(None);
-    }
-    let pid = match child.get_process_id() {
-        Ok(pid) => ProcessId::from(pid),
-        Err(_) => match super::window_identity::live_window_owner(handle as WindowHandle) {
-            Some(pid) => pid,
-            None => return Ok(None),
-        },
-    };
-    let Some(image) = super::process_identity::process_image_name(pid) else {
-        return Ok(None);
-    };
-    let image_stem = image.strip_suffix(".exe").unwrap_or(&image);
-    if !host_images
-        .iter()
-        .any(|host| host.eq_ignore_ascii_case(image_stem))
-    {
-        return Ok(None);
-    }
     if !carries_landmark(client, child, landmarks)? {
         return Ok(None);
     }
@@ -124,58 +151,17 @@ pub(super) fn raise_presented_foreign_shape(
     pre_raise_children: &[isize],
     landmarks: &[&str],
 ) -> Result<bool, AdapterError> {
-    use uiautomation::types::TreeScope;
-
-    let narrow = super::listing_retry::narrow_to_permitted_codes;
-    let root = client.get_root_element().map_err(|error| {
-        narrow(crate::tree::automation::uia_error(
-            &error,
-            "read the UIA desktop root",
-        ))
-    })?;
-    let condition = client.create_true_condition().map_err(|error| {
-        narrow(crate::tree::automation::uia_error(
-            &error,
-            "build the desktop children condition",
-        ))
-    })?;
-    let children = root
-        .find_all(TreeScope::Children, &condition)
-        .map_err(|error| {
-            narrow(crate::tree::automation::uia_error(
-                &error,
-                "read the UIA desktop root's children",
-            ))
-        })?;
+    let children = desktop_root_children(client)?;
     for child in children {
-        let Some(classname) = child.get_classname().ok() else {
+        let Some((handle, _pid, _image)) = shell_host_child(
+            &child,
+            super::shell_surface_kinds::CORE_WINDOW_CLASS,
+            SHELL_DIAGNOSTIC_HOST_IMAGES,
+            false,
+        ) else {
             continue;
         };
-        if classname.ne(SHELL_CORE_WINDOW_CLASS) {
-            continue;
-        }
-        let handle: isize = match child.get_native_window_handle().ok() {
-            Some(handle) => handle.into(),
-            None => continue,
-        };
-        if handle == 0 || pre_raise_children.contains(&handle) {
-            continue;
-        }
-        if super::window_enum::is_cloaked(handle as WindowHandle) {
-            continue;
-        }
-        let pid = match child.get_process_id() {
-            Ok(pid) => pid,
-            Err(_) => continue,
-        };
-        let Some(image) = super::process_identity::process_image_name(pid.into()) else {
-            continue;
-        };
-        let image_stem = image.strip_suffix(".exe").unwrap_or(&image);
-        if !SHELL_DIAGNOSTIC_HOST_IMAGES
-            .iter()
-            .any(|host| host.eq_ignore_ascii_case(image_stem))
-        {
+        if pre_raise_children.contains(&handle) {
             continue;
         }
         if !carries_landmark(client, &child, landmarks)? {
@@ -194,52 +180,15 @@ pub(super) fn raise_presented_foreign_shape(
 pub(super) fn witness_immersive_children() -> Result<Vec<isize>, AdapterError> {
     let narrow = super::listing_retry::narrow_to_permitted_codes;
     let client = crate::tree::automation::automation_client().map_err(narrow)?;
-    let root = client.get_root_element().map_err(|error| {
-        narrow(crate::tree::automation::uia_error(
-            &error,
-            "read the UIA desktop root",
-        ))
-    })?;
-    let condition = client.create_true_condition().map_err(|error| {
-        narrow(crate::tree::automation::uia_error(
-            &error,
-            "build the desktop children condition",
-        ))
-    })?;
-    let children = root
-        .find_all(uiautomation::types::TreeScope::Children, &condition)
-        .map_err(|error| {
-            narrow(crate::tree::automation::uia_error(
-                &error,
-                "read the UIA desktop root's children",
-            ))
-        })?;
+    let children = desktop_root_children(&client)?;
     let mut handles = Vec::new();
     for child in children {
-        let Some(classname) = child.get_classname().ok() else {
-            continue;
-        };
-        if classname.ne(SHELL_CORE_WINDOW_CLASS) {
-            continue;
-        }
-        let handle: isize = match child.get_native_window_handle().ok() {
-            Some(handle) => handle.into(),
-            None => continue,
-        };
-        if handle == 0 || super::window_enum::is_cloaked(handle as WindowHandle) {
-            continue;
-        }
-        let Some(pid) = child.get_process_id().ok() else {
-            continue;
-        };
-        let Some(image) = super::process_identity::process_image_name(pid.into()) else {
-            continue;
-        };
-        let image_stem = image.strip_suffix(".exe").unwrap_or(&image);
-        if SHELL_DIAGNOSTIC_HOST_IMAGES
-            .iter()
-            .any(|host| host.eq_ignore_ascii_case(image_stem))
-        {
+        if let Some((handle, _pid, _image)) = shell_host_child(
+            &child,
+            super::shell_surface_kinds::CORE_WINDOW_CLASS,
+            SHELL_DIAGNOSTIC_HOST_IMAGES,
+            false,
+        ) {
             handles.push(handle);
         }
     }
@@ -258,7 +207,6 @@ const SHELL_DIAGNOSTIC_HOST_IMAGES: &[&str] = &[
     "startmenuexperiencehost",
     "shellhost",
 ];
-const SHELL_CORE_WINDOW_CLASS: &str = "Windows.UI.Core.CoreWindow";
 
 /// The named refusal for a raise that presented a surface whose tree matches
 /// none of the kind's landmarks: the shell answered, the shape is not the
@@ -352,17 +300,17 @@ fn window_info_from_surface(
     let hwnd = handle as WindowHandle;
     let token = super::process_identity::token_for_pid(pid).ok().flatten();
     WindowInfo {
-        id: format!("w-{}", handle),
+        id: super::window_ops::window_id(hwnd),
         title: element.get_name().unwrap_or_default(),
         app: image,
         pid,
         process_instance: token,
         bounds: Some(super::window_enum::window_rect(hwnd)),
-        state: agent_desktop_core::WindowState {
-            is_focused: super::window_ops::is_foreground_window(hwnd),
-            minimized: Some(unsafe { IsIconic(hwnd) } != 0),
-            visible: Some(unsafe { IsWindowVisible(hwnd) } != 0),
-        },
+        state: super::window_ops::window_state(
+            super::window_ops::is_foreground_window(hwnd),
+            unsafe { IsIconic(hwnd) } != 0,
+            unsafe { IsWindowVisible(hwnd) } != 0,
+        ),
     }
 }
 

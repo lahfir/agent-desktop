@@ -21,9 +21,7 @@ use crate::tree::fixture_menu::MenuFixture;
 
 const STATE_TIMEOUT: Duration = Duration::from_secs(5);
 
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("bounded deadline")
-}
+use crate::system::test_time::deadline;
 
 #[test]
 fn a_permanent_win32_menu_bar_never_fires_the_chromium_source() {
@@ -35,21 +33,22 @@ fn a_permanent_win32_menu_bar_never_fires_the_chromium_source() {
     let fixture = MenuFixture::spawn().expect("the menu fixture starts");
     let pid = ProcessId::from(fixture.process_id());
 
-    let quiet = || chromium_dom_menu_reachable(pid, deadline()).expect("chromium probe reads it");
+    let quiet =
+        || chromium_dom_menu_reachable(pid, deadline(10_000)).expect("chromium probe reads it");
 
     assert!(
         !quiet(),
         "the fixture's main window is this source's exact candidate pool - a visible, non-tool, root-level window of the pid carrying a permanent Win32 menu bar whose own MenuItem elements would fire a bare menu-family search; the framework gate is what keeps the predicate at rest, and removing it fails this assertion"
     );
     assert!(
-        !menu_is_open(pid, deadline()).expect("predicate reads the fixture"),
+        !menu_is_open(pid, deadline(10_000)).expect("predicate reads the fixture"),
         "the composed predicate stays closed while only a menu bar exists"
     );
 
     fixture.open_context_menu();
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
     assert!(
-        uia_menu_reachable(pid, deadline()).expect("uia probe reads the fixture"),
+        uia_menu_reachable(pid, deadline(10_000)).expect("uia probe reads the fixture"),
         "precondition: the fixture's open popup is in source B's pool"
     );
     assert!(
@@ -88,14 +87,14 @@ fn menus_open_for_answers_identically_to_menu_is_open_for_the_fixture_pid() {
     let pid = ProcessId::from(fixture.process_id());
 
     let composed = || {
-        menus_open_for(&[pid], deadline())
+        menus_open_for(&[pid], deadline(10_000))
             .expect("the multi-pid predicate reads the fixture")
             .get(&pid)
             .copied()
             .expect("the queried pid is in the answer")
     };
     let single =
-        || menu_is_open(pid, deadline()).expect("the single-pid predicate reads the fixture");
+        || menu_is_open(pid, deadline(10_000)).expect("the single-pid predicate reads the fixture");
 
     assert_eq!(
         composed(),

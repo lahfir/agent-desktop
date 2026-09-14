@@ -10,42 +10,18 @@ fn entry(
     name: Option<&str>,
     native: Option<&str>,
 ) -> RefEntry {
-    RefEntry {
-        process: agent_desktop_core::RefProcess {
-            pid: agent_desktop_core::ProcessId::new(1),
-            process_instance: None,
-        },
-        identity: agent_desktop_core::RefEntryIdentity {
-            role: "button".to_string(),
-            name: name.map(str::to_string),
-            value: None,
-            description: None,
-            native_id: native.map(|value| ElementIdentifier {
-                kind: IdentifierKind::AutomationId,
-                value: value.to_string(),
-            }),
-        },
-        geometry: agent_desktop_core::RefGeometry {
-            bounds,
-            bounds_hash: hash,
-        },
-        capabilities: agent_desktop_core::RefCapabilities {
-            states: Vec::new(),
-            available_actions: Vec::new(),
-        },
-        source: agent_desktop_core::RefSource {
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
-            source_window_bounds_hash: None,
-            source_surface: agent_desktop_core::SnapshotSurface::Window,
-        },
-        scope: agent_desktop_core::RefScope {
-            root_ref: None,
-            path_is_absolute: true,
-            path: agent_desktop_core::refs::RefPath::default(),
-        },
-    }
+    let mut entry = crate::tree::walker_fake::ref_entry("button");
+    entry.identity.name = name.map(str::to_string);
+    entry.identity.native_id = native.map(|value| ElementIdentifier {
+        kind: IdentifierKind::AutomationId,
+        value: value.to_string(),
+    });
+    entry.geometry = agent_desktop_core::RefGeometry {
+        bounds,
+        bounds_hash: hash,
+    };
+    entry.scope.path_is_absolute = true;
+    entry
 }
 
 fn rect(width: f64, height: f64) -> agent_desktop_core::Rect {
@@ -259,8 +235,7 @@ fn a_ref_stored_for_the_live_secure_edit_promotes_on_geometry_alone() {
         )
         .expect("a prepared root");
     let budget = WalkBudget::new(10, crate::tree::walker_fake::deadline());
-    let mut prefix = Vec::new();
-    let found = find_secure(&source, &prepared, 0, &budget, &mut prefix)
+    let found = find_secure(&source, &prepared, &budget)
         .expect("the fixture walk succeeds")
         .expect("a secure element exists");
     let (_, properties, live, _) = found;
@@ -299,9 +274,7 @@ fn a_ref_stored_for_the_live_secure_edit_promotes_on_geometry_alone() {
 fn find_secure(
     source: &UiaTreeSource,
     element: &UIAElement,
-    depth: u8,
     budget: &WalkBudget,
-    prefix: &mut Vec<usize>,
 ) -> Result<
     Option<(
         agent_desktop_core::refs::RefPath,
@@ -311,23 +284,19 @@ fn find_secure(
     )>,
     AdapterError,
 > {
-    if depth >= 10 {
-        return Ok(None);
-    }
-    let (properties, node_evidence, failed) = source.evidence(element);
-    if properties.is_secure() {
-        let mut path = agent_desktop_core::refs::RefPath::default();
-        path.extend_from_slice(prefix);
-        return Ok(Some((path, properties, node_evidence, failed)));
-    }
-    let mut ignored = false;
-    let children = enumerate_children(source, element, budget, &mut ignored)?;
-    for (index, child) in children.iter().enumerate() {
-        prefix.push(index);
-        if let Some(found) = find_secure(source, child, depth + 1, budget, prefix)? {
-            return Ok(Some(found));
-        }
-        prefix.pop();
-    }
-    Ok(None)
+    crate::tree::walker_fake::scan_subtree(
+        source,
+        element,
+        budget,
+        10,
+        &mut |prefix, properties, evidence, failed| {
+            if properties.is_secure() {
+                let mut path = agent_desktop_core::refs::RefPath::default();
+                path.extend_from_slice(prefix);
+                std::ops::ControlFlow::Break((path, properties, evidence, failed))
+            } else {
+                std::ops::ControlFlow::Continue(())
+            }
+        },
+    )
 }

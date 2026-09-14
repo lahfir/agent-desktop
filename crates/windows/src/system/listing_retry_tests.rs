@@ -4,9 +4,7 @@ use agent_desktop_core::ErrorCode;
 
 use super::*;
 
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("a generous deadline is constructible")
-}
+use crate::system::test_time::deadline;
 
 fn race_error() -> AdapterError {
     AdapterError::new(ErrorCode::WindowNotFound, "forced race")
@@ -19,7 +17,7 @@ fn is_window_not_found(error: &AdapterError) -> bool {
 #[test]
 fn a_successful_first_attempt_never_retries() {
     let calls = Cell::new(0u32);
-    let result = retry_transient_window_race(deadline(), is_window_not_found, || {
+    let result = retry_transient_window_race(deadline(10_000), is_window_not_found, || {
         calls.set(calls.get() + 1);
         Ok::<_, AdapterError>(42)
     });
@@ -31,7 +29,7 @@ fn a_successful_first_attempt_never_retries() {
 #[test]
 fn a_race_is_retried_until_it_clears() {
     let calls = Cell::new(0u32);
-    let result = retry_transient_window_race(deadline(), is_window_not_found, || {
+    let result = retry_transient_window_race(deadline(10_000), is_window_not_found, || {
         calls.set(calls.get() + 1);
         if calls.get() < 3 {
             Err(race_error())
@@ -50,7 +48,7 @@ fn a_race_is_retried_until_it_clears() {
 #[test]
 fn a_non_race_error_returns_immediately_without_retrying() {
     let calls = Cell::new(0u32);
-    let result = retry_transient_window_race(deadline(), is_window_not_found, || {
+    let result = retry_transient_window_race(deadline(10_000), is_window_not_found, || {
         calls.set(calls.get() + 1);
         Err::<u32, _>(AdapterError::internal("not a race at all"))
     });
@@ -63,7 +61,7 @@ fn a_non_race_error_returns_immediately_without_retrying() {
 #[test]
 fn a_persistent_race_exhausts_every_attempt_and_returns_it_unchanged() {
     let calls = Cell::new(0u32);
-    let result = retry_transient_window_race(deadline(), is_window_not_found, || {
+    let result = retry_transient_window_race(deadline(10_000), is_window_not_found, || {
         calls.set(calls.get() + 1);
         Err::<u32, _>(race_error())
     });

@@ -5,56 +5,15 @@ mod common;
 use agent_desktop_core::session::{StartSessionOptions, start_session};
 use agent_desktop_core::{PrivateFileOps, install_private_file_ops};
 use common::{ad_adapter_create, ad_adapter_destroy, with_isolated_home};
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::PathBuf;
 
-const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+#[path = "../../../src/tests/windows_junction_fixture.rs"]
+mod windows_junction_fixture;
+use windows_junction_fixture::{entries_under, plant_junction};
 
 struct ProbeOps;
 
 impl PrivateFileOps for ProbeOps {}
-
-fn plant_junction(link: &Path, target: &Path) {
-    let output = Command::new("cmd")
-        .args(["/C", "mklink", "/J"])
-        .arg(link)
-        .arg(target)
-        .output()
-        .expect("cmd /c mklink starts");
-    assert!(
-        output.status.success(),
-        "mklink /J must succeed without privilege: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let attributes = {
-        use std::os::windows::fs::MetadataExt;
-        std::fs::symlink_metadata(link)
-            .expect("junction link exists")
-            .file_attributes()
-    };
-    assert!(
-        attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0,
-        "planted link must carry FILE_ATTRIBUTE_REPARSE_POINT"
-    );
-}
-
-fn entries_under(root: &Path) -> Vec<PathBuf> {
-    let mut entries = Vec::new();
-    let mut pending = vec![root.to_path_buf()];
-    while let Some(directory) = pending.pop() {
-        let Ok(read) = std::fs::read_dir(&directory) else {
-            continue;
-        };
-        for entry in read.flatten() {
-            let path = entry.path();
-            if entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
-                pending.push(path.clone());
-            }
-            entries.push(path);
-        }
-    }
-    entries
-}
 
 /// Core's five private-file primitives are `pub(crate)`, so the behavioral arm
 /// reaches them through the public `session::start_session` surface instead:

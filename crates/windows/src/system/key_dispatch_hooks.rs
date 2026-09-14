@@ -12,15 +12,7 @@ pub(super) mod force_higher_integrity {
     }
 
     pub(crate) fn with<R>(run: impl FnOnce() -> R) -> R {
-        struct ResetOnDrop;
-        impl Drop for ResetOnDrop {
-            fn drop(&mut self) {
-                ACTIVE.with(|flag| flag.set(false));
-            }
-        }
-        ACTIVE.with(|flag| flag.set(true));
-        let _reset = ResetOnDrop;
-        run()
+        crate::system::test_support::with_flag(&ACTIVE, true, run)
     }
 }
 
@@ -115,14 +107,6 @@ pub(super) mod force_keyboard_focus_denied {
     }
 
     pub(crate) fn with<R>(run: impl FnOnce() -> R) -> R {
-        struct ResetOnDrop;
-        impl Drop for ResetOnDrop {
-            fn drop(&mut self) {
-                ACTIVE.with(|flag| flag.set(false));
-            }
-        }
-        ACTIVE.with(|flag| flag.set(true));
-        let _reset = ResetOnDrop;
-        run()
+        crate::system::test_support::with_flag(&ACTIVE, true, run)
     }
 }

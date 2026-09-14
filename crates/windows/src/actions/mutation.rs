@@ -164,6 +164,31 @@ fn platform_hresult(api: &str, operation: &str, hresult: i32) -> String {
     )
 }
 
+/// The action-file source set every write-path/read-path scan test walks.
+/// One list shared by `mutation_tests.rs`, `dispatch_tests.rs`, and
+/// `value_write_gate_tests.rs` so a 13th action file needs one edit, not
+/// three.
+#[cfg(test)]
+pub(crate) fn action_scan_sources() -> [(&'static str, &'static str); 12] {
+    [
+        ("actions/mutation.rs", include_str!("mutation.rs")),
+        (
+            "actions/scroll_into_view.rs",
+            include_str!("scroll_into_view.rs"),
+        ),
+        ("actions/scroll_ladder.rs", include_str!("scroll_ladder.rs")),
+        ("actions/dispatch.rs", include_str!("dispatch.rs")),
+        ("actions/focus.rs", include_str!("focus.rs")),
+        ("actions/chain.rs", include_str!("chain.rs")),
+        ("actions/value_write.rs", include_str!("value_write.rs")),
+        ("actions/toggle_state.rs", include_str!("toggle_state.rs")),
+        ("actions/disclosure.rs", include_str!("disclosure.rs")),
+        ("actions/select.rs", include_str!("select.rs")),
+        ("actions/select_search.rs", include_str!("select_search.rs")),
+        ("actions/scroll.rs", include_str!("scroll.rs")),
+    ]
+}
+
 #[cfg(test)]
 #[path = "mutation_tests.rs"]
 mod tests;

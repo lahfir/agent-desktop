@@ -16,12 +16,12 @@ mod replace_tests;
 
 static SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-pub(super) struct Scratch {
+pub(crate) struct Scratch {
     root: PathBuf,
 }
 
 impl Scratch {
-    pub(super) fn new(name: &str) -> Self {
+    pub(crate) fn new(name: &str) -> Self {
         Self::adopt(std::env::temp_dir().join(format!(
             "agent-desktop-pf-{name}-{}-{:016x}",
             std::process::id(),
@@ -34,7 +34,7 @@ impl Scratch {
         Self { root }
     }
 
-    pub(super) fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.root
     }
 }
@@ -53,7 +53,7 @@ pub(super) fn scratch_nonce() -> u64 {
     ))
 }
 
-pub(super) fn create_junction(link: &Path, target: &Path) {
+pub(crate) fn create_junction(link: &Path, target: &Path) {
     let status = std::process::Command::new("cmd")
         .arg("/c")
         .arg("mklink")

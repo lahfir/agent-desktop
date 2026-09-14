@@ -6,6 +6,7 @@ use agent_desktop_core::{
 use crate::tree::element::UIAElement;
 
 use super::list::list_entries;
+use super::read::ListEntry;
 use super::session::{ActionCenterSession, close_session};
 use super::verify::{
     action_changed_state, dismiss_survived_error, entry_gone, read_settling_without, same_identity,
@@ -101,12 +102,7 @@ fn dismiss_impl(
     deadline: Deadline,
 ) -> Result<NotificationInfo, AdapterError> {
     let filter = build_filter(app_filter);
-    let entries = list_entries(&filter, hwnd, deadline)?;
-    let entry = entries
-        .iter()
-        .find(|entry| entry.info.index == index)
-        .ok_or_else(|| AdapterError::notification_not_found(index))?;
-    verify_identity(index, identity, &entry.info)?;
+    let entry = locate_and_verify(index, identity, &filter, hwnd, deadline)?;
     let info = entry.info.clone();
 
     invoke_dismiss(&entry.element, index)?;
@@ -270,12 +266,7 @@ fn action_impl(
     deadline: Deadline,
 ) -> Result<ActionResult, AdapterError> {
     let filter = NotificationFilter::default();
-    let entries = list_entries(&filter, hwnd, deadline)?;
-    let entry = entries
-        .iter()
-        .find(|entry| entry.info.index == index)
-        .ok_or_else(|| AdapterError::notification_not_found(index))?;
-    verify_identity(index, identity, &entry.info)?;
+    let entry = locate_and_verify(index, identity, &filter, hwnd, deadline)?;
     let original = entry.info.clone();
     invoke_notification_action(&entry.element, action_name, index)?;
     let current = read_settling_without(std::slice::from_ref(&original), hwnd, &filter, deadline)?;
@@ -341,6 +332,25 @@ pub(crate) fn require_foreground_policy(policy: InteractionPolicy) -> Result<(),
 /// title is compared against what the re-read actually found at that index,
 /// and a mismatch is `NOTIFICATION_NOT_FOUND` - the surface reordered under
 /// the caller, so acting anyway would dismiss the wrong notification.
+/// The listing entry a mutation targets, already checked against the
+/// identity the caller expects it to still carry - the prelude every
+/// mutation runs before it touches anything.
+fn locate_and_verify(
+    index: usize,
+    identity: Option<&NotificationIdentity>,
+    filter: &NotificationFilter,
+    hwnd: isize,
+    deadline: Deadline,
+) -> Result<ListEntry, AdapterError> {
+    let entries = list_entries(filter, hwnd, deadline)?;
+    let entry = entries
+        .into_iter()
+        .find(|entry| entry.info.index == index)
+        .ok_or_else(|| AdapterError::notification_not_found(index))?;
+    verify_identity(index, identity, &entry.info)?;
+    Ok(entry)
+}
+
 fn verify_identity(
     index: usize,
     identity: Option<&NotificationIdentity>,

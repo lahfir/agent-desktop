@@ -151,12 +151,7 @@ fn macos_capability_count_includes_restored_notifications() {
     assert_eq!(
         commands.len(),
         60,
-        "the published CLI command count changed"
-    );
-    assert_eq!(
-        commands.len(),
-        60,
-        "macOS operational command count changed; update capability documentation"
+        "the published CLI command count changed; update capability documentation"
     );
 }
 

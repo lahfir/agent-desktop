@@ -57,14 +57,13 @@ pub(super) fn survivor_failures(
 }
 
 /// Whether the entry an action targeted is gone or no longer carries the
-/// identity it was read with.
+/// identity it was read with - [`entry_gone`] under the name this call site's
+/// question reads by.
 pub(super) fn action_changed_state(
     original: &NotificationInfo,
     current: &[NotificationInfo],
 ) -> bool {
-    !current
-        .iter()
-        .any(|current| same_identity(original, current))
+    entry_gone(original, current)
 }
 
 pub(super) fn dismiss_survived_error(index: usize) -> AdapterError {

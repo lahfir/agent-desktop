@@ -119,9 +119,11 @@ fn a_clean_complete_walk_still_fails_when_root_reverification_fails() {
         ObservationRoot::Window(&window),
         request,
         &adapter,
-        false,
-        small_complete_outcome(),
-        Duration::ZERO,
+        CompletedWalk {
+            chromium_root: false,
+            outcome: small_complete_outcome(),
+            walk_duration: Duration::ZERO,
+        },
         |_| Err(window_gone()),
     )
     .expect_err("a failing reverification must not be swallowed by a clean-looking walk");
@@ -142,9 +144,11 @@ fn the_force_path_still_reverifies_before_returning_the_tree() {
         ObservationRoot::Window(&window),
         request,
         &adapter,
-        true,
-        small_complete_outcome(),
-        Duration::ZERO,
+        CompletedWalk {
+            chromium_root: true,
+            outcome: small_complete_outcome(),
+            walk_duration: Duration::ZERO,
+        },
         |_| Err(window_gone()),
     )
     .expect_err("the force-renderer-accessibility path must not skip liveness");
@@ -167,9 +171,11 @@ fn two_different_pids_through_one_adapter_each_get_their_own_activation_pass() {
         ObservationRoot::Window(&first),
         request,
         &adapter,
-        true,
-        small_complete_outcome(),
-        Duration::ZERO,
+        CompletedWalk {
+            chromium_root: true,
+            outcome: small_complete_outcome(),
+            walk_duration: Duration::ZERO,
+        },
         |_| Ok(()),
     )
     .expect_err("a never-attempted process must be offered activation");
@@ -182,9 +188,11 @@ fn two_different_pids_through_one_adapter_each_get_their_own_activation_pass() {
         ObservationRoot::Window(&second),
         request,
         &adapter,
-        true,
-        small_complete_outcome(),
-        Duration::ZERO,
+        CompletedWalk {
+            chromium_root: true,
+            outcome: small_complete_outcome(),
+            walk_duration: Duration::ZERO,
+        },
         |_| Ok(()),
     )
     .expect_err("a different process must not inherit another process's settle state");
@@ -207,9 +215,11 @@ fn a_still_shell_walk_with_generous_deadline_loops_the_marker_again() {
         ObservationRoot::Window(&window),
         request,
         &adapter,
-        true,
-        small_complete_outcome(),
-        Duration::ZERO,
+        CompletedWalk {
+            chromium_root: true,
+            outcome: small_complete_outcome(),
+            walk_duration: Duration::ZERO,
+        },
         |_| Ok(()),
     )
     .expect_err("a still-thin shell must not silently succeed");
@@ -238,9 +248,11 @@ fn a_still_shell_walk_with_an_exhausted_deadline_returns_the_guidance_error() {
         ObservationRoot::Window(&window),
         request,
         &adapter,
-        true,
-        small_complete_outcome(),
-        Duration::ZERO,
+        CompletedWalk {
+            chromium_root: true,
+            outcome: small_complete_outcome(),
+            walk_duration: Duration::ZERO,
+        },
         |_| Ok(()),
     )
     .expect_err("a still-thin shell must not silently succeed");

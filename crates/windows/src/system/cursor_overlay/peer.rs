@@ -57,7 +57,7 @@ pub(crate) fn terminate_pipe_server(_pipe: isize) -> bool {
 #[cfg(target_os = "windows")]
 mod imp {
     use crate::system::cursor_overlay::image_identity;
-    use crate::system::private_file::owner::{self, SidBuffer};
+    use crate::system::token_sid::{SidBuffer, TokenSource, token_user_sid};
     use std::os::windows::ffi::OsStringExt;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::Security::TOKEN_QUERY;
@@ -65,9 +65,8 @@ mod imp {
         GetNamedPipeClientProcessId, GetNamedPipeServerProcessId,
     };
     use windows_sys::Win32::System::Threading::{
-        GetCurrentProcess, GetCurrentProcessId, OpenProcess, OpenProcessToken,
-        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, QueryFullProcessImageNameW,
-        TerminateProcess,
+        GetCurrentProcessId, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+        PROCESS_TERMINATE, QueryFullProcessImageNameW, TerminateProcess,
     };
 
     /// Closes on every path out of a check, including the ones that give up
@@ -203,14 +202,7 @@ mod imp {
     }
 
     fn own_user_sid() -> Option<SidBuffer> {
-        let mut token: HANDLE = std::ptr::null_mut();
-        let opened = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) };
-        if opened == 0 {
-            return None;
-        }
-        let sid = owner::token_user_sid(owner::TokenSource::Handle(token)).ok();
-        unsafe { CloseHandle(token) };
-        sid
+        token_user_sid(TokenSource::CurrentProcess).ok()
     }
 
     fn user_sid_of(process: &OwnedProcess) -> Option<SidBuffer> {
@@ -219,7 +211,7 @@ mod imp {
         if opened == 0 {
             return None;
         }
-        let sid = owner::token_user_sid(owner::TokenSource::Handle(token)).ok();
+        let sid = token_user_sid(TokenSource::Handle(token)).ok();
         unsafe { CloseHandle(token) };
         sid
     }

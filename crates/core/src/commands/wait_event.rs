@@ -78,10 +78,8 @@ pub(crate) fn wait_for_event(
                         seen = Some(current);
                     }
                     Some(base) => {
-                        let diff_base_owned;
                         let diff_base: &SignalBaseline = if disappearance {
-                            diff_base_owned = seen.clone().unwrap_or_else(|| base.clone());
-                            &diff_base_owned
+                            seen.as_ref().unwrap_or(base)
                         } else {
                             base
                         };
@@ -203,11 +201,12 @@ fn signal_filter(
     let Some(app) = input.app.as_deref() else {
         return Ok(SignalFilter::default());
     };
+    let with_process = |process: Option<crate::ProcessIdentity>| SignalFilter {
+        app: input.app.clone(),
+        process,
+    };
     if matches!(requested, EventKind::AppLaunched) {
-        return Ok(SignalFilter {
-            app: input.app.clone(),
-            process: None,
-        });
+        return Ok(with_process(None));
     }
     let successful_seed = seeded_baseline.and_then(|baseline| baseline.as_ref().ok());
     let seeded_process = successful_seed
@@ -215,29 +214,19 @@ fn signal_filter(
         .transpose()?
         .flatten();
     if let Some(process) = seeded_process {
-        return Ok(SignalFilter {
-            app: input.app.clone(),
-            process: Some(process),
-        });
+        return Ok(with_process(Some(process)));
     }
     if successful_seed.is_some() && matches!(requested, EventKind::AppTerminated) {
-        return Ok(SignalFilter {
-            app: input.app.clone(),
-            process: None,
-        });
+        return Ok(with_process(None));
     }
     match crate::commands::helpers::resolve_app(Some(app), adapter, deadline) {
-        Ok(resolved) => Ok(SignalFilter {
-            app: input.app.clone(),
-            process: Some(crate::commands::helpers::process_identity(&resolved)?),
-        }),
+        Ok(resolved) => Ok(with_process(Some(
+            crate::commands::helpers::process_identity(&resolved)?,
+        ))),
         Err(AppError::Adapter(err))
             if err.code == ErrorCode::AppNotFound && is_appearance_class(requested) =>
         {
-            Ok(SignalFilter {
-                app: input.app.clone(),
-                process: None,
-            })
+            Ok(with_process(None))
         }
         Err(err) => Err(err),
     }

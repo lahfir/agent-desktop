@@ -39,20 +39,7 @@ fn staged_pair() -> (
 
 #[cfg(target_os = "windows")]
 fn window_info_for(handle: isize) -> WindowInfo {
-    let pid = ProcessId::from(std::process::id());
-    let token = crate::system::process_identity::token_for_pid(pid)
-        .expect("token read")
-        .expect("live token");
-    let app = crate::system::process_identity::process_image_name(pid).unwrap_or_default();
-    WindowInfo {
-        id: format!("w-{}", handle as usize),
-        title: String::new(),
-        app,
-        pid,
-        process_instance: Some(token),
-        bounds: None,
-        state: WindowState::default(),
-    }
+    crate::system::live_identity::window_info_for_current_process(handle)
 }
 
 #[cfg(target_os = "windows")]

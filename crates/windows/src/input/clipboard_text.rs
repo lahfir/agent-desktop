@@ -1,6 +1,8 @@
 //! Pure `CF_UNICODETEXT` marshalling: NUL-terminated UTF-16LE ↔ `String`.
 
-use agent_desktop_core::{AdapterError, ErrorCode};
+use agent_desktop_core::AdapterError;
+
+use super::clipboard_bytes::{argument_error, payload_error, read_utf16_units};
 
 const MAX_CLIPBOARD_TEXT_UTF16: usize = 1_000_000;
 
@@ -41,21 +43,6 @@ pub(crate) fn encode_utf16_text(text: &str) -> Result<Vec<u8>, AdapterError> {
     }
     out.extend_from_slice(&0u16.to_le_bytes());
     Ok(out)
-}
-
-fn read_utf16_units(bytes: &[u8]) -> Vec<u16> {
-    bytes
-        .chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-        .collect()
-}
-
-fn payload_error(message: &str) -> AdapterError {
-    AdapterError::new(ErrorCode::ActionFailed, message)
-}
-
-fn argument_error(message: &str) -> AdapterError {
-    AdapterError::new(ErrorCode::InvalidArgs, message)
 }
 
 #[cfg(test)]

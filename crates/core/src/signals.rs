@@ -2,6 +2,7 @@
 use crate::snapshot_surface::SnapshotSurface;
 use crate::{AppInfo, EventKind, ProcessId, SignalBaseline, SurfaceSignal, UiEvent, WindowInfo};
 use std::collections::HashSet;
+use std::hash::Hash;
 
 /// Pure baseline-diff over two independently captured [`SignalBaseline`]
 /// snapshots. Never touches the adapter — every code path here is exercised
@@ -194,39 +195,34 @@ fn diff_surfaces(baseline: &SignalBaseline, current: &SignalBaseline, events: &m
 /// against, so an entity that both appeared and disappeared within one wait
 /// is still detected even though it never appears in the wait's original
 /// fixed baseline.
+/// Grows `seen` with any entry from `current` not already present, keyed by
+/// `identity`. The shared body behind [`merge_signal_baseline`]'s three
+/// fields, which differ only in their entity type and identity function.
+fn grow_with_new<'a, T: Clone, K: Eq + Hash>(
+    seen: &'a [T],
+    current: &'a [T],
+    identity: impl Fn(&'a T) -> Option<K>,
+) -> Vec<T> {
+    let seen_ids: HashSet<K> = seen.iter().filter_map(&identity).collect();
+    let mut grown = seen.to_vec();
+    for item in current {
+        if identity(item).is_some_and(|id| !seen_ids.contains(&id)) {
+            grown.push(item.clone());
+        }
+    }
+    grown
+}
+
 pub(crate) fn merge_signal_baseline(
     seen: &SignalBaseline,
     current: &SignalBaseline,
 ) -> SignalBaseline {
-    let seen_window_ids: HashSet<WindowIdentity<'_>> =
-        seen.windows.iter().filter_map(window_identity).collect();
-    let mut windows = seen.windows.clone();
-    for win in &current.windows {
-        if window_identity(win).is_some_and(|identity| !seen_window_ids.contains(&identity)) {
-            windows.push(win.clone());
-        }
-    }
-
-    let seen_app_ids: HashSet<_> = seen.apps.iter().filter_map(app_identity).collect();
-    let mut apps = seen.apps.clone();
-    for app in &current.apps {
-        if app_identity(app).is_some_and(|identity| !seen_app_ids.contains(&identity)) {
-            apps.push(app.clone());
-        }
-    }
-
-    let seen_surface_ids: HashSet<_> = seen.surfaces.iter().map(surface_identity).collect();
-    let mut surfaces = seen.surfaces.clone();
-    for surface in &current.surfaces {
-        if !seen_surface_ids.contains(&surface_identity(surface)) {
-            surfaces.push(surface.clone());
-        }
-    }
-
     SignalBaseline {
-        windows,
-        apps,
-        surfaces,
+        windows: grow_with_new(&seen.windows, &current.windows, window_identity),
+        apps: grow_with_new(&seen.apps, &current.apps, app_identity),
+        surfaces: grow_with_new(&seen.surfaces, &current.surfaces, |surface| {
+            Some(surface_identity(surface))
+        }),
         completeness: current.completeness,
     }
 }

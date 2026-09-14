@@ -19,10 +19,11 @@ use crate::system::test_support::{FIXTURE_APP_NAME_LOCK, settles_to, stage_foreg
 use crate::system::window_enum::enumerate_top_level;
 use crate::system::window_identity::live_window_owner;
 use crate::system::window_ops::passes_filter;
-use crate::tree::automation::{automation_client, root_from_hwnd};
+use crate::tree::automation::root_from_hwnd;
 use crate::tree::fixture::{HostedFixture, bootstrap};
 use crate::tree::fixture_menu::{CONTEXT_MENU_ITEM_COUNT, MenuFixture};
 use crate::tree::fixture_modal::ModalFixture;
+use crate::tree::test_support::rooted_child_count as rooted_child_count_of;
 use crate::tree::walker_fake::deadline;
 use agent_desktop_core::{
     ObservationOps, ProcessId, ProcessIdentity, SnapshotSurface, SurfaceInfo,
@@ -73,16 +74,9 @@ fn assert_kinds_round_trip(surfaces: &[SurfaceInfo]) {
 }
 
 fn rooted_child_count(handle: isize) -> usize {
-    use uiautomation::types::TreeScope;
-
-    let client = automation_client().expect("client");
-    let condition = client.create_true_condition().expect("condition");
-    root_from_hwnd(handle, deadline())
-        .expect("the id roots through the observation stack")
-        .0
-        .find_all(TreeScope::Children, &condition)
-        .expect("the rooted surface's children")
-        .len()
+    let root =
+        root_from_hwnd(handle, deadline()).expect("the id roots through the observation stack");
+    rooted_child_count_of(&root)
 }
 
 /// The adapter seam is part of the deliverable, so the plain-fixture leg

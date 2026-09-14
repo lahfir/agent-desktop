@@ -33,7 +33,7 @@ fn the_bounds_tie_break_resolves_the_stored_candidate_not_the_first_collected() 
     let budget = WalkBudget::new(10, deadline);
 
     let mut duplicates = Vec::new();
-    collect_marked(&source, &prepared, 0, &budget, &mut duplicates);
+    collect_marked(&source, &prepared, &budget, &mut duplicates);
     assert_eq!(
         duplicates.len(),
         2,
@@ -66,43 +66,23 @@ fn the_bounds_tie_break_resolves_the_stored_candidate_not_the_first_collected() 
         .expect("a read bounds rectangle");
 
     let pid = agent_desktop_core::ProcessId::from(std::process::id());
-    let entry = RefEntry {
-        process: agent_desktop_core::RefProcess {
-            pid,
-            process_instance: Some(
-                crate::system::process_identity::token_for_pid(pid)
-                    .expect("the token read answers")
-                    .expect("a live process has a token"),
-            ),
-        },
-        identity: agent_desktop_core::RefEntryIdentity {
-            role,
-            name: Some(name),
-            value: None,
-            description: None,
-            native_id,
-        },
-        geometry: agent_desktop_core::RefGeometry {
-            bounds: Some(rect),
-            bounds_hash: Some(target_hash),
-        },
-        capabilities: agent_desktop_core::RefCapabilities {
-            states: Vec::new(),
-            available_actions: Vec::new(),
-        },
-        source: agent_desktop_core::RefSource {
-            source_app: None,
-            source_window_id: Some(format!("w-{}", hosted.handle)),
-            source_window_title: Some(TITLE_MARKER.into()),
-            source_window_bounds_hash: None,
-            source_surface: agent_desktop_core::SnapshotSurface::Window,
-        },
-        scope: agent_desktop_core::RefScope {
-            root_ref: None,
-            path_is_absolute: false,
-            path: agent_desktop_core::refs::RefPath::default(),
-        },
+    let mut entry = crate::tree::walker_fake::ref_entry(&role);
+    entry.process = agent_desktop_core::RefProcess {
+        pid,
+        process_instance: Some(
+            crate::system::process_identity::token_for_pid(pid)
+                .expect("the token read answers")
+                .expect("a live process has a token"),
+        ),
     };
+    entry.identity.name = Some(name);
+    entry.identity.native_id = native_id;
+    entry.geometry = agent_desktop_core::RefGeometry {
+        bounds: Some(rect),
+        bounds_hash: Some(target_hash),
+    };
+    entry.source.source_window_id = Some(format!("w-{}", hosted.handle));
+    entry.source.source_window_title = Some(TITLE_MARKER.into());
 
     for evidence in &duplicates {
         assert_eq!(
@@ -184,43 +164,25 @@ fn duplicate_entry(
     path: RefPath,
 ) -> RefEntry {
     let pid = agent_desktop_core::ProcessId::from(std::process::id());
-    RefEntry {
-        process: agent_desktop_core::RefProcess {
-            pid,
-            process_instance: Some(
-                crate::system::process_identity::token_for_pid(pid)
-                    .expect("the token read answers")
-                    .expect("a live process has a token"),
-            ),
-        },
-        identity: agent_desktop_core::RefEntryIdentity {
-            role,
-            name: Some(name),
-            value: None,
-            description: None,
-            native_id,
-        },
-        geometry: agent_desktop_core::RefGeometry {
-            bounds: Some(rect),
-            bounds_hash,
-        },
-        capabilities: agent_desktop_core::RefCapabilities {
-            states: Vec::new(),
-            available_actions: Vec::new(),
-        },
-        source: agent_desktop_core::RefSource {
-            source_app: None,
-            source_window_id: Some(format!("w-{window_handle}")),
-            source_window_title: Some(TITLE_MARKER.into()),
-            source_window_bounds_hash: None,
-            source_surface: agent_desktop_core::SnapshotSurface::Window,
-        },
-        scope: agent_desktop_core::RefScope {
-            root_ref: None,
-            path_is_absolute: false,
-            path,
-        },
-    }
+    let mut entry = crate::tree::walker_fake::ref_entry(&role);
+    entry.process = agent_desktop_core::RefProcess {
+        pid,
+        process_instance: Some(
+            crate::system::process_identity::token_for_pid(pid)
+                .expect("the token read answers")
+                .expect("a live process has a token"),
+        ),
+    };
+    entry.identity.name = Some(name);
+    entry.identity.native_id = native_id;
+    entry.geometry = agent_desktop_core::RefGeometry {
+        bounds: Some(rect),
+        bounds_hash,
+    };
+    entry.source.source_window_id = Some(format!("w-{window_handle}"));
+    entry.source.source_window_title = Some(TITLE_MARKER.into());
+    entry.scope.path = path;
+    entry
 }
 
 /// The concrete failure the fast path's early return created, and the
@@ -336,39 +298,10 @@ fn the_fast_path_refuses_a_contradicting_hash_and_still_accepts_an_agreeing_one(
 /// every ref whose bounds momentarily failed to read.
 #[test]
 fn a_path_landing_with_an_unreadable_live_bounds_hash_is_still_accepted() {
-    let entry = RefEntry {
-        process: agent_desktop_core::RefProcess {
-            pid: agent_desktop_core::ProcessId::new(1),
-            process_instance: None,
-        },
-        identity: agent_desktop_core::RefEntryIdentity {
-            role: "button".into(),
-            name: Some("Save".into()),
-            value: None,
-            description: None,
-            native_id: None,
-        },
-        geometry: agent_desktop_core::RefGeometry {
-            bounds: None,
-            bounds_hash: Some(0xdead_beef),
-        },
-        capabilities: agent_desktop_core::RefCapabilities {
-            states: Vec::new(),
-            available_actions: Vec::new(),
-        },
-        source: agent_desktop_core::RefSource {
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
-            source_window_bounds_hash: None,
-            source_surface: agent_desktop_core::SnapshotSurface::Window,
-        },
-        scope: agent_desktop_core::RefScope {
-            root_ref: None,
-            path_is_absolute: true,
-            path: RefPath::default(),
-        },
-    };
+    let mut entry = crate::tree::walker_fake::ref_entry("button");
+    entry.identity.name = Some("Save".into());
+    entry.geometry.bounds_hash = Some(0xdead_beef);
+    entry.scope.path_is_absolute = true;
     let unreadable = LocatorEvidence {
         role: LocatorField::Known("button".into()),
         name: LocatorField::Known("Save".into()),

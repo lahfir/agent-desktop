@@ -249,11 +249,7 @@ impl ObservationOps for DisabledPolicyBlockedAdapter {
     ) -> Result<crate::LiveElement, AdapterError> {
         self.preflight_reads.fetch_add(1, Ordering::SeqCst);
         Ok(crate::LiveElement {
-            identity: crate::LiveIdentity {
-                name: crate::LocatorField::Known("Run".into()),
-                description: crate::LocatorField::Absent,
-                identifiers: crate::IdentifierEvidence::absent(),
-            },
+            identity: crate::adapter::live_identity("Run"),
             state: crate::ElementState {
                 role: "button".into(),
                 states: Vec::new(),

@@ -1,4 +1,4 @@
-﻿#![allow(dead_code)]
+#![allow(dead_code)]
 
 use agent_desktop_core::{
     AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionPolicy, SnapshotSurface,
@@ -192,35 +192,43 @@ fn raise_then_escape(row: &SurfaceKindRow, deadline: Deadline) -> Result<(), Ada
 
 #[cfg(target_os = "windows")]
 fn settles_absent(row: &SurfaceKindRow, deadline: Deadline) -> Result<bool, AdapterError> {
-    let start = std::time::Instant::now();
-    loop {
-        ensure_budget(deadline)?;
-        if !surface_presented(row, deadline)? {
-            return Ok(true);
-        }
-        let left = RAISE_SETTLE
-            .saturating_sub(start.elapsed())
-            .min(deadline.remaining());
-        if left.is_zero() {
-            return Ok(false);
-        }
-        std::thread::sleep(left.min(std::time::Duration::from_millis(50)));
-    }
+    poll_with_cap(RAISE_SETTLE, deadline, || {
+        Ok(!surface_presented(row, deadline)?)
+    })
 }
 
 #[cfg(target_os = "windows")]
 fn await_foreground(row: &SurfaceKindRow, deadline: Deadline) -> Result<(), AdapterError> {
+    if poll_with_cap(FOREGROUND_SETTLE, deadline, || {
+        surface_owns_foreground(row, deadline)
+    })? {
+        Ok(())
+    } else {
+        Err(foreground_declined_error(row))
+    }
+}
+
+/// Polls `condition` until it answers `true`, the surrounding `deadline`
+/// expires, or `cap` of settle time (whichever is shorter) passes without
+/// it - the fixed-cap-with-50ms-poll skeleton `settles_absent` and
+/// `await_foreground` share, each keeping its own constant, predicate and
+/// what a timeout means to its own caller.
+fn poll_with_cap(
+    cap: std::time::Duration,
+    deadline: Deadline,
+    condition: impl Fn() -> Result<bool, AdapterError>,
+) -> Result<bool, AdapterError> {
     let start = std::time::Instant::now();
     loop {
         ensure_budget(deadline)?;
-        if surface_owns_foreground(row, deadline)? {
-            return Ok(());
+        if condition()? {
+            return Ok(true);
         }
-        let left = FOREGROUND_SETTLE
+        let left = cap
             .saturating_sub(start.elapsed())
             .min(deadline.remaining());
         if left.is_zero() {
-            return Err(foreground_declined_error(row));
+            return Ok(false);
         }
         std::thread::sleep(left.min(std::time::Duration::from_millis(50)));
     }

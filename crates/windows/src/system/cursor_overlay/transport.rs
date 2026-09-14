@@ -51,20 +51,17 @@ pub(crate) fn reach(
 mod imp {
     use super::{POLL_INTERVAL, ReachOutcome};
     use crate::system::cursor_overlay::framing;
-    use crate::system::cursor_overlay::wide::wide;
+    use crate::system::cursor_overlay::wide::{wide, win32_error};
     use agent_desktop_core::{AdapterError, ErrorCode};
     use std::time::{Duration, Instant};
     use windows_sys::Win32::Foundation::{
-        CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_PIPE_BUSY, GetLastError, HANDLE,
-        INVALID_HANDLE_VALUE,
+        CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_PIPE_BUSY, GENERIC_READ, GENERIC_WRITE,
+        GetLastError, HANDLE, INVALID_HANDLE_VALUE,
     };
     use windows_sys::Win32::Storage::FileSystem::{
         CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, ReadFile, WriteFile,
     };
     use windows_sys::Win32::System::Pipes::{PeekNamedPipe, WaitNamedPipeW};
-
-    const GENERIC_READ: u32 = 0x8000_0000;
-    const GENERIC_WRITE: u32 = 0x4000_0000;
 
     struct OwnedHandle(HANDLE);
 
@@ -230,11 +227,6 @@ mod imp {
             "The cursor overlay renderer answered something other than an acknowledgement",
         )
         .with_platform_detail(detail)
-    }
-
-    fn win32_error(message: &str) -> AdapterError {
-        let code = unsafe { GetLastError() };
-        AdapterError::internal(message).with_platform_detail(format!("Win32 error {code}"))
     }
 }
 

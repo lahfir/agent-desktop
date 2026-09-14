@@ -29,9 +29,7 @@ const HOSTED_APP_IMAGE: &str = "SystemSettings.exe";
 const FRAME_HOST_IMAGE: &str = "ApplicationFrameHost.exe";
 const VK_TAB: u16 = 0x09;
 
-fn deadline() -> Deadline {
-    Deadline::after(15_000).expect("frame identity tests use a generous deadline")
-}
+use crate::system::test_time::deadline;
 
 /// One live hosted frame: the frame's own handle, the hosted application's
 /// pid, and the frame host's pid - the three-way handle/pid split between a
@@ -141,7 +139,7 @@ fn hunt_hosted_settings_frame() -> Option<(isize, u32, u32)> {
             if !stage_foreground(frame) {
                 continue;
             }
-            if send_chord(&[], VK_TAB, deadline()).is_err() {
+            if send_chord(&[], VK_TAB, deadline(15_000)).is_err() {
                 continue;
             }
             std::thread::sleep(std::time::Duration::from_secs(2));
@@ -245,7 +243,7 @@ fn focused_window_reports_the_frame_handle_with_the_hosted_application_identity(
         focused_only: true,
         app: None,
     };
-    let focused = list_windows_live(&filter, deadline()).expect("the listing succeeds");
+    let focused = list_windows_live(&filter, deadline(15_000)).expect("the listing succeeds");
     let entry = focused
         .first()
         .expect("the staged frame is the desktop's foreground window");
@@ -290,7 +288,7 @@ fn list_windows_app_scoping_agrees_with_focused_window_on_a_hosted_application()
             focused_only: false,
             app: Some(String::from("SystemSettings")),
         },
-        deadline(),
+        deadline(15_000),
     )
     .expect("the listing succeeds");
     assert!(
@@ -302,7 +300,7 @@ fn list_windows_app_scoping_agrees_with_focused_window_on_a_hosted_application()
             focused_only: true,
             app: None,
         },
-        deadline(),
+        deadline(15_000),
     )
     .expect("the listing succeeds");
     let focused_entry = focused
@@ -351,7 +349,7 @@ fn focus_window_succeeds_against_the_identity_focused_window_reported() {
         focused_only: true,
         app: None,
     };
-    let focused = list_windows_live(&filter, deadline()).expect("the listing succeeds");
+    let focused = list_windows_live(&filter, deadline(15_000)).expect("the listing succeeds");
     let entry = focused
         .into_iter()
         .next()

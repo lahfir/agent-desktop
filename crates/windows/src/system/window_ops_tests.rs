@@ -1,9 +1,7 @@
 use super::*;
 use agent_desktop_core::Rect;
 
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("window_ops tests use a generous deadline")
-}
+use crate::system::test_time::deadline;
 
 #[test]
 fn the_filter_excludes_invisible_zero_sized_cloaked_and_tool_windows() {
@@ -82,7 +80,7 @@ mod windows_only {
         let mut listed = None;
         let mut last_refusal = None;
         for _ in 0..LISTING_RACE_ATTEMPTS {
-            match list_windows_live(&WindowFilter::default(), deadline()) {
+            match list_windows_live(&WindowFilter::default(), deadline(10_000)) {
                 Ok(windows) => {
                     listed = Some(windows);
                     break;
@@ -170,7 +168,7 @@ mod windows_only {
             app: None,
         };
 
-        let focused = match list_windows_live(&filter, deadline()) {
+        let focused = match list_windows_live(&filter, deadline(10_000)) {
             Ok(focused) => focused,
             Err(error) => {
                 assert_eq!(
@@ -241,7 +239,7 @@ mod windows_only {
 
         const FORCED_RACES: usize = 2;
         let outcome = force_window_not_found::with(FORCED_RACES, || {
-            list_windows_live(&WindowFilter::default(), deadline())
+            list_windows_live(&WindowFilter::default(), deadline(10_000))
         });
 
         assert!(
@@ -272,7 +270,7 @@ mod windows_only {
 
         let outcome = force_window_not_found::with(
             crate::system::listing_retry::LISTING_RACE_ATTEMPTS as usize * 2,
-            || list_windows_live(&WindowFilter::default(), deadline()),
+            || list_windows_live(&WindowFilter::default(), deadline(10_000)),
         );
 
         let error = outcome.expect_err("a persistent inconsistency must exhaust the retry budget");

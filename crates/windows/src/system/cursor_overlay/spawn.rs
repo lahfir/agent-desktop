@@ -167,10 +167,10 @@ fn start_renderer(
 mod imp {
     use super::{pipe_name, transport};
     use crate::system::cursor_overlay::image_identity;
-    use crate::system::cursor_overlay::wide::wide;
+    use crate::system::cursor_overlay::wide::{wide, win32_error};
     use agent_desktop_core::{AdapterError, CursorOverlayControl};
     use std::time::{Duration, Instant};
-    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError};
+    use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Threading::{
         CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, CreateProcessW, DETACHED_PROCESS,
         PROCESS_INFORMATION, STARTUPINFOW,
@@ -248,11 +248,9 @@ mod imp {
             )
         };
         if started == 0 {
-            let code = unsafe { GetLastError() };
-            return Err(
-                AdapterError::internal("The cursor overlay renderer could not be started")
-                    .with_platform_detail(format!("Win32 error {code}")),
-            );
+            return Err(win32_error(
+                "The cursor overlay renderer could not be started",
+            ));
         }
         unsafe {
             CloseHandle(information.hThread);

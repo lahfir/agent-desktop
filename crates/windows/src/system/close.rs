@@ -285,14 +285,9 @@ fn process_observed_gone(pid: ProcessId, instance: &str) -> Result<bool, Adapter
 
 #[cfg(target_os = "windows")]
 fn top_level_windows_for_pid(pid: ProcessId) -> Result<Vec<isize>, AdapterError> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
-
-    let target = u32::from(pid);
     let mut handles = Vec::new();
     super::window_enum::enumerate_top_level(|window| {
-        let mut owner: u32 = 0;
-        unsafe { GetWindowThreadProcessId(window.handle, &mut owner) };
-        if owner == target {
+        if super::window_identity::live_window_owner(window.handle) == Some(pid) {
             handles.push(window.handle as isize);
         }
         true
@@ -308,19 +303,16 @@ fn post_wm_close_if_still_owned(
     pid: ProcessId,
     instance: &str,
 ) -> Result<bool, AdapterError> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetWindowThreadProcessId, PostMessageW, WM_CLOSE,
-    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
 
-    let mut owner: u32 = 0;
-    unsafe { GetWindowThreadProcessId(hwnd as *mut core::ffi::c_void, &mut owner) };
-    if owner != u32::from(pid) {
+    let hwnd = hwnd as super::window_enum::WindowHandle;
+    if super::window_identity::live_window_owner(hwnd) != Some(pid) {
         return Ok(false);
     }
     if !process_identity::matches_instance(pid, instance)? {
         return Ok(false);
     }
-    let posted = unsafe { PostMessageW(hwnd as *mut core::ffi::c_void, WM_CLOSE, 0, 0) };
+    let posted = unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0) };
     if posted == 0 {
         return Err(win32_last_error("PostMessageW(WM_CLOSE) failed"));
     }

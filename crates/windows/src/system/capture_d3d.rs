@@ -15,8 +15,6 @@ use windows::Win32::System::WinRT::Direct3D11::{
 };
 use windows::core::Interface;
 
-use super::hresult::{com_hresult_detail, hresult_record};
-
 pub(super) struct CaptureDevice {
     pub(super) device: ID3D11Device,
     pub(super) context: ID3D11DeviceContext,
@@ -193,13 +191,7 @@ pub(super) fn texture_from_surface(
 }
 
 pub(super) fn d3d_error(hresult: i32, context: &str) -> AdapterError {
-    let record = hresult_record(hresult);
-    let mut error = AdapterError::new(record.code, format!("D3D could not {context}"))
-        .with_platform_detail(com_hresult_detail(hresult));
-    if let Some(suggestion) = record.suggestion {
-        error = error.with_suggestion(suggestion);
-    }
-    error
+    super::hresult::hresult_error("D3D", hresult, context)
 }
 
 pub(crate) mod resource_balance {

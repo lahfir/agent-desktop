@@ -1,4 +1,4 @@
-use super::{SelectOps, SelectPlan, select_judged_for};
+use super::{SelectOps, SelectPlan, push_order, select_judged_for};
 use crate::actions::chain::DeliveryOutcome;
 use agent_desktop_core::{AdapterError, Deadline, DeliveryDisposition, ErrorCode};
 use std::cell::Cell;
@@ -115,36 +115,20 @@ fn post_realize_duplicate_is_ambiguous() {
 fn miss_after_realize_still_collapses_when_expanded() {
     let order = Cell::new(Vec::<&'static str>::new());
     let mut expand = || {
-        order.set({
-            let mut v = order.take();
-            v.push("expand");
-            v
-        });
+        push_order(&order, "expand");
         Ok(())
     };
     let mut collapse = || {
-        order.set({
-            let mut v = order.take();
-            v.push("collapse");
-            v
-        });
+        push_order(&order, "collapse");
     };
     let finds = Cell::new(0u8);
     let mut find = || {
         finds.set(finds.get() + 1);
-        order.set({
-            let mut v = order.take();
-            v.push("find");
-            v
-        });
+        push_order(&order, "find");
         Ok(false)
     };
     let mut realize = || {
-        order.set({
-            let mut v = order.take();
-            v.push("realize");
-            v
-        });
+        push_order(&order, "realize");
         Ok(())
     };
     let mut select_item = || Ok(DeliveryOutcome::DeliveredVerified);

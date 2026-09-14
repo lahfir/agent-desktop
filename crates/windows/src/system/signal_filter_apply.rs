@@ -17,9 +17,9 @@ use super::signal_inventory::SignalWindowInventory;
 /// entity's identity provably exact, which is what that check requires.
 ///
 /// Filtering runs after assembly, over entities whose identity is already
-/// resolved, so `windows_complete`, `apps_complete` and
-/// `excluded_window_count` travel through unchanged: none of them reflect
-/// what the filter removed, only what the walk itself could not identify.
+/// resolved, so `windows_complete` and `apps_complete` travel through
+/// unchanged: neither reflects what the filter removed, only what the walk
+/// itself could not identify.
 pub(crate) fn apply_signal_filter(
     inventory: SignalWindowInventory,
     filter: &SignalFilter,
@@ -29,7 +29,6 @@ pub(crate) fn apply_signal_filter(
         apps,
         windows_complete,
         apps_complete,
-        excluded_window_count,
     } = inventory;
 
     let windows = windows
@@ -53,7 +52,6 @@ pub(crate) fn apply_signal_filter(
         apps,
         windows_complete,
         apps_complete,
-        excluded_window_count,
     }
 }
 

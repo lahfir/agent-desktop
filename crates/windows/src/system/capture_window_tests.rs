@@ -6,24 +6,19 @@ use crate::tree::fixture::{LocalPatternFixture, StalledFixture, bootstrap};
 use agent_desktop_core::{Deadline, ErrorCode};
 use std::time::Duration;
 
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("capture tests use a generous deadline")
-}
+use crate::system::test_time::deadline;
 
-fn sample_rgb(bgra: &[u8], width: u32, x: i32, y: i32) -> [u8; 3] {
-    let offset = ((y as u32 * width + x as u32) * 4) as usize;
-    [bgra[offset + 2], bgra[offset + 1], bgra[offset]]
-}
+use crate::system::capture_test_support::sample_rgb;
 
 #[test]
 fn pattern_fixture_capture_matches_sampled_colours() {
     bootstrap();
     let fixture = LocalPatternFixture::create().expect("pattern fixture starts");
-    let image = capture_window(fixture.handle() as _, 1.0, deadline())
+    let image = capture_window(fixture.handle() as _, 1.0, deadline(10_000))
         .expect("PrintWindow capture of the pattern fixture succeeds");
 
     let (bgra, width, height) =
-        decode_png_to_bgra(&image.data, deadline()).expect("decode captured PNG");
+        decode_png_to_bgra(&image.data, deadline(10_000)).expect("decode captured PNG");
     assert_eq!((width, height), (image.width, image.height));
 
     let expectation = fixture.expectation();
@@ -43,7 +38,7 @@ fn stalled_fixture_returns_app_unresponsive_without_hanging() {
     bootstrap();
     let stalled = StalledFixture::create().expect("stalled fixture starts");
     let started = std::time::Instant::now();
-    let error = capture_window(stalled.handle() as _, 1.0, deadline())
+    let error = capture_window(stalled.handle() as _, 1.0, deadline(10_000))
         .expect_err("a non-pumping window must be refused before PrintWindow");
     assert_eq!(error.code, ErrorCode::AppUnresponsive);
     assert!(
@@ -67,7 +62,7 @@ fn destroyed_handle_is_not_reported_unresponsive() {
         "fixture drop must destroy the window before the capture call"
     );
 
-    let error = capture_window(handle as _, 1.0, deadline())
+    let error = capture_window(handle as _, 1.0, deadline(10_000))
         .expect_err("a destroyed handle must fail closed");
     assert_ne!(
         error.code,
@@ -106,7 +101,7 @@ fn zero_area_and_minimized_windows_are_rejected_before_bitmap_alloc() {
     std::thread::sleep(Duration::from_millis(50));
 
     let before = gdi_balance::live();
-    let error = capture_window(handle, 1.0, deadline())
+    let error = capture_window(handle, 1.0, deadline(10_000))
         .expect_err("minimized windows are rejected before PrintWindow");
     assert_eq!(error.code, ErrorCode::InvalidArgs);
     assert_eq!(
@@ -133,7 +128,7 @@ fn gdi_objects_balance_across_success_deadline_and_forced_failure() {
     let fixture = LocalPatternFixture::create().expect("pattern fixture starts");
     let handle = fixture.handle() as _;
 
-    let _ = capture_window(handle, 1.0, deadline()).expect("success path");
+    let _ = capture_window(handle, 1.0, deadline(10_000)).expect("success path");
     assert_eq!(
         gdi_balance::live(),
         0,
@@ -150,7 +145,7 @@ fn gdi_objects_balance_across_success_deadline_and_forced_failure() {
         "early deadline abort allocates nothing"
     );
 
-    let forced = fail_after_alloc::with(|| capture_window(handle, 1.0, deadline()))
+    let forced = fail_after_alloc::with(|| capture_window(handle, 1.0, deadline(10_000)))
         .expect_err("forced failure after allocation");
     assert_eq!(forced.code, ErrorCode::ActionFailed);
     assert_eq!(
@@ -165,16 +160,17 @@ fn printwindow_retries_with_bare_flags_when_fullcontent_path_is_skipped() {
     bootstrap();
     let fixture = LocalPatternFixture::create().expect("pattern fixture starts");
     bare_retry_observed::reset();
-    let image =
-        fail_after_fullcontent::with(|| capture_window(fixture.handle() as _, 1.0, deadline()))
-            .expect("bare PrintWindow retry must succeed on the pattern fixture");
+    let image = fail_after_fullcontent::with(|| {
+        capture_window(fixture.handle() as _, 1.0, deadline(10_000))
+    })
+    .expect("bare PrintWindow retry must succeed on the pattern fixture");
     assert!(
         bare_retry_observed::take(),
         "removing the bare-flags fallback leaves this path untested and breaks invert verification"
     );
 
     let (bgra, width, height) =
-        decode_png_to_bgra(&image.data, deadline()).expect("decode captured PNG");
+        decode_png_to_bgra(&image.data, deadline(10_000)).expect("decode captured PNG");
     assert_eq!((width, height), (image.width, image.height));
     let expectation = fixture.expectation();
     let mut samples = [[0u8; 3]; 4];

@@ -8,9 +8,7 @@ use agent_desktop_core::{
     WindowState, parse_png_dimensions,
 };
 
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("screenshot tests use a generous deadline")
-}
+use crate::system::test_time::deadline;
 
 fn window_info_for(handle: isize, process_instance: Option<String>) -> WindowInfo {
     let pid = ProcessId::from(std::process::id());
@@ -33,10 +31,7 @@ fn live_token() -> String {
         .expect("live token")
 }
 
-fn sample_rgb(bgra: &[u8], width: u32, x: i32, y: i32) -> [u8; 3] {
-    let offset = ((y as u32 * width + x as u32) * 4) as usize;
-    [bgra[offset + 2], bgra[offset + 1], bgra[offset]]
-}
+use crate::system::capture_test_support::sample_rgb;
 
 fn assert_png_metadata(image: &agent_desktop_core::ImageBuffer) {
     assert_eq!(image.format.as_str(), ImageFormat::Png.as_str());
@@ -49,20 +44,21 @@ fn assert_png_metadata(image: &agent_desktop_core::ImageBuffer) {
 fn four_targets_produce_png_buffers_via_legacy_fallback() {
     bootstrap();
     backend_hooks::with_force_unsupported(|| {
-        let displays = list_displays_live(deadline()).expect("enumerate displays");
+        let displays = list_displays_live(deadline(10_000)).expect("enumerate displays");
         let primary = displays
             .iter()
             .find(|display| display.is_primary)
             .expect("primary display");
 
-        let fullscreen = screenshot(ScreenshotTarget::FullScreen, deadline()).expect("FullScreen");
+        let fullscreen =
+            screenshot(ScreenshotTarget::FullScreen, deadline(10_000)).expect("FullScreen");
         assert_png_metadata(&fullscreen);
         assert_eq!(
             (fullscreen.width, fullscreen.height),
             (primary.bounds.width as u32, primary.bounds.height as u32)
         );
 
-        let screen = screenshot(ScreenshotTarget::Screen(0), deadline()).expect("Screen(0)");
+        let screen = screenshot(ScreenshotTarget::Screen(0), deadline(10_000)).expect("Screen(0)");
         assert_png_metadata(&screen);
 
         let display = screenshot(
@@ -70,7 +66,7 @@ fn four_targets_produce_png_buffers_via_legacy_fallback() {
                 index: 0,
                 expected: primary.clone(),
             },
-            deadline(),
+            deadline(10_000),
         )
         .expect("Display");
         assert_png_metadata(&display);
@@ -78,11 +74,11 @@ fn four_targets_produce_png_buffers_via_legacy_fallback() {
         let fixture = LocalPatternFixture::create().expect("pattern fixture");
         let info = window_info_for(fixture.handle(), Some(live_token()));
         let window =
-            screenshot(ScreenshotTarget::ExactWindow(info), deadline()).expect("ExactWindow");
+            screenshot(ScreenshotTarget::ExactWindow(info), deadline(10_000)).expect("ExactWindow");
         assert_png_metadata(&window);
 
         let (bgra, width, _height) =
-            decode_png_to_bgra(&window.data, deadline()).expect("decode window PNG");
+            decode_png_to_bgra(&window.data, deadline(10_000)).expect("decode window PNG");
         let expectation = fixture.expectation();
         let mut samples = [[0u8; 3]; 4];
         for (index, point) in expectation.sample_points().into_iter().enumerate() {
@@ -100,7 +96,7 @@ fn exact_window_without_process_instance_is_invalid_args_not_delivered() {
     bootstrap();
     let fixture = LocalPatternFixture::create().expect("pattern fixture");
     let info = window_info_for(fixture.handle(), None);
-    let error = screenshot(ScreenshotTarget::ExactWindow(info), deadline())
+    let error = screenshot(ScreenshotTarget::ExactWindow(info), deadline(10_000))
         .expect_err("missing process_instance must fail before native capture");
     assert_eq!(error.code, ErrorCode::InvalidArgs);
     assert_eq!(
@@ -109,7 +105,7 @@ fn exact_window_without_process_instance_is_invalid_args_not_delivered() {
     );
 
     let with_token = window_info_for(fixture.handle(), Some(live_token()));
-    let image = capture_window(&with_token, deadline())
+    let image = capture_window(&with_token, deadline(10_000))
         .expect("supplying a token lets ExactWindow proceed");
     assert_png_metadata(&image);
 }
@@ -121,7 +117,10 @@ fn post_capture_window_identity_failure_discards_bytes() {
     let info = window_info_for(fixture.handle(), Some(live_token()));
 
     let error = screenshot_hooks::with_force_post_identity_failure(|| {
-        screenshot(ScreenshotTarget::ExactWindow(info.clone()), deadline())
+        screenshot(
+            ScreenshotTarget::ExactWindow(info.clone()),
+            deadline(10_000),
+        )
     })
     .expect_err("post-capture identity failure must discard bytes");
     assert_eq!(error.code, ErrorCode::StaleRef);
@@ -132,7 +131,7 @@ fn post_capture_window_identity_failure_discards_bytes() {
 
     let leaked = screenshot_hooks::with_skip_post_identity(|| {
         screenshot_hooks::with_force_post_identity_failure(|| {
-            screenshot(ScreenshotTarget::ExactWindow(info), deadline())
+            screenshot(ScreenshotTarget::ExactWindow(info), deadline(10_000))
         })
     })
     .expect("skipping the post-check leaks bytes — invert of the discard guard");
@@ -143,7 +142,7 @@ fn post_capture_window_identity_failure_discards_bytes() {
 fn modern_forced_unavailable_still_succeeds_via_legacy() {
     bootstrap();
     backend_hooks::with_force_unsupported(|| {
-        let image = screenshot(ScreenshotTarget::FullScreen, deadline())
+        let image = screenshot(ScreenshotTarget::FullScreen, deadline(10_000))
             .expect("forced-unavailable modern must degrade silently");
         assert_png_metadata(&image);
     });
@@ -153,7 +152,7 @@ fn modern_forced_unavailable_still_succeeds_via_legacy() {
 fn modern_forced_fail_after_available_falls_back_to_legacy() {
     bootstrap();
     backend_hooks::with_force_fail_after_available(|| {
-        let image = screenshot(ScreenshotTarget::Screen(0), deadline())
+        let image = screenshot(ScreenshotTarget::Screen(0), deadline(10_000))
             .expect("modern failure must fall back to legacy");
         assert_png_metadata(&image);
     });
@@ -196,21 +195,22 @@ fn window_scale_factor_comes_from_owning_display() {
     bootstrap();
     let fixture = LocalPatternFixture::create().expect("pattern fixture");
     let info = window_info_for(fixture.handle(), Some(live_token()));
-    let resolved =
-        crate::system::window_resolve::resolve_window_strict(&info, deadline()).expect("resolve");
-    let expected_scale = crate::system::display::scale_for_bounds(resolved.bounds, deadline())
-        .expect("scale for window bounds");
+    let resolved = crate::system::window_resolve::resolve_window_strict(&info, deadline(10_000))
+        .expect("resolve");
+    let expected_scale =
+        crate::system::display::scale_for_bounds(resolved.bounds, deadline(10_000))
+            .expect("scale for window bounds");
 
-    let image = screenshot(ScreenshotTarget::ExactWindow(info), deadline()).expect("capture");
+    let image = screenshot(ScreenshotTarget::ExactWindow(info), deadline(10_000)).expect("capture");
     assert_eq!(image.scale_factor, expected_scale);
 
-    let primary = display_at(0, deadline()).expect("primary");
+    let primary = display_at(0, deadline(10_000)).expect("primary");
     let display_image = screenshot(
         ScreenshotTarget::Display {
             index: 0,
             expected: primary.clone(),
         },
-        deadline(),
+        deadline(10_000),
     )
     .expect("display capture");
     assert_eq!(display_image.scale_factor, primary.scale);
@@ -223,7 +223,7 @@ fn window_identity_mismatch_is_not_delivered_through_the_entry_point() {
     let mut info = window_info_for(fixture.handle(), Some(live_token()));
     info.process_instance = Some("windows-proc-v1:0:0".into());
 
-    let error = screenshot(ScreenshotTarget::ExactWindow(info), deadline())
+    let error = screenshot(ScreenshotTarget::ExactWindow(info), deadline(10_000))
         .expect_err("a stale generation token must fail before native capture");
     assert_eq!(error.code, ErrorCode::WindowNotFound);
     assert_eq!(
@@ -235,7 +235,7 @@ fn window_identity_mismatch_is_not_delivered_through_the_entry_point() {
 #[test]
 fn display_identity_mismatch_is_not_delivered_through_the_entry_point() {
     bootstrap();
-    let primary = display_at(0, deadline()).expect("primary");
+    let primary = display_at(0, deadline(10_000)).expect("primary");
     let mut stale = primary.clone();
     stale.bounds.width += 1.0;
 
@@ -244,7 +244,7 @@ fn display_identity_mismatch_is_not_delivered_through_the_entry_point() {
             index: 0,
             expected: stale,
         },
-        deadline(),
+        deadline(10_000),
     )
     .expect_err("a stale display fingerprint must fail before native capture");
     assert_eq!(error.code, ErrorCode::InvalidArgs);
@@ -284,7 +284,7 @@ fn screenshot_entry_upgrades_only_unknown_disposition_to_not_delivered() {
 #[test]
 fn invalid_display_index_is_not_delivered_through_the_entry_point() {
     bootstrap();
-    let error = screenshot(ScreenshotTarget::Screen(9_999), deadline())
+    let error = screenshot(ScreenshotTarget::Screen(9_999), deadline(10_000))
         .expect_err("an out-of-range display index must fail");
     assert_eq!(error.code, ErrorCode::InvalidArgs);
     assert_eq!(
@@ -308,7 +308,7 @@ fn minimized_window_capture_is_not_delivered_through_the_entry_point() {
     let info = window_info_for(fixture.handle(), Some(live_token()));
 
     let error = backend_hooks::with_force_unsupported(|| {
-        screenshot(ScreenshotTarget::ExactWindow(info), deadline())
+        screenshot(ScreenshotTarget::ExactWindow(info), deadline(10_000))
     })
     .expect_err("a minimized window must be refused before native capture");
     assert_eq!(error.code, ErrorCode::InvalidArgs);
@@ -325,7 +325,7 @@ fn stalled_window_capture_is_not_delivered_through_the_entry_point() {
     let info = window_info_for(stalled.handle(), Some(live_token()));
 
     let error = backend_hooks::with_force_unsupported(|| {
-        screenshot(ScreenshotTarget::ExactWindow(info), deadline())
+        screenshot(ScreenshotTarget::ExactWindow(info), deadline(10_000))
     })
     .expect_err("a non-pumping window must be refused before native capture");
     assert_eq!(error.code, ErrorCode::AppUnresponsive);
@@ -341,7 +341,7 @@ fn adapter_screenshot_delegates_to_orchestration() {
 
     bootstrap();
     let adapter = crate::adapter::WindowsAdapter::new();
-    let image = SystemOps::screenshot(&adapter, ScreenshotTarget::FullScreen, deadline())
+    let image = SystemOps::screenshot(&adapter, ScreenshotTarget::FullScreen, deadline(10_000))
         .expect("SystemOps::screenshot must be wired");
     assert_png_metadata(&image);
 }

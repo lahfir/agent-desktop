@@ -12,39 +12,15 @@ use crate::tree::fixture::{HostedFixture, ensure_test_apartment};
 use crate::tree::resolve::resolve_element_strict;
 
 fn entry_for(fixture: &HostedFixture, token: String, window_handle: isize) -> RefEntry {
-    RefEntry {
-        process: agent_desktop_core::RefProcess {
-            pid: ProcessId::from(fixture.process_id()),
-            process_instance: Some(token),
-        },
-        identity: agent_desktop_core::RefEntryIdentity {
-            role: "button".into(),
-            name: Some("OK".into()),
-            value: None,
-            description: None,
-            native_id: None,
-        },
-        geometry: agent_desktop_core::RefGeometry {
-            bounds: None,
-            bounds_hash: None,
-        },
-        capabilities: agent_desktop_core::RefCapabilities {
-            states: Vec::new(),
-            available_actions: Vec::new(),
-        },
-        source: agent_desktop_core::RefSource {
-            source_app: Some("fixture.exe".into()),
-            source_window_id: Some(format!("w-{window_handle}")),
-            source_window_title: None,
-            source_window_bounds_hash: None,
-            source_surface: agent_desktop_core::SnapshotSurface::Window,
-        },
-        scope: agent_desktop_core::RefScope {
-            root_ref: None,
-            path_is_absolute: false,
-            path: agent_desktop_core::refs::RefPath::default(),
-        },
-    }
+    let mut entry = crate::tree::walker_fake::ref_entry("button");
+    entry.process = agent_desktop_core::RefProcess {
+        pid: ProcessId::from(fixture.process_id()),
+        process_instance: Some(token),
+    };
+    entry.identity.name = Some("OK".into());
+    entry.source.source_app = Some("fixture.exe".into());
+    entry.source.source_window_id = Some(format!("w-{window_handle}"));
+    entry
 }
 
 fn dead_process_entry(fixture: &HostedFixture, token: String) -> RefEntry {

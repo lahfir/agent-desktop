@@ -35,9 +35,7 @@ fn close_requires_a_creation_time_token() {
 }
 
 #[cfg(target_os = "windows")]
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("deadline")
-}
+use crate::system::test_time::deadline;
 
 #[cfg(target_os = "windows")]
 fn app_for_pid(name: &str, pid: ProcessId) -> AppInfo {
@@ -57,43 +55,8 @@ fn process_still_alive(pid: ProcessId, instance: &str) -> bool {
     !super::process_observed_gone(pid, instance).expect("liveness")
 }
 
-/// Kills and reaps the wrapped child when it drops, including on panic
-/// unwind, so a test that spawns a long-lived diagnostic child cannot orphan
-/// it and its grandchild process by stopping short of its own cleanup.
 #[cfg(target_os = "windows")]
-struct KillOnDrop(std::process::Child);
-
-#[cfg(target_os = "windows")]
-impl Drop for KillOnDrop {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn spawn_windowless_child() -> (KillOnDrop, ProcessId, String) {
-    use std::os::windows::process::CommandExt;
-
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let child = std::process::Command::new("cmd")
-        .args(["/C", "ping", "-n", "60", "127.0.0.1", ">", "NUL"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn()
-        .expect("windowless child");
-    let pid = ProcessId::from(child.id());
-    let started = std::time::Instant::now();
-    let token = loop {
-        if let Ok(Some(token)) = process_identity::token_for_pid(pid) {
-            break token;
-        }
-        if started.elapsed() > std::time::Duration::from_secs(5) {
-            panic!("windowless child never exposed a creation-time token");
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    };
-    (KillOnDrop(child), pid, token)
-}
+use crate::system::lifecycle_test_support::spawn_windowless_child;
 
 #[cfg(target_os = "windows")]
 #[test]
@@ -104,7 +67,7 @@ fn graceful_hosted_fixture_ok_only_after_independently_observed_gone() {
     let app = app_for_pid("fixture-host", pid);
     let instance = app.process_instance.clone().expect("token");
 
-    close_app_impl(&app, false, deadline()).expect("graceful close");
+    close_app_impl(&app, false, deadline(10_000)).expect("graceful close");
 
     assert!(
         super::process_observed_gone(pid, &instance).expect("gone check"),
@@ -122,7 +85,7 @@ fn force_terminates_wm_close_ignoring_process_and_verifies_exit() {
     let app = app_for_pid("fixture-host", pid);
     let instance = app.process_instance.clone().expect("token");
 
-    close_app_impl(&app, true, deadline()).expect("force close");
+    close_app_impl(&app, true, deadline(10_000)).expect("force close");
 
     assert!(
         super::process_observed_gone(pid, &instance).expect("gone check"),
@@ -176,7 +139,7 @@ fn already_dead_pid_is_benign_ok() {
     let app = app_for_pid("cmd.exe", pid);
     let _ = child.wait();
 
-    close_app_impl(&app, false, deadline()).expect("already dead is Ok");
+    close_app_impl(&app, false, deadline(10_000)).expect("already dead is Ok");
 }
 
 #[cfg(target_os = "windows")]
@@ -188,7 +151,7 @@ fn race_windows_gone_because_process_died_is_benign_ok() {
     let app = app_for_pid("fixture-host", pid);
     fixture.terminate();
 
-    close_app_impl(&app, false, deadline())
+    close_app_impl(&app, false, deadline(10_000))
         .expect("empty window set after death must follow the handle check, not ACTION_FAILED");
 }
 
@@ -208,7 +171,7 @@ fn windowless_alive_graceful_is_action_failed_not_delivered_without_terminate() 
         "CREATE_NO_WINDOW child must present an empty top-level set"
     );
 
-    let error = close_app_impl(&app, false, deadline()).expect_err("windowless alive");
+    let error = close_app_impl(&app, false, deadline(10_000)).expect_err("windowless alive");
 
     assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_eq!(
@@ -244,7 +207,7 @@ fn mismatched_creation_token_is_benign_ok_without_killing_live_pid() {
         process_instance: Some("windows-proc-v1:1:1".into()),
     };
 
-    close_app_impl(&app, true, deadline()).expect("token mismatch is already-gone");
+    close_app_impl(&app, true, deadline(10_000)).expect("token mismatch is already-gone");
 
     assert!(
         process_still_alive(pid, &live),

@@ -3,7 +3,7 @@
 use agent_desktop_core::AdapterError;
 use std::mem::size_of;
 
-use super::clipboard_bytes::{argument_error, payload_error, read_i32, read_u32};
+use super::clipboard_bytes::{argument_error, payload_error, read_i32, read_u32, read_utf16_units};
 
 const MAX_HDROP_PATHS: usize = 1_024;
 const MAX_HDROP_PATH_UTF16: usize = 16_384;
@@ -95,10 +95,7 @@ fn decode_wide_paths(list: &[u8]) -> Result<Vec<String>, AdapterError> {
             "CF_HDROP wide path list is missing the double-NUL terminator",
         ));
     }
-    let units: Vec<u16> = list
-        .chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-        .collect();
+    let units: Vec<u16> = read_utf16_units(list);
     if units.len() < 2 || units[units.len() - 1] != 0 || units[units.len() - 2] != 0 {
         return Err(payload_error(
             "CF_HDROP wide path list is missing the double-NUL terminator",

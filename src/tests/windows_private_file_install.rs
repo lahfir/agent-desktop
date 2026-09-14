@@ -2,11 +2,14 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicU64, Ordering};
 
-const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+#[path = "windows_junction_fixture.rs"]
+mod windows_junction_fixture;
+use windows_junction_fixture::{entries_under, plant_junction};
 
-static SCRATCH_ID: AtomicU64 = AtomicU64::new(1);
+#[path = "unique_scratch_dir.rs"]
+mod unique_scratch_dir;
+use unique_scratch_dir::unique_scratch_dir;
 
 struct Scratch {
     root: PathBuf,
@@ -14,13 +17,9 @@ struct Scratch {
 
 impl Scratch {
     fn create(label: &str) -> Self {
-        let id = SCRATCH_ID.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!(
-            "agent-desktop-install-{label}-{}-{id}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&root).expect("create scratch root");
-        Self { root }
+        Self {
+            root: unique_scratch_dir("install", label),
+        }
     }
 
     fn dir(&self, name: &str) -> PathBuf {
@@ -36,30 +35,6 @@ impl Drop for Scratch {
     }
 }
 
-fn plant_junction(link: &Path, target: &Path) {
-    let output = Command::new("cmd")
-        .args(["/C", "mklink", "/J"])
-        .arg(link)
-        .arg(target)
-        .output()
-        .expect("cmd /c mklink starts");
-    assert!(
-        output.status.success(),
-        "mklink /J must succeed without privilege: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let attributes = {
-        use std::os::windows::fs::MetadataExt;
-        std::fs::symlink_metadata(link)
-            .expect("junction link exists")
-            .file_attributes()
-    };
-    assert!(
-        attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0,
-        "planted link must carry FILE_ATTRIBUTE_REPARSE_POINT"
-    );
-}
-
 fn run_session_start(home: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_agent-desktop"))
         .args(["session", "start"])
@@ -72,24 +47,6 @@ fn run_session_start(home: &Path) -> Output {
 
 fn parse_envelope(output: &Output) -> serde_json::Value {
     serde_json::from_slice(&output.stdout).expect("stdout is one JSON envelope")
-}
-
-fn entries_under(root: &Path) -> Vec<PathBuf> {
-    let mut entries = Vec::new();
-    let mut pending = vec![root.to_path_buf()];
-    while let Some(directory) = pending.pop() {
-        let Ok(read) = std::fs::read_dir(&directory) else {
-            continue;
-        };
-        for entry in read.flatten() {
-            let path = entry.path();
-            if entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
-                pending.push(path.clone());
-            }
-            entries.push(path);
-        }
-    }
-    entries
 }
 
 #[test]

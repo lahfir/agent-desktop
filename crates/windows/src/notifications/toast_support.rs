@@ -132,10 +132,8 @@ pub(crate) fn wait_until_listed_held(
 ) -> Option<Vec<NotificationInfo>> {
     let filter = NotificationFilter::default();
     loop {
-        if let Ok(listed) = list_infos(&filter, hwnd, deadline) {
-            if listed.iter().any(|info| info.title == TOAST_TITLE) {
-                return Some(listed);
-            }
+        if let Some(listed) = listing_contains_toast(&filter, hwnd, deadline) {
+            return Some(listed);
         }
         if independent_walk_sees_toast(hwnd, deadline) {
             if let Some(listed) = product_reader_catches_up(hwnd) {
@@ -163,16 +161,29 @@ fn product_reader_catches_up(hwnd: isize) -> Option<Vec<NotificationInfo>> {
     let filter = NotificationFilter::default();
     let deadline = Deadline::detached_after(READER_SETTLE_MS).expect("re-poll deadline");
     loop {
-        if let Ok(listed) = list_infos(&filter, hwnd, deadline) {
-            if listed.iter().any(|info| info.title == TOAST_TITLE) {
-                return Some(listed);
-            }
+        if let Some(listed) = listing_contains_toast(&filter, hwnd, deadline) {
+            return Some(listed);
         }
         if deadline.is_expired() {
             return None;
         }
         std::thread::sleep(POLL_INTERVAL);
     }
+}
+
+/// One listing attempt, answering whether the staged toast is in it right
+/// now. Both polling loops above share this single-attempt read; only what
+/// they do between attempts differs.
+fn listing_contains_toast(
+    filter: &NotificationFilter,
+    hwnd: isize,
+    deadline: Deadline,
+) -> Option<Vec<NotificationInfo>> {
+    let listed = list_infos(filter, hwnd, deadline).ok()?;
+    listed
+        .iter()
+        .any(|info| info.title == TOAST_TITLE)
+        .then_some(listed)
 }
 
 /// The independent observation the staging wait is judged against: a raw UIA

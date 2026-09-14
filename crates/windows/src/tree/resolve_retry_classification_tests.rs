@@ -9,19 +9,8 @@
 
 use crate::tree::automation::{ERR_INACTIVE, ERR_TIMEOUT, UiaFailure, uia_failure_error};
 use crate::tree::resolve::retry_incomplete_until;
-use agent_desktop_core::{AdapterError, Deadline, ErrorCode, NativeHandle};
-
-fn unreachable_handle() -> NativeHandle {
-    NativeHandle::new(())
-}
-
-fn generous_deadline() -> Deadline {
-    Deadline::after(5_000).expect("a deadline")
-}
-
-fn short_deadline() -> Deadline {
-    Deadline::after(200).expect("a deadline")
-}
+use crate::tree::test_support::{generous_deadline, short_deadline, unreachable_handle};
+use agent_desktop_core::{AdapterError, ErrorCode};
 
 /// A provider's own transport timeout is retried, driven through the real
 /// classifier rather than a hand-built error.

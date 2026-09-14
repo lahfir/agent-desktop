@@ -7,82 +7,10 @@
 //! that walks it.
 
 use super::*;
-use crate::tree::automation::ERR_TIMEOUT;
-use crate::tree::name_evidence::LabelOutcome;
-use crate::tree::properties::ElementProperties;
 use crate::tree::resolve_search::walk_stored_path;
-use crate::tree::walker::{NodeKey, walk_vocabulary};
-use agent_desktop_core::{Deadline, LocatorEvidence};
+use agent_desktop_core::Deadline;
 
-/// A sibling chain that faults part-way along rather than at its head, so a
-/// truncation can be placed at a chosen position and the indices on either
-/// side of it compared.
-///
-/// Nodes are their own indices: the root is `0` and its children are
-/// `1..=child_count`.
-struct TruncatingTree {
-    child_count: usize,
-    fault_after: Option<usize>,
-}
-
-impl TruncatingTree {
-    fn whole(child_count: usize) -> Self {
-        Self {
-            child_count,
-            fault_after: None,
-        }
-    }
-
-    fn faulting_after(mut self, read_siblings: usize) -> Self {
-        self.fault_after = Some(read_siblings);
-        self
-    }
-}
-
-impl TreeSource for TruncatingTree {
-    type Node = usize;
-
-    fn first_child(&self, node: &usize) -> Result<usize, UiaFailure> {
-        if *node == 0 && self.child_count > 0 {
-            Ok(1)
-        } else {
-            Err(UiaFailure::Sentinel(crate::tree::automation::ERR_NONE))
-        }
-    }
-
-    fn next_sibling(&self, node: &usize) -> Result<usize, UiaFailure> {
-        if self.fault_after.is_some_and(|after| *node >= after) {
-            return Err(UiaFailure::Sentinel(ERR_TIMEOUT));
-        }
-        if *node < self.child_count {
-            Ok(node + 1)
-        } else {
-            Err(UiaFailure::Sentinel(crate::tree::automation::ERR_NONE))
-        }
-    }
-
-    fn identity(&self, node: &usize) -> NodeKey {
-        NodeKey::Runtime(vec![i32::try_from(*node).unwrap_or_default()])
-    }
-
-    fn same_element(&self, left: &usize, right: &usize) -> bool {
-        left == right
-    }
-
-    fn evidence(&self, _node: &usize) -> (ElementProperties, LocatorEvidence, u64) {
-        let properties = ElementProperties::from_reads(Vec::new());
-        let vocabulary = walk_vocabulary(&properties, &LabelOutcome::Unlabelled);
-        (
-            properties.clone(),
-            properties.into_locator_evidence(vocabulary),
-            0,
-        )
-    }
-
-    fn is_web_wrapper(&self, _node: &usize, _properties: &ElementProperties) -> bool {
-        false
-    }
-}
+use super::tests::StubTree;
 
 fn budget() -> WalkBudget {
     WalkBudget::new(10, Deadline::standard().expect("a standard deadline"))
@@ -100,8 +28,8 @@ fn budget() -> WalkBudget {
 /// *and* the walk is not entitled to a negative verdict.
 #[test]
 fn an_index_a_truncated_walk_reaches_names_the_child_a_whole_walk_names() {
-    let truncated = TruncatingTree::whole(6).faulting_after(3);
-    let whole = TruncatingTree::whole(6);
+    let truncated = StubTree::with_children(6).faulting_after(3);
+    let whole = StubTree::with_children(6);
 
     for index in 0..3 {
         let landing = walk_stored_path(&truncated, &0, &[index], &budget())
@@ -133,7 +61,7 @@ fn an_index_a_truncated_walk_reaches_names_the_child_a_whole_walk_names() {
 /// produces.
 #[test]
 fn an_index_past_a_truncation_lands_nowhere_rather_than_on_a_neighbour() {
-    let truncated = TruncatingTree::whole(6).faulting_after(3);
+    let truncated = StubTree::with_children(6).faulting_after(3);
     for index in 3..6 {
         let landing = walk_stored_path(&truncated, &0, &[index], &budget())
             .expect("a transport fault never surfaces for the search");
@@ -144,7 +72,7 @@ fn an_index_past_a_truncation_lands_nowhere_rather_than_on_a_neighbour() {
         assert!(landing.unread_region);
     }
 
-    let control = walk_stored_path(&TruncatingTree::whole(6), &0, &[5], &budget())
+    let control = walk_stored_path(&StubTree::with_children(6), &0, &[5], &budget())
         .expect("an unfaulting walk answers");
     assert_eq!(
         control.element,

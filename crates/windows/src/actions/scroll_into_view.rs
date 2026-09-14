@@ -19,11 +19,12 @@ mod imp {
         AdapterError, Deadline, DeliveryOutcome, DeliverySemantics, ErrorCode, InteractionLease,
         Rect,
     };
+    use crate::actions::chain::after_delivery;
     use crate::actions::mutation::classify_mutation;
-    use crate::actions::post_state::after_delivery;
+    use crate::actions::scroll::known_bounds;
     use crate::actions::scroll_ladder::{
         LADDER_SCROLL_LABEL, VisibilitySample, ancestor_ladder, apply_ladder_seam,
-        visibility_verified,
+        observe_visibility, visibility_verified,
     };
     use crate::system::permissions::ensure_budget;
     use crate::tree::automation::{ERR_NONE, UiaFailure, automation_client, failure_of};
@@ -31,9 +32,7 @@ mod imp {
     use crate::tree::live_read::corroborate_verified_process;
     use crate::tree::properties::{read_one, rect_has_area};
     use crate::tree::property_ids::TreeProperty;
-    use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
     use crate::tree::walker_source::{nearest_scroll_viewport, viewport_bounds};
-    use agent_desktop_core::LocatorField;
     use agent_desktop_core::native_handle::NativeHandle;
     use std::time::{Duration, Instant};
     use uiautomation::core::UITreeWalker;
@@ -84,7 +83,7 @@ mod imp {
         }
         let client = automation_client()?;
         let walker = client.get_raw_view_walker().ok();
-        let before = read_bounds_opt(element);
+        let before = known_bounds(element);
         let viewport = resolve_scroll_viewport(element, walker.as_ref(), deadline);
         let invoke_failure = match invoke_scroll_into_view(element) {
             InvokeOutcome::EmptyPattern => {
@@ -94,7 +93,12 @@ mod imp {
             InvokeOutcome::Succeeded => None,
         };
         match scroll_into_view_judged_for(deadline, before, invoke_failure, VERIFY_WINDOW, || {
-            observe_visibility(element, deadline, viewport.as_ref())
+            observe_visibility(
+                element,
+                viewport.as_ref().and_then(viewport_bounds),
+                deadline,
+                "after ScrollIntoView",
+            )
         }) {
             Ok(()) => Ok(ScrollIntoViewDone {
                 label: SCROLL_INTO_VIEW_API,
@@ -283,48 +287,6 @@ mod imp {
                 other if other.is_exhaustion() => InvokeOutcome::EmptyPattern,
                 failure => InvokeOutcome::Failed(failure),
             },
-        }
-    }
-
-    fn observe_visibility(
-        element: &UIAElement,
-        deadline: Deadline,
-        viewport: Option<&UIAElement>,
-    ) -> Result<VisibilitySample, AdapterError> {
-        ensure_budget(deadline)?;
-        corroborate_verified_process(element)?;
-        let bounds = match read_one(element, TreeProperty::BoundingRectangle).bounds() {
-            LocatorField::Known(bounds) => Some(bounds),
-            LocatorField::Absent => None,
-            LocatorField::Unknown => {
-                return Err(AdapterError::new(
-                    ErrorCode::ActionFailed,
-                    "Could not re-read target bounds after ScrollIntoView",
-                ));
-            }
-        };
-        let offscreen = match read_one(element, TreeProperty::IsOffscreen) {
-            PropertyOutcome::Known(PropertyValue::Flag(flag)) => Some(flag),
-            PropertyOutcome::Absent => None,
-            PropertyOutcome::Unknown => {
-                return Err(AdapterError::new(
-                    ErrorCode::ActionFailed,
-                    "Could not re-read IsOffscreen after ScrollIntoView",
-                ));
-            }
-            PropertyOutcome::Known(_) => None,
-        };
-        Ok(VisibilitySample {
-            bounds,
-            offscreen,
-            viewport: viewport.and_then(viewport_bounds),
-        })
-    }
-
-    fn read_bounds_opt(element: &UIAElement) -> Option<Rect> {
-        match read_one(element, TreeProperty::BoundingRectangle).bounds() {
-            LocatorField::Known(bounds) => Some(bounds),
-            _ => None,
         }
     }
 }

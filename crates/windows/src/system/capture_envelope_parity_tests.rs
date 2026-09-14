@@ -6,98 +6,27 @@
 //! reaches the real lease. It takes no other cross-module test lock, so the
 //! crate-wide lock order (fixture, shell, lease) is preserved trivially.
 use crate::adapter::WindowsAdapter;
-use crate::input::clipboard::{clear, get_clipboard_content, set_content};
-use crate::system::png_codec::encode_bgra_to_png;
+use crate::input::clipboard::{clear, set_content};
 use crate::system::private_file::WindowsPrivateFile;
 use crate::tree::fixture::{LocalPatternFixture, bootstrap};
-use crate::tree::fixture_clipboard::clipboard_test_lock;
 use agent_desktop_core::commands::clipboard_clear;
 use agent_desktop_core::commands::clipboard_get::{self, ClipboardGetArgs};
 use agent_desktop_core::commands::clipboard_set::{self, ClipboardSetArgs};
 use agent_desktop_core::commands::screenshot::{self, ScreenshotArgs};
 use agent_desktop_core::{
-    AppError, ClipboardContent, ClipboardFormat, CommandContext, Deadline, DeliverySemantics,
-    ErrorCode, ErrorPayload, ImageBuffer, ImageFormat, PrivateFileOps, ProcessId, ScreenshotTarget,
-    SystemOps, WindowInfo, WindowState, parse_png_dimensions,
+    AppError, ClipboardContent, ClipboardFormat, CommandContext, DeliverySemantics, ErrorCode,
+    ErrorPayload, ImageBuffer, ImageFormat, PrivateFileOps, ProcessId, ScreenshotTarget, SystemOps,
+    WindowInfo, WindowState, parse_png_dimensions,
 };
 use serde_json::Value;
 use std::path::PathBuf;
-use std::sync::{Mutex, MutexGuard};
 
 const LIVE_STAGE_VARIABLE: &str = "AGENT_DESKTOP_LIVE_WPF";
 
-static HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
-
-struct HomeIsolation {
-    previous_home: Option<std::ffi::OsString>,
-    previous_profile: Option<std::ffi::OsString>,
-    root: PathBuf,
-    _lock: MutexGuard<'static, ()>,
-}
-
-impl HomeIsolation {
-    fn enter() -> Self {
-        let lock = HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let root = std::env::temp_dir().join(format!(
-            "agent-desktop-capture-home-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::create_dir_all(&root).expect("isolated home");
-        let previous_home = std::env::var_os("HOME");
-        let previous_profile = std::env::var_os("USERPROFILE");
-        unsafe {
-            std::env::set_var("HOME", &root);
-            std::env::set_var("USERPROFILE", &root);
-        }
-        Self {
-            previous_home,
-            previous_profile,
-            root,
-            _lock: lock,
-        }
-    }
-}
-
-impl Drop for HomeIsolation {
-    fn drop(&mut self) {
-        match &self.previous_home {
-            Some(value) => unsafe { std::env::set_var("HOME", value) },
-            None => unsafe { std::env::remove_var("HOME") },
-        }
-        match &self.previous_profile {
-            Some(value) => unsafe { std::env::set_var("USERPROFILE", value) },
-            None => unsafe { std::env::remove_var("USERPROFILE") },
-        }
-        let _ = std::fs::remove_dir_all(&self.root);
-    }
-}
-
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("envelope tests use a generous deadline")
-}
-
-fn install_windows_private_file() {
-    let _ = agent_desktop_core::install_private_file_ops(Box::new(WindowsPrivateFile::new()));
-}
-
-fn sample_png() -> Vec<u8> {
-    encode_bgra_to_png(
-        &[
-            10, 20, 30, 255, 40, 50, 60, 255, 70, 80, 90, 255, 100, 110, 120, 255,
-        ],
-        2,
-        2,
-        8,
-        deadline(),
-    )
-    .expect("png")
-}
+use crate::system::capture_test_support::{
+    HomeIsolation, install_windows_private_file, sample_png, with_restored_clipboard,
+};
+use crate::system::test_time::deadline;
 
 fn keys_of(value: &Value) -> Vec<&str> {
     value
@@ -119,23 +48,6 @@ fn assert_disposition_wire(error: &agent_desktop_core::AdapterError, expected: D
     assert_eq!(wire["disposition"], projected, "disposition wire shape");
 }
 
-fn with_restored_clipboard(body: impl FnOnce()) {
-    let _lock = clipboard_test_lock();
-    bootstrap();
-    let saved_text = match get_clipboard_content(ClipboardFormat::Text, deadline()) {
-        Ok(Some(ClipboardContent::Text(value))) => Some(value),
-        _ => None,
-    };
-    let body_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
-    let _ = clear(deadline());
-    if let Some(text) = saved_text {
-        let _ = set_content(&ClipboardContent::Text(text), deadline());
-    }
-    if let Err(panic) = body_result {
-        std::panic::resume_unwind(panic);
-    }
-}
-
 #[test]
 fn screenshot_failure_disposition_serializes_not_delivered() {
     bootstrap();
@@ -150,8 +62,12 @@ fn screenshot_failure_disposition_serializes_not_delivered() {
         bounds: None,
         state: WindowState::default(),
     };
-    let error = SystemOps::screenshot(&adapter, ScreenshotTarget::ExactWindow(info), deadline())
-        .expect_err("ExactWindow without process_instance must fail before capture");
+    let error = SystemOps::screenshot(
+        &adapter,
+        ScreenshotTarget::ExactWindow(info),
+        deadline(10_000),
+    )
+    .expect_err("ExactWindow without process_instance must fail before capture");
     assert_eq!(error.code, ErrorCode::InvalidArgs);
     assert_disposition_wire(&error, DeliverySemantics::not_delivered());
 }
@@ -217,9 +133,9 @@ fn clipboard_get_set_clear_data_shapes_match_core_serialization() {
         with_restored_clipboard(|| {
             install_windows_private_file();
             let adapter = WindowsAdapter::new();
-            let _home = HomeIsolation::enter();
+            let _home = HomeIsolation::enter("agent-desktop-capture-home");
 
-            clear(deadline()).expect("clear before found:false");
+            clear(deadline(10_000)).expect("clear before found:false");
             let missing = clipboard_get::execute(
                 ClipboardGetArgs {
                     format: Some(ClipboardFormat::Image),
@@ -269,7 +185,7 @@ fn clipboard_get_set_clear_data_shapes_match_core_serialization() {
                     height,
                     scale_factor: 1.0,
                 }),
-                deadline(),
+                deadline(10_000),
             )
             .expect("seed image");
             let image = clipboard_get::execute(
@@ -303,7 +219,7 @@ fn clipboard_get_set_clear_data_shapes_match_core_serialization() {
 #[test]
 fn non_one_scale_factor_capture_skipped_on_96dpi_only_hosts() {
     bootstrap();
-    let displays = crate::system::display::list_displays_live(deadline()).expect("displays");
+    let displays = crate::system::display::list_displays_live(deadline(10_000)).expect("displays");
     let Some(scaled) = displays
         .iter()
         .find(|display| (display.scale - 1.0).abs() > 0.001)
@@ -321,7 +237,7 @@ fn non_one_scale_factor_capture_skipped_on_96dpi_only_hosts() {
                 .expect("scaled display index"),
             expected: scaled.clone(),
         },
-        deadline(),
+        deadline(10_000),
     )
     .expect("scaled display capture");
     assert!(

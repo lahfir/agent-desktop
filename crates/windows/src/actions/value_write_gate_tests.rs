@@ -1,25 +1,22 @@
 use super::imp::gated_value_compare;
-use super::set_value_judged_for;
+use super::{SetValuePlan, set_value_judged_for};
 use crate::actions::chain::DeliveryOutcome;
 use crate::actions::dispatch::execute_action_impl;
+use crate::system::test_time::deadline;
 use crate::tree::automation::automation_client;
 use crate::tree::element::UIAElement;
 use crate::tree::fixture::{CONTENT_MARKER, LocalFixture, ensure_test_apartment};
 use crate::tree::fixture_window;
 use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
 use agent_desktop_core::{
-    Action, ActionRequest, ActionStepOutcome, AdapterError, Deadline, DeliveryDisposition,
-    InteractionLease, InteractionPolicy, NativeHandle,
+    Action, ActionRequest, ActionStepOutcome, AdapterError, DeliveryDisposition, InteractionLease,
+    InteractionPolicy, NativeHandle,
 };
 use std::cell::Cell;
 use uiautomation::types::Handle;
 
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
-
 fn lease() -> InteractionLease {
-    InteractionLease::guarded(deadline(), ()).expect("lease")
+    InteractionLease::guarded(deadline(5_000), ()).expect("lease")
 }
 
 fn known_flag(value: bool) -> PropertyOutcome {
@@ -49,11 +46,13 @@ fn secure_is_password_skips_get_value_and_reports_unobserved() {
     assert_eq!(reads.get(), 0);
 
     let steps = set_value_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
-        "secret-marker-zz",
-        true,
-        false,
+        SetValuePlan {
+            value: "secret-marker-zz",
+            value_writable: true,
+            range_available: false,
+        },
         || Ok(DeliveryOutcome::from_observation(None)),
         || Ok(DeliveryOutcome::NotDelivered),
     )
@@ -62,9 +61,7 @@ fn secure_is_password_skips_get_value_and_reports_unobserved() {
     let result = agent_desktop_core::ActionResult::from_execution(
         &Action::SetValue("secret-marker-zz".into()),
         steps,
-        None,
-    )
-    .expect("result");
+    );
     assert_eq!(
         result.disposition().delivery(),
         DeliveryDisposition::DeliveredUnverified
@@ -115,24 +112,7 @@ fn inverted_secure_gate_would_call_get_value() {
 
 #[test]
 fn pattern_get_value_lives_only_inside_value_write_gate() {
-    let actions_sources = [
-        ("actions/mutation.rs", include_str!("mutation.rs")),
-        (
-            "actions/scroll_into_view.rs",
-            include_str!("scroll_into_view.rs"),
-        ),
-        ("actions/scroll_ladder.rs", include_str!("scroll_ladder.rs")),
-        ("actions/dispatch.rs", include_str!("dispatch.rs")),
-        ("actions/focus.rs", include_str!("focus.rs")),
-        ("actions/chain.rs", include_str!("chain.rs")),
-        ("actions/post_state.rs", include_str!("post_state.rs")),
-        ("actions/value_write.rs", include_str!("value_write.rs")),
-        ("actions/select.rs", include_str!("select.rs")),
-        ("actions/select_search.rs", include_str!("select_search.rs")),
-        ("actions/scroll.rs", include_str!("scroll.rs")),
-        ("actions/toggle_state.rs", include_str!("toggle_state.rs")),
-        ("actions/disclosure.rs", include_str!("disclosure.rs")),
-    ];
+    let actions_sources = crate::actions::mutation::action_scan_sources();
     let get_value = concat!(".", "get_value(");
     for (name, source) in actions_sources {
         for (number, line) in code_lines(source) {
@@ -210,11 +190,6 @@ fn live_fixture_set_value_round_trips_when_value_pattern_exists() {
                     .any(|step| matches!(step.outcome, ActionStepOutcome::Succeeded)),
                 "expected a delivered SetValue step"
             );
-            if let Some(state) = &ok.post_state {
-                if let Some(value) = &state.value {
-                    assert_eq!(value, payload);
-                }
-            }
         }
         Err(error) => {
             assert!(

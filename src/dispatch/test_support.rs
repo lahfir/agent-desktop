@@ -52,6 +52,26 @@ impl Drop for HomeGuard {
     }
 }
 
+/// Starts a session with tracing off and enables the cursor overlay on it,
+/// the fixed setup every overlay-lifecycle test builds on before it varies
+/// the one thing the test actually checks.
+pub(crate) fn started_overlay_session() -> agent_desktop_core::session::SessionManifest {
+    let manifest = agent_desktop_core::session::start_session(
+        agent_desktop_core::session::StartSessionOptions {
+            trace: agent_desktop_core::session::SessionTraceMode::Off,
+            artifacts: agent_desktop_core::session::ArtifactsMode::Events,
+            name: None,
+        },
+    )
+    .unwrap();
+    agent_desktop_core::session::set_cursor_overlay(
+        &manifest.id,
+        agent_desktop_core::CursorOverlayConfig::enabled(None, 6).unwrap(),
+    )
+    .unwrap();
+    manifest
+}
+
 pub(crate) struct FailingOverlayAdapter;
 
 impl ObservationOps for FailingOverlayAdapter {}

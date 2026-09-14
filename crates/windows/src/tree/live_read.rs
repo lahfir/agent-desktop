@@ -6,7 +6,7 @@
 //! satisfies completeness, because a corpse's reads can succeed empty on some
 //! builds (A14-9), reads the full walk property set live through
 //! `properties::read_live`, and projects it through the walk's own vocabulary
-//! composition (`read_label` + `walk_vocabulary` + `into_locator_evidence`).
+//! composition (`read_label` + `walk_vocabulary` + `locator_evidence`).
 //! The five readers are projections over that one read: value, state, actions,
 //! element, bounds.
 //!
@@ -31,7 +31,7 @@ use super::element_properties::ElementProperties;
 
 /// One element's live read: the properties set kept alongside the projected
 /// evidence, because `ElementState.enabled`/`offscreen` read `IsEnabled`/
-/// `IsOffscreen` from the property set and `into_locator_evidence` does not
+/// `IsOffscreen` from the property set and `locator_evidence` does not
 /// carry them.
 pub(crate) struct LiveRead {
     pub(crate) properties: ElementProperties,
@@ -129,7 +129,7 @@ mod imp {
             read_label(element)
         };
         let vocabulary = walk_vocabulary(&properties, &label);
-        let evidence = properties.clone().into_locator_evidence(vocabulary);
+        let evidence = properties.locator_evidence(vocabulary);
         if !essential_live_evidence_complete(&evidence) {
             return Err(incomplete_live_evidence());
         }

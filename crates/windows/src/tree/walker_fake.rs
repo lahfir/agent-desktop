@@ -1,5 +1,6 @@
 use agent_desktop_core::{
-    AdapterError, Deadline, LocatorEvidence, ObservationRoot, ProcessId, WindowInfo, WindowState,
+    AdapterError, Deadline, LocatorEvidence, ObservationRoot, ProcessId, RefEntry, WindowInfo,
+    WindowState,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -10,6 +11,12 @@ use crate::tree::property_ids::TreeProperty;
 use crate::tree::walker::{
     NodeKey, TreeSource, WalkBudget, WalkOutcome, walk_from_root, walk_vocabulary,
 };
+#[cfg(target_os = "windows")]
+use crate::tree::{
+    element::UIAElement, resolve_search::enumerate_children, walker_source::UiaTreeSource,
+};
+#[cfg(target_os = "windows")]
+use std::ops::ControlFlow;
 
 /// The benign end-of-list pair A14-3 measured: `code() == 0` with `result()`
 /// `None`, on both build 17763 and build 26100.
@@ -157,7 +164,7 @@ impl TreeSource for FakeTree {
         let vocabulary = walk_vocabulary(&properties, &LabelOutcome::Unlabelled);
         (
             properties.clone(),
-            properties.into_locator_evidence(vocabulary),
+            properties.locator_evidence(vocabulary),
             0,
         )
     }
@@ -169,6 +176,45 @@ impl TreeSource for FakeTree {
 
 pub(crate) fn deadline() -> Deadline {
     Deadline::standard().expect("a standard deadline")
+}
+
+/// A minimal, valid `RefEntry` for a control of the given role, with every
+/// other field at its blank default so a resolver test overrides only the
+/// handful of fields its case actually needs.
+pub(crate) fn ref_entry(role: &str) -> RefEntry {
+    RefEntry {
+        process: agent_desktop_core::RefProcess {
+            pid: ProcessId::new(1),
+            process_instance: None,
+        },
+        identity: agent_desktop_core::RefEntryIdentity {
+            role: role.to_string(),
+            name: None,
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: agent_desktop_core::RefGeometry {
+            bounds: None,
+            bounds_hash: None,
+        },
+        capabilities: agent_desktop_core::RefCapabilities {
+            states: Vec::new(),
+            available_actions: Vec::new(),
+        },
+        source: agent_desktop_core::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: agent_desktop_core::SnapshotSurface::Window,
+        },
+        scope: agent_desktop_core::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: agent_desktop_core::refs::RefPath::default(),
+        },
+    }
 }
 
 pub(crate) fn budget(max_logical_depth: u8) -> WalkBudget {
@@ -200,4 +246,113 @@ pub(crate) fn walk_expecting_failure(fake: &FakeTree, budget: WalkBudget) -> Ada
     walk_from_root(fake, &1, &ObservationRoot::Window(&window), budget)
         .err()
         .expect("the walk was expected to fail")
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Clone, Copy)]
+struct ScanLimits<'a> {
+    budget: &'a WalkBudget,
+    max_depth: u8,
+}
+
+/// Depth-first, index-path-tracked search for the first node whose evidence
+/// `visit` accepts, stopping there and reporting the path that reaches it.
+///
+/// Every resolver test that needs to locate one fixture node by predicate
+/// re-implemented this recursion by hand; only the predicate and the value
+/// built on a match differ between them, so both live here once. A child
+/// enumeration failure anywhere aborts the whole search, matching the
+/// fail-fast contract `resolve_search::enumerate_children` documents for the
+/// production search this mirrors.
+#[cfg(target_os = "windows")]
+pub(crate) fn scan_subtree<T>(
+    source: &UiaTreeSource,
+    root: &UIAElement,
+    budget: &WalkBudget,
+    max_depth: u8,
+    visit: &mut impl FnMut(&[usize], ElementProperties, LocatorEvidence, u64) -> ControlFlow<T>,
+) -> Result<Option<T>, AdapterError> {
+    scan_at(
+        source,
+        root,
+        ScanLimits { budget, max_depth },
+        &mut Vec::new(),
+        visit,
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn scan_at<T>(
+    source: &UiaTreeSource,
+    element: &UIAElement,
+    limits: ScanLimits<'_>,
+    prefix: &mut Vec<usize>,
+    visit: &mut impl FnMut(&[usize], ElementProperties, LocatorEvidence, u64) -> ControlFlow<T>,
+) -> Result<Option<T>, AdapterError> {
+    if prefix.len() >= limits.max_depth as usize {
+        return Ok(None);
+    }
+    let (properties, evidence, failed) = source.evidence(element);
+    if let ControlFlow::Break(value) = visit(prefix, properties, evidence, failed) {
+        return Ok(Some(value));
+    }
+    let mut ignored = false;
+    let children = enumerate_children(source, element, limits.budget, &mut ignored)?;
+    for (index, child) in children.iter().enumerate() {
+        prefix.push(index);
+        let found = scan_at(source, child, limits, prefix, visit)?;
+        prefix.pop();
+        if found.is_some() {
+            return Ok(found);
+        }
+    }
+    Ok(None)
+}
+
+/// Depth-first visit of every node in the subtree, index path included,
+/// tolerating a child-enumeration failure by simply not descending past it -
+/// the rest of the tree is still worth cataloguing.
+///
+/// The counterpart to `scan_subtree` for the tests that build a catalogue or
+/// a collection instead of stopping at a first match: `visit` decides what,
+/// if anything, to keep by closing over its own accumulator.
+#[cfg(target_os = "windows")]
+pub(crate) fn walk_all(
+    source: &UiaTreeSource,
+    root: &UIAElement,
+    budget: &WalkBudget,
+    max_depth: u8,
+    visit: &mut impl FnMut(&[usize], LocatorEvidence),
+) {
+    walk_all_at(
+        source,
+        root,
+        ScanLimits { budget, max_depth },
+        &mut Vec::new(),
+        visit,
+    );
+}
+
+#[cfg(target_os = "windows")]
+fn walk_all_at(
+    source: &UiaTreeSource,
+    element: &UIAElement,
+    limits: ScanLimits<'_>,
+    prefix: &mut Vec<usize>,
+    visit: &mut impl FnMut(&[usize], LocatorEvidence),
+) {
+    if prefix.len() >= limits.max_depth as usize {
+        return;
+    }
+    let (_, evidence, _) = source.evidence(element);
+    visit(prefix, evidence);
+    let mut ignored = false;
+    let Ok(children) = enumerate_children(source, element, limits.budget, &mut ignored) else {
+        return;
+    };
+    for (index, child) in children.iter().enumerate() {
+        prefix.push(index);
+        walk_all_at(source, child, limits, prefix, visit);
+        prefix.pop();
+    }
 }

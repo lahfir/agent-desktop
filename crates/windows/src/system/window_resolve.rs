@@ -1,8 +1,8 @@
-use agent_desktop_core::{AdapterError, Deadline, ErrorCode, WindowInfo, WindowState};
+use agent_desktop_core::{AdapterError, Deadline, ErrorCode, WindowInfo};
 
 use super::window_enum::enumerate_top_level;
 use super::window_identity::{WindowIdentityEvidence, live_window_title};
-use super::window_ops::{is_foreground_window, parse_handle, passes_filter};
+use super::window_ops::{is_foreground_window, parse_handle, passes_filter, window_state};
 
 /// Resolves a live window by `WindowInfo.id`, corroborating pid and process
 /// generation against the handle's current owner (stored-evidence rule).
@@ -66,11 +66,7 @@ fn live_window_info(
         pid: expected.pid,
         process_instance: expected.process_instance.clone(),
         bounds: Some(window.rect),
-        state: WindowState {
-            is_focused: focused,
-            minimized: Some(window.iconic),
-            visible: Some(window.visible),
-        },
+        state: window_state(focused, window.iconic, window.visible),
     })
 }
 

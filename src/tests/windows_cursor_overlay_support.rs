@@ -8,9 +8,12 @@
 use super::screen_sample;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
+
+#[path = "unique_scratch_dir.rs"]
+mod unique_scratch_dir;
+use unique_scratch_dir::unique_scratch_dir;
 
 /// The overlay needs a desktop to draw on, and staging one is the same opt-in
 /// the other on-screen suites use rather than a second variable to discover.
@@ -22,8 +25,6 @@ const ORACLE: (u8, u8, u8) = (0xFF, 0x00, 0xFF);
 const ORACLE_HEX: &str = "#FF00FF";
 
 const SETTLE: Duration = Duration::from_secs(6);
-
-static SCRATCH_ID: AtomicU64 = AtomicU64::new(1);
 
 /// These tests share one desktop, one oracle colour and one process table,
 /// so they cannot run beside each other: one overlay's pixels satisfy
@@ -46,14 +47,8 @@ pub(crate) struct Scratch {
 
 impl Scratch {
     pub(crate) fn create(label: &str) -> Self {
-        let id = SCRATCH_ID.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!(
-            "agent-desktop-overlay-{label}-{}-{id}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&root).expect("create scratch state root");
         Self {
-            root,
+            root: unique_scratch_dir("overlay", label),
             session: Mutex::new(None),
             _desktop: desktop(),
         }

@@ -77,14 +77,12 @@ mod imp {
     use crate::system::cursor_overlay::wide::wide;
     use std::time::Instant;
     use windows_sys::Win32::Foundation::{
-        CloseHandle, ERROR_PIPE_BUSY, GetLastError, HANDLE, INVALID_HANDLE_VALUE,
+        CloseHandle, ERROR_PIPE_BUSY, GENERIC_READ, GetLastError, HANDLE, INVALID_HANDLE_VALUE,
     };
     use windows_sys::Win32::Storage::FileSystem::{
         CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
     };
     use windows_sys::Win32::System::Pipes::WaitNamedPipeW;
-
-    const GENERIC_READ: u32 = 0x8000_0000;
 
     struct OwnedHandle(HANDLE);
 

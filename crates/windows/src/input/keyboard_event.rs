@@ -9,11 +9,12 @@
 //! held but that the OS no longer reports as down is not re-pressed by a
 //! spurious release.
 
-use agent_desktop_core::{AdapterError, Deadline, DeliverySemantics, KeyCombo, Modifier};
+use agent_desktop_core::{AdapterError, Deadline, KeyCombo, Modifier};
 
 use crate::input::keyboard_map;
 use crate::input::keyboard_send::{KeyboardInputEvent, key_is_down, post_keyboard_inputs};
 use crate::input::mouse::sleep_bounded;
+use crate::input::release_state::ReleaseState;
 use crate::system::permissions::ensure_budget;
 use std::time::Duration;
 
@@ -23,6 +24,7 @@ const VK_MENU: u16 = 0x12;
 const VK_LWIN: u16 = 0x5B;
 const KEYEVENTF_KEYUP: u32 = 0x0002;
 const KEY_SETTLE: Duration = Duration::from_millis(4);
+const KEY_RELEASE_SUGGESTION: &str = "Inspect which modifiers may still be held before retrying; the emergency release was posted without an OS acknowledgement";
 
 #[cfg(target_os = "windows")]
 const _: () = {
@@ -107,46 +109,33 @@ pub(crate) fn key_input(vk: u16, key_up: bool) -> KeyboardInputEvent {
 /// another actor released, is never re-pressed by a stale sweep.
 pub(crate) struct KeyReleaseGuard {
     held: Vec<u16>,
-    delivered: usize,
+    state: ReleaseState,
 }
 
 impl KeyReleaseGuard {
     pub(crate) fn new() -> Self {
         Self {
             held: Vec::new(),
-            delivered: 0,
+            state: ReleaseState::default(),
         }
     }
 
     pub(crate) fn note_pressed(&mut self, vk: u16) {
         self.held.push(vk);
-        self.delivered = self.delivered.saturating_add(1);
+        self.state.arm();
+        self.state.mark_delivered();
     }
 
     pub(crate) fn note_released(&mut self, vk: u16) {
         self.held.retain(|&held_vk| held_vk != vk);
-        self.delivered = self.delivered.saturating_add(1);
+        if self.held.is_empty() {
+            self.state.disarm();
+        }
+        self.state.mark_delivered();
     }
 
     pub(crate) fn enrich_error(&self, error: AdapterError) -> AdapterError {
-        if self.delivered == 0 {
-            return error.with_disposition(DeliverySemantics::not_delivered());
-        }
-        let error = error.with_disposition(DeliverySemantics::delivered_unverified());
-        let mut details = error
-            .details
-            .clone()
-            .unwrap_or_else(|| serde_json::json!({}));
-        if let Some(map) = details.as_object_mut() {
-            map.insert("delivered_events".into(), self.delivered.into());
-            if !self.held.is_empty() {
-                map.insert("emergency_release_posted".into(), true.into());
-                map.insert("emergency_release_acknowledged".into(), false.into());
-            }
-        }
-        error.with_details(details).with_suggestion(
-            "Inspect which modifiers may still be held before retrying; the emergency release was posted without an OS acknowledgement",
-        )
+        self.state.enrich_error(error, KEY_RELEASE_SUGGESTION)
     }
 }
 

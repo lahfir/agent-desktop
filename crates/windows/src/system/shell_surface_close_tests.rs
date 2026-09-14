@@ -4,14 +4,12 @@
 //! later close of that surface fails the same way until something outside the
 //! product clears it.
 
-use agent_desktop_core::{Deadline, InteractionPolicy, SnapshotSurface};
+use agent_desktop_core::{InteractionPolicy, SnapshotSurface};
 
 use crate::system::shell_surface_open::{close_surface, open_surface};
 use crate::system::test_support::{SHELL_SURFACE_LOCK, settles_to};
 
-fn deadline(ms: u64) -> Deadline {
-    Deadline::after(ms).expect("deadline")
-}
+use crate::system::test_time::deadline;
 
 fn overflow_top() -> Option<*mut core::ffi::c_void> {
     crate::system::shell_surface::class_chain_top_handle(&["NotifyIconOverflowWindow"])

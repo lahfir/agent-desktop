@@ -127,8 +127,12 @@ fn stronger_sources<'a>(
     ]
 }
 
-fn non_blank(value: Option<&str>) -> Option<&str> {
-    value.filter(|value| !value.trim().is_empty())
+/// An empty string is not text a caller reads, so it is treated the same as
+/// absent. Generic over `Option<&str>` and `Option<String>` so it serves
+/// borrowed and owned callers alike without either re-implementing it or
+/// paying for a round trip through the other's representation.
+pub(crate) fn non_blank<S: AsRef<str>>(value: Option<S>) -> Option<S> {
+    value.filter(|text| !text.as_ref().trim().is_empty())
 }
 
 #[cfg(test)]

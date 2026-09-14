@@ -1,4 +1,6 @@
-use super::{ToggleKind, check_uncheck_judged_for, toggle_judged_for};
+use super::{
+    CheckUncheckPlan, ToggleAvailability, ToggleKind, check_uncheck_judged_for, toggle_judged_for,
+};
 use crate::actions::chain::DeliveryOutcome;
 use agent_desktop_core::{ActionStepOutcome, Deadline, ErrorCode, InteractionPolicy};
 use std::cell::Cell;
@@ -16,8 +18,10 @@ fn toggle_change_observed_is_verified() {
     let steps = toggle_judged_for(
         deadline(),
         InteractionPolicy::headless(),
-        true,
-        false,
+        ToggleAvailability {
+            toggle_ok: true,
+            invoke_ok: false,
+        },
         || Ok(DeliveryOutcome::DeliveredVerified),
         || Ok(DeliveryOutcome::NotDelivered),
     )
@@ -32,8 +36,10 @@ fn toggle_no_change_is_unverified() {
     let steps = toggle_judged_for(
         deadline(),
         InteractionPolicy::headless(),
-        true,
-        false,
+        ToggleAvailability {
+            toggle_ok: true,
+            invoke_ok: false,
+        },
         || Ok(DeliveryOutcome::DeliveredUnverified),
         || Ok(DeliveryOutcome::NotDelivered),
     )
@@ -46,8 +52,10 @@ fn toggle_before_unreadable_is_unverified() {
     let steps = toggle_judged_for(
         deadline(),
         InteractionPolicy::headless(),
-        true,
-        false,
+        ToggleAvailability {
+            toggle_ok: true,
+            invoke_ok: false,
+        },
         || Ok(DeliveryOutcome::from_delivery(true, false)),
         || Ok(DeliveryOutcome::NotDelivered),
     )
@@ -62,8 +70,10 @@ fn toggle_absent_falls_to_invoke() {
     let steps = toggle_judged_for(
         deadline(),
         InteractionPolicy::headless(),
-        false,
-        true,
+        ToggleAvailability {
+            toggle_ok: false,
+            invoke_ok: true,
+        },
         || {
             toggle.set(toggle.get() + 1);
             Ok(DeliveryOutcome::DeliveredVerified)
@@ -86,9 +96,11 @@ fn check_from_off_toggles_once() {
     let state = Cell::new(Some(ToggleKind::Off));
     let steps = check_uncheck_judged_for(
         deadline(),
-        true,
-        true,
-        false,
+        CheckUncheckPlan {
+            want_checked: true,
+            toggle_ok: true,
+            invoke_ok: false,
+        },
         || state.get(),
         || {
             toggles.set(toggles.get() + 1);
@@ -109,9 +121,11 @@ fn check_from_indeterminate_toggles_twice() {
     let state = Cell::new(Some(ToggleKind::Indeterminate));
     let steps = check_uncheck_judged_for(
         deadline(),
-        true,
-        true,
-        false,
+        CheckUncheckPlan {
+            want_checked: true,
+            toggle_ok: true,
+            invoke_ok: false,
+        },
         || state.get(),
         || {
             let next = match state.get() {
@@ -137,9 +151,11 @@ fn check_already_on_skips_without_invoke() {
     let invokes = Cell::new(0u8);
     let steps = check_uncheck_judged_for(
         deadline(),
-        true,
-        true,
-        true,
+        CheckUncheckPlan {
+            want_checked: true,
+            toggle_ok: true,
+            invoke_ok: true,
+        },
         || Some(ToggleKind::On),
         || {
             toggles.set(toggles.get() + 1);
@@ -163,9 +179,11 @@ fn uncheck_already_off_skips_without_invoke() {
     let toggles = Cell::new(0u8);
     let steps = check_uncheck_judged_for(
         deadline(),
-        false,
-        true,
-        true,
+        CheckUncheckPlan {
+            want_checked: false,
+            toggle_ok: true,
+            invoke_ok: true,
+        },
         || Some(ToggleKind::Off),
         || {
             toggles.set(toggles.get() + 1);
@@ -183,9 +201,11 @@ fn zero_budget_check_times_out_without_sleeping_past_deadline() {
     let toggles = Cell::new(0u8);
     let error = check_uncheck_judged_for(
         zero_deadline(),
-        true,
-        true,
-        false,
+        CheckUncheckPlan {
+            want_checked: true,
+            toggle_ok: true,
+            invoke_ok: false,
+        },
         || Some(ToggleKind::Off),
         || {
             toggles.set(toggles.get() + 1);
@@ -204,9 +224,11 @@ fn check_does_not_invoke_after_unverified_toggle_delivery() {
     let invokes = Cell::new(0u8);
     let steps = check_uncheck_judged_for(
         deadline(),
-        true,
-        true,
-        true,
+        CheckUncheckPlan {
+            want_checked: true,
+            toggle_ok: true,
+            invoke_ok: true,
+        },
         || Some(ToggleKind::Off),
         || {
             toggles.set(toggles.get() + 1);

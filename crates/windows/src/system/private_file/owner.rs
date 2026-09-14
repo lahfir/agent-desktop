@@ -33,24 +33,14 @@
 
 use std::fs::File;
 use std::io::ErrorKind;
-use std::os::windows::io::AsRawHandle;
 use std::sync::OnceLock;
 
-use windows_sys::Win32::Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, HANDLE, LocalFree};
-use windows_sys::Win32::Security::Authorization::{GetSecurityInfo, SE_FILE_OBJECT};
-use windows_sys::Win32::Security::{
-    EqualSid, GetLengthSid, GetTokenInformation, IsValidSid, OWNER_SECURITY_INFORMATION, PSID,
-    SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_OWNER,
-    TOKEN_QUERY, TOKEN_USER, TokenGroups, TokenOwner, TokenUser,
-};
-use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+use windows_sys::Win32::Security::{SID_AND_ATTRIBUTES, TOKEN_GROUPS, TokenGroups};
 
 use super::permission_denied;
-
-const TOKEN_OWNER_SIZE: usize = 8;
-const _: () = assert!(size_of::<TOKEN_OWNER>() == TOKEN_OWNER_SIZE);
-const TOKEN_USER_SIZE: usize = 16;
-const _: () = assert!(size_of::<TOKEN_USER>() == TOKEN_USER_SIZE);
+use crate::system::token_sid::{
+    SidBuffer, TokenSource, read_process_token_information, token_owner_sid, token_user_sid,
+};
 
 /// `SE_GROUP_OWNER` from `Win32_System_SystemServices`, defined locally so
 /// this module does not need that feature only for one flag constant. The
@@ -60,45 +50,6 @@ const _: () = assert!(size_of::<TOKEN_USER>() == TOKEN_USER_SIZE);
 /// which asserts `Everyone` stays out of the set even though it is present
 /// in every token's groups.
 const SE_GROUP_OWNER: u32 = 0x0000_0008;
-
-pub(crate) struct SidBuffer {
-    storage: Vec<u64>,
-}
-
-impl SidBuffer {
-    pub(crate) fn copied_from_valid(sid: PSID) -> std::io::Result<Self> {
-        if sid.is_null() || unsafe { IsValidSid(sid) } == 0 {
-            return Err(std::io::Error::new(
-                ErrorKind::InvalidData,
-                "the reported owner is not a valid SID",
-            ));
-        }
-        let length = unsafe { GetLengthSid(sid) } as usize;
-        if length == 0 || length > SECURITY_MAX_SID_SIZE as usize {
-            return Err(std::io::Error::new(
-                ErrorKind::InvalidData,
-                "the reported owner SID has an impossible length",
-            ));
-        }
-        let mut storage = vec![0_u64; length.div_ceil(size_of::<u64>())];
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                sid.cast::<u8>(),
-                storage.as_mut_ptr().cast::<u8>(),
-                length,
-            );
-        }
-        Ok(Self { storage })
-    }
-
-    pub(super) fn as_psid(&self) -> PSID {
-        self.storage.as_ptr().cast::<core::ffi::c_void>().cast_mut()
-    }
-
-    pub(crate) fn matches(&self, other: &SidBuffer) -> bool {
-        unsafe { EqualSid(self.as_psid(), other.as_psid()) != 0 }
-    }
-}
 
 /// The set of SIDs this process's token could legitimately have produced as
 /// a file owner: its `TokenUser`, its `TokenOwner`, and every `TokenGroups`
@@ -138,7 +89,10 @@ pub(super) fn process_owner_eligible_sids() -> std::io::Result<&'static OwnerEli
 }
 
 fn read_owner_eligible_sids() -> std::io::Result<OwnerEligibleSids> {
-    let mut entries = vec![read_process_token_user()?, read_process_token_owner()?];
+    let mut entries = vec![
+        read_process_token_user()?,
+        token_owner_sid(TokenSource::CurrentProcess)?,
+    ];
     entries.extend(read_owner_flagged_group_sids()?);
     Ok(OwnerEligibleSids { entries })
 }
@@ -190,115 +144,22 @@ fn actual_owner_for_comparison(file: &File) -> std::io::Result<SidBuffer> {
 }
 
 pub(super) fn file_owner_sid(file: &File) -> std::io::Result<SidBuffer> {
-    let mut owner: PSID = std::ptr::null_mut();
-    let mut descriptor: *mut core::ffi::c_void = std::ptr::null_mut();
-    let status = unsafe {
-        GetSecurityInfo(
-            file.as_raw_handle(),
-            SE_FILE_OBJECT,
-            OWNER_SECURITY_INFORMATION,
-            &mut owner,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            &mut descriptor,
-        )
-    };
-    if status != 0 {
-        return Err(std::io::Error::from_raw_os_error(status as i32));
-    }
-    let copied = SidBuffer::copied_from_valid(owner);
-    if !descriptor.is_null() {
-        unsafe { LocalFree(descriptor) };
-    }
-    copied
+    crate::system::token_sid::read_owner_sid(file)
 }
 
 #[cfg(test)]
 pub(super) fn process_token_owner_sid() -> std::io::Result<&'static SidBuffer> {
     static PROCESS_TOKEN_OWNER: OnceLock<Result<SidBuffer, String>> = OnceLock::new();
     PROCESS_TOKEN_OWNER
-        .get_or_init(|| read_process_token_owner().map_err(|error| error.to_string()))
+        .get_or_init(|| {
+            token_owner_sid(TokenSource::CurrentProcess).map_err(|error| error.to_string())
+        })
         .as_ref()
         .map_err(|message| std::io::Error::new(ErrorKind::PermissionDenied, message.clone()))
 }
 
-fn read_process_token_owner() -> std::io::Result<SidBuffer> {
-    let buffer = read_process_token_information(TokenOwner)?;
-    let owner: TOKEN_OWNER = unsafe { std::ptr::read(buffer.as_ptr().cast()) };
-    SidBuffer::copied_from_valid(owner.Owner)
-}
-
-fn read_process_token_information(class: TOKEN_INFORMATION_CLASS) -> std::io::Result<Vec<u64>> {
-    let mut token: HANDLE = std::ptr::null_mut();
-    let opened = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) };
-    if opened == 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    let information = read_token_information(token, class);
-    unsafe { CloseHandle(token) };
-    information
-}
-
-fn read_token_information(
-    token: HANDLE,
-    class: TOKEN_INFORMATION_CLASS,
-) -> std::io::Result<Vec<u64>> {
-    let mut required: u32 = 0;
-    let probed =
-        unsafe { GetTokenInformation(token, class, std::ptr::null_mut(), 0, &mut required) };
-    if probed != 0 || required == 0 {
-        return Err(std::io::Error::new(
-            ErrorKind::InvalidData,
-            "the process token reported no information payload",
-        ));
-    }
-    let probe_error = std::io::Error::last_os_error();
-    if probe_error.raw_os_error() != Some(ERROR_INSUFFICIENT_BUFFER as i32) {
-        return Err(probe_error);
-    }
-    let mut buffer = vec![0_u64; (required as usize).div_ceil(size_of::<u64>())];
-    let fetched = unsafe {
-        GetTokenInformation(
-            token,
-            class,
-            buffer.as_mut_ptr().cast(),
-            required,
-            &mut required,
-        )
-    };
-    if fetched == 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    Ok(buffer)
-}
-
 fn read_process_token_user() -> std::io::Result<SidBuffer> {
     token_user_sid(TokenSource::CurrentProcess)
-}
-
-/// The user a token names, read through the same two-call probe every other
-/// token read here uses.
-///
-/// The buffer is `u64`-backed rather than `u8`-backed on purpose. `TOKEN_USER`
-/// holds a pointer, so reading one out of a byte vector is an unaligned read -
-/// it happens to work while the allocator hands back aligned blocks and is
-/// undefined the moment it does not. Anything in this crate that needs a
-/// token's user calls this rather than repeating the sequence.
-pub(crate) fn token_user_sid(token: TokenSource) -> std::io::Result<SidBuffer> {
-    let buffer = match token {
-        TokenSource::CurrentProcess => read_process_token_information(TokenUser)?,
-        TokenSource::Handle(handle) => read_token_information(handle, TokenUser)?,
-    };
-    let user: TOKEN_USER = unsafe { std::ptr::read(buffer.as_ptr().cast()) };
-    SidBuffer::copied_from_valid(user.User.Sid)
-}
-
-/// Which token to read: this process's own, or one a caller already opened.
-#[derive(Clone, Copy)]
-pub(crate) enum TokenSource {
-    CurrentProcess,
-    Handle(HANDLE),
 }
 
 #[cfg(test)]
@@ -315,9 +176,7 @@ pub(super) fn process_token_user_sid_for_tests() -> std::io::Result<SidBuffer> {
 pub(super) mod forced_foreign_owner {
     use std::cell::Cell;
 
-    use windows_sys::Win32::Security::{
-        CreateWellKnownSid, SECURITY_MAX_SID_SIZE, WinLocalSystemSid,
-    };
+    use windows_sys::Win32::Security::WinLocalSystemSid;
 
     use super::SidBuffer;
 
@@ -330,31 +189,10 @@ pub(super) mod forced_foreign_owner {
     }
 
     pub(in super::super) fn foreign_sid() -> std::io::Result<SidBuffer> {
-        let mut storage = [0_u64; 9];
-        let mut size: u32 = SECURITY_MAX_SID_SIZE;
-        let created = unsafe {
-            CreateWellKnownSid(
-                WinLocalSystemSid,
-                std::ptr::null_mut(),
-                storage.as_mut_ptr().cast(),
-                &mut size,
-            )
-        };
-        if created == 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-        SidBuffer::copied_from_valid(storage.as_mut_ptr().cast())
+        SidBuffer::well_known(WinLocalSystemSid)
     }
 
     pub(in super::super) fn with_forced_foreign_owner<R>(run: impl FnOnce() -> R) -> R {
-        struct ResetOnDrop;
-        impl Drop for ResetOnDrop {
-            fn drop(&mut self) {
-                FORCE_FOREIGN_OWNER.with(|flag| flag.set(false));
-            }
-        }
-        FORCE_FOREIGN_OWNER.with(|flag| flag.set(true));
-        let _reset = ResetOnDrop;
-        run()
+        crate::system::test_support::with_flag(&FORCE_FOREIGN_OWNER, true, run)
     }
 }

@@ -33,7 +33,6 @@ fn inventory(windows: Vec<WindowInfo>, apps: Vec<AppInfo>) -> SignalWindowInvent
         apps,
         windows_complete: true,
         apps_complete: true,
-        excluded_window_count: 0,
     }
 }
 
@@ -242,13 +241,12 @@ fn an_empty_filter_returns_the_full_population_unchanged() {
 }
 
 #[test]
-fn excluded_window_count_and_completeness_pass_through_the_filter_unchanged() {
+fn completeness_passes_through_the_filter_unchanged() {
     let mut source = inventory(
         vec![window("w-1", "shared.exe", 100, "gen-a")],
         vec![app_info("shared.exe", 100, "gen-a")],
     );
     source.windows_complete = false;
-    source.excluded_window_count = 3;
     let filter = SignalFilter {
         app: None,
         process: Some(ProcessIdentity::new(100u32, "gen-a")),
@@ -257,5 +255,4 @@ fn excluded_window_count_and_completeness_pass_through_the_filter_unchanged() {
     let filtered = apply_signal_filter(source, &filter);
 
     assert!(!filtered.windows_complete);
-    assert_eq!(filtered.excluded_window_count, 3);
 }

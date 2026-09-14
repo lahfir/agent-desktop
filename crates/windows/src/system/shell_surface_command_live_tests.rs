@@ -26,6 +26,7 @@ use agent_desktop_core::commands::snapshot::{self, SnapshotArgs};
 use agent_desktop_core::{AdapterError, AppError, CommandContext, SnapshotSurface};
 
 use crate::adapter::WindowsAdapter;
+use crate::system::capture_test_support::HomeIsolation;
 use crate::system::private_file::WindowsPrivateFile;
 use crate::system::raise_oracle::{responded_since, witness_desktop};
 use crate::system::shell_surface_open::close_surface;
@@ -33,69 +34,8 @@ use crate::system::test_support::{
     SHELL_SURFACE_LOCK, or_skip_shell, wait_for_foreground_to_settle,
     with_interaction_lease_test_lock,
 };
+use crate::system::test_time::deadline;
 use crate::tree::fixture::bootstrap;
-use std::path::PathBuf;
-use std::sync::{Mutex, MutexGuard};
-
-static HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
-
-/// The snapshot leg persists a refmap under the state root, so the test
-/// points HOME/USERPROFILE at a fresh directory this process owns - the same
-/// isolation the capture parity tests use - and restores both variables and
-/// the directory on the way out.
-struct HomeIsolation {
-    previous_home: Option<std::ffi::OsString>,
-    previous_profile: Option<std::ffi::OsString>,
-    root: PathBuf,
-    _lock: MutexGuard<'static, ()>,
-}
-
-impl HomeIsolation {
-    fn enter() -> Self {
-        let lock = HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let root = std::env::temp_dir().join(format!(
-            "agent-desktop-surface-command-home-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::create_dir_all(&root).expect("isolated home");
-        let previous_home = std::env::var_os("HOME");
-        let previous_profile = std::env::var_os("USERPROFILE");
-        unsafe {
-            std::env::set_var("HOME", &root);
-            std::env::set_var("USERPROFILE", &root);
-        }
-        Self {
-            previous_home,
-            previous_profile,
-            root,
-            _lock: lock,
-        }
-    }
-}
-
-impl Drop for HomeIsolation {
-    fn drop(&mut self) {
-        match &self.previous_home {
-            Some(value) => unsafe { std::env::set_var("HOME", value) },
-            None => unsafe { std::env::remove_var("HOME") },
-        }
-        match &self.previous_profile {
-            Some(value) => unsafe { std::env::set_var("USERPROFILE", value) },
-            None => unsafe { std::env::remove_var("USERPROFILE") },
-        }
-        let _ = std::fs::remove_dir_all(&self.root);
-    }
-}
-
-fn deadline(ms: u64) -> agent_desktop_core::Deadline {
-    agent_desktop_core::Deadline::after(ms).expect("deadline")
-}
 
 fn foreground() -> isize {
     use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
@@ -158,7 +98,7 @@ fn snapshot_command(kind: SnapshotSurface) -> serde_json::Value {
 }
 
 fn assert_round_trip(kind: SnapshotSurface) -> Option<()> {
-    let _home = HomeIsolation::enter();
+    let _home = HomeIsolation::enter("agent-desktop-surface-command-home");
     let _ = agent_desktop_core::install_private_file_ops(Box::new(WindowsPrivateFile::new()));
     let context = CommandContext::default().with_headed(true);
     let opened = open_command(kind, &context)?;
@@ -222,7 +162,7 @@ fn opening_the_taskbar_round_trips_without_raising_anything() {
     bootstrap();
     let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     with_interaction_lease_test_lock(|| {
-        let _home = HomeIsolation::enter();
+        let _home = HomeIsolation::enter("agent-desktop-surface-command-home");
         let _ = agent_desktop_core::install_private_file_ops(Box::new(WindowsPrivateFile::new()));
         assert!(
             wait_for_foreground_to_settle(),

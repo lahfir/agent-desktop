@@ -14,31 +14,37 @@ use agent_desktop_core::{Deadline, ErrorCode, LocatorEvidence};
 /// An enumerator whose fault carries a caller-chosen [`UiaFailure`], so every
 /// read disposition can be driven end to end through the shared loop under
 /// each resolver's own policy, rather than asserted on a classifier in
-/// isolation.
-///
-/// Nodes are their own indices: the root is `0` and its children are `1..=n`.
-struct StubTree {
+/// isolation - nodes are their own indices, root `0` and children `1..=n`,
+/// and a sibling fault is `(after, failure)`, firing once `node >= after` so
+/// `failing_on_siblings`/`faulting_after` differ only in threshold.
+pub(crate) struct StubTree {
     child_count: usize,
     first_child_failure: Option<UiaFailure>,
-    sibling_failure: Option<UiaFailure>,
+    sibling_fault: Option<(usize, UiaFailure)>,
 }
 
 impl StubTree {
-    fn with_children(child_count: usize) -> Self {
+    pub(crate) fn with_children(child_count: usize) -> Self {
         Self {
             child_count,
             first_child_failure: None,
-            sibling_failure: None,
+            sibling_fault: None,
         }
     }
 
-    fn failing_to_descend(mut self, failure: UiaFailure) -> Self {
+    pub(crate) fn failing_to_descend(mut self, failure: UiaFailure) -> Self {
         self.first_child_failure = Some(failure);
         self
     }
 
-    fn failing_on_siblings(mut self, failure: UiaFailure) -> Self {
-        self.sibling_failure = Some(failure);
+    pub(crate) fn failing_on_siblings(mut self, failure: UiaFailure) -> Self {
+        self.sibling_fault = Some((0, failure));
+        self
+    }
+
+    /// Faults with `ERR_TIMEOUT` once `read_siblings` have read cleanly.
+    pub(crate) fn faulting_after(mut self, read_siblings: usize) -> Self {
+        self.sibling_fault = Some((read_siblings, UiaFailure::Sentinel(ERR_TIMEOUT)));
         self
     }
 }
@@ -58,7 +64,7 @@ impl TreeSource for StubTree {
     }
 
     fn next_sibling(&self, node: &usize) -> Result<usize, UiaFailure> {
-        if let Some(failure) = self.sibling_failure {
+        if let Some((_, failure)) = self.sibling_fault.filter(|(after, _)| *node >= *after) {
             return Err(failure);
         }
         if *node < self.child_count {
@@ -81,7 +87,7 @@ impl TreeSource for StubTree {
         let vocabulary = walk_vocabulary(&properties, &LabelOutcome::Unlabelled);
         (
             properties.clone(),
-            properties.into_locator_evidence(vocabulary),
+            properties.locator_evidence(vocabulary),
             0,
         )
     }

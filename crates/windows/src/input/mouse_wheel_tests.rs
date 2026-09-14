@@ -1,28 +1,9 @@
+use super::fixture::{modifier_events, origin, reset_sinks};
 use super::*;
-use crate::input::keyboard_send::keyboard_send_fake_sink as key_sink;
 use crate::input::mouse_send::mouse_send_fake_sink as mouse_sink;
 use agent_desktop_core::{
     Deadline, ErrorCode, Modifier, MouseButton, MouseEvent, MouseEventKind, Point,
 };
-
-fn reset_sinks() {
-    mouse_sink::reset();
-    key_sink::reset();
-}
-
-/// The one keyboard seam records full `KeyboardInputEvent`s; `key_input`
-/// sets `flags` to `KEYEVENTF_KEYUP` for a release and 0 for a press, so a
-/// non-zero flag is the key-up.
-fn modifier_events() -> Vec<(u16, bool)> {
-    key_sink::recorded()
-        .into_iter()
-        .map(|event| (event.vk, event.flags != 0))
-        .collect()
-}
-
-fn origin() -> Point {
-    Point { x: 1.0, y: 1.0 }
-}
 
 fn deadline() -> Deadline {
     Deadline::after(1_000).expect("bounded test deadline")

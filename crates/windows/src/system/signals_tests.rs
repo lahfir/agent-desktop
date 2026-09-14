@@ -1,9 +1,7 @@
 use super::*;
 use agent_desktop_core::{AppInfo, ErrorCode, ProcessId, WindowInfo, WindowState};
 
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("signals tests use a generous deadline")
-}
+use crate::system::test_time::deadline;
 
 fn window(id: &str, app: &str, pid: u32, instance: &str) -> WindowInfo {
     WindowInfo {
@@ -36,14 +34,12 @@ fn inventory(
     apps: Vec<AppInfo>,
     windows_complete: bool,
     apps_complete: bool,
-    excluded_window_count: usize,
 ) -> SignalWindowInventory {
     SignalWindowInventory {
         windows,
         apps,
         windows_complete,
         apps_complete,
-        excluded_window_count,
     }
 }
 
@@ -54,10 +50,9 @@ fn an_unfiltered_assembly_is_complete_with_surfaces_reflecting_no_scan_requested
         vec![app_info("one.exe", 100, "gen-a")],
         true,
         true,
-        0,
     );
 
-    let baseline = assemble(source, &SignalFilter::default(), deadline())
+    let baseline = assemble(source, &SignalFilter::default(), deadline(10_000))
         .expect("assembling an unfiltered inventory never touches the native surface scan");
 
     assert!(baseline.completeness.windows);
@@ -74,34 +69,10 @@ fn an_unfiltered_assembly_is_complete_with_surfaces_reflecting_no_scan_requested
 }
 
 #[test]
-fn an_identity_exclusion_never_flips_completeness() {
-    let source = inventory(
-        vec![window("w-1", "one.exe", 100, "gen-a")],
-        vec![app_info("one.exe", 100, "gen-a")],
-        true,
-        true,
-        7,
-    );
-
-    let baseline = assemble(source, &SignalFilter::default(), deadline())
-        .expect("a complete walk that also excluded entities still assembles");
-
-    assert!(
-        baseline.completeness.windows,
-        "an identity exclusion must not flip completeness.windows even though the \
-         source inventory carries a non-zero excluded_window_count"
-    );
-    assert!(
-        baseline.completeness.apps,
-        "an identity exclusion must not flip completeness.apps"
-    );
-}
-
-#[test]
 fn a_truncated_walk_reports_windows_and_apps_incomplete() {
-    let source = inventory(Vec::new(), Vec::new(), false, false, 0);
+    let source = inventory(Vec::new(), Vec::new(), false, false);
 
-    let baseline = assemble(source, &SignalFilter::default(), deadline())
+    let baseline = assemble(source, &SignalFilter::default(), deadline(10_000))
         .expect("a truncated walk is a reported outcome, not an error");
 
     assert!(
@@ -171,7 +142,8 @@ mod windows_only {
     const SETTLE: Duration = Duration::from_millis(250);
 
     fn lease() -> InteractionLease {
-        InteractionLease::guarded(deadline(), ()).expect("a lease can be acquired for the test")
+        InteractionLease::guarded(deadline(10_000), ())
+            .expect("a lease can be acquired for the test")
     }
 
     fn window_info_for(fixture: &HostedFixture) -> WindowInfo {
@@ -223,7 +195,7 @@ mod windows_only {
     fn an_unfiltered_capture_on_a_live_desktop_is_complete_with_no_surface_scan() {
         bootstrap();
 
-        let baseline = capture_signal_baseline_impl(&SignalFilter::default(), deadline())
+        let baseline = capture_signal_baseline_impl(&SignalFilter::default(), deadline(10_000))
             .expect("an unfiltered capture on a live desktop must succeed");
 
         assert!(baseline.completeness.windows);
@@ -246,7 +218,7 @@ mod windows_only {
             process: Some(expected.clone()),
         };
 
-        let baseline = capture_signal_baseline_impl(&filter, deadline())
+        let baseline = capture_signal_baseline_impl(&filter, deadline(10_000))
             .expect("a process-filtered capture on a live desktop must succeed");
 
         for window in &baseline.windows {
@@ -275,7 +247,7 @@ mod windows_only {
             process: Some(ProcessIdentity::new(std::process::id(), token)),
         };
 
-        let baseline = capture_signal_baseline_impl(&filter, deadline())
+        let baseline = capture_signal_baseline_impl(&filter, deadline(10_000))
             .expect("a process-filtered capture scoped to this live process must succeed");
 
         assert!(
@@ -315,7 +287,7 @@ mod windows_only {
             return;
         }
 
-        let before = capture_signal_baseline_impl(&SignalFilter::default(), deadline())
+        let before = capture_signal_baseline_impl(&SignalFilter::default(), deadline(10_000))
             .expect("the composed baseline capture must succeed on a live desktop");
 
         let transition = HostedFixture::spawn().expect("the transition fixture starts");
@@ -328,7 +300,7 @@ mod windows_only {
         ));
         std::thread::sleep(SETTLE);
 
-        let after = capture_signal_baseline_impl(&SignalFilter::default(), deadline())
+        let after = capture_signal_baseline_impl(&SignalFilter::default(), deadline(10_000))
             .expect("the composed baseline capture must succeed on a live desktop");
 
         let events = diff_signals(&before, &after);
@@ -365,7 +337,7 @@ mod windows_only {
     fn capture_signal_baseline_reaches_the_windows_override_instead_of_the_not_supported_default() {
         let adapter = crate::adapter::WindowsAdapter::new();
 
-        let result = adapter.capture_signal_baseline(&SignalFilter::default(), deadline());
+        let result = adapter.capture_signal_baseline(&SignalFilter::default(), deadline(10_000));
 
         if let Err(error) = result {
             assert_ne!(error.code, ErrorCode::PlatformNotSupported);

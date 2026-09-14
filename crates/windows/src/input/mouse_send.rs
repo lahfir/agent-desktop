@@ -140,27 +140,10 @@ mod imp {
     pub(super) fn post_mouse_inputs(_events: &[MouseInputEvent]) {}
 }
 
-#[cfg(all(test, target_os = "windows"))]
-pub(crate) mod mouse_send_fake_sink {
-    use super::MouseInputEvent;
-    use std::cell::RefCell;
-
-    thread_local! {
-        static RECORDED: RefCell<Vec<MouseInputEvent>> = const { RefCell::new(Vec::new()) };
-    }
-
-    pub(crate) fn reset() {
-        RECORDED.with(|cell| cell.borrow_mut().clear());
-    }
-
-    pub(crate) fn recorded() -> Vec<MouseInputEvent> {
-        RECORDED.with(|cell| cell.borrow().clone())
-    }
-
-    pub(super) fn record(events: &[MouseInputEvent]) {
-        RECORDED.with(|cell| cell.borrow_mut().extend_from_slice(events));
-    }
-}
+crate::input::define_input_fake_sink!(
+    mouse_send_fake_sink,
+    crate::input::mouse_send::MouseInputEvent
+);
 
 #[cfg(all(test, target_os = "windows"))]
 #[path = "mouse_send_tests.rs"]

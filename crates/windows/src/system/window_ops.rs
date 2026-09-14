@@ -27,14 +27,7 @@ pub(crate) fn passes_filter(window: &EnumeratedWindow) -> bool {
 fn process_facts(
     handle: super::window_enum::WindowHandle,
 ) -> Option<(ProcessId, Option<String>, String)> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
-
-    let mut pid: u32 = 0;
-    unsafe { GetWindowThreadProcessId(handle, &mut pid) };
-    if pid == 0 {
-        return None;
-    }
-    let pid = ProcessId::from(pid);
+    let pid = super::window_identity::live_window_owner(handle)?;
     let token = process_identity::token_for_pid(pid).ok().flatten();
     let name = process_identity::process_image_name(pid).unwrap_or_default();
     Some((pid, token, name))
@@ -103,17 +96,13 @@ fn window_info_from(
 ) -> WindowInfo {
     let (pid, process_instance, app) = facts;
     WindowInfo {
-        id: format!("w-{}", window.handle as usize),
+        id: window_id(window.handle),
         title: title.to_string(),
         app,
         pid,
         process_instance,
         bounds: Some(window.rect),
-        state: WindowState {
-            is_focused: focused,
-            minimized: Some(window.iconic),
-            visible: Some(window.visible),
-        },
+        state: window_state(focused, window.iconic, window.visible),
     }
 }
 
@@ -277,6 +266,26 @@ pub(crate) fn parse_handle(id: &str) -> super::window_enum::WindowHandle {
         .unwrap_or(std::ptr::null_mut())
 }
 
+/// The inverse of [`parse_handle`]: the `WindowInfo.id` a live handle
+/// reports. Always through `usize` - never the handle's own signed width -
+/// so every id this crate emits is one `parse_handle` can round-trip.
+pub(crate) fn window_id(handle: super::window_enum::WindowHandle) -> String {
+    format!("w-{}", handle as usize)
+}
+
+/// The `WindowState` shape every live `WindowInfo` this crate builds shares:
+/// `accessible` is always true for a window this process could observe at
+/// all, and `minimized`/`visible` are always known once observed, never
+/// absent.
+pub(crate) fn window_state(is_focused: bool, minimized: bool, visible: bool) -> WindowState {
+    WindowState {
+        is_focused,
+        accessible: true,
+        minimized: Some(minimized),
+        visible: Some(visible),
+    }
+}
+
 #[cfg(test)]
 pub(super) mod enumeration_calls {
     use std::cell::Cell;
@@ -286,15 +295,11 @@ pub(super) mod enumeration_calls {
     }
 
     pub(in crate::system) fn record() {
-        COUNT.with(|cell| cell.set(cell.get() + 1));
+        crate::system::call_counter::record(&COUNT);
     }
 
     pub(in crate::system) fn take() -> usize {
-        COUNT.with(|cell| {
-            let value = cell.get();
-            cell.set(0);
-            value
-        })
+        crate::system::call_counter::take(&COUNT)
     }
 }
 

@@ -12,6 +12,19 @@ use agent_desktop_core::{AdapterError, ProcessId};
 const TOKEN_PREFIX: &str = "windows-proc-v1";
 const TICKS_PER_SECOND: u64 = 10_000_000;
 
+/// A fixed-width, nul-padded wide buffer - `PROCESSENTRY32W::szExeFile`,
+/// `WIN32_FIND_DATAW::cFileName` and their kin - cut at its first nul and
+/// decoded. The tail after the terminator is whatever a previous, longer
+/// value left there, so reading the whole array would append those
+/// leftovers to a shorter name.
+pub(crate) fn wide_buffer_to_string(buffer: &[u16]) -> String {
+    let end = buffer
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(buffer.len());
+    String::from_utf16_lossy(&buffer[..end])
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ProcessIdentity {
     pid: ProcessId,
@@ -111,12 +124,7 @@ pub(crate) fn process_image_name(pid: ProcessId) -> Option<String> {
     let mut ok = unsafe { Process32FirstW(snapshot, &mut entry) };
     while ok != 0 {
         if entry.th32ProcessID == u32::from(pid) {
-            let length = entry
-                .szExeFile
-                .iter()
-                .position(|c| *c == 0)
-                .unwrap_or(entry.szExeFile.len());
-            found = Some(String::from_utf16_lossy(&entry.szExeFile[..length]));
+            found = Some(wide_buffer_to_string(&entry.szExeFile));
             break;
         }
         ok = unsafe { Process32NextW(snapshot, &mut entry) };

@@ -43,7 +43,7 @@ fn a_clean_cleanup_passes_the_operation_through() {
 
 #[cfg(target_os = "windows")]
 mod live {
-    use agent_desktop_core::{Deadline, InteractionPolicy, SnapshotSurface};
+    use agent_desktop_core::SnapshotSurface;
 
     use crate::notifications::list::list_notifications;
     use crate::system::raise_oracle::{responded_since, witness_desktop};
@@ -51,13 +51,7 @@ mod live {
     use crate::system::shell_surface_open::{close_surface, open_surface};
     use crate::system::test_support::{SHELL_SURFACE_LOCK, or_skip_shell};
 
-    fn deadline(ms: u64) -> Deadline {
-        Deadline::after(ms).expect("deadline")
-    }
-
-    fn headed() -> InteractionPolicy {
-        InteractionPolicy::headed()
-    }
+    use crate::system::test_time::{deadline, headed};
 
     fn center_is_open() -> bool {
         resolve_surface(SnapshotSurface::ActionCenter, deadline(10_000))

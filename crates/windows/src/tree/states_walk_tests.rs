@@ -1,16 +1,14 @@
+//! The states these assert reach `LocatorEvidence` through the real walk, not
+//! through a direct call to the producer. That is the difference that matters:
+//! a producer can be correct while the slot it fills is never threaded, which
+//! is exactly the shape the states plumbing had before it was built.
+
 use agent_desktop_core::state;
 
-use crate::tree::properties::{PropertyOutcome, PropertyValue};
+use crate::tree::properties::PropertyOutcome;
 use crate::tree::property_ids::TreeProperty;
+use crate::tree::test_support::flag;
 use crate::tree::walker_fake::{FakeTree, budget, walk};
-
-/// The states these assert reach `LocatorEvidence` through the real walk, not
-/// through a direct call to the producer. That is the difference that matters:
-/// a producer can be correct while the slot it fills is never threaded, which
-/// is exactly the shape the states plumbing had before it was built.
-fn flag(property: TreeProperty, value: bool) -> (TreeProperty, PropertyOutcome) {
-    (property, PropertyOutcome::Known(PropertyValue::Flag(value)))
-}
 
 fn enabled_true() -> (TreeProperty, PropertyOutcome) {
     flag(TreeProperty::IsEnabled, true)

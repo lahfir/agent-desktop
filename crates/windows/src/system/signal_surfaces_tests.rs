@@ -27,9 +27,7 @@ use crate::tree::fixture_modal::ModalFixture;
 const SETTLE: Duration = Duration::from_millis(250);
 const STATE_TIMEOUT: Duration = Duration::from_secs(5);
 
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("bounded deadline")
-}
+use crate::system::test_time::deadline;
 
 fn app_for_pid(pid: u32, name: &str) -> AppInfo {
     let process_id = ProcessId::from(pid);
@@ -46,7 +44,7 @@ fn app_for_pid(pid: u32, name: &str) -> AppInfo {
 }
 
 fn capture(apps: &[AppInfo]) -> SignalBaseline {
-    let surfaces = app_scoped_surfaces(apps, deadline()).expect("surface scan succeeds");
+    let surfaces = app_scoped_surfaces(apps, deadline(10_000)).expect("surface scan succeeds");
     SignalBaseline {
         windows: Vec::new(),
         apps: Vec::new(),
@@ -205,8 +203,8 @@ fn two_simultaneously_open_sheets_of_the_same_kind_produce_two_distinct_signals(
     assert!(second_fixture.wait_for_modal_state(true, STATE_TIMEOUT));
     std::thread::sleep(SETTLE);
 
-    let surfaces =
-        app_scoped_surfaces(&[first_app, second_app], deadline()).expect("surface scan succeeds");
+    let surfaces = app_scoped_surfaces(&[first_app, second_app], deadline(10_000))
+        .expect("surface scan succeeds");
     let sheets: Vec<_> = surfaces
         .iter()
         .filter(|surface| surface.kind == SnapshotSurface::Sheet)
@@ -263,8 +261,8 @@ fn every_emitted_surface_carries_a_non_empty_process_instance_and_the_filtered_p
     assert!(fixture.wait_for_modal_state(true, STATE_TIMEOUT));
     std::thread::sleep(SETTLE);
 
-    let surfaces =
-        app_scoped_surfaces(std::slice::from_ref(&app), deadline()).expect("surface scan succeeds");
+    let surfaces = app_scoped_surfaces(std::slice::from_ref(&app), deadline(10_000))
+        .expect("surface scan succeeds");
 
     assert!(!surfaces.is_empty(), "the open modal must be reported");
     for surface in &surfaces {
@@ -295,7 +293,7 @@ fn a_surface_belonging_to_a_different_process_is_never_emitted_under_a_process_f
     assert!(other.wait_for_modal_state(true, STATE_TIMEOUT));
     std::thread::sleep(SETTLE);
 
-    let surfaces = app_scoped_surfaces(std::slice::from_ref(&target_app), deadline())
+    let surfaces = app_scoped_surfaces(std::slice::from_ref(&target_app), deadline(10_000))
         .expect("surface scan succeeds");
 
     assert!(

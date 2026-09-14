@@ -108,39 +108,20 @@ fn bounds() -> crate::Rect {
 
 fn entry() -> RefEntry {
     let bounds = bounds();
-    RefEntry {
-        process: crate::RefProcess {
-            pid: crate::ProcessId::new(1),
-            process_instance: Some("test-instance".into()),
-        },
-        identity: crate::RefEntryIdentity {
-            role: "menuitem".into(),
-            name: Some("File".into()),
-            value: None,
-            description: None,
-            native_id: None,
-        },
-        geometry: crate::RefGeometry {
-            bounds: Some(bounds),
-            bounds_hash: bounds.bounds_hash(),
-        },
-        capabilities: crate::RefCapabilities {
-            states: Vec::new(),
-            available_actions: vec![capability::EXPAND.into()],
-        },
-        source: crate::RefSource {
-            source_app: Some("Notepad".into()),
-            source_window_id: Some("w-1".into()),
-            source_window_title: Some("Notepad".into()),
-            source_window_bounds_hash: None,
-            source_surface: SnapshotSurface::Window,
-        },
-        scope: crate::RefScope {
-            root_ref: None,
-            path_is_absolute: false,
-            path: smallvec::SmallVec::new(),
-        },
-    }
+    let mut entry = crate::adapter::minimal_ref_entry("menuitem", Some("File"));
+    entry.geometry = crate::RefGeometry {
+        bounds: Some(bounds),
+        bounds_hash: bounds.bounds_hash(),
+    };
+    entry.capabilities.available_actions = vec![capability::EXPAND.into()];
+    entry.source = crate::RefSource {
+        source_app: Some("Notepad".into()),
+        source_window_id: Some("w-1".into()),
+        source_window_title: Some("Notepad".into()),
+        source_window_bounds_hash: None,
+        source_surface: SnapshotSurface::Window,
+    };
+    entry
 }
 
 #[test]

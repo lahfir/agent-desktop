@@ -17,12 +17,7 @@ fn long_deadline() -> Deadline {
 }
 
 fn base_params() -> DragParams {
-    DragParams {
-        from: Point { x: 0.0, y: 0.0 },
-        to: Point { x: 10.0, y: 10.0 },
-        duration_ms: None,
-        drop_delay_ms: None,
-    }
+    drag_params(None, None)
 }
 
 #[test]

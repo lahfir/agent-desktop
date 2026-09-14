@@ -159,37 +159,12 @@ fn a_session_id_whose_path_cannot_be_resolved_reads_unknown() {
 #[cfg(target_os = "windows")]
 mod hardened_read {
     use super::{SessionReading, classify};
+    use crate::system::private_file::tests::Scratch;
     use crate::system::private_file::{WindowsPrivateFile, read_private_bounded_path};
     use agent_desktop_core::PrivateFileOps;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     const MANIFEST_READ_LIMIT: u64 = 64 * 1024;
-
-    struct Scratch {
-        root: PathBuf,
-    }
-
-    impl Scratch {
-        fn new(name: &str) -> Self {
-            let root = std::env::temp_dir().join(format!(
-                "agent-desktop-session-state-{name}-{}-{:?}",
-                std::process::id(),
-                std::thread::current().id()
-            ));
-            std::fs::create_dir_all(&root).expect("scratch root must be creatable");
-            Self { root }
-        }
-
-        fn path(&self) -> &Path {
-            &self.root
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.root);
-        }
-    }
 
     /// A manifest that is gone must still read as gone THROUGH the hardened
     /// path, or the renderer that outlived its session never learns the

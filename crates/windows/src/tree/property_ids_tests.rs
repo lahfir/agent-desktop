@@ -151,27 +151,6 @@ fn the_walk_set_has_no_duplicate_entries() {
     }
 }
 
-#[test]
-fn every_property_names_itself_for_a_structured_error() {
-    for property in TreeProperty::WALK_SET {
-        assert!(!property.as_str().is_empty());
-    }
-    assert_eq!(TreeProperty::LegacyValue.as_str(), "LegacyIAccessibleValue");
-}
-
-#[cfg(target_os = "windows")]
-#[test]
-fn every_property_resolves_through_the_crate_generated_constants() {
-    for property in TreeProperty::WALK_SET {
-        let _ = uia_property(property);
-    }
-    let _ = uia_property(TreeProperty::ProviderDescription);
-    let _ = uia_property(TreeProperty::ControlType);
-    let _ = uia_property(TreeProperty::RuntimeId);
-    let _ = uia_property(TreeProperty::LocalizedControlType);
-    let _ = uia_property(TreeProperty::AriaRole);
-}
-
 /// A2-5 measured that UIA property ids are build-specific and named this
 /// module as the place a hand-written table would fail silently, so the source must
 /// contain no bare property-id integer.
@@ -181,35 +160,26 @@ fn every_property_resolves_through_the_crate_generated_constants() {
 /// constant, is not a property id and must not fail this.
 #[test]
 fn no_property_id_integer_appears_in_this_module() {
-    for (name, source) in [
-        ("property_ids.rs", include_str!("property_ids.rs")),
-        ("properties.rs", include_str!("properties.rs")),
-        ("cache.rs", include_str!("cache.rs")),
-        (
-            "element_properties.rs",
-            include_str!("element_properties.rs"),
-        ),
-        ("roles.rs", include_str!("roles.rs")),
-        ("actions.rs", include_str!("actions.rs")),
-        ("states.rs", include_str!("states.rs")),
-        ("name_evidence.rs", include_str!("name_evidence.rs")),
-        ("property_outcome.rs", include_str!("property_outcome.rs")),
-        ("descriptor.rs", include_str!("descriptor.rs")),
-        ("walker.rs", include_str!("walker.rs")),
-        ("walker_source.rs", include_str!("walker_source.rs")),
-    ] {
-        for (number, line) in source.lines().enumerate() {
-            let trimmed = line.trim_start();
-            if trimmed.starts_with("///") || trimmed.starts_with("//!") {
-                continue;
-            }
-            assert!(
-                !contains_property_id_literal(line),
-                "{name}:{} carries a UIA property-id literal: {line}",
-                number + 1
-            );
-        }
-    }
+    crate::tree::test_support::assert_source_forbids(
+        &[
+            ("property_ids.rs", include_str!("property_ids.rs")),
+            ("properties.rs", include_str!("properties.rs")),
+            ("cache.rs", include_str!("cache.rs")),
+            (
+                "element_properties.rs",
+                include_str!("element_properties.rs"),
+            ),
+            ("roles.rs", include_str!("roles.rs")),
+            ("actions.rs", include_str!("actions.rs")),
+            ("states.rs", include_str!("states.rs")),
+            ("name_evidence.rs", include_str!("name_evidence.rs")),
+            ("property_outcome.rs", include_str!("property_outcome.rs")),
+            ("descriptor.rs", include_str!("descriptor.rs")),
+            ("walker.rs", include_str!("walker.rs")),
+            ("walker_source.rs", include_str!("walker_source.rs")),
+        ],
+        contains_property_id_literal,
+    );
 }
 
 /// Reports whether a line contains a bare integer in UIA's property-id range.

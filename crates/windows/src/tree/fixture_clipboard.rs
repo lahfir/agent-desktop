@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Write};
+use std::io::Write;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Sender, channel};
@@ -17,6 +17,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WS_OVERLAPPEDWINDOW,
 };
 
+use super::fixture_spawn;
 use super::fixture_window;
 
 const CF_UNICODETEXT: u32 = 13;
@@ -24,7 +25,6 @@ const HOST_ENVIRONMENT_FLAG: &str = "AGENT_DESKTOP_CLIPBOARD_HOLDER_HOST";
 const HOST_TEST_NAME: &str = "tree::fixture_clipboard::tests::clipboard_holder_host_process_entry";
 const READY_PREFIX: &str = "AGENT_DESKTOP_CLIPBOARD_HOLDER_READY";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
-const HOST_WATCHDOG_LIFETIME: Duration = Duration::from_secs(300);
 const STALL_POLL: Duration = Duration::from_millis(25);
 
 /// Process-wide lock for every test that touches the real clipboard (A22-5).
@@ -104,38 +104,19 @@ pub(crate) struct ContendingClipboardHolder {
 impl ContendingClipboardHolder {
     pub(crate) fn spawn() -> Result<Self, String> {
         let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-        let mut child = Command::new(executable)
+        let mut command = Command::new(executable);
+        command
             .args(["--exact", HOST_TEST_NAME, "--ignored", "--nocapture"])
             .env(HOST_ENVIRONMENT_FLAG, "1")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|error| error.to_string())?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| String::from("the clipboard holder exposed no stdout"))?;
-        let (sender, receiver) = channel();
-        spawn(move || {
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                if line.trim() == READY_PREFIX {
-                    let _ = sender.send(true);
-                    return;
-                }
-            }
-            let _ = sender.send(false);
-        });
-        match receiver.recv_timeout(READY_TIMEOUT) {
-            Ok(true) => Ok(Self { child: Some(child) }),
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                Err(String::from(
-                    "the clipboard holder never reported readiness",
-                ))
-            }
-        }
+            .stdin(Stdio::piped());
+        let (child, _, _reader) = fixture_spawn::spawn_host(
+            command,
+            fixture_spawn::first_line(|line| (line == READY_PREFIX).then_some(true)),
+            |ready| *ready,
+            "the clipboard holder exposed no stdout",
+            "the clipboard holder never reported readiness",
+        )?;
+        Ok(Self { child: Some(child) })
     }
 
     pub(crate) fn process_id(&self) -> u32 {
@@ -183,13 +164,11 @@ fn await_holder_exit(child: &mut Child) -> Result<(), String> {
                 std::thread::sleep(Duration::from_millis(25));
             }
             Ok(None) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                fixture_spawn::kill_and_wait(child);
                 return Err(String::from("clipboard holder did not exit after release"));
             }
             Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                fixture_spawn::kill_and_wait(child);
                 return Err(error.to_string());
             }
         }
@@ -201,10 +180,10 @@ pub(crate) fn is_clipboard_holder_host() -> bool {
 }
 
 pub(crate) fn run_as_clipboard_holder_host() {
-    spawn(|| {
-        std::thread::sleep(HOST_WATCHDOG_LIFETIME);
-        std::process::exit(0);
-    });
+    super::fixture_menu::run_with_watchdog(host_clipboard_holder);
+}
+
+fn host_clipboard_holder() {
     let code = match hold_clipboard_until_release() {
         Ok(()) => 0,
         Err(_) => 2,
@@ -225,10 +204,12 @@ pub(crate) fn close_clipboard() {
     }
 }
 
-fn hold_clipboard_until_release() -> Result<(), String> {
+/// A message-only `STATIC` window, parented to `HWND_MESSAGE` - just enough
+/// of a window handle to own the clipboard from, with nothing to show.
+fn message_only_window() -> HWND {
     let class = fixture_window::wide("STATIC");
     let title = fixture_window::wide("");
-    let window = unsafe {
+    unsafe {
         CreateWindowExW(
             0,
             class.as_ptr(),
@@ -243,7 +224,11 @@ fn hold_clipboard_until_release() -> Result<(), String> {
             GetModuleHandleW(std::ptr::null()),
             std::ptr::null(),
         )
-    };
+    }
+}
+
+fn hold_clipboard_until_release() -> Result<(), String> {
+    let window = message_only_window();
     if window.is_null() {
         return Err(String::from("CreateWindowExW failed for clipboard holder"));
     }
@@ -346,24 +331,7 @@ fn advertise_delayed_format(window: HWND) -> Result<(), String> {
 }
 
 fn clear_clipboard_best_effort() {
-    let class = fixture_window::wide("STATIC");
-    let title = fixture_window::wide("");
-    let window = unsafe {
-        CreateWindowExW(
-            0,
-            class.as_ptr(),
-            title.as_ptr(),
-            0,
-            0,
-            0,
-            0,
-            0,
-            HWND_MESSAGE,
-            std::ptr::null_mut(),
-            GetModuleHandleW(std::ptr::null()),
-            std::ptr::null(),
-        )
-    };
+    let window = message_only_window();
     if window.is_null() {
         return;
     }

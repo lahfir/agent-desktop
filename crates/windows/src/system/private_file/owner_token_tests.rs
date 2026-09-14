@@ -2,7 +2,7 @@
 //!
 //! Split from `owner_tests.rs` so that file stays inside the size cap.
 
-use crate::system::private_file::owner::{TokenSource, token_user_sid};
+use crate::system::token_sid::{TokenSource, token_user_sid};
 
 /// A token opened by a caller answers the same user as this process's own,
 /// which is the question every peer check on the control pipe asks.

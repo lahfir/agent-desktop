@@ -3,7 +3,7 @@ use super::{
     display_identity_matches, intersection_area, list_displays_live, primaries_first,
     scale_for_bounds, scale_for_bounds_in, verify_display_identity,
 };
-use agent_desktop_core::{Deadline, DisplayInfo, ErrorCode, Rect};
+use agent_desktop_core::{DisplayInfo, ErrorCode, Rect};
 
 #[test]
 fn primary_display_orders_first() {
@@ -43,7 +43,7 @@ fn a_successful_read_with_a_zero_dpi_is_none() {
 #[test]
 fn live_listing_returns_exactly_one_primary_display() {
     crate::tree::fixture::ensure_test_apartment();
-    let displays = list_displays_live(deadline()).expect("live display enumeration succeeds");
+    let displays = list_displays_live(deadline(5_000)).expect("live display enumeration succeeds");
 
     assert_eq!(
         displays.iter().filter(|display| display.is_primary).count(),
@@ -68,8 +68,8 @@ fn live_listing_returns_exactly_one_primary_display() {
 #[test]
 fn display_at_zero_matches_list_displays_primary() {
     crate::tree::fixture::ensure_test_apartment();
-    let listed = list_displays_live(deadline()).expect("list displays");
-    let at_zero = display_at(0, deadline()).expect("display at 0");
+    let listed = list_displays_live(deadline(5_000)).expect("list displays");
+    let at_zero = display_at(0, deadline(5_000)).expect("display at 0");
 
     assert_eq!(at_zero, listed[0]);
     assert!(at_zero.is_primary);
@@ -79,8 +79,8 @@ fn display_at_zero_matches_list_displays_primary() {
 #[test]
 fn display_at_out_of_range_is_invalid_args() {
     crate::tree::fixture::ensure_test_apartment();
-    let listed = list_displays_live(deadline()).expect("list displays");
-    let error = display_at(listed.len(), deadline()).expect_err("out of range");
+    let listed = list_displays_live(deadline(5_000)).expect("list displays");
+    let error = display_at(listed.len(), deadline(5_000)).expect_err("out of range");
 
     assert_eq!(error.code, ErrorCode::InvalidArgs);
 }
@@ -89,9 +89,9 @@ fn display_at_out_of_range_is_invalid_args() {
 #[test]
 fn capture_selection_round_trips_live_display() {
     crate::tree::fixture::ensure_test_apartment();
-    let listed = list_displays_live(deadline()).expect("list displays");
+    let listed = list_displays_live(deadline(5_000)).expect("list displays");
     let expected = listed[0].clone();
-    let (index, selected) = capture_selection(&expected, deadline()).expect("selection");
+    let (index, selected) = capture_selection(&expected, deadline(5_000)).expect("selection");
 
     assert_eq!(index, 0);
     assert_eq!(selected, expected);
@@ -101,7 +101,7 @@ fn capture_selection_round_trips_live_display() {
 #[test]
 fn scale_for_bounds_uses_owning_display_scale() {
     crate::tree::fixture::ensure_test_apartment();
-    let listed = list_displays_live(deadline()).expect("list displays");
+    let listed = list_displays_live(deadline(5_000)).expect("list displays");
     let primary = &listed[0];
     let inset = Rect {
         x: primary.bounds.x + primary.bounds.width * 0.25,
@@ -109,7 +109,7 @@ fn scale_for_bounds_uses_owning_display_scale() {
         width: primary.bounds.width * 0.5,
         height: primary.bounds.height * 0.5,
     };
-    let scale = scale_for_bounds(Some(inset), deadline()).expect("scale");
+    let scale = scale_for_bounds(Some(inset), deadline(5_000)).expect("scale");
 
     assert_eq!(scale, primary.scale);
 }
@@ -237,9 +237,7 @@ fn verify_display_identity_requires_id_with_geometry() {
     assert_eq!(error.code, ErrorCode::InvalidArgs);
 }
 
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
+use crate::system::test_time::deadline;
 
 fn display(id: &str, is_primary: bool, scale: f64, bounds: Rect) -> DisplayInfo {
     DisplayInfo {

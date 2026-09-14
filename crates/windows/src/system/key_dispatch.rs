@@ -158,16 +158,8 @@ fn run_synthesize(combo: &KeyCombo, deadline: Deadline) -> Result<(), AdapterErr
 }
 
 fn focus_verify_failed(pid: ProcessId) -> AdapterError {
-    AdapterError::new(
-        ErrorCode::ActionFailed,
-        "Target application lost focus before physical input delivery",
-    )
-    .with_details(serde_json::json!({
-        "pid": pid,
-        "physical_delivery_started": false,
-    }))
-    .with_suggestion("Retry after ensuring the target application remains frontmost")
-    .with_disposition(DeliverySemantics::not_delivered())
+    focus_lost_before_delivery(pid)
+        .with_suggestion("Retry after ensuring the target application remains frontmost")
 }
 
 fn background_fail_closed(pid: ProcessId) -> AdapterError {
@@ -240,7 +232,7 @@ fn process_holds_keyboard_focus(pid: ProcessId) -> Result<bool, AdapterError> {
     } else {
         return Ok(false);
     };
-    Ok(window_process_id(focus) == Some(pid))
+    Ok(super::window_identity::live_window_owner(focus) == Some(pid))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -256,16 +248,7 @@ fn foreground_process_id() -> Option<ProcessId> {
     if foreground.is_null() {
         return None;
     }
-    window_process_id(foreground)
-}
-
-#[cfg(target_os = "windows")]
-fn window_process_id(handle: windows_sys::Win32::Foundation::HWND) -> Option<ProcessId> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
-
-    let mut pid = 0_u32;
-    unsafe { GetWindowThreadProcessId(handle, &mut pid) };
-    (pid != 0).then(|| ProcessId::from(pid))
+    super::window_identity::live_window_owner(foreground)
 }
 
 #[cfg(all(test, target_os = "windows"))]

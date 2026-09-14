@@ -1,4 +1,4 @@
-use super::click_from_gate;
+use super::{ClickGate, ClickSpec, click_from_gate};
 use crate::actions::physical_target::{delivery_point, ensure_headed_click_policy};
 use crate::input::mouse_send::{
     MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE,
@@ -56,8 +56,19 @@ fn headless_multi_click_is_policy_denied_before_injection() {
 fn lost_foreground_fails_not_delivered_with_zero_injection() {
     mouse_sink::reset();
 
-    let error = click_from_gate(bounds(), None, false, MouseButton::Left, 2, deadline())
-        .expect_err("lost foreground");
+    let error = click_from_gate(
+        ClickGate {
+            bounds: bounds(),
+            foreground_ready: false,
+        },
+        None,
+        ClickSpec {
+            button: MouseButton::Left,
+            count: 2,
+        },
+        deadline(),
+    )
+    .expect_err("lost foreground");
 
     assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_eq!(
@@ -71,8 +82,19 @@ fn lost_foreground_fails_not_delivered_with_zero_injection() {
 fn double_click_issues_left_button_down_up_pairs() {
     mouse_sink::reset();
 
-    let step = click_from_gate(bounds(), None, true, MouseButton::Left, 2, deadline())
-        .expect("double click");
+    let step = click_from_gate(
+        ClickGate {
+            bounds: bounds(),
+            foreground_ready: true,
+        },
+        None,
+        ClickSpec {
+            button: MouseButton::Left,
+            count: 2,
+        },
+        deadline(),
+    )
+    .expect("double click");
 
     assert_eq!(step.label(), "SendInput.click");
     assert_eq!(step.mechanism(), Some(StepMechanism::PhysicalSynthetic));
@@ -102,7 +124,19 @@ fn double_click_issues_left_button_down_up_pairs() {
 fn triple_click_issues_three_left_button_cycles() {
     mouse_sink::reset();
 
-    click_from_gate(bounds(), None, true, MouseButton::Left, 3, deadline()).expect("triple click");
+    click_from_gate(
+        ClickGate {
+            bounds: bounds(),
+            foreground_ready: true,
+        },
+        None,
+        ClickSpec {
+            button: MouseButton::Left,
+            count: 3,
+        },
+        deadline(),
+    )
+    .expect("triple click");
 
     let downs = mouse_sink::recorded()
         .iter()
@@ -115,7 +149,19 @@ fn triple_click_issues_three_left_button_cycles() {
 fn right_click_issues_right_button_flags() {
     mouse_sink::reset();
 
-    click_from_gate(bounds(), None, true, MouseButton::Right, 1, deadline()).expect("right click");
+    click_from_gate(
+        ClickGate {
+            bounds: bounds(),
+            foreground_ready: true,
+        },
+        None,
+        ClickSpec {
+            button: MouseButton::Right,
+            count: 1,
+        },
+        deadline(),
+    )
+    .expect("right click");
 
     let recorded = mouse_sink::recorded();
     assert!(

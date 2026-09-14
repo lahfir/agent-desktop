@@ -67,10 +67,7 @@ fn advertises_action(properties: &ElementProperties) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn props(reads: &[(TreeProperty, PropertyOutcome)]) -> ElementProperties {
-        ElementProperties::from_reads(reads.to_vec())
-    }
+    use crate::tree::test_support::props;
 
     fn group() -> Vec<(TreeProperty, PropertyOutcome)> {
         vec![(

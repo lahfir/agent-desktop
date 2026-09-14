@@ -202,17 +202,17 @@ fn window_info_from_chain_window(handle: WindowHandle) -> Option<WindowInfo> {
     let image = super::process_identity::process_image_name(pid).unwrap_or_default();
     let token = super::process_identity::token_for_pid(pid).ok().flatten();
     Some(WindowInfo {
-        id: format!("w-{}", handle as usize),
+        id: super::window_ops::window_id(handle),
         title: super::window_identity::live_window_title(handle).unwrap_or_default(),
         app: image,
         pid,
         process_instance: token,
         bounds: Some(super::window_enum::window_rect(handle)),
-        state: agent_desktop_core::WindowState {
-            is_focused: super::window_ops::is_foreground_window(handle),
-            minimized: Some(unsafe { IsIconic(handle) } != 0),
-            visible: Some(unsafe { IsWindowVisible(handle) } != 0),
-        },
+        state: super::window_ops::window_state(
+            super::window_ops::is_foreground_window(handle),
+            unsafe { IsIconic(handle) } != 0,
+            unsafe { IsWindowVisible(handle) } != 0,
+        ),
     })
 }
 

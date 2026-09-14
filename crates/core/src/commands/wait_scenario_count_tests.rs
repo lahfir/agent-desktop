@@ -3,51 +3,20 @@ use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{AdapterError, ErrorCode, WindowInfo, adapter::WindowFilter};
 
 fn ready_button(name: &str) -> crate::AccessibilityNode {
-    crate::AccessibilityNode {
-        ref_id: None,
-        role: "button".into(),
-        identity: crate::NodeIdentity {
-            retained_object: None,
-            name: Some(name.into()),
-            ..Default::default()
-        },
-        presentation: Default::default(),
-        children_count: None,
-        subtree_truncated: false,
-        children: vec![],
-    }
+    crate::adapter::minimal_accessibility_node("button", name)
 }
 
 fn truncated_container(child_count: u32) -> crate::AccessibilityNode {
-    crate::AccessibilityNode {
-        ref_id: None,
-        role: "group".into(),
-        identity: crate::NodeIdentity {
-            retained_object: None,
-            name: Some("list".into()),
-            ..Default::default()
-        },
-        presentation: Default::default(),
-        children_count: Some(child_count),
-        subtree_truncated: true,
-        children: vec![],
-    }
+    let mut node = crate::adapter::minimal_accessibility_node("group", "list");
+    node.children_count = Some(child_count);
+    node.subtree_truncated = true;
+    node
 }
 
 fn doc_window(children: Vec<crate::AccessibilityNode>) -> crate::AccessibilityNode {
-    crate::AccessibilityNode {
-        ref_id: None,
-        role: "window".into(),
-        identity: crate::NodeIdentity {
-            retained_object: None,
-            name: Some("Doc".into()),
-            ..Default::default()
-        },
-        presentation: Default::default(),
-        children_count: None,
-        subtree_truncated: false,
-        children,
-    }
+    let mut node = crate::adapter::minimal_accessibility_node("window", "Doc");
+    node.children = children;
+    node
 }
 
 fn test_app_window() -> WindowInfo {

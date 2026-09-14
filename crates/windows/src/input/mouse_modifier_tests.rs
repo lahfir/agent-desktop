@@ -1,13 +1,7 @@
 use super::press_modifiers;
 use crate::input::keyboard_send::keyboard_send_fake_sink as sink;
+use crate::input::mouse::fixture::modifier_events as recorded_pairs;
 use agent_desktop_core::Modifier;
-
-fn recorded_pairs() -> Vec<(u16, bool)> {
-    sink::recorded()
-        .into_iter()
-        .map(|event| (event.vk, event.flags != 0))
-        .collect()
-}
 
 const VK_SHIFT: u16 = 0x10;
 const VK_CONTROL: u16 = 0x11;

@@ -97,10 +97,7 @@ fn description_of(properties: &ElementProperties) -> Option<String> {
 }
 
 fn text_of(outcome: PropertyOutcome) -> Option<String> {
-    match outcome.text() {
-        LocatorField::Known(value) if !value.trim().is_empty() => Some(value),
-        _ => None,
-    }
+    outcome.non_blank_text()
 }
 
 /// Folds this platform's own gating into the per-slot status before core sees

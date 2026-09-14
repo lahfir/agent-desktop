@@ -1,4 +1,5 @@
 use super::*;
+use crate::tree::test_support::assert_source_forbids;
 use crate::tree::walker_fake::{budget, window};
 use agent_desktop_core::ObservationRoot;
 
@@ -7,31 +8,25 @@ use agent_desktop_core::ObservationRoot;
 /// and is therefore not headless; ref allocation belongs to core alone.
 #[test]
 fn the_walk_issues_no_banned_call() {
-    let sources = [
-        include_str!("walker.rs"),
-        include_str!("walker_enumerate.rs"),
-        include_str!("walker_source.rs"),
-        include_str!("walker_tests.rs"),
-        include_str!("walker_fake.rs"),
-        include_str!("walker_source_tests.rs"),
-    ];
     let banned = [
         concat!("get_", "children"),
         concat!("Set", "Focus"),
         concat!("allocate_", "refs"),
     ];
-    for source in sources {
-        for line in source.lines() {
-            let is_prose =
-                line.trim_start().starts_with("///") || line.trim_start().starts_with("//!");
-            for call in banned {
-                assert!(
-                    is_prose || !line.contains(call),
-                    "the walk must never call {call}: {line}"
-                );
-            }
-        }
-    }
+    assert_source_forbids(
+        &[
+            ("walker.rs", include_str!("walker.rs")),
+            ("walker_enumerate.rs", include_str!("walker_enumerate.rs")),
+            ("walker_source.rs", include_str!("walker_source.rs")),
+            ("walker_tests.rs", include_str!("walker_tests.rs")),
+            ("walker_fake.rs", include_str!("walker_fake.rs")),
+            (
+                "walker_source_tests.rs",
+                include_str!("walker_source_tests.rs"),
+            ),
+        ],
+        |line| banned.iter().any(|call| line.contains(call)),
+    );
 }
 
 /// The bans on instantiating a pattern or keying on a display string, over
@@ -54,45 +49,32 @@ fn the_walk_issues_no_banned_call() {
 /// not keying.
 #[test]
 fn the_vocabulary_instantiates_no_pattern_and_keys_on_no_display_string() {
-    let sources = [
-        include_str!("roles.rs"),
-        include_str!("actions.rs"),
-        include_str!("states.rs"),
-    ];
-    let banned = [
+    let vocabulary_banned = [
         concat!("get_", "pattern"),
         concat!("add_", "pattern"),
         concat!("Localized", "ControlType"),
     ];
-    for source in sources {
-        for line in source.lines() {
-            let is_prose =
-                line.trim_start().starts_with("///") || line.trim_start().starts_with("//!");
-            for call in banned {
-                assert!(
-                    is_prose || !line.contains(call),
-                    "the vocabulary must never reach for {call}: {line}"
-                );
-            }
-        }
-    }
-    for source in [
-        include_str!("property_ids.rs"),
-        include_str!("properties.rs"),
-        include_str!("cache.rs"),
-        include_str!("element_properties.rs"),
-    ] {
-        for line in source.lines() {
-            let is_prose =
-                line.trim_start().starts_with("///") || line.trim_start().starts_with("//!");
-            for call in [concat!("get_", "pattern"), concat!("add_", "pattern")] {
-                assert!(
-                    is_prose || !line.contains(call),
-                    "the walk must never reach for {call}: {line}"
-                );
-            }
-        }
-    }
+    assert_source_forbids(
+        &[
+            ("roles.rs", include_str!("roles.rs")),
+            ("actions.rs", include_str!("actions.rs")),
+            ("states.rs", include_str!("states.rs")),
+        ],
+        |line| vocabulary_banned.iter().any(|call| line.contains(call)),
+    );
+    let pattern_banned = [concat!("get_", "pattern"), concat!("add_", "pattern")];
+    assert_source_forbids(
+        &[
+            ("property_ids.rs", include_str!("property_ids.rs")),
+            ("properties.rs", include_str!("properties.rs")),
+            ("cache.rs", include_str!("cache.rs")),
+            (
+                "element_properties.rs",
+                include_str!("element_properties.rs"),
+            ),
+        ],
+        |line| pattern_banned.iter().any(|call| line.contains(call)),
+    );
 }
 
 #[cfg(target_os = "windows")]

@@ -10,14 +10,9 @@ use crate::system::png_codec::decode_png_to_bgra;
 use crate::tree::fixture::{LocalPatternFixture, bootstrap};
 use agent_desktop_core::{Deadline, ErrorCode, PermissionState};
 
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("modern capture tests use a generous deadline")
-}
+use crate::system::test_time::deadline;
 
-fn sample_rgb(bgra: &[u8], width: u32, x: i32, y: i32) -> [u8; 3] {
-    let offset = ((y as u32 * width + x as u32) * 4) as usize;
-    [bgra[offset + 2], bgra[offset + 1], bgra[offset]]
-}
+use crate::system::capture_test_support::sample_rgb;
 
 /// Pixel and resource-balance legs need the HWND/HMONITOR interop, which is a
 /// stricter gate than [`modern_is_supported`] (A22-1: IsSupported can be true
@@ -58,7 +53,7 @@ fn unsupported_host_reports_unavailable_without_capture_api() {
     }
     resource_balance::reset();
     let fixture = LocalPatternFixture::create().expect("pattern fixture starts");
-    let error = capture_window(fixture.handle() as _, 1.0, deadline())
+    let error = capture_window(fixture.handle() as _, 1.0, deadline(10_000))
         .expect_err("unsupported host must refuse before capture work");
     assert_eq!(error.code, ErrorCode::ActionNotSupported);
     assert_eq!(
@@ -77,10 +72,10 @@ fn pattern_fixture_window_capture_matches_when_supported() {
         return;
     }
     let fixture = LocalPatternFixture::create().expect("pattern fixture starts");
-    let image = capture_window(fixture.handle() as _, 1.0, deadline())
+    let image = capture_window(fixture.handle() as _, 1.0, deadline(10_000))
         .expect("WGC window capture of the pattern fixture succeeds");
     let (bgra, width, height) =
-        decode_png_to_bgra(&image.data, deadline()).expect("decode captured PNG");
+        decode_png_to_bgra(&image.data, deadline(10_000)).expect("decode captured PNG");
     assert_eq!((width, height), (image.width, image.height));
 
     let expectation = fixture.expectation();
@@ -90,10 +85,10 @@ fn pattern_fixture_window_capture_matches_when_supported() {
     }
     if samples.iter().all(|sample| *sample == [0u8; 3]) {
         std::thread::sleep(std::time::Duration::from_millis(500));
-        let retried = capture_window(fixture.handle() as _, 1.0, deadline())
+        let retried = capture_window(fixture.handle() as _, 1.0, deadline(10_000))
             .expect("WGC window capture of the pattern fixture succeeds");
         let (bgra, width, _) =
-            decode_png_to_bgra(&retried.data, deadline()).expect("decode retried PNG");
+            decode_png_to_bgra(&retried.data, deadline(10_000)).expect("decode retried PNG");
         for (index, point) in expectation.sample_points().into_iter().enumerate() {
             samples[index] = sample_rgb(&bgra, width, point.x, point.y);
         }
@@ -130,8 +125,8 @@ fn monitor_capture_returns_monitor_dimensions_when_supported() {
     if skip_if_interop_unavailable("monitor capture") {
         return;
     }
-    let primary = display_at(0, deadline()).expect("primary display");
-    let image = capture_display(0, deadline()).expect("WGC monitor capture succeeds");
+    let primary = display_at(0, deadline(10_000)).expect("primary display");
+    let image = capture_display(0, deadline(10_000)).expect("WGC monitor capture succeeds");
     assert_eq!(
         (image.width, image.height),
         (primary.bounds.width as u32, primary.bounds.height as u32)
@@ -156,7 +151,7 @@ fn frame_wait_deadline_expiry_falls_back_to_legacy() {
             handle: fixture.handle() as _,
             scale_factor: 1.0,
         },
-        deadline(),
+        deadline(10_000),
     )
     .expect("precedence must still succeed via Legacy after a modern timeout");
     assert!(!image.data.is_empty());
@@ -176,7 +171,7 @@ fn interop_failure_is_backend_failure_that_precedence_recovers() {
         return;
     }
     let fixture = LocalPatternFixture::create().expect("pattern fixture");
-    let modern_error = capture_window(fixture.handle() as _, 1.0, deadline())
+    let modern_error = capture_window(fixture.handle() as _, 1.0, deadline(10_000))
         .expect_err("missing interop must fail the modern backend");
     assert_ne!(modern_error.code, ErrorCode::Timeout);
     let image = capture_backend::capture_with_precedence(
@@ -184,7 +179,7 @@ fn interop_failure_is_backend_failure_that_precedence_recovers() {
             handle: fixture.handle() as _,
             scale_factor: 1.0,
         },
-        deadline(),
+        deadline(10_000),
     )
     .expect("Legacy must recover when modern interop is missing");
     assert!(!image.data.is_empty());
@@ -200,7 +195,7 @@ fn resources_balance_across_success_deadline_and_forced_failure() {
     let fixture = LocalPatternFixture::create().expect("pattern fixture");
     let handle = fixture.handle() as _;
 
-    let _ = capture_window(handle, 1.0, deadline()).expect("success path");
+    let _ = capture_window(handle, 1.0, deadline(10_000)).expect("success path");
     assert_eq!(
         resource_balance::live(),
         0,
@@ -217,7 +212,7 @@ fn resources_balance_across_success_deadline_and_forced_failure() {
         "deadline abort must release every tracked resource"
     );
 
-    let forced = fail_after_start::with(|| capture_window(handle, 1.0, deadline()))
+    let forced = fail_after_start::with(|| capture_window(handle, 1.0, deadline(10_000)))
         .expect_err("forced failure after session start");
     assert_eq!(forced.code, ErrorCode::ActionFailed);
     assert_eq!(
@@ -230,9 +225,9 @@ fn resources_balance_across_success_deadline_and_forced_failure() {
 #[test]
 fn permission_report_screen_recording_is_honest_when_legacy_can_capture() {
     bootstrap();
-    let displays = list_displays_live(deadline()).expect("displays");
+    let displays = list_displays_live(deadline(10_000)).expect("displays");
     assert!(!displays.is_empty());
-    let report = report(deadline()).expect("permission report");
+    let report = report(deadline(10_000)).expect("permission report");
     assert_eq!(
         report.screen_recording,
         PermissionState::NotRequired,
@@ -243,7 +238,7 @@ fn permission_report_screen_recording_is_honest_when_legacy_can_capture() {
 #[test]
 fn probe_availability_is_true_when_legacy_or_modern_can_run() {
     bootstrap();
-    let displays = list_displays_live(deadline()).expect("displays");
+    let displays = list_displays_live(deadline(10_000)).expect("displays");
     assert!(!displays.is_empty());
     assert_eq!(
         map_capture_availability(Some(true)),

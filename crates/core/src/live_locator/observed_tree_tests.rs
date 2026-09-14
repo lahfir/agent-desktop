@@ -31,7 +31,7 @@ fn subtree(role: &str, name: &str, children: Vec<ObservedSubtree>) -> ObservedSu
     ObservedSubtree::new(evidence(role, Some(name)), children, true, None)
 }
 
-/// The P2-O8 descriptor group rides the observed-node projection unchanged:
+/// The presentation descriptor group rides the observed-node projection unchanged:
 /// evidence-side values reach the projected `AccessibilityNode` verbatim, and
 /// an empty group projects as an absent group.
 #[test]

@@ -143,15 +143,11 @@ pub(super) mod poll_calls {
     }
 
     pub(super) fn record() {
-        COUNT.with(|cell| cell.set(cell.get() + 1));
+        crate::system::call_counter::record(&COUNT);
     }
 
     pub(super) fn take() -> usize {
-        COUNT.with(|cell| {
-            let value = cell.get();
-            cell.set(0);
-            value
-        })
+        crate::system::call_counter::take(&COUNT)
     }
 }
 

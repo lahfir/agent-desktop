@@ -1,9 +1,7 @@
 use super::*;
 use agent_desktop_core::{Deadline, ErrorCode};
 
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("signal inventory tests use a generous deadline")
-}
+use crate::system::test_time::deadline;
 
 #[test]
 fn a_non_timeout_native_failure_is_remapped_to_app_unresponsive() {
@@ -53,7 +51,6 @@ fn a_truncated_inventory_reports_incomplete_with_no_content() {
     assert!(!inventory.apps_complete);
     assert!(inventory.windows.is_empty());
     assert!(inventory.apps.is_empty());
-    assert_eq!(inventory.excluded_window_count, 0);
 }
 
 #[cfg(target_os = "windows")]
@@ -86,7 +83,7 @@ mod windows_only {
         bootstrap();
         enum_windows_calls::take();
 
-        let _ = single_pass(deadline());
+        let _ = single_pass(deadline(10_000));
 
         assert_eq!(
             enum_windows_calls::take(),
@@ -116,7 +113,7 @@ mod windows_only {
         bootstrap();
         let fixture = HostedFixture::spawn().expect("a fixture host starts");
         let fixture_pid = ProcessId::from(fixture.process_id());
-        let Some(inventory) = expect_capture(deadline()) else {
+        let Some(inventory) = expect_capture(deadline(10_000)) else {
             return;
         };
 
@@ -160,7 +157,7 @@ mod windows_only {
         let fixture_pid = ProcessId::from(fixture.process_id());
         fixture.terminate();
 
-        let Some(inventory) = expect_capture(deadline()) else {
+        let Some(inventory) = expect_capture(deadline(10_000)) else {
             return;
         };
         assert!(
@@ -175,7 +172,7 @@ mod windows_only {
     #[test]
     fn every_returned_window_and_app_carries_a_non_empty_process_instance() {
         bootstrap();
-        let Some(inventory) = expect_capture(deadline()) else {
+        let Some(inventory) = expect_capture(deadline(10_000)) else {
             return;
         };
 
@@ -201,12 +198,13 @@ mod windows_only {
     }
 
     #[test]
-    fn a_window_whose_token_read_fails_is_excluded_and_counted_not_emitted_with_none() {
+    fn a_window_whose_token_read_fails_is_excluded_and_not_emitted_with_none() {
         bootstrap();
         let fixture = HostedFixture::spawn().expect("a fixture host starts");
         let fixture_pid = ProcessId::from(fixture.process_id());
 
-        let outcome = force_token_none::with(fixture_pid, || capture_windows_and_apps(deadline()));
+        let outcome =
+            force_token_none::with(fixture_pid, || capture_windows_and_apps(deadline(10_000)));
 
         let inventory = match outcome {
             Ok(inventory) => inventory,
@@ -228,10 +226,6 @@ mod windows_only {
             "an app whose identity cannot be read must not be emitted"
         );
         assert!(
-            inventory.excluded_window_count > 0,
-            "the exclusion must be counted rather than silently dropped"
-        );
-        assert!(
             inventory.windows_complete && inventory.apps_complete,
             "an identity exclusion must not flip completeness"
         );
@@ -242,7 +236,7 @@ mod windows_only {
         bootstrap();
         enum_windows_calls::take();
 
-        let outcome = force_race::with(2, || capture_windows_and_apps(deadline()));
+        let outcome = force_race::with(2, || capture_windows_and_apps(deadline(10_000)));
 
         assert!(
             outcome.is_ok(),
@@ -261,7 +255,7 @@ mod windows_only {
         enum_windows_calls::take();
 
         let outcome = force_race::with(LISTING_RACE_ATTEMPTS as usize * 2, || {
-            capture_windows_and_apps(deadline())
+            capture_windows_and_apps(deadline(10_000))
         });
 
         let error = outcome.expect_err("a held inconsistency must exhaust the re-walk budget");
@@ -285,7 +279,7 @@ mod windows_only {
     fn a_truncated_walk_reports_incomplete_never_the_exclusion_disposition() {
         bootstrap();
 
-        let outcome = force_truncation::with(|| capture_windows_and_apps(deadline()));
+        let outcome = force_truncation::with(|| capture_windows_and_apps(deadline(10_000)));
 
         let inventory = outcome.expect("a truncated walk is a reported outcome, not an error");
         assert!(!inventory.windows_complete);
@@ -319,8 +313,10 @@ mod windows_only {
                 .collect::<HashSet<_>>()
         };
 
-        let (Some(first), Some(second)) = (expect_capture(deadline()), expect_capture(deadline()))
-        else {
+        let (Some(first), Some(second)) = (
+            expect_capture(deadline(10_000)),
+            expect_capture(deadline(10_000)),
+        ) else {
             return;
         };
 

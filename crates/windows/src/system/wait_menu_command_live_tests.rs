@@ -30,14 +30,7 @@ const RECV_TIMEOUT: Duration = Duration::from_secs(20);
 const STATE_TIMEOUT: Duration = Duration::from_secs(5);
 const WAIT_TIMEOUT_MS: u64 = 10_000;
 
-fn own_image_name() -> String {
-    std::env::current_exe()
-        .expect("this test binary has a resolvable path")
-        .file_name()
-        .expect("the executable path carries a file name")
-        .to_string_lossy()
-        .into_owned()
-}
+use crate::system::live_identity::own_image_name;
 
 const AMBIGUOUS_APP_NAME_RETRIES: u32 = 10;
 const AMBIGUOUS_APP_NAME_RETRY_DELAY: Duration = Duration::from_millis(300);

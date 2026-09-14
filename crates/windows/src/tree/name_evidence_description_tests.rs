@@ -1,7 +1,7 @@
 use super::tests::reads;
-use super::tests::text;
 use super::{SlotStatus, TreeProperty, description_slot};
 use crate::tree::property_outcome::PropertyOutcome;
+use crate::tree::test_support::text;
 
 #[test]
 fn description_slot_is_certain_when_one_source_answered_and_the_other_failed() {

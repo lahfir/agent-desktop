@@ -297,10 +297,6 @@ mod imp {
     }
 }
 
-#[cfg(target_os = "windows")]
-pub(crate) use imp::hit_test_impl;
-
-#[cfg(not(target_os = "windows"))]
 pub(crate) use imp::hit_test_impl;
 
 #[cfg(target_os = "windows")]

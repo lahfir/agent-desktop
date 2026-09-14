@@ -242,6 +242,35 @@ pub(crate) fn sleep_bounded(deadline: Deadline, duration: Duration) -> Result<()
     ensure_budget(deadline)
 }
 
+/// Shared test fixtures for `mouse_tests.rs`, `mouse_wheel_tests.rs`, and
+/// `mouse_modifier_tests.rs` — one definition per helper instead of a
+/// hand-copied one per file.
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) mod fixture {
+    use crate::input::keyboard_send::keyboard_send_fake_sink as key_sink;
+    use crate::input::mouse_send::mouse_send_fake_sink as mouse_sink;
+    use agent_desktop_core::Point;
+
+    pub(crate) fn reset_sinks() {
+        mouse_sink::reset();
+        key_sink::reset();
+    }
+
+    /// The one keyboard seam records full `KeyboardInputEvent`s; `key_input`
+    /// sets `flags` to `KEYEVENTF_KEYUP` for a release and 0 for a press, so a
+    /// non-zero flag is the key-up.
+    pub(crate) fn modifier_events() -> Vec<(u16, bool)> {
+        key_sink::recorded()
+            .into_iter()
+            .map(|event| (event.vk, event.flags != 0))
+            .collect()
+    }
+
+    pub(crate) fn origin() -> Point {
+        Point { x: 1.0, y: 1.0 }
+    }
+}
+
 #[cfg(all(test, target_os = "windows"))]
 #[path = "mouse_tests.rs"]
 mod tests;

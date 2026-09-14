@@ -8,15 +8,11 @@ pub(super) mod enum_windows_calls {
     }
 
     pub(crate) fn record() {
-        COUNT.with(|cell| cell.set(cell.get() + 1));
+        crate::system::call_counter::record(&COUNT);
     }
 
     pub(crate) fn take() -> usize {
-        COUNT.with(|cell| {
-            let value = cell.get();
-            cell.set(0);
-            value
-        })
+        crate::system::call_counter::take(&COUNT)
     }
 }
 
@@ -29,18 +25,8 @@ pub(super) mod force_token_none {
         static TARGET: Cell<Option<u32>> = const { Cell::new(None) };
     }
 
-    struct ResetOnDrop;
-
-    impl Drop for ResetOnDrop {
-        fn drop(&mut self) {
-            TARGET.with(|cell| cell.set(None));
-        }
-    }
-
     pub(crate) fn with<R>(pid: ProcessId, run: impl FnOnce() -> R) -> R {
-        TARGET.with(|cell| cell.set(Some(u32::from(pid))));
-        let _reset = ResetOnDrop;
-        run()
+        crate::system::test_flag_option::with_option_u32_flag(&TARGET, u32::from(pid), run)
     }
 
     pub(crate) fn matches(pid: ProcessId) -> bool {

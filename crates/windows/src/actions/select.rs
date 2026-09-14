@@ -39,6 +39,16 @@ pub(crate) struct SelectPlan {
     pub(crate) value_chars: usize,
 }
 
+/// Test-only call-order recorder shared by `select_tests.rs` and
+/// `select_flow_tests.rs`: appends `label` to the `Cell`-held order vec
+/// without each call site repeating the take/push/set dance.
+#[cfg(test)]
+pub(crate) fn push_order(order: &Cell<Vec<&'static str>>, label: &'static str) {
+    let mut recorded = order.take();
+    recorded.push(label);
+    order.set(recorded);
+}
+
 /// Injected select operations — unit-test seam and live path.
 pub(crate) struct SelectOps<'a> {
     pub(crate) expand: &'a mut dyn FnMut() -> Result<(), AdapterError>,
@@ -189,6 +199,9 @@ mod imp {
         Ok(DeliveryOutcome::from_observation(verified))
     }
 
+    /// Reads container `ValueAvailable` once before the loop rather than on
+    /// every tick: it cannot legitimately flip mid-verification, so
+    /// re-checking it every 25ms bought nothing.
     fn poll_verified(
         container: &UIAElement,
         target: &UIAElement,
@@ -197,8 +210,9 @@ mod imp {
     ) -> Result<Option<bool>, AdapterError> {
         ensure_budget(deadline)?;
         let end = capped_verification_end(deadline, VERIFY_TIMEOUT)?;
+        let container_value_available = value_available(container);
         loop {
-            let verified = verify_once(container, target, value)?;
+            let verified = verify_once(container, target, value, container_value_available)?;
             if verified == Some(true) {
                 return Ok(Some(true));
             }
@@ -213,8 +227,9 @@ mod imp {
         container: &UIAElement,
         target: &UIAElement,
         value: &str,
+        container_value_available: bool,
     ) -> Result<Option<bool>, AdapterError> {
-        let container_value = if value_available(container) {
+        let container_value = if container_value_available {
             Some(gated_pattern_value_equals(container, value)?)
         } else {
             None

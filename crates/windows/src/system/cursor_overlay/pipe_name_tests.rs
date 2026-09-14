@@ -193,7 +193,8 @@ fn an_agent_named_like_its_session_does_not_repeat_the_session_segment() {
 }
 
 /// The child carries its agent so the renderer it becomes serves the endpoint
-/// its parent reached for, and a command line written without one still parses.
+/// its parent reached for. The agent-less round trip is
+/// `the_child_argv_names_its_session_and_generation`'s own case.
 #[test]
 fn the_child_argv_round_trips_its_agent() {
     let with_agent = child_arguments("s0000001", Some("a"));
@@ -204,11 +205,5 @@ fn the_child_argv_round_trips_its_agent() {
             PROTOCOL_GENERATION.to_owned(),
             Some("a".to_owned())
         ))
-    );
-
-    let without = child_arguments("s0000001", None);
-    assert_eq!(
-        parse_child_arguments(&without),
-        Some(("s0000001".to_owned(), PROTOCOL_GENERATION.to_owned(), None))
     );
 }

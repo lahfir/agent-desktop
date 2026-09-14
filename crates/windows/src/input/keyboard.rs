@@ -32,7 +32,7 @@ pub(crate) fn synthesize_text(
 /// Deadline preflight for `synthesize_text`, callable independently so a
 /// composing leg can reject before establishing focus.
 pub(crate) fn preflight_text(text: &str, deadline: Deadline) -> Result<(), AdapterError> {
-    crate::input::keyboard_text::preflight_text(text, deadline)
+    crate::input::keyboard_text::preflight_text(text, deadline).map(|_| ())
 }
 
 pub(crate) fn reject_standalone_key_state(

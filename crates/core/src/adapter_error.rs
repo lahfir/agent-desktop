@@ -82,6 +82,16 @@ impl AdapterError {
         .with_disposition(DeliverySemantics::not_delivered())
     }
 
+    /// `STALE_REF` for a resolved-but-mismatched ref, where the caller
+    /// already knows the specific reason (an unavailable process instance, a
+    /// missing identity) rather than the plain not-found case `stale_ref`
+    /// covers.
+    pub fn stale_ref_because(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::StaleRef, message)
+            .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+            .with_disposition(DeliverySemantics::not_delivered())
+    }
+
     pub fn ambiguous_target(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::AmbiguousTarget, message)
             .with_suggestion(
@@ -96,6 +106,23 @@ impl AdapterError {
     /// ref, so the suggestion names the candidates instead of pointing at a
     /// flag none of them have.
     pub fn ambiguous_process_target(message: impl Into<String>, pids: &[crate::ProcessId]) -> Self {
+        Self::ambiguous_process_target_with_details(
+            message,
+            pids,
+            serde_json::json!({ "candidate_pids": pids }),
+        )
+    }
+
+    /// As [`Self::ambiguous_process_target`], but for a caller that already
+    /// has a richer details object of its own (candidate summaries, a
+    /// truncation flag) - built directly rather than through the plain
+    /// constructor's own details, which `with_details` would otherwise
+    /// discard wholesale in favor of this one.
+    pub fn ambiguous_process_target_with_details(
+        message: impl Into<String>,
+        pids: &[crate::ProcessId],
+        details: Value,
+    ) -> Self {
         let numeric: Vec<u32> = pids.iter().map(|pid| pid.get()).collect();
         Self::new(ErrorCode::AmbiguousTarget, message)
             .with_suggestion(format!(
@@ -103,7 +130,7 @@ impl AdapterError {
                  process by name and has no pid or instance flag to disambiguate",
                 pids.len()
             ))
-            .with_details(serde_json::json!({ "candidate_pids": pids }))
+            .with_details(details)
             .with_disposition(DeliverySemantics::not_delivered())
     }
 

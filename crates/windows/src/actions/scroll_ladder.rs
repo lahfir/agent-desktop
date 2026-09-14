@@ -226,17 +226,21 @@ mod imp {
         viewport: Option<Rect>,
         deadline: Deadline,
     ) -> Result<Option<Direction>, AdapterError> {
-        let sample = observe_visibility(element, viewport, deadline)?;
+        let sample = observe_visibility(element, viewport, deadline, "during ancestor scroll")?;
         if visibility_verified(&sample) {
             return Ok(None);
         }
         Ok(Some(super::direction_after_visibility_miss(&sample)?))
     }
 
-    fn observe_visibility(
+    /// Shared by the ScrollIntoView spine and the ancestor ladder: `context`
+    /// names the write the re-read follows, so each caller's error message
+    /// stays specific to what it just attempted.
+    pub(crate) fn observe_visibility(
         element: &UIAElement,
         viewport: Option<Rect>,
         deadline: Deadline,
+        context: &str,
     ) -> Result<VisibilitySample, AdapterError> {
         ensure_budget(deadline)?;
         corroborate_verified_process(element)?;
@@ -246,7 +250,7 @@ mod imp {
             LocatorField::Unknown => {
                 return Err(AdapterError::new(
                     ErrorCode::ActionFailed,
-                    "Could not re-read target bounds during ancestor scroll",
+                    format!("Could not re-read target bounds {context}"),
                 ));
             }
         };
@@ -256,7 +260,7 @@ mod imp {
             PropertyOutcome::Unknown => {
                 return Err(AdapterError::new(
                     ErrorCode::ActionFailed,
-                    "Could not re-read IsOffscreen during ancestor scroll",
+                    format!("Could not re-read IsOffscreen {context}"),
                 ));
             }
             PropertyOutcome::Known(_) => None,
@@ -325,6 +329,9 @@ mod imp {
 }
 
 pub(crate) use imp::ancestor_ladder;
+
+#[cfg(target_os = "windows")]
+pub(crate) use imp::observe_visibility;
 
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) use imp::require_scroll_delivery;

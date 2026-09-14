@@ -36,7 +36,6 @@ use agent_desktop_core::{
 use serde_json::Value;
 
 use crate::adapter::WindowsAdapter;
-use crate::system::process_identity;
 use crate::system::test_support::FIXTURE_APP_NAME_LOCK;
 use crate::tree::fixture::bootstrap;
 use crate::tree::fixture_modal::ModalFixture;
@@ -48,21 +47,10 @@ const WAIT_TIMEOUT_MS: u64 = 10_000;
 const SURFACE_SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
 const SURFACE_SETTLE_POLL: Duration = Duration::from_millis(50);
 
-fn own_image_name() -> String {
-    std::env::current_exe()
-        .expect("this test binary has a resolvable path")
-        .file_name()
-        .expect("the executable path carries a file name")
-        .to_string_lossy()
-        .into_owned()
-}
+use crate::system::live_identity::own_image_name;
 
 fn process_identity_for(pid: u32) -> ProcessIdentity {
-    let process = ProcessId::from(pid);
-    let token = process_identity::token_for_pid(process)
-        .expect("a live process's token is readable")
-        .expect("a live process has a readable generation token");
-    ProcessIdentity::new(process, token)
+    crate::system::live_identity::live_process_identity(ProcessId::from(pid))
 }
 
 fn scoped_baseline(identity: &ProcessIdentity) -> SignalBaseline {

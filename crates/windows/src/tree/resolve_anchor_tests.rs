@@ -1,11 +1,12 @@
 use super::*;
 use crate::tree::element::UIAElement;
 use crate::tree::fixture::{HostedFixture, ensure_test_apartment};
-use crate::tree::walker_fake::deadline;
+use crate::tree::walker_fake::{deadline, ref_entry, scan_subtree};
 use agent_desktop_core::{
     ErrorCode, IdentifierEvidence, LocatorEvidence, LocatorField, LocatorRefEvidence,
     NodeDescriptor, ProcessId, Rect, RefEntry,
 };
+use std::ops::ControlFlow;
 
 fn blank_entry_with_path(fixture: &HostedFixture, path: Vec<usize>) -> RefEntry {
     let deadline = deadline();
@@ -14,8 +15,7 @@ fn blank_entry_with_path(fixture: &HostedFixture, path: Vec<usize>) -> RefEntry 
     let source = crate::tree::walker_source::UiaTreeSource::for_root(&root).expect("a source");
     let prepared = source.prepare_root(&root).expect("a prepared root");
     let budget = crate::tree::walker::WalkBudget::new(10, deadline);
-    let mut prefix = Vec::new();
-    let found = walk_first_secure(&source, &prepared, 0, &budget, &mut prefix)
+    let found = walk_first_secure(&source, &prepared, &budget)
         .expect("the fixture walk succeeds")
         .expect("a secure element exists");
     let stored_path = found.path;
@@ -31,39 +31,20 @@ fn blank_entry_with_path(fixture: &HostedFixture, path: Vec<usize>) -> RefEntry 
             .unwrap()
             .expect("a live fixture token");
     let chosen_path = if path.is_empty() { stored_path } else { path };
-    RefEntry {
-        process: agent_desktop_core::RefProcess {
-            pid: ProcessId::new(fixture.process_id()),
-            process_instance: Some(token),
-        },
-        identity: agent_desktop_core::RefEntryIdentity {
-            role: evidence.role.known().cloned().unwrap_or_default(),
-            name: None,
-            value: None,
-            description: None,
-            native_id: None,
-        },
-        geometry: agent_desktop_core::RefGeometry {
-            bounds: Some(*rect),
-            bounds_hash: Some(hash),
-        },
-        capabilities: agent_desktop_core::RefCapabilities {
-            states: Vec::new(),
-            available_actions: Vec::new(),
-        },
-        source: agent_desktop_core::RefSource {
-            source_app: Some("fixture.exe".into()),
-            source_window_id: Some(format!("w-{}", fixture.handle())),
-            source_window_title: None,
-            source_window_bounds_hash: None,
-            source_surface: agent_desktop_core::SnapshotSurface::Window,
-        },
-        scope: agent_desktop_core::RefScope {
-            root_ref: None,
-            path_is_absolute: true,
-            path: chosen_path.into(),
-        },
-    }
+    let mut entry = ref_entry(&evidence.role.known().cloned().unwrap_or_default());
+    entry.process = agent_desktop_core::RefProcess {
+        pid: ProcessId::new(fixture.process_id()),
+        process_instance: Some(token),
+    };
+    entry.geometry = agent_desktop_core::RefGeometry {
+        bounds: Some(*rect),
+        bounds_hash: Some(hash),
+    };
+    entry.source.source_app = Some("fixture.exe".into());
+    entry.source.source_window_id = Some(format!("w-{}", fixture.handle()));
+    entry.scope.path_is_absolute = true;
+    entry.scope.path = chosen_path.into();
+    entry
 }
 
 struct FoundSecure {
@@ -76,33 +57,26 @@ struct FoundSecure {
 fn walk_first_secure(
     source: &crate::tree::walker_source::UiaTreeSource,
     element: &UIAElement,
-    depth: u8,
     budget: &crate::tree::walker::WalkBudget,
-    prefix: &mut Vec<usize>,
 ) -> Result<Option<FoundSecure>, AdapterError> {
-    if depth >= 10 {
-        return Ok(None);
-    }
-    let (properties, node_evidence, failed) = source.evidence(element);
-    if properties.is_secure() {
-        return Ok(Some(FoundSecure {
-            path: prefix.clone(),
-            _properties: properties,
-            evidence: node_evidence,
-            _failed: failed,
-        }));
-    }
-    let mut ignored = false;
-    let children =
-        crate::tree::resolve_search::enumerate_children(source, element, budget, &mut ignored)?;
-    for (index, child) in children.iter().enumerate() {
-        prefix.push(index);
-        if let Some(found) = walk_first_secure(source, child, depth + 1, budget, prefix)? {
-            return Ok(Some(found));
-        }
-        prefix.pop();
-    }
-    Ok(None)
+    scan_subtree(
+        source,
+        element,
+        budget,
+        10,
+        &mut |prefix, properties, evidence, failed| {
+            if properties.is_secure() {
+                ControlFlow::Break(FoundSecure {
+                    path: prefix.to_vec(),
+                    _properties: properties,
+                    evidence,
+                    _failed: failed,
+                })
+            } else {
+                ControlFlow::Continue(())
+            }
+        },
+    )
 }
 
 /// A stored anchor path that is exact on the unchanged fixture resolves -
@@ -208,39 +182,13 @@ fn locator_entry(role: &str, positive_area_hash: Option<Rect>) -> RefEntry {
         Some(rect) => (Some(rect), rect.bounds_hash()),
         None => (None, None),
     };
-    RefEntry {
-        process: agent_desktop_core::RefProcess {
-            pid: ProcessId::new(1),
-            process_instance: None,
-        },
-        identity: agent_desktop_core::RefEntryIdentity {
-            role: role.to_string(),
-            name: None,
-            value: None,
-            description: None,
-            native_id: None,
-        },
-        geometry: agent_desktop_core::RefGeometry {
-            bounds,
-            bounds_hash,
-        },
-        capabilities: agent_desktop_core::RefCapabilities {
-            states: Vec::new(),
-            available_actions: Vec::new(),
-        },
-        source: agent_desktop_core::RefSource {
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
-            source_window_bounds_hash: None,
-            source_surface: agent_desktop_core::SnapshotSurface::Window,
-        },
-        scope: agent_desktop_core::RefScope {
-            root_ref: None,
-            path_is_absolute: true,
-            path: Vec::new().into(),
-        },
-    }
+    let mut entry = ref_entry(role);
+    entry.geometry = agent_desktop_core::RefGeometry {
+        bounds,
+        bounds_hash,
+    };
+    entry.scope.path_is_absolute = true;
+    entry
 }
 
 fn locator_evidence(role: &str, bounds: LocatorField<Rect>) -> LocatorEvidence {

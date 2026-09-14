@@ -8,39 +8,7 @@
 use super::*;
 
 fn entry_with_role(role: &str) -> RefEntry {
-    RefEntry {
-        process: crate::RefProcess {
-            pid: crate::ProcessId::new(1),
-            process_instance: Some("test-instance".into()),
-        },
-        identity: crate::RefEntryIdentity {
-            role: role.into(),
-            name: None,
-            value: None,
-            description: None,
-            native_id: None,
-        },
-        geometry: crate::RefGeometry {
-            bounds: None,
-            bounds_hash: None,
-        },
-        capabilities: crate::RefCapabilities {
-            states: Vec::new(),
-            available_actions: Vec::new(),
-        },
-        source: crate::RefSource {
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
-            source_window_bounds_hash: None,
-            source_surface: crate::SnapshotSurface::Window,
-        },
-        scope: crate::RefScope {
-            root_ref: None,
-            path_is_absolute: false,
-            path: crate::refs::RefPath::default(),
-        },
-    }
+    crate::adapter::minimal_ref_entry(role, None)
 }
 
 #[test]

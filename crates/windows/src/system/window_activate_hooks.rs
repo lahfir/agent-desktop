@@ -39,15 +39,7 @@ pub(super) mod never_foreground {
     }
 
     pub(crate) fn with<R>(run: impl FnOnce() -> R) -> R {
-        struct ResetOnDrop;
-        impl Drop for ResetOnDrop {
-            fn drop(&mut self) {
-                ACTIVE.with(|flag| flag.set(false));
-            }
-        }
-        ACTIVE.with(|flag| flag.set(true));
-        let _reset = ResetOnDrop;
-        run()
+        crate::system::test_support::with_flag(&ACTIVE, true, run)
     }
 }
 
@@ -63,15 +55,7 @@ pub(super) mod force_unowned_from_attempt {
     }
 
     pub(crate) fn with<R>(from_attempt: u32, run: impl FnOnce() -> R) -> R {
-        struct ResetOnDrop;
-        impl Drop for ResetOnDrop {
-            fn drop(&mut self) {
-                FROM.with(|cell| cell.set(None));
-            }
-        }
-        FROM.with(|cell| cell.set(Some(from_attempt)));
-        let _reset = ResetOnDrop;
-        run()
+        crate::system::test_flag_option::with_option_u32_flag(&FROM, from_attempt, run)
     }
 }
 
@@ -87,15 +71,7 @@ pub(super) mod force_strictly_higher {
     }
 
     pub(crate) fn with<R>(run: impl FnOnce() -> R) -> R {
-        struct ResetOnDrop;
-        impl Drop for ResetOnDrop {
-            fn drop(&mut self) {
-                ACTIVE.with(|flag| flag.set(false));
-            }
-        }
-        ACTIVE.with(|flag| flag.set(true));
-        let _reset = ResetOnDrop;
-        run()
+        crate::system::test_support::with_flag(&ACTIVE, true, run)
     }
 }
 

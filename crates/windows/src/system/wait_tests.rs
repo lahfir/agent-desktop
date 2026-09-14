@@ -58,10 +58,7 @@ fn deadline(timeout_ms: u64) -> Deadline {
 }
 
 fn identity_for(pid: ProcessId) -> ProcessIdentity {
-    let token = process_identity::token_for_pid(pid)
-        .expect("token read")
-        .expect("live token");
-    ProcessIdentity::new(pid, token)
+    crate::system::live_identity::live_process_identity(pid)
 }
 
 #[test]

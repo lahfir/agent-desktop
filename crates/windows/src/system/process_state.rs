@@ -174,17 +174,12 @@ fn probe_timeout_ms(deadline: Deadline) -> u64 {
 
 #[cfg(target_os = "windows")]
 fn top_level_windows_for(pid: agent_desktop_core::ProcessId) -> Result<Vec<isize>, AdapterError> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
-
-    let target = u32::from(pid);
     let mut handles = Vec::new();
     super::window_enum::enumerate_top_level(|window| {
         if handles.len() >= MAX_PROBED_WINDOWS {
             return false;
         }
-        let mut owner: u32 = 0;
-        unsafe { GetWindowThreadProcessId(window.handle, &mut owner) };
-        if owner == target {
+        if super::window_identity::live_window_owner(window.handle) == Some(pid) {
             handles.push(window.handle as isize);
         }
         true

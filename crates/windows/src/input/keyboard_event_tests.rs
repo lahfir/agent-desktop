@@ -2,7 +2,7 @@ use super::*;
 use crate::input::keyboard_map;
 use crate::input::keyboard_send::key_state_fake_sink as key_state;
 use crate::input::keyboard_send::keyboard_send_fake_sink as sink;
-use agent_desktop_core::ErrorCode;
+use agent_desktop_core::{DeliverySemantics, ErrorCode};
 
 fn reset() {
     sink::reset();

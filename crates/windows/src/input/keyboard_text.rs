@@ -34,8 +34,8 @@ pub(crate) fn synthesize_text(
     deadline: Deadline,
     mut verify_target: impl FnMut(Deadline) -> Result<(), AdapterError>,
 ) -> Result<(), AdapterError> {
-    preflight_text(text, deadline)?;
-    let chunks = text_chunks(text)?;
+    let chunk_count = preflight_text(text, deadline)?;
+    let chunks = text_chunks(text, Some(chunk_count))?;
     let total = chunks.len();
     for (delivered_chunks, chunk) in chunks.into_iter().enumerate() {
         ensure_chunk_budget(deadline, total, delivered_chunks)?;
@@ -57,7 +57,7 @@ pub(crate) fn synthesize_text(
     Ok(())
 }
 
-pub(crate) fn preflight_text(text: &str, deadline: Deadline) -> Result<(), AdapterError> {
+pub(crate) fn preflight_text(text: &str, deadline: Deadline) -> Result<usize, AdapterError> {
     let chunks = planned_chunk_count(text)?;
     let multiplier = u32::try_from(chunks).map_err(|_| text_too_large())?;
     let required = TEXT_CHUNK_BUDGET
@@ -76,7 +76,7 @@ pub(crate) fn preflight_text(text: &str, deadline: Deadline) -> Result<(), Adapt
         }))
         .with_disposition(DeliverySemantics::not_delivered()));
     }
-    Ok(())
+    Ok(chunks)
 }
 
 pub(crate) fn ensure_chunk_budget(
@@ -116,8 +116,14 @@ fn chunk_events(chunk: &[u16]) -> Vec<KeyboardInputEvent> {
     events
 }
 
-fn text_chunks(text: &str) -> Result<Vec<Vec<u16>>, AdapterError> {
-    let _ = planned_chunk_count(text)?;
+fn text_chunks(
+    text: &str,
+    known_chunk_count: Option<usize>,
+) -> Result<Vec<Vec<u16>>, AdapterError> {
+    let _ = match known_chunk_count {
+        Some(count) => count,
+        None => planned_chunk_count(text)?,
+    };
     let mut chunks = Vec::new();
     let mut current = Vec::with_capacity(TEXT_CHUNK_UTF16);
     for character in text.chars() {

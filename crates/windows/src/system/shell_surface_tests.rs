@@ -3,21 +3,15 @@ use super::super::test_support::{settles_to, wait_for_foreground_to_settle};
 use super::super::window_enum::{EnumeratedWindow, enumerate_top_level, is_cloaked};
 use super::super::window_ops::passes_filter;
 use super::{SnapshotSurface, WindowInfo};
-use agent_desktop_core::{Deadline, ErrorCode, InteractionPolicy};
+use agent_desktop_core::{ErrorCode, InteractionPolicy};
 
 use crate::system::raise_oracle::{responded_since, witness_desktop};
 use crate::system::test_support::{SHELL_SURFACE_LOCK, or_skip_shell};
 
-fn deadline(ms: u64) -> Deadline {
-    Deadline::after(ms).expect("deadline")
-}
+use crate::system::test_time::{deadline, headed};
 
 fn bootstrap() {
     crate::tree::fixture::bootstrap();
-}
-
-fn headed() -> InteractionPolicy {
-    InteractionPolicy::headed()
 }
 
 fn handle_of(info: &WindowInfo) -> isize {

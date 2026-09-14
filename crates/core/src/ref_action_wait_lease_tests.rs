@@ -125,7 +125,12 @@ impl SystemOps for DoubleCheckAdapter {
 #[test]
 fn stability_revalidates_once_under_lease_before_dispatch() {
     let adapter = adapter(2, 5_000, None);
-    let result = run(&adapter, ActionRequest::headed(Action::DoubleClick), 5_000);
+    let result = run_with_entry(
+        &adapter,
+        ActionRequest::headed(Action::DoubleClick),
+        5_000,
+        &entry(),
+    );
 
     assert_eq!(result.action, "click");
     assert_eq!(adapter.live_calls.load(Ordering::SeqCst), 3);
@@ -322,24 +327,6 @@ fn adapter(
         timeout_ms,
         expected_deadline,
     }
-}
-
-fn run(
-    adapter: &DoubleCheckAdapter,
-    request: ActionRequest,
-    timeout_ms: u64,
-) -> crate::action_result::ActionResult {
-    execute_with_auto_wait(
-        RefActionWaitCtx {
-            adapter,
-            entry: &entry(),
-            ref_id: "@e1",
-            context: &CommandContext::default(),
-        },
-        request.with_timeout_ms(Some(timeout_ms)),
-        crate::ref_action::dispatch_resolved,
-    )
-    .unwrap()
 }
 
 fn bounds() -> crate::Rect {

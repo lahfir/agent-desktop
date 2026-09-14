@@ -1,20 +1,18 @@
 use super::{
-    capture_display_at, capture_display_bounds, capture_fullscreen, display_capture_geometry,
-    fail_after_alloc, gdi_balance,
+    capture_display_at, capture_display_bounds, display_capture_geometry, fail_after_alloc,
+    gdi_balance,
 };
 use crate::system::display::{display_at, list_displays_live};
 use crate::tree::fixture::bootstrap;
 use agent_desktop_core::{Deadline, ErrorCode, Rect};
 use std::time::Duration;
 
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("capture tests use a generous deadline")
-}
+use crate::system::test_time::deadline;
 
 #[test]
-fn fullscreen_and_index_zero_match_primary_enumeration_dimensions() {
+fn index_zero_matches_primary_enumeration_dimensions() {
     bootstrap();
-    let displays = list_displays_live(deadline()).expect("enumerate displays");
+    let displays = list_displays_live(deadline(10_000)).expect("enumerate displays");
     let primary = displays
         .iter()
         .find(|display| display.is_primary)
@@ -22,16 +20,10 @@ fn fullscreen_and_index_zero_match_primary_enumeration_dimensions() {
     let expected_w = primary.bounds.width as u32;
     let expected_h = primary.bounds.height as u32;
 
-    let fullscreen = capture_fullscreen(deadline()).expect("FullScreen captures the primary");
-    assert_eq!(
-        (fullscreen.width, fullscreen.height),
-        (expected_w, expected_h)
-    );
-
-    let indexed = capture_display_at(0, deadline()).expect("index 0 is the primary");
+    let indexed = capture_display_at(0, deadline(10_000)).expect("index 0 is the primary");
     assert_eq!((indexed.width, indexed.height), (expected_w, expected_h));
 
-    let at = display_at(0, deadline()).expect("display_at(0)");
+    let at = display_at(0, deadline(10_000)).expect("display_at(0)");
     assert_eq!(at.id, primary.id);
     assert_eq!(
         (at.bounds.width as u32, at.bounds.height as u32),
@@ -42,9 +34,9 @@ fn fullscreen_and_index_zero_match_primary_enumeration_dimensions() {
 #[test]
 fn per_monitor_capture_uses_enumerated_dimensions_not_literals() {
     bootstrap();
-    let displays = list_displays_live(deadline()).expect("enumerate displays");
+    let displays = list_displays_live(deadline(10_000)).expect("enumerate displays");
     for (index, display) in displays.iter().enumerate() {
-        let image = capture_display_at(index, deadline())
+        let image = capture_display_at(index, deadline(10_000))
             .unwrap_or_else(|error| panic!("capture display {index}: {error:?}"));
         assert_eq!(
             (image.width, image.height),
@@ -78,7 +70,7 @@ fn zero_area_display_bounds_are_rejected_before_bitmap_alloc() {
             height: 0.0,
         },
         1.0,
-        deadline(),
+        deadline(10_000),
     )
     .expect_err("zero-area bounds never allocate");
     assert_eq!(error.code, ErrorCode::InvalidArgs);
@@ -124,7 +116,7 @@ fn gdi_objects_balance_across_success_deadline_and_forced_failure() {
     bootstrap();
     gdi_balance::reset();
 
-    let _ = capture_display_at(0, deadline()).expect("success path");
+    let _ = capture_display_at(0, deadline(10_000)).expect("success path");
     assert_eq!(
         gdi_balance::live(),
         0,
@@ -141,7 +133,7 @@ fn gdi_objects_balance_across_success_deadline_and_forced_failure() {
         "early deadline abort allocates nothing"
     );
 
-    let forced = fail_after_alloc::with(|| capture_display_at(0, deadline()))
+    let forced = fail_after_alloc::with(|| capture_display_at(0, deadline(10_000)))
         .expect_err("forced failure after allocation");
     assert_eq!(forced.code, ErrorCode::ActionFailed);
     assert_eq!(

@@ -116,27 +116,10 @@ mod imp {
     }
 }
 
-#[cfg(all(test, target_os = "windows"))]
-pub(crate) mod keyboard_send_fake_sink {
-    use super::KeyboardInputEvent;
-    use std::cell::RefCell;
-
-    thread_local! {
-        static RECORDED: RefCell<Vec<KeyboardInputEvent>> = const { RefCell::new(Vec::new()) };
-    }
-
-    pub(crate) fn reset() {
-        RECORDED.with(|cell| cell.borrow_mut().clear());
-    }
-
-    pub(crate) fn recorded() -> Vec<KeyboardInputEvent> {
-        RECORDED.with(|cell| cell.borrow().clone())
-    }
-
-    pub(super) fn record(events: &[KeyboardInputEvent]) {
-        RECORDED.with(|cell| cell.borrow_mut().extend_from_slice(events));
-    }
-}
+crate::input::define_input_fake_sink!(
+    keyboard_send_fake_sink,
+    crate::input::keyboard_send::KeyboardInputEvent
+);
 
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod key_state_fake_sink {

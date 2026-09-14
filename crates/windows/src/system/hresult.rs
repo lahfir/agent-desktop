@@ -220,6 +220,21 @@ pub(crate) fn com_hresult_detail(hresult: i32) -> String {
     }
 }
 
+/// An HRESULT read through [`hresult_record`] and rendered as the
+/// `AdapterError` its caller reports, `subsystem` naming the COM layer that
+/// raised it (`"D3D"`, `"WGC"`, `"WIC"`, ...) so classification stays driven
+/// by the one shared table this module exists to centralize, never
+/// re-derived per subsystem.
+pub(crate) fn hresult_error(subsystem: &str, hresult: i32, context: &str) -> AdapterError {
+    let record = hresult_record(hresult);
+    let mut error = AdapterError::new(record.code, format!("{subsystem} could not {context}"))
+        .with_platform_detail(com_hresult_detail(hresult));
+    if let Some(suggestion) = record.suggestion {
+        error = error.with_suggestion(suggestion);
+    }
+    error
+}
+
 /// Names the HRESULTs this crate's COM paths can raise.
 ///
 /// An unlisted code formats as a bare hexadecimal value rather than being

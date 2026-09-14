@@ -5,6 +5,8 @@ use crate::tree::properties::{ElementProperties, PropertyOutcome, PropertyValue}
 use crate::tree::property_ids::TreeProperty;
 
 #[cfg(target_os = "windows")]
+use crate::tree::test_support::flag;
+#[cfg(target_os = "windows")]
 use agent_desktop_core::roles::{INTERACTIVE_ROLES, is_canonical_role};
 #[cfg(target_os = "windows")]
 use uiautomation::types::ControlType;
@@ -60,11 +62,6 @@ const ALL_CONTROL_TYPES: [ControlType; 41] = [
 /// taskbar dock item, so both stay platform-private to macOS.
 #[cfg(target_os = "windows")]
 const UNPRODUCED_INTERACTIVE_ROLES: [&str; 2] = ["colorwell", "dockitem"];
-
-#[cfg(target_os = "windows")]
-fn flag(property: TreeProperty, value: bool) -> (TreeProperty, PropertyOutcome) {
-    (property, PropertyOutcome::Known(PropertyValue::Flag(value)))
-}
 
 #[cfg(target_os = "windows")]
 fn control_type_props(

@@ -109,10 +109,10 @@ fn read_set_is_unknown(properties: &ElementProperties) -> bool {
 }
 
 fn has_legacy_default_action(properties: &ElementProperties) -> bool {
-    matches!(
-        properties.get(TreeProperty::LegacyDefaultAction).text(),
-        LocatorField::Known(text) if !text.trim().is_empty()
-    )
+    properties
+        .get(TreeProperty::LegacyDefaultAction)
+        .non_blank_text()
+        .is_some()
 }
 
 fn push_unique(actions: &mut Vec<String>, action: &str) {

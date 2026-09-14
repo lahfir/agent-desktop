@@ -24,8 +24,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WS_VISIBLE,
 };
 
+use crate::system::cursor_overlay::wide::wide;
 use crate::tree::element::UIAElement;
-use crate::tree::walker::{TreeSource, WalkBudget};
+use crate::tree::walker::WalkBudget;
 use crate::tree::walker_source::UiaTreeSource;
 
 /// Application-derived text the host puts on the wire so a redaction
@@ -69,10 +70,6 @@ impl PairGeometry {
             Self::Separated => CONTROL_TOP + CONTROL_HEIGHT + CONTROL_GAP,
         }
     }
-}
-
-fn wide(text: &str) -> Vec<u16> {
-    text.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
 /// A window whose two children are indistinguishable to every identity tier:
@@ -204,30 +201,18 @@ fn await_walkable(handle: isize) -> Result<(), String> {
 pub(crate) fn collect_marked(
     source: &UiaTreeSource,
     element: &UIAElement,
-    depth: u8,
     budget: &WalkBudget,
     out: &mut Vec<LocatorEvidence>,
 ) {
-    if depth >= 8 {
-        return;
-    }
-    let (_, evidence, _) = source.evidence(element);
-    if evidence
-        .name
-        .known()
-        .is_some_and(|name| name == NAME_MARKER)
-    {
-        out.push(evidence);
-    }
-    let mut ignored = false;
-    let Ok(children) =
-        crate::tree::resolve_search::enumerate_children(source, element, budget, &mut ignored)
-    else {
-        return;
-    };
-    for child in children {
-        collect_marked(source, &child, depth + 1, budget, out);
-    }
+    crate::tree::walker_fake::walk_all(source, element, budget, 8, &mut |_prefix, evidence| {
+        if evidence
+            .name
+            .known()
+            .is_some_and(|name| name == NAME_MARKER)
+        {
+            out.push(evidence);
+        }
+    });
 }
 
 pub(crate) fn automation_id(evidence: &LocatorEvidence) -> Option<ElementIdentifier> {

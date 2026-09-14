@@ -88,16 +88,11 @@ fn hresult_from_win32_matches_facility_win32_shape() {
 
 #[cfg(target_os = "windows")]
 fn identity_for_pid(pid: ProcessId) -> ProcessIdentity {
-    let token = crate::system::process_identity::token_for_pid(pid)
-        .expect("token read")
-        .expect("process still live for token capture");
-    ProcessIdentity::new(pid, token)
+    crate::system::live_identity::live_process_identity(pid)
 }
 
 #[cfg(target_os = "windows")]
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
+use crate::system::test_time::deadline;
 
 #[cfg(target_os = "windows")]
 #[test]
@@ -110,7 +105,7 @@ fn wait_failure_is_reported_never_treated_as_alive() {
         !handle.is_null(),
         "OpenProcess with only PROCESS_QUERY_LIMITED_INFORMATION must still succeed"
     );
-    let outcome = classify_opened(handle, pid, deadline());
+    let outcome = classify_opened(handle, pid, deadline(5_000));
     close_handle(handle);
     let error = outcome.expect_err(
         "a handle without SYNCHRONIZE rights cannot wait, so liveness must not be reported",
@@ -128,7 +123,7 @@ fn live_scratch_process_classifies_running() {
     crate::tree::fixture::bootstrap();
     let fixture = crate::tree::fixture::HostedFixture::spawn().expect("hosted fixture");
     let pid = ProcessId::from(fixture.process_id());
-    let state = process_state_impl(identity_for_pid(pid), deadline()).expect("classify");
+    let state = process_state_impl(identity_for_pid(pid), deadline(5_000)).expect("classify");
     assert_eq!(state, ProcessState::Running);
 }
 
@@ -143,7 +138,7 @@ fn clean_exit_classifies_exited_zero() {
     let identity = identity_for_pid(pid);
     let status = child.wait().expect("wait");
     assert!(status.success());
-    let state = process_state_impl(identity, deadline()).expect("classify");
+    let state = process_state_impl(identity, deadline(5_000)).expect("classify");
     assert_eq!(state, ProcessState::Exited { code: Some(0) });
 }
 
@@ -158,7 +153,7 @@ fn crash_shaped_terminate_classifies_crashed() {
     let identity = identity_for_pid(pid);
     terminate_with_code(u32::from(pid), 0xC000_0005);
     let _ = child.wait();
-    let state = process_state_impl(identity, deadline()).expect("classify");
+    let state = process_state_impl(identity, deadline(5_000)).expect("classify");
     assert_eq!(
         state,
         ProcessState::Crashed {
@@ -171,7 +166,7 @@ fn crash_shaped_terminate_classifies_crashed() {
 #[test]
 fn running_process_is_never_exited_despite_still_active_code() {
     let pid = ProcessId::from(std::process::id());
-    let state = process_state_impl(identity_for_pid(pid), deadline()).expect("classify");
+    let state = process_state_impl(identity_for_pid(pid), deadline(5_000)).expect("classify");
     assert!(
         !matches!(state, ProcessState::Exited { .. }),
         "wait-gate must keep a live process as non-Exited; got {state:?}"
@@ -188,7 +183,7 @@ fn stalled_fixture_classifies_unresponsive() {
     let stalled = crate::tree::fixture::StalledFixture::create().expect("stalled");
     wait_until_hung(stalled.handle());
     let pid = ProcessId::from(std::process::id());
-    let state = process_state_impl(identity_for_pid(pid), deadline()).expect("classify");
+    let state = process_state_impl(identity_for_pid(pid), deadline(5_000)).expect("classify");
     assert_eq!(
         state,
         ProcessState::Unresponsive,
@@ -205,7 +200,7 @@ fn multi_window_any_one_hung_classifies_unresponsive() {
     let stalled = crate::tree::fixture::StalledFixture::create().expect("stalled");
     wait_until_hung(stalled.handle());
     let pid = ProcessId::from(std::process::id());
-    let state = process_state_impl(identity_for_pid(pid), deadline()).expect("classify");
+    let state = process_state_impl(identity_for_pid(pid), deadline(5_000)).expect("classify");
     assert_eq!(
         state,
         ProcessState::Unresponsive,
@@ -224,7 +219,7 @@ fn windowless_process_never_classifies_unresponsive() {
         .expect("spawn windowless");
     let pid = ProcessId::from(child.id());
     let identity = identity_for_pid(pid);
-    let state = process_state_impl(identity, deadline()).expect("classify");
+    let state = process_state_impl(identity, deadline(5_000)).expect("classify");
     let _ = child.kill();
     let _ = child.wait();
     assert_eq!(
@@ -240,7 +235,7 @@ fn token_mismatch_reports_exited_for_original_generation() {
     let pid = ProcessId::from(std::process::id());
     let mut identity = identity_for_pid(pid);
     identity.instance = "windows-proc-v1:1:2".into();
-    let state = process_state_impl(identity, deadline()).expect("classify");
+    let state = process_state_impl(identity, deadline(5_000)).expect("classify");
     assert_eq!(state, ProcessState::Exited { code: None });
 }
 

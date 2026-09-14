@@ -11,7 +11,6 @@ use crate::actions::chain::{
     ALREADY_LABEL, ChainDef, ChainRung, DeliveryOutcome, INVOKE_LABEL, build_step,
     capped_verification_end, execute_chain,
 };
-use crate::actions::post_state::after_delivery;
 use crate::tree::element::UIAElement;
 
 pub(crate) const EXPAND_LABEL: &str = "ExpandCollapsePattern.Expand";
@@ -92,14 +91,17 @@ mod imp {
     use super::{
         ALREADY_LABEL, ActionStep, AdapterError, COLLAPSE_LABEL, ChainRung, DISCLOSURE_CHAIN,
         DISCLOSURE_TIMEOUT, Deadline, DeliveryOutcome, DisclosureInput, EXPAND_LABEL, ExpandKind,
-        INVOKE_LABEL, Instant, InteractionPolicy, POLL_SLICE, UIAElement, after_delivery,
-        build_step, capped_verification_end, disclosure_plan, execute_chain, invoke_allowed,
+        INVOKE_LABEL, Instant, InteractionPolicy, POLL_SLICE, UIAElement, build_step,
+        capped_verification_end, disclosure_plan, execute_chain, invoke_allowed,
+    };
+    use crate::actions::chain::{
+        after_delivery, gated, invoke_available, invoke_pattern_delivered,
     };
     use crate::actions::mutation::{classify_success, classify_write};
     use crate::system::permissions::ensure_budget;
     use crate::tree::properties::read_one;
     use crate::tree::property_ids::TreeProperty;
-    use uiautomation::patterns::{UIExpandCollapsePattern, UIInvokePattern};
+    use uiautomation::patterns::UIExpandCollapsePattern;
 
     pub(crate) fn expand_steps(
         element: &UIAElement,
@@ -143,7 +145,7 @@ mod imp {
                     pattern_expand_collapse(element, want_expanded)
                 })
             },
-            || delivered_with_observe(element, want_expanded, deadline, pattern_invoke),
+            || delivered_with_observe(element, want_expanded, deadline, invoke_pattern_delivered),
         )
     }
 
@@ -168,18 +170,8 @@ mod imp {
             COLLAPSE_LABEL
         };
         let allow_invoke = input.invoke_ok && invoke_allowed(input.current, input.want_expanded);
-        let mut pattern_run = || {
-            if !input.pattern_ok || !allow_pattern {
-                return Ok(DeliveryOutcome::NotDelivered);
-            }
-            pattern()
-        };
-        let mut invoke_run = || {
-            if !allow_invoke {
-                return Ok(DeliveryOutcome::NotDelivered);
-            }
-            invoke()
-        };
+        let mut pattern_run = gated(input.pattern_ok && allow_pattern, &mut pattern);
+        let mut invoke_run = gated(allow_invoke, &mut invoke);
         execute_chain(
             deadline,
             &DISCLOSURE_CHAIN,
@@ -218,21 +210,10 @@ mod imp {
         read_one(element, TreeProperty::ExpandCollapseAvailable).flag() == Some(true)
     }
 
-    fn invoke_available(element: &UIAElement) -> bool {
-        read_one(element, TreeProperty::InvokeAvailable).flag() == Some(true)
-    }
-
     fn read_expand_state(element: &UIAElement) -> Option<ExpandKind> {
         read_one(element, TreeProperty::ExpandCollapseState)
             .number()
             .and_then(ExpandKind::from_i32)
-    }
-
-    fn read_expand_kind(element: &UIAElement) -> Option<ExpandKind> {
-        if !expand_collapse_available(element) {
-            return None;
-        }
-        read_expand_state(element)
     }
 
     fn pattern_expand_collapse(
@@ -264,16 +245,9 @@ mod imp {
         }
     }
 
-    fn pattern_invoke(element: &UIAElement) -> Result<bool, AdapterError> {
-        match element.0.get_pattern::<UIInvokePattern>() {
-            Ok(pattern) => match pattern.invoke() {
-                Ok(()) => classify_success(),
-                Err(error) => classify_write("Invoke", INVOKE_LABEL, &error),
-            },
-            Err(error) => classify_write("get_pattern", INVOKE_LABEL, &error),
-        }
-    }
-
+    /// Reads `ExpandCollapseAvailable` once before the loop rather than on
+    /// every tick: the pattern's availability cannot legitimately flip mid-
+    /// verification, so re-reading it 10 times over 200ms bought nothing.
     fn poll_target(
         want_expanded: bool,
         deadline: Deadline,
@@ -281,8 +255,14 @@ mod imp {
     ) -> Result<bool, AdapterError> {
         ensure_budget(deadline)?;
         let end = capped_verification_end(deadline, DISCLOSURE_TIMEOUT)?;
+        let pattern_ok = expand_collapse_available(element);
         loop {
-            if read_expand_kind(element).is_some_and(|state| state.is_target(want_expanded)) {
+            let current = if pattern_ok {
+                read_expand_state(element)
+            } else {
+                None
+            };
+            if current.is_some_and(|state| state.is_target(want_expanded)) {
                 return Ok(true);
             }
             if Instant::now() >= end {

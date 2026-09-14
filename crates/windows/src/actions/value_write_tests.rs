@@ -1,23 +1,21 @@
-use super::{clear_judged_for, parse_finite_f64, set_value_judged_for};
+use super::{SetValuePlan, parse_finite_f64, set_value_judged_for};
 use crate::actions::chain::DeliveryOutcome;
+use crate::system::test_time::deadline;
 use agent_desktop_core::{
-    Action, ActionStepOutcome, Deadline, DeliveryDisposition, ElementState, ErrorCode,
-    InteractionPolicy,
+    Action, ActionStepOutcome, DeliveryDisposition, ErrorCode, InteractionPolicy,
 };
 use std::cell::Cell;
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
 
 #[test]
 fn set_value_verified_when_readback_equals() {
     let steps = set_value_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
-        "hello",
-        true,
-        false,
+        SetValuePlan {
+            value: "hello",
+            value_writable: true,
+            range_available: false,
+        },
         || Ok(DeliveryOutcome::DeliveredVerified),
         || Ok(DeliveryOutcome::NotDelivered),
     )
@@ -25,12 +23,8 @@ fn set_value_verified_when_readback_equals() {
     assert_eq!(steps.len(), 1);
     assert!(matches!(steps[0].outcome, ActionStepOutcome::Succeeded));
     assert_eq!(steps[0].verified(), Some(true));
-    let result = agent_desktop_core::ActionResult::from_execution(
-        &Action::SetValue("hello".into()),
-        steps,
-        None,
-    )
-    .expect("result");
+    let result =
+        agent_desktop_core::ActionResult::from_execution(&Action::SetValue("hello".into()), steps);
     assert_eq!(
         result.disposition().delivery(),
         DeliveryDisposition::DeliveredVerified
@@ -42,11 +36,13 @@ fn unequal_readback_stops_without_reaching_range_value() {
     let value_calls = Cell::new(0u8);
     let range_calls = Cell::new(0u8);
     let steps = set_value_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
-        "77",
-        true,
-        true,
+        SetValuePlan {
+            value: "77",
+            value_writable: true,
+            range_available: true,
+        },
         || {
             value_calls.set(value_calls.get() + 1);
             Ok(DeliveryOutcome::DeliveredUnverified)
@@ -67,11 +63,13 @@ fn unequal_readback_stops_without_reaching_range_value() {
 #[test]
 fn range_value_numeric_on_value_less_control() {
     let steps = set_value_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
-        "77",
-        false,
-        true,
+        SetValuePlan {
+            value: "77",
+            value_writable: false,
+            range_available: true,
+        },
         || Ok(DeliveryOutcome::DeliveredVerified),
         || Ok(DeliveryOutcome::DeliveredVerified),
     )
@@ -85,11 +83,13 @@ fn range_value_numeric_on_value_less_control() {
 fn unparsable_range_value_exhausts_honestly() {
     let range_calls = Cell::new(0u8);
     let error = set_value_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
-        "not-a-number",
-        false,
-        true,
+        SetValuePlan {
+            value: "not-a-number",
+            value_writable: false,
+            range_available: true,
+        },
         || Ok(DeliveryOutcome::NotDelivered),
         || {
             range_calls.set(range_calls.get() + 1);
@@ -114,58 +114,16 @@ fn parse_finite_rejects_nan_and_non_numeric() {
 }
 
 #[test]
-fn clear_empty_post_state_satisfies_core_postcondition() {
-    let steps = clear_judged_for(deadline(), InteractionPolicy::headless(), true, || {
-        Ok(DeliveryOutcome::DeliveredVerified)
-    })
-    .expect("clear");
-    let state = ElementState {
-        role: "textfield".into(),
-        states: vec![],
-        value: Some(String::new()),
-        enabled: Some(true),
-        hidden: None,
-        offscreen: Some(false),
-    };
-    let result =
-        agent_desktop_core::ActionResult::from_execution(&Action::Clear, steps, Some(state))
-            .expect("clear ok");
-    assert!(result.post_state.is_some());
-}
-
-#[test]
-fn clear_refusing_fake_yields_action_failed_delivered_unverified() {
-    let steps = clear_judged_for(deadline(), InteractionPolicy::headless(), true, || {
-        Ok(DeliveryOutcome::DeliveredUnverified)
-    })
-    .expect("delivered");
-    let state = ElementState {
-        role: "textfield".into(),
-        states: vec![],
-        value: Some("still-here".into()),
-        enabled: Some(true),
-        hidden: None,
-        offscreen: Some(false),
-    };
-    let error =
-        agent_desktop_core::ActionResult::from_execution(&Action::Clear, steps, Some(state))
-            .expect_err("postcondition");
-    assert_eq!(error.code, ErrorCode::ActionFailed);
-    assert_eq!(
-        error.disposition.delivery(),
-        DeliveryDisposition::DeliveredUnverified
-    );
-}
-
-#[test]
 fn error_envelope_carries_value_chars_never_marker_text() {
     const MARKER: &str = "zzsetvaluemarkerzz";
     let error = set_value_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
-        MARKER,
-        false,
-        false,
+        SetValuePlan {
+            value: MARKER,
+            value_writable: false,
+            range_available: false,
+        },
         || Ok(DeliveryOutcome::NotDelivered),
         || Ok(DeliveryOutcome::NotDelivered),
     )

@@ -2,10 +2,7 @@ use super::{descriptors, placeholder_of};
 use crate::tree::properties::ElementProperties;
 use crate::tree::property_ids::TreeProperty;
 use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
-
-fn text(value: &str) -> PropertyOutcome {
-    PropertyOutcome::Known(PropertyValue::Text(value.into()))
-}
+use crate::tree::test_support::text;
 
 fn from_reads(reads: &[(TreeProperty, PropertyOutcome)]) -> ElementProperties {
     ElementProperties::from_reads(reads.to_vec())

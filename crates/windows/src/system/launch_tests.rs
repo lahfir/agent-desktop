@@ -142,9 +142,7 @@ fn environment_merge_folds_case_so_override_replaces_inherited_variable() {
 }
 
 #[cfg(target_os = "windows")]
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("deadline")
-}
+use crate::system::test_time::deadline;
 
 #[cfg(target_os = "windows")]
 fn matching_pids(image: &str) -> Vec<ProcessId> {

@@ -24,15 +24,23 @@ pub(crate) const CLEAR_CHAIN: ChainDef = ChainDef {
     continue_after_unverified_delivery: false,
 };
 
+/// Injected SetValue plan: the value plus rung availability, bundled so
+/// `set_value_judged_for` stays within the 5-parameter cap.
+pub(crate) struct SetValuePlan<'a> {
+    pub(crate) value: &'a str,
+    pub(crate) value_writable: bool,
+    pub(crate) range_available: bool,
+}
+
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{
         ActionStep, AdapterError, CLEAR_CHAIN, ChainRung, Deadline, DeliveryOutcome,
-        DeliverySemantics, ErrorCode, InteractionPolicy, RANGE_LABEL, UIAElement, VALUE_LABEL,
-        VALUE_WRITE_CHAIN, execute_chain,
+        DeliverySemantics, ErrorCode, InteractionPolicy, RANGE_LABEL, SetValuePlan, UIAElement,
+        VALUE_LABEL, VALUE_WRITE_CHAIN, execute_chain,
     };
+    use crate::actions::chain::{after_delivery, gated};
     use crate::actions::mutation::{classify_success, classify_write};
-    use crate::actions::post_state::after_delivery;
     use crate::tree::element_properties::ElementProperties;
     use crate::tree::properties::read_one;
     use crate::tree::property_ids::TreeProperty;
@@ -45,15 +53,15 @@ mod imp {
         policy: InteractionPolicy,
         deadline: Deadline,
     ) -> Result<Vec<ActionStep>, AdapterError> {
-        let value_ok = value_writable(element);
-        let range_ok = range_available(element);
         let parsed = parse_finite_f64(value);
         set_value_judged_for(
             deadline,
             policy,
-            value,
-            value_ok,
-            range_ok,
+            SetValuePlan {
+                value,
+                value_writable: value_writable(element),
+                range_available: range_available(element),
+            },
             || invoke_value_set(element, value),
             || match parsed {
                 Some(target) => invoke_range_set(element, target),
@@ -76,25 +84,13 @@ mod imp {
     pub(crate) fn set_value_judged_for(
         deadline: Deadline,
         policy: InteractionPolicy,
-        value: &str,
-        value_writable: bool,
-        range_available: bool,
+        plan: SetValuePlan<'_>,
         mut value_write: impl FnMut() -> Result<DeliveryOutcome, AdapterError>,
         mut range_write: impl FnMut() -> Result<DeliveryOutcome, AdapterError>,
     ) -> Result<Vec<ActionStep>, AdapterError> {
-        let parsed = parse_finite_f64(value);
-        let mut value_run = || {
-            if !value_writable {
-                return Ok(DeliveryOutcome::NotDelivered);
-            }
-            value_write()
-        };
-        let mut range_run = || {
-            if !range_available || parsed.is_none() {
-                return Ok(DeliveryOutcome::NotDelivered);
-            }
-            range_write()
-        };
+        let parsed = parse_finite_f64(plan.value);
+        let mut value_run = gated(plan.value_writable, &mut value_write);
+        let mut range_run = gated(plan.range_available && parsed.is_some(), &mut range_write);
         execute_chain(
             deadline,
             &VALUE_WRITE_CHAIN,
@@ -112,7 +108,7 @@ mod imp {
                 },
             ],
         )
-        .map_err(|error| attach_value_chars(error, value))
+        .map_err(|error| attach_value_chars(error, plan.value))
     }
 
     /// Injected Clear chain — unit-test seam and live path.
@@ -122,12 +118,7 @@ mod imp {
         value_writable: bool,
         mut value_write: impl FnMut() -> Result<DeliveryOutcome, AdapterError>,
     ) -> Result<Vec<ActionStep>, AdapterError> {
-        let mut value_run = || {
-            if !value_writable {
-                return Ok(DeliveryOutcome::NotDelivered);
-            }
-            value_write()
-        };
+        let mut value_run = gated(value_writable, &mut value_write);
         execute_chain(
             deadline,
             &CLEAR_CHAIN,
@@ -250,12 +241,19 @@ mod imp {
         )
     }
 
-    /// Shared secure-field gate for string value verification (reusable by Select).
-    pub(crate) fn gated_value_compare(
+    /// Shared secure-field gate: withholds the comparison on a secure field
+    /// rather than reading it, otherwise reads once and compares. Generic
+    /// over the compared type so [`gated_value_compare`]'s `String` read
+    /// against a `&str` expectation and [`gated_range_compare`]'s `f64`
+    /// read against an `f64` expectation share one body.
+    fn gated_compare<T, U>(
         is_password: PropertyOutcome,
-        expected: &str,
-        mut read: impl FnMut() -> Result<String, AdapterError>,
-    ) -> Result<Option<bool>, AdapterError> {
+        expected: U,
+        mut read: impl FnMut() -> Result<T, AdapterError>,
+    ) -> Result<Option<bool>, AdapterError>
+    where
+        T: PartialEq<U>,
+    {
         if withholds_value_read(&is_password) {
             return Ok(None);
         }
@@ -263,17 +261,22 @@ mod imp {
         Ok(Some(observed == expected))
     }
 
+    /// Shared secure-field gate for string value verification (reusable by Select).
+    pub(crate) fn gated_value_compare(
+        is_password: PropertyOutcome,
+        expected: &str,
+        read: impl FnMut() -> Result<String, AdapterError>,
+    ) -> Result<Option<bool>, AdapterError> {
+        gated_compare(is_password, expected, read)
+    }
+
     /// Shared secure-field gate for numeric range verification.
     pub(crate) fn gated_range_compare(
         is_password: PropertyOutcome,
         expected: f64,
-        mut read: impl FnMut() -> Result<f64, AdapterError>,
+        read: impl FnMut() -> Result<f64, AdapterError>,
     ) -> Result<Option<bool>, AdapterError> {
-        if withholds_value_read(&is_password) {
-            return Ok(None);
-        }
-        let observed = read()?;
-        Ok(Some(observed == expected))
+        gated_compare(is_password, expected, read)
     }
 
     fn withholds_value_read(is_password: &PropertyOutcome) -> bool {
@@ -333,23 +336,15 @@ mod imp {
     ) -> Result<Option<bool>, AdapterError> {
         Err(AdapterError::not_supported("gated_value_compare"))
     }
-
-    pub(crate) fn gated_range_compare(
-        _is_password: PropertyOutcome,
-        _expected: f64,
-        _read: impl FnMut() -> Result<f64, AdapterError>,
-    ) -> Result<Option<bool>, AdapterError> {
-        Err(AdapterError::not_supported("gated_range_compare"))
-    }
 }
 
 pub(crate) use imp::{clear_steps, set_value_steps};
 
 #[allow(unused_imports)]
-pub(crate) use imp::{gated_pattern_value_equals, gated_range_compare, gated_value_compare};
+pub(crate) use imp::{gated_pattern_value_equals, gated_value_compare};
 
 #[cfg(all(test, target_os = "windows"))]
-pub(crate) use imp::{clear_judged_for, parse_finite_f64, set_value_judged_for};
+pub(crate) use imp::{parse_finite_f64, set_value_judged_for};
 
 #[cfg(all(test, target_os = "windows"))]
 #[path = "value_write_tests.rs"]

@@ -18,7 +18,6 @@ use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemIntero
 
 use super::capture_d3d::{self, CaptureDevice, resource_balance};
 use super::display::display_at;
-use super::hresult::{com_hresult_detail, hresult_record};
 use super::permissions::ensure_budget;
 use super::png_codec::encode_bgra_to_png;
 use super::window_enum::WindowHandle;
@@ -197,13 +196,7 @@ fn monitor_handle_from_id(id: &str) -> Result<HMONITOR, AdapterError> {
 }
 
 fn wgc_error(hresult: i32, context: &str) -> AdapterError {
-    let record = hresult_record(hresult);
-    let mut error = AdapterError::new(record.code, format!("WGC could not {context}"))
-        .with_platform_detail(com_hresult_detail(hresult));
-    if let Some(suggestion) = record.suggestion {
-        error = error.with_suggestion(suggestion);
-    }
-    error
+    super::hresult::hresult_error("WGC", hresult, context)
 }
 
 struct PoolGuard(Direct3D11CaptureFramePool);

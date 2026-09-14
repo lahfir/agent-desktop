@@ -9,11 +9,10 @@
 
 use std::cell::Cell;
 use std::io::{BufRead, BufReader};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::channel;
-use std::thread::{JoinHandle, spawn};
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
@@ -25,8 +24,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use super::fixture_menu::{
-    HOST_WATCHDOG_LIFETIME, READY_TIMEOUT, TERMINATE_TIMEOUT, create_window, post_message,
-    pump_until_quit, register_class_with_proc, signal, wait_for, wait_with_timeout,
+    TERMINATE_TIMEOUT, create_window, post_message, pump_until_quit, signal, wait_for,
+    wait_with_timeout,
 };
 use super::fixture_window;
 
@@ -99,7 +98,7 @@ unsafe extern "system" fn modal_owner_proc(
 
 fn host_modal_windows() {
     let class_name = fixture_window::unique_class_name();
-    if register_class_with_proc(&class_name, modal_owner_proc).is_err() {
+    if fixture_window::register_class_with_proc(&class_name, modal_owner_proc).is_err() {
         return;
     }
     let name = fixture_window::wide(&class_name);
@@ -143,11 +142,7 @@ pub(crate) fn is_modal_fixture_host_process() -> bool {
 }
 
 pub(crate) fn run_modal_fixture_as_host() {
-    spawn(|| {
-        std::thread::sleep(HOST_WATCHDOG_LIFETIME);
-        std::process::exit(0);
-    });
-    host_modal_windows();
+    super::fixture_menu::run_with_watchdog(host_modal_windows);
 }
 
 /// A child process owning an owned, `WS_EX_DLGMODALFRAME` modal window,
@@ -163,53 +158,41 @@ pub(crate) struct ModalFixture {
 impl ModalFixture {
     pub(crate) fn spawn() -> Result<Self, String> {
         let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-        let mut child = Command::new(executable)
+        let mut command = Command::new(executable);
+        command
             .args(["--exact", MODAL_HOST_TEST_NAME, "--ignored", "--nocapture"])
-            .env(MODAL_HOST_ENV, "1")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|error| error.to_string())?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| String::from("the modal fixture host exposed no stdout"))?;
-        let (sender, receiver) = channel();
+            .env(MODAL_HOST_ENV, "1");
         let up = Arc::new(AtomicBool::new(false));
         let up_writer = up.clone();
-        let reader = spawn(move || {
-            let mut handles = Vec::new();
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                let line = line.trim();
-                if handles.len() < 2 {
-                    if let Some(value) = line.strip_prefix(MODAL_HANDLE_PREFIX) {
-                        handles.push(value.trim().parse::<isize>().unwrap_or(0));
-                        if handles.len() == 2 {
-                            let _ = sender.send((handles[0], handles[1]));
+        let (child, (owner, modal), reader) = super::fixture_spawn::spawn_host(
+            command,
+            move |stdout, sender| {
+                let mut handles = Vec::new();
+                for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                    let line = line.trim();
+                    if handles.len() < 2 {
+                        if let Some(value) = line.strip_prefix(MODAL_HANDLE_PREFIX) {
+                            handles.push(value.trim().parse::<isize>().unwrap_or(0));
+                            if handles.len() == 2 {
+                                let _ = sender.send(Some((handles[0], handles[1])));
+                            }
+                            continue;
                         }
-                        continue;
+                    }
+                    if line == MODAL_STATE_UP {
+                        up_writer.store(true, Ordering::SeqCst);
+                    } else if line == MODAL_STATE_DOWN {
+                        up_writer.store(false, Ordering::SeqCst);
                     }
                 }
-                if line == MODAL_STATE_UP {
-                    up_writer.store(true, Ordering::SeqCst);
-                } else if line == MODAL_STATE_DOWN {
-                    up_writer.store(false, Ordering::SeqCst);
+                if handles.len() < 2 {
+                    let _ = sender.send(None);
                 }
-            }
-            if handles.len() < 2 {
-                let _ = sender.send((0, 0));
-            }
-        });
-        let (owner, modal) = match receiver.recv_timeout(READY_TIMEOUT) {
-            Ok((owner, modal)) if owner != 0 && modal != 0 => (owner, modal),
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(String::from(
-                    "the modal fixture host never reported its window handles",
-                ));
-            }
-        };
+            },
+            |handles: &(isize, isize)| handles.0 != 0 && handles.1 != 0,
+            "the modal fixture host exposed no stdout",
+            "the modal fixture host never reported its window handles",
+        )?;
         Ok(Self {
             child: Some(child),
             owner,
@@ -253,8 +236,7 @@ impl Drop for ModalFixture {
         if let Some(mut child) = self.child.take() {
             post_message(self.owner, WM_CLOSE);
             if !wait_with_timeout(&mut child, TERMINATE_TIMEOUT) {
-                let _ = child.kill();
-                let _ = child.wait();
+                super::fixture_spawn::kill_and_wait(&mut child);
             }
         }
         if let Some(reader) = self.reader.take() {

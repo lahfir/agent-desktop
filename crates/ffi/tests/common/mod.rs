@@ -256,6 +256,31 @@ pub fn default_exact_ref_entry() -> AdExactRefEntry {
     entry
 }
 
+/// Depth-first search over a decoded envelope (or any JSON subtree of one)
+/// for the first value satisfying `matches`. Walks every object field and
+/// every array element rather than a fixed key such as `children`, so it
+/// finds a match wherever the schema puts it. `searched` counts every value
+/// visited, for a caller's own diagnostic message on a failed search.
+pub fn find_ref_in_tree(
+    value: &serde_json::Value,
+    searched: &mut usize,
+    matches: &impl Fn(&serde_json::Value) -> Option<String>,
+) -> Option<String> {
+    *searched += 1;
+    if let Some(found) = matches(value) {
+        return Some(found);
+    }
+    match value {
+        serde_json::Value::Object(map) => map
+            .values()
+            .find_map(|child| find_ref_in_tree(child, searched, matches)),
+        serde_json::Value::Array(items) => items
+            .iter()
+            .find_map(|child| find_ref_in_tree(child, searched, matches)),
+        _ => None,
+    }
+}
+
 pub fn default_action() -> AdAction {
     AdAction {
         kind: 0,

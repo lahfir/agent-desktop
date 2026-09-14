@@ -93,13 +93,10 @@ pub(super) fn drag(
             duration_ms: args.duration,
             drop_delay_ms: args.drop_delay,
             timeout_ms: helpers::normalize_action_timeout_ms(args.timeout_ms),
-            wait_for_scope: match args.wait_for_scope {
-                Some(crate::cli_args::drag::WaitForScopeArg::From) => {
-                    drag_command::WaitForScope::From
-                }
-                Some(crate::cli_args::drag::WaitForScopeArg::To) => drag_command::WaitForScope::To,
-                None => drag_command::WaitForScope::default(),
-            },
+            wait_for_scope: args
+                .wait_for_scope
+                .map(crate::cli_args::drag::WaitForScopeArg::to_core)
+                .unwrap_or_default(),
         },
         adapter,
         context,

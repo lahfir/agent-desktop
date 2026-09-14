@@ -1,13 +1,6 @@
 use super::{decode_utf16_text, encode_utf16_text};
+use crate::input::clipboard_bytes::utf16_le;
 use agent_desktop_core::ErrorCode;
-
-fn utf16_le(units: &[u16]) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(units.len() * 2);
-    for unit in units {
-        bytes.extend_from_slice(&unit.to_le_bytes());
-    }
-    bytes
-}
 
 #[test]
 fn text_round_trips_table() {

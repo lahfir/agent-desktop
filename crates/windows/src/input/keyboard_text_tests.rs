@@ -9,7 +9,7 @@ fn ample_deadline() -> Deadline {
 #[test]
 fn text_chunks_preserve_unicode_without_splitting_surrogates() {
     let text = format!("{}😀tail", "a".repeat(TEXT_CHUNK_UTF16 - 1));
-    let chunks = text_chunks(&text).unwrap();
+    let chunks = text_chunks(&text, None).unwrap();
     let roundtrip = String::from_utf16(&chunks.concat()).unwrap();
 
     assert_eq!(roundtrip, text);
@@ -19,7 +19,7 @@ fn text_chunks_preserve_unicode_without_splitting_surrogates() {
 #[test]
 fn text_budget_rejects_unbounded_payloads() {
     let text = "x".repeat(MAX_TEXT_UTF16 + 1);
-    let error = text_chunks(&text).expect_err("oversized text must fail before SendInput");
+    let error = text_chunks(&text, None).expect_err("oversized text must fail before SendInput");
 
     assert_eq!(error.code, ErrorCode::InvalidArgs);
 }

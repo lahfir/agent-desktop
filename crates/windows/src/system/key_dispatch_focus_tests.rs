@@ -20,7 +20,7 @@ fn keyboard_focus_never_verified_times_out_without_synthesis() {
             identity,
             &combo_a(),
             InteractionPolicy::headed(),
-            deadline(),
+            deadline(10_000),
         )
         .expect_err("keyboard focus never verifies")
     });

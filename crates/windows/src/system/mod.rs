@@ -1,5 +1,7 @@
 mod adapter;
 pub(crate) mod app_ops;
+#[cfg(test)]
+pub(crate) mod call_counter;
 #[cfg(target_os = "windows")]
 pub(crate) mod capture_backend;
 #[cfg(target_os = "windows")]
@@ -10,6 +12,8 @@ pub(crate) mod capture_display;
 pub(crate) mod capture_envelope_parity;
 #[cfg(target_os = "windows")]
 pub(crate) mod capture_modern;
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) mod capture_test_support;
 #[cfg(target_os = "windows")]
 pub(crate) mod capture_window;
 pub(crate) mod close;
@@ -27,7 +31,11 @@ pub(crate) mod key_dispatch;
 pub(crate) mod launch;
 mod launch_path;
 pub(crate) mod lifecycle_envelope_parity;
+#[cfg(all(test, target_os = "windows"))]
+pub(crate) mod lifecycle_test_support;
 pub(crate) mod listing_retry;
+#[cfg(test)]
+pub(crate) mod live_identity;
 pub(crate) mod menu_state;
 pub(crate) mod permissions;
 #[cfg(target_os = "windows")]
@@ -51,10 +59,16 @@ pub(crate) mod signal_filter_apply;
 pub(crate) mod signal_inventory;
 pub(crate) mod signal_surfaces;
 pub(crate) mod signals;
+#[cfg(test)]
+pub(crate) mod test_flag_option;
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) mod test_support;
+#[cfg(test)]
+pub(crate) mod test_time;
 #[cfg(target_os = "windows")]
 pub(crate) mod thread_walk;
+#[cfg(target_os = "windows")]
+pub(crate) mod token_sid;
 pub(crate) mod wait;
 pub(crate) mod win_rect;
 pub(crate) mod window_activate;

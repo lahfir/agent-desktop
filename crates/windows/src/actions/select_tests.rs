@@ -1,4 +1,6 @@
-use super::{SELECT_LABEL, SelectOps, SelectPlan, resolve_select_verification, select_judged_for};
+use super::{
+    SELECT_LABEL, SelectOps, SelectPlan, push_order, resolve_select_verification, select_judged_for,
+};
 use crate::actions::chain::DeliveryOutcome;
 use crate::actions::value_write::gated_value_compare;
 use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
@@ -154,42 +156,22 @@ fn budget_exhaustion_surfaces_honest_error() {
 fn collapsed_combobox_expands_first_and_collapses_on_failure() {
     let order = Cell::new(Vec::<&'static str>::new());
     let mut expand = || {
-        order.set({
-            let mut v = order.take();
-            v.push("expand");
-            v
-        });
+        push_order(&order, "expand");
         Ok(())
     };
     let mut collapse = || {
-        order.set({
-            let mut v = order.take();
-            v.push("collapse");
-            v
-        });
+        push_order(&order, "collapse");
     };
     let mut find = || {
-        order.set({
-            let mut v = order.take();
-            v.push("find");
-            v
-        });
+        push_order(&order, "find");
         Ok(true)
     };
     let mut realize = || {
-        order.set({
-            let mut v = order.take();
-            v.push("realize");
-            v
-        });
+        push_order(&order, "realize");
         Ok(())
     };
     let mut select_item = || {
-        order.set({
-            let mut v = order.take();
-            v.push("select");
-            v
-        });
+        push_order(&order, "select");
         Err(
             AdapterError::new(ErrorCode::ActionFailed, "select failed after expand")
                 .with_disposition(agent_desktop_core::DeliverySemantics::delivered_unverified()),

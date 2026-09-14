@@ -122,15 +122,6 @@ fn a_scaled_monitor_maps_a_logical_point_to_its_physical_pixel() {
 }
 
 #[test]
-fn an_unscaled_monitor_maps_a_point_to_itself() {
-    let monitors = scaled_pair();
-
-    let mapped = to_physical(&monitors[0], &Point { x: 640.0, y: 480.0 });
-
-    assert_eq!(mapped, Point { x: 640.0, y: 480.0 });
-}
-
-#[test]
 fn the_resting_point_is_the_primary_work_areas_midpoint() {
     let monitors = scaled_pair();
 

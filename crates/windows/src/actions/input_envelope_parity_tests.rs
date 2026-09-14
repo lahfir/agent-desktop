@@ -1,4 +1,4 @@
-use crate::actions::physical_click::click_from_gate;
+use crate::actions::physical_click::{ClickGate, ClickSpec, click_from_gate};
 use crate::actions::physical_keyboard::{press_key_global, type_text_from_gate};
 use crate::actions::physical_target::{
     delivery_point, ensure_headed_click_policy, ensure_keyboard_policy, focus_lost_before_delivery,
@@ -101,8 +101,19 @@ fn physical_type_text_step_wire_uses_physical_synthetic_and_unverified() {
 #[test]
 fn physical_click_step_wire_uses_physical_synthetic_and_unverified() {
     mouse_sink::reset();
-    let step =
-        click_from_gate(bounds(), None, true, MouseButton::Left, 2, deadline()).expect("click");
+    let step = click_from_gate(
+        ClickGate {
+            bounds: bounds(),
+            foreground_ready: true,
+        },
+        None,
+        ClickSpec {
+            button: MouseButton::Left,
+            count: 2,
+        },
+        deadline(),
+    )
+    .expect("click");
 
     let json = serialize_action_result(&Action::DoubleClick, vec![step]);
     assert_eq!(json["steps"][0]["mechanism"], "physical_synthetic");
@@ -317,29 +328,7 @@ fn assert_input_cost_capture_spread(label: &str, raw: &str) {
         cites.iter().any(|entry| entry == "A15-13"),
         "{label} must cite A15-13"
     );
-    for arm in INPUT_COST_ARMS {
-        let entry = value
-            .get(*arm)
-            .unwrap_or_else(|| panic!("{label} missing arm {arm}"));
-        let min = entry["min_ms"]
-            .as_f64()
-            .unwrap_or_else(|| panic!("{label}/{arm} missing min_ms"));
-        let median = entry["median_ms"]
-            .as_f64()
-            .unwrap_or_else(|| panic!("{label}/{arm} missing median_ms"));
-        let max = entry["max_ms"]
-            .as_f64()
-            .unwrap_or_else(|| panic!("{label}/{arm} missing max_ms"));
-        assert!(
-            min <= median && median <= max,
-            "{label}/{arm}: min<=median<=max ({min}, {median}, {max})"
-        );
-        assert_eq!(entry["n"], 7, "{label}/{arm} n");
-        assert_eq!(
-            entry["warmup_discarded"], true,
-            "{label}/{arm} warmup_discarded"
-        );
-    }
+    crate::actions::envelope_parity::assert_cost_arms(label, &value, INPUT_COST_ARMS);
 }
 
 #[test]

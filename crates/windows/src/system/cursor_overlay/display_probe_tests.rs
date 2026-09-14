@@ -1,4 +1,4 @@
-use super::imp::completed;
+use super::completed;
 use crate::system::cursor_overlay::monitors::OverlayMonitor;
 use agent_desktop_core::Rect;
 

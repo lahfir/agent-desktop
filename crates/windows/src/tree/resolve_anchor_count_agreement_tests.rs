@@ -1,25 +1,10 @@
 use crate::tree::fixture::{HostedFixture, ensure_test_apartment};
+use crate::tree::test_support::fixture_window;
 use crate::tree::walker_fake::deadline;
 use agent_desktop_core::{
-    LocatorMaterialization, LocatorResolveRequest, LocatorSelection, ObservationRoot, ProcessId,
-    WindowInfo, commands::query::validate_selector, resolve_query,
+    LocatorMaterialization, LocatorResolveRequest, LocatorSelection, ObservationRoot,
+    commands::query::validate_selector, resolve_query,
 };
-
-fn fixture_window(fixture: &HostedFixture) -> WindowInfo {
-    let pid = ProcessId::new(fixture.process_id());
-    let token = crate::system::process_identity::token_for_pid(pid)
-        .unwrap()
-        .expect("a live fixture process has a token");
-    WindowInfo {
-        id: format!("w-{}", fixture.handle()),
-        title: "agent-desktop fixture".into(),
-        app: "fixture.exe".into(),
-        pid,
-        process_instance: Some(token),
-        bounds: None,
-        state: Default::default(),
-    }
-}
 
 /// `find --count` and a materialized `find` must select the same set from the
 /// same query.

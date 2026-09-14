@@ -45,42 +45,15 @@ fn entry(
     value: Option<&str>,
     description: Option<&str>,
 ) -> RefEntry {
-    RefEntry {
-        process: agent_desktop_core::RefProcess {
-            pid: agent_desktop_core::ProcessId::new(1),
-            process_instance: None,
-        },
-        identity: agent_desktop_core::RefEntryIdentity {
-            role: role.to_string(),
-            name: name.map(str::to_string),
-            value: value.map(str::to_string),
-            description: description.map(str::to_string),
-            native_id: native.map(|value| ElementIdentifier {
-                kind: IdentifierKind::AutomationId,
-                value: value.to_string(),
-            }),
-        },
-        geometry: agent_desktop_core::RefGeometry {
-            bounds: None,
-            bounds_hash: None,
-        },
-        capabilities: agent_desktop_core::RefCapabilities {
-            states: Vec::new(),
-            available_actions: Vec::new(),
-        },
-        source: agent_desktop_core::RefSource {
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
-            source_window_bounds_hash: None,
-            source_surface: agent_desktop_core::SnapshotSurface::Window,
-        },
-        scope: agent_desktop_core::RefScope {
-            root_ref: None,
-            path_is_absolute: false,
-            path: agent_desktop_core::refs::RefPath::default(),
-        },
-    }
+    let mut entry = crate::tree::walker_fake::ref_entry(role);
+    entry.identity.name = name.map(str::to_string);
+    entry.identity.value = value.map(str::to_string);
+    entry.identity.description = description.map(str::to_string);
+    entry.identity.native_id = native.map(|value| ElementIdentifier {
+        kind: IdentifierKind::AutomationId,
+        value: value.to_string(),
+    });
+    entry
 }
 
 /// The A7-3 silent-wrong-target pin under the composed matcher: a

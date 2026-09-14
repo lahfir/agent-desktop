@@ -21,10 +21,9 @@
 use std::cell::Cell;
 use std::ffi::c_void;
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::channel;
 use std::thread::{JoinHandle, spawn};
 use std::time::{Duration, Instant};
 
@@ -32,10 +31,9 @@ use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
-    DestroyWindow, DispatchMessageW, EndMenu, GetMessageW, HMENU, IDC_ARROW, LoadCursorW,
-    MF_STRING, MSG, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOWNOACTIVATE, SetMenu,
-    ShowWindow, TPM_LEFTBUTTON, TrackPopupMenu, TranslateMessage, WM_CLOSE, WM_DESTROY,
-    WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    DestroyWindow, DispatchMessageW, EndMenu, GetMessageW, HMENU, MF_STRING, MSG, PostMessageW,
+    PostQuitMessage, SW_SHOWNOACTIVATE, SetMenu, ShowWindow, TPM_LEFTBUTTON, TrackPopupMenu,
+    TranslateMessage, WM_CLOSE, WM_DESTROY, WS_OVERLAPPEDWINDOW,
 };
 
 use super::fixture_window;
@@ -46,7 +44,6 @@ const MENU_HANDLE_PREFIX: &str = "AGENT_DESKTOP_MENU_HWND=";
 const MENU_STATE_UP: &str = "AGENT_DESKTOP_MENU_STATE=UP";
 const MENU_STATE_DOWN: &str = "AGENT_DESKTOP_MENU_STATE=DOWN";
 
-pub(crate) const READY_TIMEOUT: Duration = Duration::from_secs(30);
 pub(crate) const HOST_WATCHDOG_LIFETIME: Duration = Duration::from_secs(300);
 pub(crate) const STATE_POLL: Duration = Duration::from_millis(25);
 pub(crate) const TERMINATE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -54,8 +51,6 @@ pub(crate) const TERMINATE_TIMEOUT: Duration = Duration::from_secs(5);
 const WM_APP: u32 = 0x8000;
 const WM_FIXTURE_OPEN_CONTEXT_MENU: u32 = WM_APP + 1;
 const WM_FIXTURE_DISMISS_MENU: u32 = WM_APP + 2;
-
-pub(crate) type WndProc = unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT;
 
 thread_local! {
     static MENU_BAR: Cell<HMENU> = const { Cell::new(std::ptr::null_mut()) };
@@ -65,22 +60,6 @@ thread_local! {
 pub(crate) fn signal(line: impl std::fmt::Display) {
     println!("{line}");
     let _ = std::io::stdout().flush();
-}
-
-pub(crate) fn register_class_with_proc(class_name: &str, proc: WndProc) -> Result<(), String> {
-    let name = fixture_window::wide(class_name);
-    let class = WNDCLASSEXW {
-        cbSize: size_of::<WNDCLASSEXW>() as u32,
-        lpfnWndProc: Some(proc),
-        hInstance: unsafe { GetModuleHandleW(std::ptr::null()) },
-        hCursor: unsafe { LoadCursorW(std::ptr::null_mut(), IDC_ARROW) },
-        lpszClassName: name.as_ptr(),
-        ..Default::default()
-    };
-    if unsafe { RegisterClassExW(&class) } == 0 {
-        return Err(format!("RegisterClassExW rejected the class {class_name}"));
-    }
-    Ok(())
 }
 
 /// `(ex_style, style)` and `(x, y, width, height)` grouped so the call stays
@@ -232,7 +211,7 @@ unsafe extern "system" fn menu_window_proc(
 
 fn host_menu_window() {
     let class_name = fixture_window::unique_class_name();
-    if register_class_with_proc(&class_name, menu_window_proc).is_err() {
+    if fixture_window::register_class_with_proc(&class_name, menu_window_proc).is_err() {
         return;
     }
     let name = fixture_window::wide(&class_name);
@@ -281,51 +260,39 @@ pub(crate) struct MenuFixture {
 impl MenuFixture {
     pub(crate) fn spawn() -> Result<Self, String> {
         let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-        let mut child = Command::new(executable)
+        let mut command = Command::new(executable);
+        command
             .args(["--exact", MENU_HOST_TEST_NAME, "--ignored", "--nocapture"])
-            .env(MENU_HOST_ENV, "1")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|error| error.to_string())?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| String::from("the menu fixture host exposed no stdout"))?;
-        let (sender, receiver) = channel();
+            .env(MENU_HOST_ENV, "1");
         let up = Arc::new(AtomicBool::new(false));
         let up_writer = up.clone();
-        let reader = spawn(move || {
-            let mut announced = false;
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                let line = line.trim();
-                if !announced {
-                    if let Some(value) = line.strip_prefix(MENU_HANDLE_PREFIX) {
-                        announced = true;
-                        let _ = sender.send(value.trim().parse::<isize>().unwrap_or(0));
-                        continue;
+        let (child, handle, reader) = super::fixture_spawn::spawn_host(
+            command,
+            move |stdout, sender| {
+                let mut announced = false;
+                for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                    let line = line.trim();
+                    if !announced {
+                        if let Some(value) = line.strip_prefix(MENU_HANDLE_PREFIX) {
+                            announced = true;
+                            let _ = sender.send(Some(value.trim().parse::<isize>().unwrap_or(0)));
+                            continue;
+                        }
+                    }
+                    if line == MENU_STATE_UP {
+                        up_writer.store(true, Ordering::SeqCst);
+                    } else if line == MENU_STATE_DOWN {
+                        up_writer.store(false, Ordering::SeqCst);
                     }
                 }
-                if line == MENU_STATE_UP {
-                    up_writer.store(true, Ordering::SeqCst);
-                } else if line == MENU_STATE_DOWN {
-                    up_writer.store(false, Ordering::SeqCst);
+                if !announced {
+                    let _ = sender.send(None);
                 }
-            }
-            if !announced {
-                let _ = sender.send(0);
-            }
-        });
-        let handle = match receiver.recv_timeout(READY_TIMEOUT) {
-            Ok(handle) if handle != 0 => handle,
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(String::from(
-                    "the menu fixture host never reported a window handle",
-                ));
-            }
-        };
+            },
+            |handle| *handle != 0,
+            "the menu fixture host exposed no stdout",
+            "the menu fixture host never reported a window handle",
+        )?;
         Ok(Self {
             child: Some(child),
             handle,
@@ -364,8 +331,7 @@ impl Drop for MenuFixture {
         if let Some(mut child) = self.child.take() {
             post_message(self.handle, WM_CLOSE);
             if !wait_with_timeout(&mut child, TERMINATE_TIMEOUT) {
-                let _ = child.kill();
-                let _ = child.wait();
+                super::fixture_spawn::kill_and_wait(&mut child);
             }
         }
         if let Some(reader) = self.reader.take() {

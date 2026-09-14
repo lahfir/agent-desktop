@@ -1,7 +1,6 @@
 use agent_desktop_core::{
-    Deadline, DeliverySemantics, DismissNotificationRequest, ErrorCode, InteractionLease,
-    InteractionPolicy, NotificationFilter, NotificationIdentity, NotificationInfo, SnapshotSurface,
-    SystemOps,
+    DeliverySemantics, DismissNotificationRequest, ErrorCode, InteractionLease, InteractionPolicy,
+    NotificationFilter, NotificationIdentity, NotificationInfo, SnapshotSurface, SystemOps,
 };
 
 use super::{dismiss_notification, notification_action};
@@ -18,13 +17,7 @@ use crate::system::test_support::{
     SHELL_SURFACE_LOCK, or_skip_shell, wait_for_foreground_to_settle,
 };
 
-fn deadline(ms: u64) -> Deadline {
-    Deadline::after(ms).expect("deadline")
-}
-
-fn headed() -> InteractionPolicy {
-    InteractionPolicy::headed()
-}
+use crate::system::test_time::{deadline, headed};
 
 fn foreground() -> isize {
     use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;

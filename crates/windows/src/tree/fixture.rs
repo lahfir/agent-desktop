@@ -1,30 +1,22 @@
-use std::io::{BufRead, BufReader};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::thread::{JoinHandle, spawn};
 use std::time::Duration;
 
+use super::fixture_spawn;
 use super::fixture_window;
 
 pub(crate) use super::fixture_window::{CONTENT_MARKER, SECURE_MARKER};
 
-#[allow(unused_imports)]
-pub(crate) use super::fixture_clipboard::{
-    ContendingClipboardHolder, DelayedClipboardOwner, clipboard_test_lock,
-};
-#[allow(unused_imports)]
-pub(crate) use super::fixture_pattern::{
-    HostedPatternFixture, LocalPatternFixture, PatternExpectation,
-};
+pub(crate) use super::fixture_pattern::LocalPatternFixture;
 
 const HOST_ENVIRONMENT_FLAG: &str = "AGENT_DESKTOP_FIXTURE_HOST";
 pub(crate) const SWALLOW_WM_CLOSE_FLAG: &str = "AGENT_DESKTOP_FIXTURE_SWALLOW_WM_CLOSE";
 const HOST_TEST_NAME: &str = "tree::fixture::tests::fixture_host_process_entry";
 const HANDLE_PREFIX: &str = "AGENT_DESKTOP_FIXTURE_HWND=";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
-const HOST_WATCHDOG_LIFETIME: Duration = Duration::from_secs(300);
 const WALKABLE_TIMEOUT: Duration = Duration::from_secs(20);
 const WALKABLE_POLL: Duration = Duration::from_millis(100);
 const STALL_POLL: Duration = Duration::from_millis(25);
@@ -62,15 +54,15 @@ pub(crate) fn is_host_process() -> bool {
 /// if the parent is killed without running `HostedFixture`'s `Drop`, so a
 /// crashed test run cannot leave a window host behind on a shared runner.
 pub(crate) fn run_as_host() {
+    super::fixture_menu::run_with_watchdog(host_fixture_window);
+}
+
+fn host_fixture_window() {
     let (sender, receiver) = channel::<Result<fixture_window::PumpHandle, String>>();
     spawn(move || {
         if let Ok(Ok(running)) = receiver.recv_timeout(READY_TIMEOUT) {
             println!("{HANDLE_PREFIX}{}", running.window);
         }
-    });
-    spawn(|| {
-        std::thread::sleep(HOST_WATCHDOG_LIFETIME);
-        std::process::exit(0);
     });
     fixture_window::host_window(&fixture_window::unique_class_name(), sender);
 }
@@ -104,40 +96,22 @@ impl HostedFixture {
         let mut command = Command::new(executable);
         command
             .args(["--exact", HOST_TEST_NAME, "--ignored", "--nocapture"])
-            .env(HOST_ENVIRONMENT_FLAG, "1")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null());
+            .env(HOST_ENVIRONMENT_FLAG, "1");
         if swallow_wm_close {
             command.env(SWALLOW_WM_CLOSE_FLAG, "1");
         }
-        let mut child = command.spawn().map_err(|error| error.to_string())?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| String::from("the fixture host exposed no stdout"))?;
-        let (sender, receiver) = channel();
-        spawn(move || {
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                if let Some(handle) = line.trim().strip_prefix(HANDLE_PREFIX) {
-                    let _ = sender.send(handle.trim().parse::<isize>().unwrap_or(0));
-                    return;
-                }
-            }
-            let _ = sender.send(0);
-        });
-        let handle = match receiver.recv_timeout(READY_TIMEOUT) {
-            Ok(handle) if handle != 0 => handle,
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(String::from(
-                    "the fixture host never reported a window handle",
-                ));
-            }
-        };
+        let (mut child, handle, _reader) = fixture_spawn::spawn_host(
+            command,
+            fixture_spawn::first_line(|line| {
+                line.strip_prefix(HANDLE_PREFIX)
+                    .map(|handle| handle.trim().parse::<isize>().unwrap_or(0))
+            }),
+            |handle| *handle != 0,
+            "the fixture host exposed no stdout",
+            "the fixture host never reported a window handle",
+        )?;
         if let Err(error) = await_walkable(handle) {
-            let _ = child.kill();
-            let _ = child.wait();
+            fixture_spawn::kill_and_wait(&mut child);
             return Err(error);
         }
         Ok(Self {
@@ -158,8 +132,7 @@ impl HostedFixture {
     /// walk does against a provider that has genuinely gone away.
     pub(crate) fn terminate(&mut self) {
         if let Some(mut child) = self.child.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+            fixture_spawn::kill_and_wait(&mut child);
         }
     }
 }
@@ -203,7 +176,7 @@ impl LocalFixture {
         let (sender, receiver) = channel();
         let pump = spawn({
             let class_name = class_name.clone();
-            move || host_on_this_thread_at(&class_name, sender, left, top)
+            move || fixture_window::host_window_at(&class_name, sender, left, top)
         });
         let running = match receiver.recv_timeout(READY_TIMEOUT) {
             Ok(Ok(running)) => running,
@@ -359,15 +332,6 @@ fn stalled_window(class_name: &str, ready: Sender<Result<isize, String>>, stop: 
         std::thread::sleep(STALL_POLL);
     }
     unsafe { DestroyWindow(window) };
-}
-
-fn host_on_this_thread_at(
-    class_name: &str,
-    ready: Sender<Result<fixture_window::PumpHandle, String>>,
-    left: i32,
-    top: i32,
-) {
-    fixture_window::host_window_at(class_name, ready, left, top);
 }
 
 /// Blocks until the window actually resolves to a UI Automation root.

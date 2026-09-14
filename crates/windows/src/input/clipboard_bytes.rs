@@ -32,10 +32,28 @@ pub(crate) fn read_i32(bytes: &[u8], offset: usize, field: &str) -> Result<i32, 
     Ok(read_u32(bytes, offset, field)? as i32)
 }
 
+pub(crate) fn read_utf16_units(bytes: &[u8]) -> Vec<u16> {
+    bytes
+        .chunks_exact(2)
+        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+        .collect()
+}
+
 pub(crate) fn payload_error(message: &str) -> AdapterError {
     AdapterError::new(ErrorCode::ActionFailed, message)
 }
 
 pub(crate) fn argument_error(message: &str) -> AdapterError {
     AdapterError::new(ErrorCode::InvalidArgs, message)
+}
+
+/// Shared UTF-16LE test fixture builder for the wire-format decode tests
+/// (`clipboard_text_tests.rs`, `clipboard_files_tests.rs`).
+#[cfg(test)]
+pub(crate) fn utf16_le(units: &[u16]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(units.len() * 2);
+    for unit in units {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    bytes
 }

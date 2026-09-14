@@ -86,39 +86,12 @@ fn live_bounds() -> Rect {
 }
 
 fn entry_with_bounds(bounds: Option<Rect>) -> RefEntry {
-    RefEntry {
-        process: crate::RefProcess {
-            pid: crate::ProcessId::new(1),
-            process_instance: Some("test-instance".into()),
-        },
-        identity: crate::RefEntryIdentity {
-            role: "textfield".into(),
-            name: Some("text-input".into()),
-            value: None,
-            description: None,
-            native_id: None,
-        },
-        geometry: crate::RefGeometry {
-            bounds,
-            bounds_hash: bounds.and_then(|b| b.bounds_hash()),
-        },
-        capabilities: crate::RefCapabilities {
-            states: vec![],
-            available_actions: vec![],
-        },
-        source: crate::RefSource {
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
-            source_window_bounds_hash: None,
-            source_surface: crate::adapter::SnapshotSurface::Window,
-        },
-        scope: crate::RefScope {
-            root_ref: None,
-            path_is_absolute: false,
-            path: smallvec::SmallVec::new(),
-        },
-    }
+    let mut entry = crate::adapter::minimal_ref_entry("textfield", Some("text-input"));
+    entry.geometry = crate::RefGeometry {
+        bounds,
+        bounds_hash: bounds.and_then(|b| b.bounds_hash()),
+    };
+    entry
 }
 
 /// A ref's stored geometry is a snapshot-time fact: an ancestor scroll

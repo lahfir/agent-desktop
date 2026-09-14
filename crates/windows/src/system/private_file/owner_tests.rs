@@ -2,20 +2,18 @@ use super::{Scratch, scratch_nonce};
 use crate::system::private_file::WindowsPrivateFile;
 use crate::system::private_file::owner::forced_foreign_owner::with_forced_foreign_owner;
 use crate::system::private_file::owner::{
-    SidBuffer, file_owner_sid, process_owner_eligible_sids, process_token_owner_sid,
+    file_owner_sid, process_owner_eligible_sids, process_token_owner_sid,
     process_token_user_sid_for_tests, require_owned_by_eligible_principal,
 };
+use crate::system::token_sid::SidBuffer;
 use agent_desktop_core::PrivateFileOps;
 use std::io::ErrorKind;
 use std::os::windows::io::AsRawHandle;
 use std::path::Path;
-use windows_sys::Win32::Foundation::LocalFree;
-use windows_sys::Win32::Security::Authorization::{
-    ConvertSidToStringSidW, SE_FILE_OBJECT, SetSecurityInfo,
-};
+use windows_sys::Win32::Security::Authorization::{SE_FILE_OBJECT, SetSecurityInfo};
 use windows_sys::Win32::Security::{
-    CreateWellKnownSid, OWNER_SECURITY_INFORMATION, SECURITY_MAX_SID_SIZE, WELL_KNOWN_SID_TYPE,
-    WinBuiltinAdministratorsSid, WinBuiltinUsersSid, WinLocalSystemSid, WinWorldSid,
+    OWNER_SECURITY_INFORMATION, WELL_KNOWN_SID_TYPE, WinBuiltinAdministratorsSid,
+    WinBuiltinUsersSid, WinLocalSystemSid, WinWorldSid,
 };
 use windows_sys::Win32::Storage::FileSystem::WRITE_OWNER;
 
@@ -338,35 +336,13 @@ fn inherited_ace_entries(path: &Path) -> Vec<(String, bool)> {
 }
 
 fn sid_string(sid: &SidBuffer) -> String {
-    let mut text: windows_sys::core::PWSTR = std::ptr::null_mut();
-    let converted = unsafe { ConvertSidToStringSidW(sid.as_psid(), &mut text) };
-    assert!(converted != 0, "the SID must convert to its string form");
-    let mut length = 0_usize;
-    while unsafe { *text.add(length) } != 0 {
-        length += 1;
-    }
-    let value = String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(text, length) });
-    unsafe { LocalFree(text.cast()) };
-    value
+    sid.to_string_form()
+        .expect("the SID must convert to its string form")
 }
 
 fn well_known_sid_buffer(kind: WELL_KNOWN_SID_TYPE) -> SidBuffer {
-    let mut storage = [0_u64; 9];
-    let mut size: u32 = SECURITY_MAX_SID_SIZE;
-    let created = unsafe {
-        CreateWellKnownSid(
-            kind,
-            std::ptr::null_mut(),
-            storage.as_mut_ptr().cast(),
-            &mut size,
-        )
-    };
-    assert!(
-        created != 0,
-        "CreateWellKnownSid must succeed for kind {kind}"
-    );
-    SidBuffer::copied_from_valid(storage.as_mut_ptr().cast())
-        .expect("a well-known SID must be valid")
+    SidBuffer::well_known(kind)
+        .unwrap_or_else(|error| panic!("a well-known SID must be valid for kind {kind}: {error}"))
 }
 
 fn well_known_sid_string(kind: WELL_KNOWN_SID_TYPE) -> String {

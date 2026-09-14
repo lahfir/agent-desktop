@@ -155,4 +155,4 @@ fn permission_denied(message: impl Into<String>) -> std::io::Error {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

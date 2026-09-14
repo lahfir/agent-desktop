@@ -134,23 +134,14 @@ mod classification {
 
 #[cfg(target_os = "windows")]
 mod live {
-    use agent_desktop_core::{Deadline, InteractionPolicy};
-
     use super::super::{find_by_id, read_entries};
     use crate::notifications::session::ActionCenterSession;
     use crate::notifications::toast_support;
     use crate::system::raise_oracle::{responded_since, witness_desktop};
     use crate::system::shell_surface_kinds::{EMPTY_CENTER_LANDMARKS, MAIN_LIST_VIEW};
     use crate::system::test_support::{SHELL_SURFACE_LOCK, or_skip_shell};
+    use crate::system::test_time::{deadline, headed};
     use crate::tree::element::UIAElement;
-
-    fn deadline(ms: u64) -> Deadline {
-        Deadline::after(ms).expect("deadline")
-    }
-
-    fn headed() -> InteractionPolicy {
-        InteractionPolicy::headed()
-    }
 
     /// Counts the list's items with an independent query - a control-type
     /// condition over the whole subtree - so the count the reader returns is
@@ -260,14 +251,12 @@ mod live {
 /// `find_by_id`'s searches fail reliably.
 #[cfg(target_os = "windows")]
 mod fixture_backed {
-    use agent_desktop_core::{Deadline, ErrorCode};
+    use agent_desktop_core::ErrorCode;
 
     use super::super::{MAX_WALK_DEPTH, walk};
     use crate::tree::fixture::{HostedFixture, bootstrap};
 
-    fn deadline(ms: u64) -> Deadline {
-        Deadline::after(ms).expect("deadline")
-    }
+    use crate::system::test_time::deadline;
 
     /// `walk` checks its depth cap before it ever touches `element`'s
     /// children, so a real but otherwise ordinary fixture element proves the

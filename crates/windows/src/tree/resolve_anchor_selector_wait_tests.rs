@@ -1,8 +1,10 @@
+use crate::system::cursor_overlay::wide::wide;
 use crate::tree::fixture::{HostedFixture, ensure_test_apartment};
+use crate::tree::test_support::fixture_window;
 use crate::tree::walker_fake::deadline;
 use agent_desktop_core::{
-    LocatorMaterialization, LocatorResolveRequest, LocatorSelection, ObservationRoot, ProcessId,
-    WindowInfo, commands::query::validate_selector, resolve_query,
+    LocatorMaterialization, LocatorResolveRequest, LocatorSelection, ObservationRoot, WindowInfo,
+    commands::query::validate_selector, resolve_query,
 };
 use std::ffi::c_void;
 use std::time::{Duration, Instant};
@@ -12,26 +14,6 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 const APPEAR_DELAY: Duration = Duration::from_millis(300);
 const OVERALL_BUDGET: Duration = Duration::from_secs(5);
 const APPEARED_MARKER: &str = "fixture-button-appeared";
-
-fn fixture_window(fixture: &HostedFixture) -> WindowInfo {
-    let pid = ProcessId::new(fixture.process_id());
-    let token = crate::system::process_identity::token_for_pid(pid)
-        .unwrap()
-        .expect("a live fixture process has a token");
-    WindowInfo {
-        id: format!("w-{}", fixture.handle()),
-        title: "agent-desktop fixture".into(),
-        app: "fixture.exe".into(),
-        pid,
-        process_instance: Some(token),
-        bounds: None,
-        state: Default::default(),
-    }
-}
-
-fn wide(text: &str) -> Vec<u16> {
-    text.encode_utf16().chain(std::iter::once(0)).collect()
-}
 
 /// Locates the fixture's single `BUTTON` child by class name, from outside
 /// the process that owns it - `FindWindowExW` walks the desktop's window

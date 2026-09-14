@@ -1,6 +1,6 @@
 use super::*;
 use crate::system::window_ops::list_windows_live;
-use agent_desktop_core::WindowFilter;
+use agent_desktop_core::{WindowFilter, WindowState};
 
 /// A `WindowInfo` naming a handle no live window answers for, so every test
 /// below drives the same destroyed-handle shape and differs only in the check

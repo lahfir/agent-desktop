@@ -1,27 +1,18 @@
 use agent_desktop_core::LocatorField;
 use agent_desktop_core::state;
 
-use crate::tree::properties::{ElementProperties, PropertyOutcome, PropertyValue};
+use crate::tree::properties::{ElementProperties, PropertyOutcome};
 use crate::tree::property_ids::TreeProperty;
+use crate::tree::test_support::{flag, number};
 
 use super::resolve_states;
 
 const STATE_SYSTEM_BUSY_BITS: i32 = 0x0000_0800;
 const STATE_SYSTEM_HASPOPUP_BITS: i32 = 0x4000_0000;
+const STATE_SYSTEM_PRESSED_BITS: i32 = 0x0000_0008;
 const TOGGLE_STATE_ON: i32 = 1;
 const TOGGLE_STATE_INDETERMINATE: i32 = 2;
 const EXPAND_COLLAPSE_EXPANDED: i32 = 1;
-
-fn flag(property: TreeProperty, value: bool) -> (TreeProperty, PropertyOutcome) {
-    (property, PropertyOutcome::Known(PropertyValue::Flag(value)))
-}
-
-fn number(property: TreeProperty, value: i32) -> (TreeProperty, PropertyOutcome) {
-    (
-        property,
-        PropertyOutcome::Known(PropertyValue::Number(value)),
-    )
-}
 
 /// Resolves one element's tokens with the read-health prerequisite satisfied,
 /// so a case here exercises a producer branch rather than the fallback.
@@ -157,6 +148,11 @@ fn cases() -> Vec<TokenCase> {
             role: "button",
             expected: &[state::BUSY],
         },
+        TokenCase {
+            reads: vec![number(TreeProperty::LegacyState, STATE_SYSTEM_PRESSED_BITS)],
+            role: "button",
+            expected: &[state::PRESSED],
+        },
     ]
 }
 
@@ -178,14 +174,16 @@ fn each_source_emits_exactly_the_token_it_is_the_producer_for() {
 /// The table covers every token this producer can emit, so a branch added
 /// without a case cannot hide behind the cases already here.
 ///
-/// `pressed` and `hidden` are the two vocabulary members with no Windows
-/// producer at all - `hidden` has no UI Automation source, and the `pressed`
-/// arm is unreachable because a toggle-bearing button reclassifies away from
-/// the button role - so they are named here as deliberately unproduced rather
-/// than left to read as an omission.
+/// `hidden` and `invalid` are the vocabulary members with no Windows producer
+/// at all - neither has a UI Automation source - so they are named here as
+/// deliberately unproduced rather than left to read as an omission. `pressed`
+/// is not one of them: `push_legacy_state` emits it for a plain `button` role
+/// carrying `STATE_SYSTEM_PRESSED` through `LegacyIAccessibleState`, a
+/// different path than the toggle-bearing `switch` reclassification, and its
+/// case above is what pins that.
 #[test]
 fn the_case_table_names_every_token_this_crate_can_produce() {
-    const UNPRODUCED: &[&str] = &[state::PRESSED, state::HIDDEN, state::INVALID];
+    const UNPRODUCED: &[&str] = &[state::HIDDEN, state::INVALID];
 
     let covered: Vec<&str> = cases()
         .iter()

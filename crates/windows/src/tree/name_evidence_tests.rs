@@ -1,11 +1,8 @@
 use super::*;
 use crate::tree::property_outcome::PropertyValue;
+use crate::tree::test_support::text;
 
 const MARKER: &str = "zzmarkerzz";
-
-pub(super) fn text(value: &str) -> PropertyOutcome {
-    PropertyOutcome::Known(PropertyValue::Text(value.into()))
-}
 
 /// Builds a read set the way the walk does: every property this module reads
 /// is present, because `WALK_SET` always requests all of them and

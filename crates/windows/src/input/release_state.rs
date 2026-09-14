@@ -1,14 +1,15 @@
 //! Armed-and-counted state shared by every physical release guard.
 //!
-//! A click guard and a drag guard differ only in what corrective input they
-//! post on abort and how they phrase the recovery hint; the state machine
-//! underneath - armed until the final release posts, counting committed
-//! injections - is one behaviour, and the delivery report it produces is a
-//! contract (`delivered_events`, `emergency_release_posted`,
-//! `emergency_release_acknowledged`, and the not-delivered versus
-//! delivered-unverified split). Kept in one place so a guard added later
-//! inherits the report instead of restating it, and so the two existing
-//! guards cannot drift apart on what an interrupted sequence claims.
+//! A click guard, a drag guard, and a key-release guard differ only in what
+//! corrective input they post on abort (and, for the key guard, in tracking
+//! which of several held keys that correction covers) and how they phrase
+//! the recovery hint; the state machine underneath - armed until the final
+//! release posts, counting committed injections - is one behaviour, and the
+//! delivery report it produces is a contract (`delivered_events`,
+//! `emergency_release_posted`, `emergency_release_acknowledged`, and the
+//! not-delivered versus delivered-unverified split). Kept in one place so a
+//! guard added later inherits the report instead of restating it, and so
+//! the guards cannot drift apart on what an interrupted sequence claims.
 //!
 //! Cleanup itself stays with each guard's `Drop`: only the guard knows
 //! whether the corrective post is a button-up in place or a move back to the

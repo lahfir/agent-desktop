@@ -197,7 +197,7 @@ impl ElementProperties {
     /// `IdentifierEvidence::typed`, because `IdentifierEvidence::new` stamps
     /// every value `Unknown` and would void the ref downstream in
     /// `refs_validate.rs`.
-    pub fn into_locator_evidence(self, vocabulary: ResolvedVocabulary) -> LocatorEvidence {
+    pub fn locator_evidence(&self, vocabulary: ResolvedVocabulary) -> LocatorEvidence {
         let value = self.get(TreeProperty::Value).text();
         let bounds = self.get(TreeProperty::BoundingRectangle).bounds();
         LocatorEvidence {
@@ -210,7 +210,7 @@ impl ElementProperties {
             ref_evidence: LocatorRefEvidence {
                 bounds,
                 available_actions: vocabulary.available_actions,
-                descriptors: super::descriptor::descriptors(&self),
+                descriptors: super::descriptor::descriptors(self),
             },
         }
     }

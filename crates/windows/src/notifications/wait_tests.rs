@@ -25,8 +25,8 @@
 use std::time::{Duration, Instant};
 
 use agent_desktop_core::{
-    AppError, CommandContext, Deadline, ErrorCode, InteractionPolicy, SnapshotSurface,
-    commands::wait, commands::wait_surface::SurfaceWait,
+    AppError, CommandContext, ErrorCode, SnapshotSurface, commands::wait,
+    commands::wait_surface::SurfaceWait,
 };
 
 use super::session::ActionCenterSession;
@@ -42,13 +42,7 @@ use crate::system::test_support::{
     with_interaction_lease_test_lock,
 };
 
-fn deadline(ms: u64) -> Deadline {
-    Deadline::after(ms).expect("deadline")
-}
-
-fn headed() -> InteractionPolicy {
-    InteractionPolicy::headed()
-}
+use crate::system::test_time::{deadline, headed};
 
 fn center_open() -> bool {
     resolve_surface(SnapshotSurface::ActionCenter, deadline(10_000))

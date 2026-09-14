@@ -1,94 +1,18 @@
 use crate::adapter::WindowsAdapter;
-use crate::input::clipboard::{clear, get_clipboard_content, set_content};
-use crate::system::png_codec::encode_bgra_to_png;
+use crate::input::clipboard::set_content;
+use crate::system::capture_test_support::{
+    HomeIsolation, install_windows_private_file, sample_png, with_restored_clipboard,
+};
 use crate::system::private_file::WindowsPrivateFile;
+use crate::system::test_time::deadline;
 use crate::tree::fixture::bootstrap;
-use crate::tree::fixture_clipboard::clipboard_test_lock;
 use agent_desktop_core::commands::clipboard_get::{self, ClipboardGetArgs};
 use agent_desktop_core::commands::screenshot::{self, ScreenshotArgs};
 use agent_desktop_core::{
-    ClipboardContent, ClipboardFormat, CommandContext, Deadline, ImageBuffer, ImageFormat,
-    PrivateFileOps, parse_png_dimensions,
+    ClipboardContent, ClipboardFormat, CommandContext, ImageBuffer, ImageFormat, PrivateFileOps,
+    parse_png_dimensions,
 };
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
-
-static HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
-
-struct HomeIsolation {
-    previous_home: Option<std::ffi::OsString>,
-    previous_profile: Option<std::ffi::OsString>,
-    root: PathBuf,
-    _lock: MutexGuard<'static, ()>,
-}
-
-impl HomeIsolation {
-    fn enter() -> Self {
-        let lock = HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let root = std::env::temp_dir().join(format!(
-            "agent-desktop-routing-home-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::create_dir_all(&root).expect("isolated home");
-        let previous_home = std::env::var_os("HOME");
-        let previous_profile = std::env::var_os("USERPROFILE");
-        unsafe {
-            std::env::set_var("HOME", &root);
-            std::env::set_var("USERPROFILE", &root);
-        }
-        Self {
-            previous_home,
-            previous_profile,
-            root,
-            _lock: lock,
-        }
-    }
-
-    fn path(&self) -> &Path {
-        &self.root
-    }
-}
-
-impl Drop for HomeIsolation {
-    fn drop(&mut self) {
-        match &self.previous_home {
-            Some(value) => unsafe { std::env::set_var("HOME", value) },
-            None => unsafe { std::env::remove_var("HOME") },
-        }
-        match &self.previous_profile {
-            Some(value) => unsafe { std::env::set_var("USERPROFILE", value) },
-            None => unsafe { std::env::remove_var("USERPROFILE") },
-        }
-        let _ = std::fs::remove_dir_all(&self.root);
-    }
-}
-
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("routing tests use a generous deadline")
-}
-
-fn install_windows_private_file() {
-    let _ = agent_desktop_core::install_private_file_ops(Box::new(WindowsPrivateFile::new()));
-}
-
-fn sample_png() -> Vec<u8> {
-    encode_bgra_to_png(
-        &[
-            10, 20, 30, 255, 40, 50, 60, 255, 70, 80, 90, 255, 100, 110, 120, 255,
-        ],
-        2,
-        2,
-        8,
-        deadline(),
-    )
-    .expect("png")
-}
 
 fn create_junction(link: &Path, target: &Path) {
     let status = std::process::Command::new("cmd")
@@ -104,29 +28,12 @@ fn create_junction(link: &Path, target: &Path) {
     assert!(status.success(), "junction creation must succeed");
 }
 
-fn with_restored_clipboard(body: impl FnOnce()) {
-    let _lock = clipboard_test_lock();
-    bootstrap();
-    let saved_text = match get_clipboard_content(ClipboardFormat::Text, deadline()) {
-        Ok(Some(ClipboardContent::Text(value))) => Some(value),
-        _ => None,
-    };
-    let body_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
-    let _ = clear(deadline());
-    if let Some(text) = saved_text {
-        let _ = set_content(&ClipboardContent::Text(text), deadline());
-    }
-    if let Err(panic) = body_result {
-        std::panic::resume_unwind(panic);
-    }
-}
-
 #[test]
 fn clipboard_image_default_path_travels_private_seam_reparse_and_owner() {
     with_restored_clipboard(|| {
         install_windows_private_file();
         let adapter = WindowsAdapter::new();
-        let home = HomeIsolation::enter();
+        let home = HomeIsolation::enter("agent-desktop-routing-home");
         let agent = home.path().join(".agent-desktop");
         let elsewhere = home.path().join("elsewhere");
         std::fs::create_dir_all(&elsewhere).expect("elsewhere");
@@ -144,7 +51,7 @@ fn clipboard_image_default_path_travels_private_seam_reparse_and_owner() {
                 height,
                 scale_factor: 1.0,
             }),
-            deadline(),
+            deadline(10_000),
         )
         .expect("seed");
 

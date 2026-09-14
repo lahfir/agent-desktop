@@ -75,9 +75,9 @@ mod shell_surfaces {
         SHELL_SURFACE_LOCK, or_skip_shell, shell_declined_the_surface, stage_foreground,
         wait_for_foreground_to_settle,
     };
-    use crate::tree::element::UIAElement;
     use crate::tree::fixture_menu::MenuFixture;
     use crate::tree::fixture_window;
+    use crate::tree::test_support::rooted_child_count;
     use agent_desktop_core::{InteractionPolicy, ObservationOps, ProcessId, SystemOps, WindowInfo};
     use std::time::Duration;
 
@@ -106,17 +106,6 @@ mod shell_surfaces {
             bounds: None,
             state: Default::default(),
         }
-    }
-
-    fn rooted_child_count(root: &UIAElement) -> usize {
-        use uiautomation::types::TreeScope;
-
-        let client = crate::tree::automation::automation_client().expect("client");
-        let condition = client.create_true_condition().expect("condition");
-        root.0
-            .find_all(TreeScope::Children, &condition)
-            .expect("the rooted surface's children")
-            .len()
     }
 
     /// The resolution assertion: the advertised kind roots through its own

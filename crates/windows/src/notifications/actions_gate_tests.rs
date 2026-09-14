@@ -7,7 +7,7 @@
 
 #![cfg(target_os = "windows")]
 
-use agent_desktop_core::{Deadline, InteractionPolicy, NotificationInfo};
+use agent_desktop_core::NotificationInfo;
 
 use super::clear_all_still_the_sole_target;
 use crate::notifications::session::ActionCenterSession;
@@ -17,13 +17,7 @@ use crate::notifications::toast_support::{
 use crate::system::raise_oracle::{responded_since, witness_desktop};
 use crate::system::test_support::{SHELL_SURFACE_LOCK, or_skip_shell};
 
-fn deadline(ms: u64) -> Deadline {
-    Deadline::after(ms).expect("deadline")
-}
-
-fn headed() -> InteractionPolicy {
-    InteractionPolicy::headed()
-}
+use crate::system::test_time::{deadline, headed};
 
 /// With exactly one staged entry and its own identity the substitute is
 /// faithful and the gate answers true; a fabricated identity the sole entry

@@ -5,9 +5,7 @@ use agent_desktop_core::{
 };
 
 #[cfg(target_os = "windows")]
-pub(super) fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("bounded deadline")
-}
+pub(super) use crate::system::test_time::deadline;
 
 #[cfg(target_os = "windows")]
 pub(super) fn combo_a() -> KeyCombo {
@@ -27,32 +25,7 @@ fn identity_for_pid(pid: ProcessId) -> ProcessIdentity {
 
 #[cfg(target_os = "windows")]
 fn raise_handle(handle: isize) {
-    use windows_sys::Win32::Foundation::FALSE;
-    use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
-    };
-
-    let hwnd = handle as _;
-    let foreground = unsafe { GetForegroundWindow() };
-    let mut foreground_tid = 0_u32;
-    if !foreground.is_null() {
-        unsafe {
-            GetWindowThreadProcessId(foreground, &mut foreground_tid);
-        }
-    }
-    let current_tid = unsafe { GetCurrentThreadId() };
-    let attached = foreground_tid != 0
-        && foreground_tid != current_tid
-        && unsafe { AttachThreadInput(current_tid, foreground_tid, 1) } != FALSE;
-    unsafe {
-        let _ = SetForegroundWindow(hwnd);
-    }
-    if attached {
-        unsafe {
-            let _ = AttachThreadInput(current_tid, foreground_tid, 0);
-        }
-    }
+    let _ = crate::system::test_support::stage_foreground(handle);
 }
 
 #[cfg(target_os = "windows")]
@@ -90,7 +63,7 @@ pub(super) fn stage_as_foreground(fixture: &crate::tree::fixture::HostedFixture)
     use agent_desktop_core::InteractionLease;
 
     let info = window_info_for_hosted(fixture);
-    let lease = InteractionLease::guarded(deadline(), ()).expect("lease");
+    let lease = InteractionLease::guarded(deadline(10_000), ()).expect("lease");
     focus_window(&info, &lease).is_ok()
 }
 
@@ -122,7 +95,7 @@ pub(super) fn assert_press_fails_closed_without_synthesis(
     policy: InteractionPolicy,
 ) {
     synthesis_probe::reset();
-    let error = press_for_app_impl(identity, &combo_a(), policy, deadline())
+    let error = press_for_app_impl(identity, &combo_a(), policy, deadline(10_000))
         .expect_err("a target that is not foreground cannot be delivered to");
     assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_not_delivered(&error);
@@ -202,7 +175,7 @@ fn headed_foreground_target_synthesizes_delivered_unverified() {
         identity,
         &combo_a(),
         InteractionPolicy::headed(),
-        deadline(),
+        deadline(10_000),
     )
     .expect("foreground headed press");
     assert_eq!(
@@ -227,7 +200,7 @@ fn headless_foreground_target_verifies_without_stealing() {
         identity,
         &combo_a(),
         InteractionPolicy::headless(),
-        deadline(),
+        deadline(10_000),
     )
     .expect("already-foreground headless press");
     assert_eq!(
@@ -251,7 +224,7 @@ fn headless_background_target_fails_closed_without_synthesis() {
         identity,
         &combo_a(),
         InteractionPolicy::headless(),
-        deadline(),
+        deadline(10_000),
     )
     .expect_err("background headless must fail closed");
     assert_eq!(error.code, ErrorCode::ActionFailed);
@@ -277,7 +250,7 @@ fn focus_fallback_background_target_fails_closed_without_activation() {
         identity,
         &combo_a(),
         InteractionPolicy::focus_fallback(),
-        deadline(),
+        deadline(10_000),
     )
     .expect_err("focus_fallback does not activate; background fails closed");
     assert_eq!(error.code, ErrorCode::ActionFailed);
@@ -297,7 +270,7 @@ fn higher_integrity_is_perm_denied_not_delivered_before_synthesis() {
             identity,
             &combo_a(),
             InteractionPolicy::headed(),
-            deadline(),
+            deadline(10_000),
         )
         .expect_err("higher integrity")
     });
@@ -330,7 +303,7 @@ fn focus_lost_between_verify_and_inject_fails_closed_without_synthesis() {
                 identity,
                 &combo_a(),
                 InteractionPolicy::headed(),
-                deadline(),
+                deadline(10_000),
             )
             .expect_err("focus lost")
         },
@@ -354,7 +327,7 @@ fn adapter_press_key_for_app_is_wired_through_system_ops() {
     let (fixture, identity) = staged_hosted_target();
     let staged = stage_as_foreground(&fixture);
     let adapter = crate::adapter::WindowsAdapter::new();
-    let lease = InteractionLease::guarded(deadline(), ()).expect("lease");
+    let lease = InteractionLease::guarded(deadline(10_000), ()).expect("lease");
     let outcome = SystemOps::press_key_for_app(
         &adapter,
         identity,

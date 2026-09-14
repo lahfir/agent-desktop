@@ -13,7 +13,7 @@ const _: () = {
 /// element's name: the name is localized on this host (A26-1 measured the
 /// Action Center as a class-`Windows.UI.Core.CoreWindow` child of the UIA
 /// root hosted by `shell_experience_host`).
-const CORE_WINDOW_CLASS: &str = "Windows.UI.Core.CoreWindow";
+pub(super) const CORE_WINDOW_CLASS: &str = "Windows.UI.Core.CoreWindow";
 
 const SHELL_TRAY_WND_CLASS: &str = "Shell_TrayWnd";
 const TRAY_NOTIFY_CLASS: &str = "TrayNotifyWnd";

@@ -50,7 +50,7 @@ fn duplicate_evidence_candidates_settle_ambiguous_target_carrying_no_application
     let budget = WalkBudget::new(10, deadline);
 
     let mut duplicates = Vec::new();
-    collect_marked(&source, &prepared, 0, &budget, &mut duplicates);
+    collect_marked(&source, &prepared, &budget, &mut duplicates);
     assert_eq!(
         duplicates.len(),
         2,
@@ -81,43 +81,24 @@ fn duplicate_evidence_candidates_settle_ambiguous_target_carrying_no_application
         .expect("a read bounds rectangle");
 
     let pid = agent_desktop_core::ProcessId::from(std::process::id());
-    let entry = RefEntry {
-        process: agent_desktop_core::RefProcess {
-            pid,
-            process_instance: Some(
-                crate::system::process_identity::token_for_pid(pid)
-                    .expect("the token read answers")
-                    .expect("a live process has a token"),
-            ),
-        },
-        identity: agent_desktop_core::RefEntryIdentity {
-            role,
-            name: Some(name),
-            value: None,
-            description: None,
-            native_id,
-        },
-        geometry: agent_desktop_core::RefGeometry {
-            bounds: Some(rect),
-            bounds_hash: Some(hash),
-        },
-        capabilities: agent_desktop_core::RefCapabilities {
-            states: Vec::new(),
-            available_actions: Vec::new(),
-        },
-        source: agent_desktop_core::RefSource {
-            source_app: Some(APP_MARKER.into()),
-            source_window_id: Some(format!("w-{}", hosted.handle)),
-            source_window_title: Some(TITLE_MARKER.into()),
-            source_window_bounds_hash: None,
-            source_surface: agent_desktop_core::SnapshotSurface::Window,
-        },
-        scope: agent_desktop_core::RefScope {
-            root_ref: None,
-            path_is_absolute: false,
-            path: agent_desktop_core::refs::RefPath::default(),
-        },
+    let mut entry = crate::tree::walker_fake::ref_entry(&role);
+    entry.process = agent_desktop_core::RefProcess {
+        pid,
+        process_instance: Some(
+            crate::system::process_identity::token_for_pid(pid)
+                .expect("the token read answers")
+                .expect("a live process has a token"),
+        ),
     };
+    entry.identity.name = Some(name);
+    entry.identity.native_id = native_id;
+    entry.geometry = agent_desktop_core::RefGeometry {
+        bounds: Some(rect),
+        bounds_hash: Some(hash),
+    };
+    entry.source.source_app = Some(APP_MARKER.into());
+    entry.source.source_window_id = Some(format!("w-{}", hosted.handle));
+    entry.source.source_window_title = Some(TITLE_MARKER.into());
 
     for evidence in &duplicates {
         assert_eq!(

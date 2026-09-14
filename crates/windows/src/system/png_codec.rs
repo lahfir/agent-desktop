@@ -17,7 +17,6 @@ use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, CoCreateInstance, IStream, STATFLAG_NONAME, STREAM_SEEK_SET,
 };
 
-use super::hresult::{com_hresult_detail, hresult_record};
 use super::permissions::ensure_budget;
 
 const MAX_PNG_PIXELS: u64 = 64 * 1024 * 1024;
@@ -254,13 +253,7 @@ fn invalid_image(message: &str) -> AdapterError {
 }
 
 fn codec_error(hresult: i32, context: &str) -> AdapterError {
-    let record = hresult_record(hresult);
-    let mut error = AdapterError::new(record.code, format!("WIC could not {context}"))
-        .with_platform_detail(com_hresult_detail(hresult));
-    if let Some(suggestion) = record.suggestion {
-        error = error.with_suggestion(suggestion);
-    }
-    error
+    super::hresult::hresult_error("WIC", hresult, context)
 }
 
 #[cfg(test)]

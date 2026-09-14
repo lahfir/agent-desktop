@@ -4,18 +4,12 @@
 
 use super::*;
 
-use agent_desktop_core::{Deadline, ErrorCode, InteractionPolicy};
+use agent_desktop_core::ErrorCode;
 
 use crate::system::shell_surface::build_number;
 use crate::system::shell_surface_open::{open_row, open_surface};
 
-fn deadline(ms: u64) -> Deadline {
-    Deadline::after(ms).expect("deadline")
-}
-
-fn headed() -> InteractionPolicy {
-    InteractionPolicy::headed()
-}
+use crate::system::test_time::{deadline, headed};
 
 #[test]
 fn quick_settings_refusal_names_build_and_capability_holder() {

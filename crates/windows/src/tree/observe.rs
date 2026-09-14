@@ -60,11 +60,22 @@ pub(crate) fn observe_tree(
         root,
         request,
         adapter,
-        chromium_root,
-        outcome,
-        walk_started.elapsed(),
+        CompletedWalk {
+            chromium_root,
+            outcome,
+            walk_duration: walk_started.elapsed(),
+        },
         re_verify_root,
     )
+}
+
+/// The walk's own output, grouped so `finish_observation` stays within the
+/// project's parameter limit - the shell/settle decision below reads all
+/// three together and none of them means anything without the others.
+struct CompletedWalk {
+    chromium_root: bool,
+    outcome: WalkOutcome,
+    walk_duration: Duration,
 }
 
 /// Everything the walk cannot decide for itself, applied to an
@@ -80,35 +91,33 @@ fn finish_observation(
     root: ObservationRoot<'_>,
     request: ObservationRequest,
     adapter: &crate::adapter::WindowsAdapter,
-    chromium_root: bool,
-    outcome: WalkOutcome,
-    walk_duration: Duration,
+    walk: CompletedWalk,
     verify_root: impl FnOnce(ObservationRoot<'_>) -> Result<(), AdapterError>,
 ) -> Result<ObservedTree, AdapterError> {
-    if !outcome.failures.is_empty() {
-        return Err(walk_fault_error(&outcome.failures));
+    if !walk.outcome.failures.is_empty() {
+        return Err(walk_fault_error(&walk.outcome.failures));
     }
-    let shell_shaped = outcome.tree.is_complete()
-        && chromium_root
+    let shell_shaped = walk.outcome.tree.is_complete()
+        && walk.chromium_root
         && chromium::activation_eligible(root, &request)
-        && chromium::is_shell_shaped(&outcome.stats, &request);
+        && chromium::is_shell_shaped(&walk.outcome.stats, &request);
     if shell_shaped {
         if request.observation_mode.force_renderer_accessibility {
             verify_root(root)?;
-            return Ok(outcome.tree);
+            return Ok(walk.outcome.tree);
         }
         let process = root_process_identity(root);
         if !adapter.renderer_activation_attempted(&process)
-            || has_room_for_another_walk(request.deadline, walk_duration)
+            || has_room_for_another_walk(request.deadline, walk.walk_duration)
         {
-            return Err(chromium::activation_required(&outcome.stats));
+            return Err(chromium::activation_required(&walk.outcome.stats));
         }
         return Err(still_thin_after_settle());
     }
-    if outcome.tree.is_complete() {
+    if walk.outcome.tree.is_complete() {
         verify_root(root)?;
     }
-    Ok(outcome.tree)
+    Ok(walk.outcome.tree)
 }
 
 /// A walk this small can complete near-instantly under a test double, and a

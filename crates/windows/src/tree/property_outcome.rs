@@ -41,6 +41,16 @@ impl PropertyOutcome {
         }
     }
 
+    /// The read's text, or `None` if it is missing, unreadable, or blank once
+    /// trimmed - the guard every evidence-building call site needs before
+    /// trusting a string as identity or descriptive text.
+    pub fn non_blank_text(&self) -> Option<String> {
+        match self.text() {
+            LocatorField::Known(value) if !value.trim().is_empty() => Some(value),
+            _ => None,
+        }
+    }
+
     pub fn flag(&self) -> Option<bool> {
         match self {
             Self::Known(PropertyValue::Flag(value)) => Some(*value),

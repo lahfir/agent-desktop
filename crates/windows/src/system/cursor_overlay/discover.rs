@@ -13,85 +13,80 @@
 //! answerable.
 
 #[cfg(target_os = "windows")]
-pub(crate) use imp::session_endpoints;
+use crate::system::cursor_overlay::pipe_name;
+#[cfg(target_os = "windows")]
+use crate::system::cursor_overlay::wide::wide;
+#[cfg(target_os = "windows")]
+use std::path::Path;
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Storage::FileSystem::{
+    FindClose, FindFirstFileW, FindNextFileW, WIN32_FIND_DATAW,
+};
 
-#[cfg(not(target_os = "windows"))]
-pub(crate) fn session_endpoints(_root: &std::path::Path, _session_id: &str) -> Vec<String> {
-    Vec::new()
+/// The pipe device's own directory, which lists every named pipe on the
+/// machine. It is not a filesystem path and cannot be joined with one.
+#[cfg(target_os = "windows")]
+const PIPE_DIRECTORY: &str = r"\\.\pipe\*";
+
+/// The names this session is answering on right now, including the one it
+/// answers on when no agent was named.
+///
+/// Returning an empty list is not evidence that a session has no renderer:
+/// an enumeration that fails answers the same way. The caller uses this to
+/// widen a teardown, never to conclude one is unnecessary, so a failed
+/// listing costs a broadcast its extra recipients rather than reporting a
+/// session already stopped.
+#[cfg(target_os = "windows")]
+pub(crate) fn session_endpoints(root: &Path, session_id: &str) -> Vec<String> {
+    let prefix = pipe_name::session_prefix(root, session_id);
+    let mut found = vec![pipe_name::pipe_name(root, session_id, None)];
+    for name in list_pipes() {
+        if name.starts_with(&prefix) {
+            found.push(format!(r"\\.\pipe\{name}"));
+        }
+    }
+    found.sort();
+    found.dedup();
+    found
 }
 
 #[cfg(target_os = "windows")]
-mod imp {
-    use crate::system::cursor_overlay::pipe_name;
-    use crate::system::cursor_overlay::wide::wide;
-    use std::path::Path;
-    use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
-    use windows_sys::Win32::Storage::FileSystem::{
-        FindClose, FindFirstFileW, FindNextFileW, WIN32_FIND_DATAW,
-    };
+struct Listing(HANDLE);
 
-    /// The pipe device's own directory, which lists every named pipe on the
-    /// machine. It is not a filesystem path and cannot be joined with one.
-    const PIPE_DIRECTORY: &str = r"\\.\pipe\*";
-
-    /// The names this session is answering on right now, including the one it
-    /// answers on when no agent was named.
-    ///
-    /// Returning an empty list is not evidence that a session has no renderer:
-    /// an enumeration that fails answers the same way. The caller uses this to
-    /// widen a teardown, never to conclude one is unnecessary, so a failed
-    /// listing costs a broadcast its extra recipients rather than reporting a
-    /// session already stopped.
-    pub(crate) fn session_endpoints(root: &Path, session_id: &str) -> Vec<String> {
-        let prefix = pipe_name::session_prefix(root, session_id);
-        let mut found = vec![pipe_name::pipe_name(root, session_id, None)];
-        for name in list_pipes() {
-            if name.starts_with(&prefix) {
-                found.push(format!(r"\\.\pipe\{name}"));
-            }
-        }
-        found.sort();
-        found.dedup();
-        found
+#[cfg(target_os = "windows")]
+impl Drop for Listing {
+    fn drop(&mut self) {
+        unsafe { FindClose(self.0) };
     }
+}
 
-    struct Listing(HANDLE);
-
-    impl Drop for Listing {
-        fn drop(&mut self) {
-            unsafe { FindClose(self.0) };
+#[cfg(target_os = "windows")]
+fn list_pipes() -> Vec<String> {
+    let pattern = wide(PIPE_DIRECTORY);
+    let mut data: WIN32_FIND_DATAW = unsafe { std::mem::zeroed() };
+    let handle = unsafe { FindFirstFileW(pattern.as_ptr(), &mut data) };
+    if handle == INVALID_HANDLE_VALUE {
+        return Vec::new();
+    }
+    let listing = Listing(handle);
+    let mut names = Vec::new();
+    loop {
+        names.push(file_name_of(&data));
+        if unsafe { FindNextFileW(listing.0, &mut data) } == 0 {
+            break;
         }
     }
+    names
+}
 
-    fn list_pipes() -> Vec<String> {
-        let pattern = wide(PIPE_DIRECTORY);
-        let mut data: WIN32_FIND_DATAW = unsafe { std::mem::zeroed() };
-        let handle = unsafe { FindFirstFileW(pattern.as_ptr(), &mut data) };
-        if handle == INVALID_HANDLE_VALUE {
-            return Vec::new();
-        }
-        let listing = Listing(handle);
-        let mut names = Vec::new();
-        loop {
-            names.push(file_name_of(&data));
-            if unsafe { FindNextFileW(listing.0, &mut data) } == 0 {
-                break;
-            }
-        }
-        names
-    }
-
-    /// The entry's name, cut at its terminator. `cFileName` is a fixed-width
-    /// buffer whose tail is whatever the previous entry left there, so reading
-    /// the whole array appends the remains of a longer neighbour's name.
-    fn file_name_of(data: &WIN32_FIND_DATAW) -> String {
-        let end = data
-            .cFileName
-            .iter()
-            .position(|unit| *unit == 0)
-            .unwrap_or(data.cFileName.len());
-        String::from_utf16_lossy(&data.cFileName[..end])
-    }
+/// The entry's name, cut at its terminator. `cFileName` is a fixed-width
+/// buffer whose tail is whatever the previous entry left there, so reading
+/// the whole array appends the remains of a longer neighbour's name.
+#[cfg(target_os = "windows")]
+fn file_name_of(data: &WIN32_FIND_DATAW) -> String {
+    crate::system::process_identity::wide_buffer_to_string(&data.cFileName)
 }
 
 #[cfg(all(test, target_os = "windows"))]

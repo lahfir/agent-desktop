@@ -21,39 +21,14 @@ fn rect(width: f64, height: f64) -> Rect {
 }
 
 fn stored(role: &str, name: Option<&str>, bounds: Option<Rect>) -> RefEntry {
-    RefEntry {
-        process: agent_desktop_core::RefProcess {
-            pid: agent_desktop_core::ProcessId::new(1),
-            process_instance: None,
-        },
-        identity: agent_desktop_core::RefEntryIdentity {
-            role: role.to_string(),
-            name: name.map(str::to_string),
-            value: None,
-            description: None,
-            native_id: None,
-        },
-        geometry: agent_desktop_core::RefGeometry {
-            bounds,
-            bounds_hash: bounds.and_then(|rect| rect.bounds_hash()),
-        },
-        capabilities: agent_desktop_core::RefCapabilities {
-            states: Vec::new(),
-            available_actions: Vec::new(),
-        },
-        source: agent_desktop_core::RefSource {
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
-            source_window_bounds_hash: None,
-            source_surface: agent_desktop_core::SnapshotSurface::Window,
-        },
-        scope: agent_desktop_core::RefScope {
-            root_ref: None,
-            path_is_absolute: true,
-            path: agent_desktop_core::refs::RefPath::default(),
-        },
-    }
+    let mut entry = crate::tree::walker_fake::ref_entry(role);
+    entry.identity.name = name.map(str::to_string);
+    entry.geometry = agent_desktop_core::RefGeometry {
+        bounds,
+        bounds_hash: bounds.and_then(|rect| rect.bounds_hash()),
+    };
+    entry.scope.path_is_absolute = true;
+    entry
 }
 
 fn live(

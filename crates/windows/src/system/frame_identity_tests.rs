@@ -13,15 +13,13 @@ use crate::system::window_ops::{
     enumeration_calls, list_windows_live, parse_handle, window_class_name,
 };
 use crate::tree::fixture::{HostedFixture, bootstrap};
-use agent_desktop_core::{Deadline, ProcessId, WindowFilter};
+use agent_desktop_core::{ProcessId, WindowFilter};
 
 const FRAME_CLASS: &str = "ApplicationFrameWindow";
 const CORE_WINDOW_CLASS: &str = "Windows.UI.Core.CoreWindow";
 const SHELL_IMAGE: &str = "explorer.exe";
 
-fn deadline() -> Deadline {
-    Deadline::after(15_000).expect("frame identity tests use a generous deadline")
-}
+use crate::system::test_time::deadline;
 
 /// The phantom-frame exclusion (A26-8): a shell-
 /// owned `ApplicationFrameWindow` with no `CoreWindow` child - found live by
@@ -46,8 +44,8 @@ fn an_application_frame_window_without_a_hosted_core_window_keeps_its_own_identi
         );
     }
 
-    let listed =
-        list_windows_live(&WindowFilter::default(), deadline()).expect("the listing succeeds");
+    let listed = list_windows_live(&WindowFilter::default(), deadline(15_000))
+        .expect("the listing succeeds");
     for window in &listed {
         let handle = parse_handle(&window.id);
         if window_class_name(handle).as_deref() != Some(FRAME_CLASS) {
@@ -78,8 +76,8 @@ fn an_ordinary_win32_window_s_identity_is_unchanged() {
     bootstrap();
     let fixture = HostedFixture::spawn().expect("a fixture host starts");
     let pid = ProcessId::from(fixture.process_id());
-    let listed =
-        list_windows_live(&WindowFilter::default(), deadline()).expect("the listing succeeds");
+    let listed = list_windows_live(&WindowFilter::default(), deadline(15_000))
+        .expect("the listing succeeds");
     let entry = listed
         .iter()
         .find(|window| window.pid == pid)
@@ -113,7 +111,7 @@ fn the_hosted_frame_detection_rides_the_existing_enumeration_pass() {
         focused_only: false,
         app: Some(String::from("zz-agent-desktop-no-such-app")),
     };
-    let windows = list_windows_live(&filter, deadline()).expect("the listing succeeds");
+    let windows = list_windows_live(&filter, deadline(15_000)).expect("the listing succeeds");
     assert!(windows.is_empty(), "the no-match filter lists nothing");
     assert_eq!(
         enumeration_calls::take(),

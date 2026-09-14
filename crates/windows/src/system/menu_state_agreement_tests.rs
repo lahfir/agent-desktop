@@ -228,9 +228,9 @@ fn at_rest_the_detector_and_the_locator_agree_that_no_menu_is_open() {
     let fixture = MenuFixture::spawn().expect("the menu fixture starts");
     let pid = ProcessId::from(fixture.process_id());
 
-    assert!(!menu_is_open(pid, deadline()).expect("the detector reads the fixture"));
+    assert!(!menu_is_open(pid, deadline(10_000)).expect("the detector reads the fixture"));
     assert!(
-        crate::system::menu_state::locate_menu(pid, deadline())
+        crate::system::menu_state::locate_menu(pid, deadline(10_000))
             .expect("the locator reads the fixture")
             .is_none(),
         "with no menu open the locator must answer None rather than rooting something else"
@@ -254,13 +254,13 @@ fn an_open_tool_window_menu_is_both_detected_and_locatable() {
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
     assert!(settles_to(STATE_TIMEOUT, true, || menu_is_open(
         pid,
-        deadline()
+        deadline(10_000)
     )
     .expect("the detector reads the fixture")));
 
     assert!(
         settles_to(STATE_TIMEOUT, true, || {
-            crate::system::menu_state::locate_menu(pid, deadline())
+            crate::system::menu_state::locate_menu(pid, deadline(10_000))
                 .expect("the locator reads the fixture")
                 .is_some()
         }),
@@ -276,7 +276,7 @@ fn an_open_tool_window_menu_is_both_detected_and_locatable() {
 fn a_nonexistent_pid_returns_a_classified_error_not_a_panic_or_false_closed() {
     let pid = ProcessId::from(1u32);
 
-    let error = menu_is_open(pid, deadline())
+    let error = menu_is_open(pid, deadline(10_000))
         .expect_err("a nonexistent pid must not silently report closed");
 
     assert_eq!(error.code, ErrorCode::AppUnresponsive);

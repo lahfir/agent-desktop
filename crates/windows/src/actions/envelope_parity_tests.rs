@@ -254,29 +254,7 @@ fn assert_cost_capture_spread(label: &str, raw: &str) {
     let value: Value = serde_json::from_str(raw).unwrap_or_else(|err| {
         panic!("{label} must parse as JSON: {err}");
     });
-    for arm in COST_ARMS {
-        let entry = value
-            .get(*arm)
-            .unwrap_or_else(|| panic!("{label} missing arm {arm}"));
-        let min = entry["min_ms"]
-            .as_f64()
-            .unwrap_or_else(|| panic!("{label}/{arm} missing min_ms"));
-        let median = entry["median_ms"]
-            .as_f64()
-            .unwrap_or_else(|| panic!("{label}/{arm} missing median_ms"));
-        let max = entry["max_ms"]
-            .as_f64()
-            .unwrap_or_else(|| panic!("{label}/{arm} missing max_ms"));
-        assert!(
-            min <= median && median <= max,
-            "{label}/{arm}: min<=median<=max ({min}, {median}, {max})"
-        );
-        assert_eq!(entry["n"], 7, "{label}/{arm} n");
-        assert_eq!(
-            entry["warmup_discarded"], true,
-            "{label}/{arm} warmup_discarded"
-        );
-    }
+    super::assert_cost_arms(label, &value, COST_ARMS);
     assert_eq!(
         value["methodology"], "min-of-seven discard warm-up (A15-13)",
         "{label} methodology"

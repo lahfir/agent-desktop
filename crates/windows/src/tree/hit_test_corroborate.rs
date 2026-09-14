@@ -247,29 +247,16 @@ fn process_id_of(element: &UIAElement) -> Option<u32> {
 /// element read does — `Failed`, never `Unlabelled`, since nothing was asked.
 pub(crate) fn occluder_evidence(hit: &UIAElement, deadline: Deadline) -> Option<HitTestResult> {
     let properties = read_occluder_properties(hit, deadline);
-    let role = occluder_role(&properties);
     let label = if deadline.is_expired() {
         LabelOutcome::Failed
     } else {
         read_label(hit, false)
     };
-    let (name_field, _) = name_fields(&properties, &label);
-    let name = name_field.known().cloned();
-    let bounds = match properties.get(TreeProperty::BoundingRectangle).bounds() {
-        LocatorField::Known(bounds) => Some(bounds),
-        LocatorField::Absent => None,
-        LocatorField::Unknown => return None,
-    };
-    Some(HitTestResult::InterceptedBy {
-        role: Some(role),
-        name,
-        bounds,
-    })
+    occluder_from_properties(&properties, label)
 }
 
 /// Builds `InterceptedBy` from a prepared property set (tests pin withholding
 /// and the `"unknown"` role fallback without a live probe).
-#[cfg(test)]
 pub(crate) fn occluder_from_properties(
     properties: &ElementProperties,
     label: LabelOutcome,

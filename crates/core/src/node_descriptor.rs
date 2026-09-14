@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-/// The optional presentation descriptors the product's P2-O8 contract names:
-/// a finer-grained role refinement, the provider's own control-type
-/// description, an input placeholder, and the DOM class list of a web-rendered
-/// element.
+/// The optional presentation descriptors this schema adds: a finer-grained
+/// role refinement, the provider's own control-type description, an input
+/// placeholder, and the DOM class list of a web-rendered element.
 ///
 /// Every field is absent by default, so a node that supplies none of them
 /// serializes byte-identically to a node that predates this schema (the macOS

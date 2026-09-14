@@ -2,9 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use agent_desktop_core::{
-    AdapterError, AppInfo, Deadline, ErrorCode, ProcessId, WindowInfo, WindowState,
-};
+use agent_desktop_core::{AdapterError, AppInfo, Deadline, ErrorCode, ProcessId, WindowInfo};
 
 use super::app_ops;
 use super::listing_retry::{LISTING_RACE_ATTEMPTS, retry_transient_window_race};
@@ -19,16 +17,12 @@ use super::window_ops;
 ///
 /// `windows_complete` / `apps_complete` report whether the walk ran to
 /// completion, never whether every entity was identifiable.
-/// `excluded_window_count` is the separate, observability-only fact: how many
-/// admitted windows were dropped for unreadable identity. It never flips
-/// either `_complete` bit.
 #[derive(Debug, Clone)]
 pub(crate) struct SignalWindowInventory {
     pub(crate) windows: Vec<WindowInfo>,
     pub(crate) apps: Vec<AppInfo>,
     pub(crate) windows_complete: bool,
     pub(crate) apps_complete: bool,
-    pub(crate) excluded_window_count: usize,
 }
 
 impl SignalWindowInventory {
@@ -38,7 +32,6 @@ impl SignalWindowInventory {
             apps: Vec::new(),
             windows_complete: false,
             apps_complete: false,
-            excluded_window_count: 0,
         }
     }
 }
@@ -177,7 +170,6 @@ fn assembly_phase(
     let mut windows = Vec::new();
     let mut apps = Vec::new();
     let mut apps_seen: HashSet<ProcessId> = HashSet::new();
-    let mut excluded_window_count = 0usize;
     let mut focused_seen = false;
 
     for (index, entry) in entries.into_iter().enumerate() {
@@ -192,34 +184,26 @@ fn assembly_phase(
         }
         let fresh_token = cached_token(&mut cache, current_pid)?;
         let token = match (entry.token.as_deref(), fresh_token.as_deref()) {
-            (None, None) => {
-                excluded_window_count += 1;
-                continue;
-            }
+            (None, None) => continue,
             (Some(walk_token), Some(assembly_token)) if walk_token == assembly_token => {
                 walk_token.to_string()
             }
             _ => return Err(mid_walk_race_signal()),
         };
         let Some(app_name) = name_by_pid.get(&current_pid).cloned() else {
-            excluded_window_count += 1;
             continue;
         };
 
         let focused = !focused_seen && window_ops::is_foreground_window(entry.window.handle);
         focused_seen |= focused;
         windows.push(WindowInfo {
-            id: format!("w-{}", entry.window.handle as usize),
+            id: window_ops::window_id(entry.window.handle),
             title: window_identity::live_window_title(entry.window.handle).unwrap_or_default(),
             app: app_name.clone(),
             pid: current_pid,
             process_instance: Some(token.clone()),
             bounds: Some(entry.window.rect),
-            state: WindowState {
-                is_focused: focused,
-                minimized: Some(entry.window.iconic),
-                visible: Some(entry.window.visible),
-            },
+            state: window_ops::window_state(focused, entry.window.iconic, entry.window.visible),
         });
         if apps_seen.insert(current_pid) {
             apps.push(AppInfo {
@@ -238,7 +222,6 @@ fn assembly_phase(
         apps,
         windows_complete: true,
         apps_complete: true,
-        excluded_window_count,
     }))
 }
 

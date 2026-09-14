@@ -21,14 +21,15 @@ use std::path::{Path, PathBuf};
 
 use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, HANDLE};
 use windows_sys::Win32::Security::Authorization::{GetSecurityInfo, SE_FILE_OBJECT};
-use windows_sys::Win32::Security::{ACL, DACL_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION};
+use windows_sys::Win32::Security::{ACL, DACL_SECURITY_INFORMATION};
 use windows_sys::Win32::Storage::FileSystem::{
     FILE_FLAG_BACKUP_SEMANTICS, FILE_GENERIC_READ, GetFinalPathNameByHandleW,
 };
 use windows_sys::Win32::System::SystemInformation::GetSystemWindowsDirectoryW;
 
 use super::dacl;
-use super::sid::{self, SidBuffer};
+use super::sid;
+use crate::system::token_sid::read_owner_sid;
 use agent_desktop_core::{AdapterError, ErrorCode};
 
 const EXTENDED_LENGTH_PREFIX: &str = r"\\?\";
@@ -77,23 +78,40 @@ pub(super) fn strip_extended_prefix(path: &Path) -> PathBuf {
 }
 
 fn system_windows_directory() -> Result<PathBuf, AdapterError> {
+    let buffer = grow_and_retry_wide_buffer("GetSystemWindowsDirectoryW", true, |buffer| unsafe {
+        GetSystemWindowsDirectoryW(buffer.as_mut_ptr(), buffer.len() as u32)
+    })?;
+    Ok(PathBuf::from(String::from_utf16_lossy(&buffer)))
+}
+
+/// One Win32 `GetXxxW`-shaped probe-then-grow: called once against a 300-`u16`
+/// guess, and - when it reports a longer length than that - once more against
+/// a buffer sized to fit. `strict_retry_check` is the one place the two
+/// existing callers already disagreed: `GetSystemWindowsDirectoryW`'s caller
+/// also re-checked the retry itself still fit (guarding a length that grew
+/// again between the two calls), `GetFinalPathNameByHandleW`'s did not: each
+/// keeps its own answer here rather than the merge silently picking one.
+fn grow_and_retry_wide_buffer(
+    context: &str,
+    strict_retry_check: bool,
+    call: impl Fn(&mut [u16]) -> u32,
+) -> Result<Vec<u16>, AdapterError> {
     let mut buffer = vec![0_u16; 300];
-    let written = unsafe { GetSystemWindowsDirectoryW(buffer.as_mut_ptr(), buffer.len() as u32) };
+    let written = call(&mut buffer);
     if written == 0 {
-        return Err(win32_error("GetSystemWindowsDirectoryW failed"));
+        return Err(win32_error(&format!("{context} failed")));
     }
     if written as usize >= buffer.len() {
         buffer = vec![0_u16; written as usize + 1];
-        let retried =
-            unsafe { GetSystemWindowsDirectoryW(buffer.as_mut_ptr(), buffer.len() as u32) };
-        if retried == 0 || retried as usize >= buffer.len() {
-            return Err(win32_error("GetSystemWindowsDirectoryW failed on retry"));
+        let retried = call(&mut buffer);
+        if retried == 0 || (strict_retry_check && retried as usize >= buffer.len()) {
+            return Err(win32_error(&format!("{context} failed on retry")));
         }
         buffer.truncate(retried as usize);
     } else {
         buffer.truncate(written as usize);
     }
-    Ok(PathBuf::from(String::from_utf16_lossy(&buffer)))
+    Ok(buffer)
 }
 
 /// Creates `directory` privately if absent, or validates it if present.
@@ -167,23 +185,9 @@ fn validate_is_directory(handle: &File) -> Result<(), AdapterError> {
 /// attack this comparison exists to catch.
 fn validate_final_path(handle: &File, expected: &Path) -> Result<(), AdapterError> {
     let raw: HANDLE = handle.as_raw_handle();
-    let mut buffer = vec![0_u16; 300];
-    let written =
-        unsafe { GetFinalPathNameByHandleW(raw, buffer.as_mut_ptr(), buffer.len() as u32, 0) };
-    if written == 0 {
-        return Err(win32_error("GetFinalPathNameByHandleW failed"));
-    }
-    if written as usize >= buffer.len() {
-        buffer = vec![0_u16; written as usize + 1];
-        let retried =
-            unsafe { GetFinalPathNameByHandleW(raw, buffer.as_mut_ptr(), buffer.len() as u32, 0) };
-        if retried == 0 {
-            return Err(win32_error("GetFinalPathNameByHandleW failed on retry"));
-        }
-        buffer.truncate(retried as usize);
-    } else {
-        buffer.truncate(written as usize);
-    }
+    let buffer = grow_and_retry_wide_buffer("GetFinalPathNameByHandleW", false, |buffer| unsafe {
+        GetFinalPathNameByHandleW(raw, buffer.as_mut_ptr(), buffer.len() as u32, 0)
+    })?;
     let actual = String::from_utf16_lossy(&buffer);
     let actual = actual
         .strip_prefix(EXTENDED_LENGTH_PREFIX)
@@ -210,32 +214,6 @@ fn validate_owner(handle: &File) -> Result<(), AdapterError> {
     Err(untrusted(
         "lock directory owner is neither this process's token owner nor its token user",
     ))
-}
-
-fn read_owner_sid(handle: &File) -> std::io::Result<SidBuffer> {
-    let mut owner: windows_sys::Win32::Security::PSID = std::ptr::null_mut();
-    let mut descriptor: *mut core::ffi::c_void = std::ptr::null_mut();
-    let raw: HANDLE = handle.as_raw_handle();
-    let status = unsafe {
-        GetSecurityInfo(
-            raw,
-            SE_FILE_OBJECT,
-            OWNER_SECURITY_INFORMATION,
-            &mut owner,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            &mut descriptor,
-        )
-    };
-    if status != 0 {
-        return Err(std::io::Error::from_raw_os_error(status as i32));
-    }
-    let copied = SidBuffer::copied_from_valid(owner);
-    if !descriptor.is_null() {
-        unsafe { windows_sys::Win32::Foundation::LocalFree(descriptor) };
-    }
-    copied
 }
 
 fn validate_dacl(handle: &File) -> Result<(), AdapterError> {

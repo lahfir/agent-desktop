@@ -61,6 +61,16 @@ mod imp {
         serve(&listener, &mut host, session_id, agent_id)
     }
 
+    /// Whether this renderer is the one a control is addressed to.
+    ///
+    /// An agent's renderer answers only its own agent's controls, or the
+    /// session-wide ones. A `Disable` carries no agent by design - stopping a
+    /// session stops all of it - so it is accepted whoever it reaches, and the
+    /// broadcast that sends it relies on exactly that.
+    fn serves_agent(mine: Option<&str>, theirs: Option<&str>, session_wide: bool) -> bool {
+        session_wide || mine == theirs
+    }
+
     /// The connection is released before anything that only has to look right
     /// is drawn.
     ///
@@ -74,16 +84,6 @@ mod imp {
     ///
     /// A `Disable` never settles: the process is about to exit, and there is
     /// nothing left to draw onto.
-    /// Whether this renderer is the one a control is addressed to.
-    ///
-    /// An agent's renderer answers only its own agent's controls, or the
-    /// session-wide ones. A `Disable` carries no agent by design - stopping a
-    /// session stops all of it - so it is accepted whoever it reaches, and the
-    /// broadcast that sends it relies on exactly that.
-    fn serves_agent(mine: Option<&str>, theirs: Option<&str>, session_wide: bool) -> bool {
-        session_wide || mine == theirs
-    }
-
     fn serve(
         listener: &server::Listener,
         host: &mut surface_host::SurfaceHost,

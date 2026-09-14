@@ -14,13 +14,22 @@
 //! ships.
 
 use agent_desktop_core::{
-    ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionPolicy,
-    StepMechanism,
+    ActionStep, ActionStepOutcome, AdapterError, Deadline, DeliverySemantics, ErrorCode,
+    InteractionPolicy, StepMechanism,
 };
 use std::time::{Duration, Instant};
 
-use crate::actions::post_state::delivery_occurred;
+#[cfg(target_os = "windows")]
+use crate::actions::mutation::{classify_success, classify_write};
 use crate::system::permissions::ensure_budget;
+#[cfg(target_os = "windows")]
+use crate::tree::element::UIAElement;
+#[cfg(target_os = "windows")]
+use crate::tree::properties::read_one;
+#[cfg(target_os = "windows")]
+use crate::tree::property_ids::TreeProperty;
+#[cfg(target_os = "windows")]
+use uiautomation::patterns::UIInvokePattern;
 
 pub(crate) const INVOKE_LABEL: &str = "InvokePattern.Invoke";
 pub(crate) const ALREADY_LABEL: &str = "AlreadyInState";
@@ -73,7 +82,7 @@ impl DeliveryOutcome {
         }
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn was_delivered(self) -> bool {
         matches!(
             self,
@@ -81,7 +90,7 @@ impl DeliveryOutcome {
         )
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn was_verified(self) -> bool {
         matches!(self, Self::SatisfiedNoDelivery | Self::DeliveredVerified)
     }
@@ -155,6 +164,19 @@ pub(crate) fn rung_allowed(rung: &ChainRung<'_>, policy: InteractionPolicy) -> b
     !rung.requires_headed || policy.is_headed()
 }
 
+/// Re-dispositions an error raised after a rung already mutated the control.
+/// The caller has positive evidence of delivery, so the retry permission the
+/// inner error carried no longer describes the world the caller is in.
+pub(crate) fn after_delivery(error: AdapterError) -> AdapterError {
+    error.with_disposition(DeliverySemantics::delivered_unverified())
+}
+
+pub(crate) fn delivery_occurred(steps: &[ActionStep]) -> bool {
+    steps
+        .iter()
+        .any(|step| matches!(step.outcome, ActionStepOutcome::Succeeded))
+}
+
 pub(crate) fn exhaustion_disposition(steps: &[ActionStep]) -> DeliverySemantics {
     if delivery_occurred(steps) {
         DeliverySemantics::delivered_unverified()
@@ -184,6 +206,45 @@ pub(crate) fn record_step_outcome(
     steps.push(build_step(label, outcome));
     outcome.terminates_chain()
         && !(continue_after_unverified_delivery && outcome == DeliveryOutcome::DeliveredUnverified)
+}
+
+/// Skips `run` when `available` is false, recording a clean not-delivered
+/// outcome instead of invoking a pattern the live read never confirmed.
+/// Replaces the `if !available { return Ok(NotDelivered); } run()` closure
+/// copy-pasted at every rung gate — callers with a compound guard combine it
+/// into one `bool` before calling in (De Morgan, not two calls).
+pub(crate) fn gated<'a>(
+    available: bool,
+    run: &'a mut dyn FnMut() -> Result<DeliveryOutcome, AdapterError>,
+) -> impl FnMut() -> Result<DeliveryOutcome, AdapterError> + 'a {
+    move || {
+        if !available {
+            return Ok(DeliveryOutcome::NotDelivered);
+        }
+        run()
+    }
+}
+
+/// Whether `InvokePattern` is advertised — the availability half of the
+/// Click / Expand-Collapse / Toggle chains' shared Invoke fallback rung.
+#[cfg(target_os = "windows")]
+pub(crate) fn invoke_available(element: &UIAElement) -> bool {
+    read_one(element, TreeProperty::InvokeAvailable).flag() == Some(true)
+}
+
+/// Invokes `InvokePattern` and classifies the write — the delivery half of
+/// the shared Invoke fallback rung. Callers that need a [`DeliveryOutcome`]
+/// directly (rather than an unverified bool to observe further) wrap this
+/// with [`DeliveryOutcome::from_delivery`].
+#[cfg(target_os = "windows")]
+pub(crate) fn invoke_pattern_delivered(element: &UIAElement) -> Result<bool, AdapterError> {
+    match element.0.get_pattern::<UIInvokePattern>() {
+        Ok(pattern) => match pattern.invoke() {
+            Ok(()) => classify_success(),
+            Err(error) => classify_write("Invoke", INVOKE_LABEL, &error),
+        },
+        Err(error) => classify_write("get_pattern", INVOKE_LABEL, &error),
+    }
 }
 
 #[cfg(test)]

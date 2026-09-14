@@ -68,15 +68,14 @@ pub(crate) fn walk_gui_threads<T>(
     Ok(found)
 }
 
+/// Win32 `GetLastError` -> `HRESULT_FROM_WIN32` into the shared HRESULT
+/// table, the convention every native-failure module in this crate uses for
+/// its own local errors.
 fn open_failure_error() -> AdapterError {
     super::listing_retry::narrow_to_permitted_codes(win32_last_error(
         "CreateToolhelp32Snapshot failed for classic menu-mode detection",
     ))
 }
-
-/// Win32 `GetLastError` -> `HRESULT_FROM_WIN32` into the shared HRESULT
-/// table, the convention every native-failure module in this crate uses for
-/// its own local errors.
 
 /// Counts snapshot handle opens so a test can prove every `ToolHelp`
 /// snapshot this walk creates is matched by exactly one close, across every
@@ -90,15 +89,11 @@ pub(crate) mod thread_snapshot_calls {
     }
 
     pub(crate) fn record() {
-        COUNT.with(|cell| cell.set(cell.get() + 1));
+        crate::system::call_counter::record(&COUNT);
     }
 
     pub(crate) fn take() -> usize {
-        COUNT.with(|cell| {
-            let value = cell.get();
-            cell.set(0);
-            value
-        })
+        crate::system::call_counter::take(&COUNT)
     }
 }
 
@@ -115,15 +110,11 @@ pub(crate) mod thread_snapshot_closes {
     }
 
     pub(crate) fn record() {
-        COUNT.with(|cell| cell.set(cell.get() + 1));
+        crate::system::call_counter::record(&COUNT);
     }
 
     pub(crate) fn take() -> usize {
-        COUNT.with(|cell| {
-            let value = cell.get();
-            cell.set(0);
-            value
-        })
+        crate::system::call_counter::take(&COUNT)
     }
 }
 
@@ -145,15 +136,7 @@ pub(super) mod force_open_failure {
     }
 
     pub(crate) fn with<R>(run: impl FnOnce() -> R) -> R {
-        struct Reset;
-        impl Drop for Reset {
-            fn drop(&mut self) {
-                ACTIVE.with(|cell| cell.set(false));
-            }
-        }
-        ACTIVE.with(|cell| cell.set(true));
-        let _reset = Reset;
-        run()
+        crate::system::test_support::with_flag(&ACTIVE, true, run)
     }
 }
 

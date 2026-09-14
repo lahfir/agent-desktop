@@ -161,21 +161,10 @@ fn chromium_menu_condition(
 fn menu_family_condition_without_bar(
     client: &uiautomation::UIAutomation,
 ) -> Result<uiautomation::core::UICondition, AdapterError> {
-    use uiautomation::types::{ControlType, UIProperty};
-    use uiautomation::variants::Variant;
+    use uiautomation::types::ControlType;
 
-    let control_type_condition = |control: ControlType| {
-        client
-            .create_property_condition(UIProperty::ControlType, Variant::from(control as i32), None)
-            .map_err(|error| {
-                super::narrow_to_permitted_codes(crate::tree::automation::uia_error(
-                    &error,
-                    "build the menu-family search condition",
-                ))
-            })
-    };
-    let menu = control_type_condition(ControlType::Menu)?;
-    let menu_item = control_type_condition(ControlType::MenuItem)?;
+    let menu = super::control_type_condition(client, ControlType::Menu)?;
+    let menu_item = super::control_type_condition(client, ControlType::MenuItem)?;
     client
         .create_or_condition(menu, menu_item)
         .map_err(|error| {

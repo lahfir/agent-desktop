@@ -65,14 +65,9 @@ pub(crate) fn process_snapshot() -> Result<Vec<ProcessRow>, AdapterError> {
     };
     let mut ok = unsafe { Process32FirstW(snapshot, &mut entry) };
     while ok != 0 {
-        let length = entry
-            .szExeFile
-            .iter()
-            .position(|c| *c == 0)
-            .unwrap_or(entry.szExeFile.len());
         rows.push(ProcessRow {
             pid: ProcessId::from(entry.th32ProcessID),
-            name: String::from_utf16_lossy(&entry.szExeFile[..length]),
+            name: process_identity::wide_buffer_to_string(&entry.szExeFile),
         });
         ok = unsafe { Process32NextW(snapshot, &mut entry) };
     }
@@ -190,14 +185,7 @@ fn process_token_of(
 ) -> Option<(ProcessId, Option<String>)> {
     #[cfg(target_os = "windows")]
     {
-        use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
-
-        let mut pid: u32 = 0;
-        unsafe { GetWindowThreadProcessId(handle, &mut pid) };
-        if pid == 0 {
-            return None;
-        }
-        let pid = ProcessId::from(pid);
+        let pid = super::window_identity::live_window_owner(handle)?;
         let token = process_identity::token_for_pid(pid).ok().flatten();
         Some((pid, token))
     }
@@ -217,15 +205,11 @@ pub(super) mod enumeration_calls {
     }
 
     pub(super) fn record() {
-        COUNT.with(|cell| cell.set(cell.get() + 1));
+        crate::system::call_counter::record(&COUNT);
     }
 
     pub(super) fn take() -> usize {
-        COUNT.with(|cell| {
-            let value = cell.get();
-            cell.set(0);
-            value
-        })
+        crate::system::call_counter::take(&COUNT)
     }
 }
 

@@ -4,20 +4,14 @@ use crate::system::capture_window::capture_window;
 use crate::system::png_codec::decode_png_to_bgra;
 use crate::tree::fixture::{LocalPatternFixture, bootstrap};
 use crate::tree::fixture_pattern::{class_still_registered, window_still_exists};
-use agent_desktop_core::Deadline;
 
 /// On-screen pattern staging follows the same opt-in as the ScratchWpf live
 /// legs so a developer suite does not gain a window unasked; CI sets it.
 const LIVE_STAGE_VARIABLE: &str = "AGENT_DESKTOP_LIVE_WPF";
 
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("live capture breadth uses a generous deadline")
-}
+use crate::system::test_time::deadline;
 
-fn sample_rgb(bgra: &[u8], width: u32, x: i32, y: i32) -> [u8; 3] {
-    let offset = ((y as u32 * width + x as u32) * 4) as usize;
-    [bgra[offset + 2], bgra[offset + 1], bgra[offset]]
-}
+use crate::system::capture_test_support::sample_rgb;
 
 fn skip_unless_live_staging(reason: &str) -> bool {
     if std::env::var_os(LIVE_STAGE_VARIABLE).is_none() {
@@ -72,11 +66,12 @@ fn live_legacy_pattern_fixture_matches_and_invert_fails_when_stageable() {
     let handle = fixture.handle();
     let class_name = fixture.class_name().to_owned();
 
-    let image =
-        backend_hooks::with_force_unsupported(|| capture_window(handle as _, 1.0, deadline()))
-            .expect("legacy PrintWindow of the pattern fixture");
+    let image = backend_hooks::with_force_unsupported(|| {
+        capture_window(handle as _, 1.0, deadline(10_000))
+    })
+    .expect("legacy PrintWindow of the pattern fixture");
     let (bgra, width, _height) =
-        decode_png_to_bgra(&image.data, deadline()).expect("decode captured PNG");
+        decode_png_to_bgra(&image.data, deadline(10_000)).expect("decode captured PNG");
     assert_pattern_samples(&bgra, width, &fixture);
 
     drop(fixture);
@@ -103,10 +98,10 @@ fn live_modern_pattern_fixture_matches_when_supported_and_stageable() {
     let handle = fixture.handle();
     let class_name = fixture.class_name().to_owned();
 
-    let image = crate::system::capture_modern::capture_window(handle as _, 1.0, deadline())
+    let image = crate::system::capture_modern::capture_window(handle as _, 1.0, deadline(10_000))
         .expect("WGC window capture of the pattern fixture");
     let (bgra, width, _height) =
-        decode_png_to_bgra(&image.data, deadline()).expect("decode captured PNG");
+        decode_png_to_bgra(&image.data, deadline(10_000)).expect("decode captured PNG");
     assert_pattern_samples(&bgra, width, &fixture);
 
     drop(fixture);

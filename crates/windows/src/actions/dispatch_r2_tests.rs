@@ -1,11 +1,11 @@
-use super::click_chain_judged_for;
+use super::{ClickAvailability, click_chain_judged_for};
 use crate::actions::chain::DeliveryOutcome;
 use crate::actions::disclosure::{DisclosureInput, ExpandKind, disclosure_judged_for};
 use crate::actions::focus::focus_from_delivery;
 use crate::actions::scroll::{ScrollPlan, scroll_judged_for};
 use crate::actions::select::{SelectOps, SelectPlan, select_judged_for};
-use crate::actions::toggle_state::toggle_judged_for;
-use crate::actions::value_write::set_value_judged_for;
+use crate::actions::toggle_state::{ToggleAvailability, toggle_judged_for};
+use crate::actions::value_write::{SetValuePlan, set_value_judged_for};
 use crate::tree::actions::resolve_actions;
 use crate::tree::properties::ElementProperties;
 use crate::tree::property_ids::TreeProperty;
@@ -54,8 +54,10 @@ fn r2_invoke_advertisement_reaches_click_rung() {
     let steps = click_chain_judged_for(
         short_deadline(),
         InteractionPolicy::headless(),
-        true,
-        false,
+        ClickAvailability {
+            invoke_available: true,
+            legacy_available: false,
+        },
         || {
             invoke.set(invoke.get() + 1);
             Ok(DeliveryOutcome::DeliveredUnverified)
@@ -85,8 +87,10 @@ fn r2_legacy_advertisement_reaches_legacy_rung() {
     let steps = click_chain_judged_for(
         short_deadline(),
         InteractionPolicy::headless(),
-        false,
-        true,
+        ClickAvailability {
+            invoke_available: false,
+            legacy_available: true,
+        },
         || {
             invoke.set(invoke.get() + 1);
             Ok(DeliveryOutcome::DeliveredUnverified)
@@ -135,9 +139,11 @@ fn r2_set_value_advertisement_reaches_value_rung() {
     let steps = set_value_judged_for(
         short_deadline(),
         InteractionPolicy::headless(),
-        "x",
-        true,
-        false,
+        SetValuePlan {
+            value: "x",
+            value_writable: true,
+            range_available: false,
+        },
         || {
             value.set(value.get() + 1);
             Ok(DeliveryOutcome::DeliveredVerified)
@@ -162,8 +168,10 @@ fn r2_toggle_advertisement_reaches_toggle_rung() {
     let steps = toggle_judged_for(
         short_deadline(),
         InteractionPolicy::headless(),
-        true,
-        false,
+        ToggleAvailability {
+            toggle_ok: true,
+            invoke_ok: false,
+        },
         || {
             toggle.set(toggle.get() + 1);
             Ok(DeliveryOutcome::DeliveredVerified)

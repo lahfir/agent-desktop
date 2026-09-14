@@ -1,4 +1,4 @@
-use super::{classify_mutation, classify_success};
+use super::{action_scan_sources, classify_mutation, classify_success};
 use crate::system::hresult::{
     E_ACCESSDENIED, E_INVALIDARG, RPC_E_DISCONNECTED, RPC_E_SERVERFAULT, RPC_S_CALL_FAILED,
     RPC_S_SERVER_UNAVAILABLE, UIA_E_ELEMENTNOTAVAILABLE, UIA_E_ELEMENTNOTENABLED,
@@ -198,7 +198,7 @@ fn write_path_sources_never_reach_the_read_classification_table() {
         concat!("hresult_", "record"),
         concat!("uia_failure_", "disposition"),
     ];
-    let sources = mutation_sources();
+    let sources = action_scan_sources();
     for (name, source) in sources {
         for line in source.lines() {
             let is_prose =
@@ -235,34 +235,13 @@ fn a_planted_read_classification_call_is_caught() {
     );
 }
 
-fn mutation_sources() -> [(&'static str, &'static str); 13] {
-    [
-        ("actions/mutation.rs", include_str!("mutation.rs")),
-        (
-            "actions/scroll_into_view.rs",
-            include_str!("scroll_into_view.rs"),
-        ),
-        ("actions/scroll_ladder.rs", include_str!("scroll_ladder.rs")),
-        ("actions/dispatch.rs", include_str!("dispatch.rs")),
-        ("actions/focus.rs", include_str!("focus.rs")),
-        ("actions/chain.rs", include_str!("chain.rs")),
-        ("actions/value_write.rs", include_str!("value_write.rs")),
-        ("actions/post_state.rs", include_str!("post_state.rs")),
-        ("actions/toggle_state.rs", include_str!("toggle_state.rs")),
-        ("actions/disclosure.rs", include_str!("disclosure.rs")),
-        ("actions/select.rs", include_str!("select.rs")),
-        ("actions/select_search.rs", include_str!("select_search.rs")),
-        ("actions/scroll.rs", include_str!("scroll.rs")),
-    ]
-}
-
 /// The stale arm must be built with `AdapterError::new(ErrorCode::StaleRef, …)`
 /// so it never inherits `stale_ref`'s RefMap-shaped message. A19-2's killed
 /// provider lands this arm.
 #[test]
 fn actions_never_construct_stale_via_adapter_error_stale_ref() {
     let banned = concat!("AdapterError::", "stale_ref");
-    let sources = mutation_sources();
+    let sources = action_scan_sources();
     for (name, source) in sources {
         for line in source.lines() {
             let is_prose =
@@ -277,4 +256,61 @@ fn actions_never_construct_stale_via_adapter_error_stale_ref() {
         include_str!("mutation.rs").contains("ErrorCode::StaleRef"),
         "the stale arm must name ErrorCode::StaleRef directly"
     );
+}
+
+/// `classify_write` itself - the wrapper `chain.rs`, `dispatch.rs`,
+/// `toggle_state.rs` and every other write-path caller actually invokes -
+/// had no direct coverage; every existing test above pins `classify_mutation`
+/// one layer in.
+#[cfg(target_os = "windows")]
+mod classify_write_tests {
+    use crate::actions::mutation::classify_write;
+    use crate::system::hresult::E_ACCESSDENIED;
+    use crate::tree::automation::{ERR_NONE, ERR_NOTFOUND};
+    use agent_desktop_core::{DeliveryDisposition, ErrorCode};
+    use uiautomation::Error as UiaError;
+
+    /// `classify_write`'s second arm (`other if other.is_exhaustion()`) is
+    /// unreachable under the current `is_exhaustion` definition: it is
+    /// exactly `Sentinel(ERR_NONE)`, the value the first arm already
+    /// matches, and a `match` tries arms top-down. This pins the externally
+    /// observable outcome the two arms agree on, since which one produces it
+    /// cannot be distinguished from outside `classify_write`.
+    #[test]
+    fn the_empty_pattern_sentinel_is_absence_not_an_error() {
+        let error = UiaError::new(ERR_NONE, "get_pattern returned nothing");
+
+        let result = classify_write("get_pattern", "UIScrollItemPattern", &error)
+            .expect("an empty pattern must not be Err");
+
+        assert!(!result);
+    }
+
+    #[test]
+    fn a_non_exhaustion_sentinel_is_delegated_to_the_mutation_table() {
+        let error = UiaError::new(ERR_NOTFOUND, "test");
+
+        let outcome = classify_write("Invoke", "InvokePattern.Invoke", &error)
+            .expect_err("a not-found sentinel is not absence and must surface");
+
+        assert_eq!(outcome.code, ErrorCode::ActionFailed);
+        assert_eq!(
+            outcome.disposition.delivery(),
+            DeliveryDisposition::DeliveryUncertain
+        );
+    }
+
+    #[test]
+    fn an_hresult_failure_is_delegated_to_the_mutation_table() {
+        let error = UiaError::from(windows::core::HRESULT(E_ACCESSDENIED));
+
+        let outcome = classify_write("SetValue", "ValuePattern.SetValue", &error)
+            .expect_err("access denied must surface");
+
+        assert_eq!(outcome.code, ErrorCode::PermDenied);
+        assert_eq!(
+            outcome.disposition.delivery(),
+            DeliveryDisposition::NotDelivered
+        );
+    }
 }

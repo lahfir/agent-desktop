@@ -7,12 +7,9 @@ use windows_sys::Win32::Graphics::Gdi::{
     InvalidateRect, PAINTSTRUCT, ReleaseDC, SRCCOPY, SelectObject, UpdateWindow,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW, IDC_ARROW,
-    LoadCursorW, MSG, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOWNOACTIVATE,
-    SendMessageW, ShowWindow, TranslateMessage, UnregisterClassW, WM_DESTROY, WM_PAINT,
-    WM_PRINTCLIENT, WNDCLASSEXW, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, GetClientRect, PostMessageW, PostQuitMessage,
+    SW_SHOWNOACTIVATE, SendMessageW, ShowWindow, WM_DESTROY, WM_PAINT, WM_PRINTCLIENT, WS_POPUP,
 };
 
 use super::{PATTERN_HEIGHT, PATTERN_WIDTH, PatternColors, PatternExpectation};
@@ -102,36 +99,13 @@ pub(super) fn client_size(window: HWND) -> (i32, i32) {
     (rect.right - rect.left, rect.bottom - rect.top)
 }
 
-pub(super) fn register_pattern_class(class_name: &str) -> Result<(), String> {
-    let name = fixture_window::wide(class_name);
-    let class = WNDCLASSEXW {
-        cbSize: size_of::<WNDCLASSEXW>() as u32,
-        lpfnWndProc: Some(pattern_window_proc),
-        hInstance: unsafe { GetModuleHandleW(std::ptr::null()) },
-        hCursor: unsafe { LoadCursorW(std::ptr::null_mut(), IDC_ARROW) },
-        lpszClassName: name.as_ptr(),
-        ..Default::default()
-    };
-    if unsafe { RegisterClassExW(&class) } == 0 {
-        return Err(format!("RegisterClassExW rejected the class {class_name}"));
-    }
-    Ok(())
-}
-
-pub(super) fn unregister_pattern_class(class_name: &str) {
-    let name = fixture_window::wide(class_name);
-    unsafe {
-        UnregisterClassW(name.as_ptr(), GetModuleHandleW(std::ptr::null()));
-    }
-}
-
 pub(super) fn host_pattern_window(
     class_name: &str,
     ready: Sender<Result<fixture_window::PumpHandle, String>>,
     left: i32,
     top: i32,
 ) {
-    if let Err(error) = register_pattern_class(class_name) {
+    if let Err(error) = fixture_window::register_class_with_proc(class_name, pattern_window_proc) {
         let _ = ready.send(Err(error));
         return;
     }
@@ -159,24 +133,7 @@ pub(super) fn host_pattern_window(
     }
     unsafe { ShowWindow(window, SW_SHOWNOACTIVATE) };
     unsafe { PostMessageW(window, WM_PATTERN_READY, 0, 0) };
-    pump_until_destroyed(window as isize, ready);
-}
-
-fn pump_until_destroyed(handle: isize, ready: Sender<Result<fixture_window::PumpHandle, String>>) {
-    let thread_id = unsafe { GetCurrentThreadId() };
-    let mut message = MSG::default();
-    let mut announced = false;
-    while unsafe { GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) } > 0 {
-        unsafe { TranslateMessage(&message) };
-        unsafe { DispatchMessageW(&message) };
-        if !announced && message.message == WM_PATTERN_READY {
-            announced = true;
-            let _ = ready.send(Ok(fixture_window::PumpHandle {
-                window: handle,
-                thread_id,
-            }));
-        }
-    }
+    fixture_window::pump_until_destroyed(window as isize, ready, WM_PATTERN_READY);
 }
 
 pub(super) fn force_paint(handle: isize) -> Result<(), String> {

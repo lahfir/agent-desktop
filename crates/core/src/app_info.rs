@@ -41,10 +41,7 @@ impl AppInfo {
 }
 
 pub fn app_name_matches(actual: &str, expected: &str) -> bool {
-    if matches_exact_or_with_exe_suffix(actual, expected) {
-        return true;
-    }
-    false
+    matches_exact_or_with_exe_suffix(actual, expected)
 }
 
 fn matches_exact_or_with_exe_suffix(actual: &str, expected: &str) -> bool {

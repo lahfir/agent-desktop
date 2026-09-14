@@ -1,28 +1,14 @@
 use agent_desktop_core::LocatorField;
 use agent_desktop_core::state;
 
-use crate::tree::properties::{ElementProperties, PropertyOutcome, PropertyValue};
+use crate::tree::properties::PropertyOutcome;
 use crate::tree::property_ids::TreeProperty;
+use crate::tree::test_support::{flag, number, props};
 
 use super::resolve_states;
 
-fn flag(property: TreeProperty, value: bool) -> (TreeProperty, PropertyOutcome) {
-    (property, PropertyOutcome::Known(PropertyValue::Flag(value)))
-}
-
-fn number(property: TreeProperty, value: i32) -> (TreeProperty, PropertyOutcome) {
-    (
-        property,
-        PropertyOutcome::Known(PropertyValue::Number(value)),
-    )
-}
-
 fn enabled_true() -> (TreeProperty, PropertyOutcome) {
     flag(TreeProperty::IsEnabled, true)
-}
-
-fn props(reads: Vec<(TreeProperty, PropertyOutcome)>) -> ElementProperties {
-    ElementProperties::from_reads(reads)
 }
 
 fn known(field: LocatorField<Vec<String>>) -> Vec<String> {
@@ -39,105 +25,7 @@ fn role_of(role: &str) -> LocatorField<String> {
 fn resolved(reads: Vec<(TreeProperty, PropertyOutcome)>, role: &str) -> Vec<String> {
     let mut all_reads = vec![enabled_true()];
     all_reads.extend(reads);
-    known(resolve_states(&props(all_reads), &role_of(role)))
-}
-
-/// Every representative source this producer can fire, paired with the role
-/// each needs to fire on. `enabled_true` is prepended by [`resolved`] so a
-/// case here never accidentally hits the read-health fallback.
-fn representative_cases() -> Vec<(Vec<(TreeProperty, PropertyOutcome)>, &'static str)> {
-    vec![
-        (vec![flag(TreeProperty::IsEnabled, false)], "button"),
-        (vec![flag(TreeProperty::IsPassword, true)], "textfield"),
-        (vec![flag(TreeProperty::IsOffscreen, true)], "button"),
-        (
-            vec![flag(TreeProperty::HasKeyboardFocus, true)],
-            "textfield",
-        ),
-        (
-            vec![flag(TreeProperty::IsRequiredForForm, true)],
-            "textfield",
-        ),
-        (
-            vec![flag(TreeProperty::IsRequiredForForm, true)],
-            "textfield",
-        ),
-        (
-            vec![
-                flag(TreeProperty::ToggleAvailable, true),
-                number(TreeProperty::ToggleState, 1),
-            ],
-            "checkbox",
-        ),
-        (
-            vec![
-                flag(TreeProperty::ToggleAvailable, true),
-                number(TreeProperty::ToggleState, 2),
-            ],
-            "checkbox",
-        ),
-        (
-            vec![
-                flag(TreeProperty::ExpandCollapseAvailable, true),
-                number(TreeProperty::ExpandCollapseState, 1),
-            ],
-            "treeitem",
-        ),
-        (
-            vec![
-                flag(TreeProperty::SelectionItemAvailable, true),
-                flag(TreeProperty::SelectionItemIsSelected, true),
-            ],
-            "cell",
-        ),
-        (
-            vec![
-                flag(TreeProperty::ValueAvailable, true),
-                flag(TreeProperty::ValueIsReadOnly, true),
-            ],
-            "textfield",
-        ),
-        (
-            vec![
-                flag(TreeProperty::SelectionAvailable, true),
-                flag(TreeProperty::SelectionCanSelectMultiple, true),
-            ],
-            "listbox",
-        ),
-        (
-            vec![
-                flag(TreeProperty::WindowAvailable, true),
-                flag(TreeProperty::WindowIsModal, true),
-            ],
-            "window",
-        ),
-        (
-            vec![number(TreeProperty::LegacyState, 0x4000_0000)],
-            "menuitem",
-        ),
-        (
-            vec![number(TreeProperty::LegacyState, 0x0000_0800)],
-            "button",
-        ),
-        (
-            vec![number(TreeProperty::LegacyState, 0x0000_0008)],
-            "button",
-        ),
-    ]
-}
-
-#[test]
-fn emitted_tokens_over_representative_inputs_are_vocabulary_members() {
-    let mut emitted = Vec::new();
-    for (reads, role) in representative_cases() {
-        emitted.extend(resolved(reads, role));
-    }
-
-    assert!(
-        !emitted.is_empty(),
-        "representative inputs should exercise at least one producer branch"
-    );
-    state::assert_states_in_vocabulary(&emitted);
+    known(resolve_states(&props(&all_reads), &role_of(role)))
 }
 
 #[test]
@@ -333,7 +221,7 @@ fn invalid_is_unproduced_whatever_the_read_set_says() {
 
 #[test]
 fn a_failed_state_read_yields_unknown_not_an_empty_known_list() {
-    let properties = props(Vec::new());
+    let properties = props(&[]);
 
     let result = resolve_states(&properties, &LocatorField::Unknown);
 

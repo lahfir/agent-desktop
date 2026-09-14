@@ -4,18 +4,17 @@ use std::os::windows::io::AsRawHandle;
 use std::path::Path;
 
 use windows_sys::Win32::Foundation::{HANDLE, LUID};
-use windows_sys::Win32::Security::Authorization::{
-    GetSecurityInfo, SE_FILE_OBJECT, SetSecurityInfo,
-};
+use windows_sys::Win32::Security::Authorization::{SE_FILE_OBJECT, SetSecurityInfo};
 use windows_sys::Win32::Security::{
     AddAccessAllowedAceEx, CONTAINER_INHERIT_ACE, InitializeAcl, LUID_AND_ATTRIBUTES,
-    OWNER_SECURITY_INFORMATION, PSID, SE_PRIVILEGE_ENABLED, SE_RESTORE_NAME, TOKEN_PRIVILEGES,
+    OWNER_SECURITY_INFORMATION, SE_PRIVILEGE_ENABLED, SE_RESTORE_NAME, TOKEN_PRIVILEGES,
     WinBuiltinGuestsSid, WinBuiltinUsersSid,
 };
 use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
 
 use super::sid::{self, SidBuffer};
 use super::{directory, tests::scratch_root};
+use crate::system::private_file::tests::create_junction;
 
 fn open_backup_semantics(path: &Path) -> std::fs::File {
     OpenOptions::new()
@@ -51,27 +50,7 @@ fn set_owner(path: &Path, owner: &SidBuffer) {
 
 fn read_owner(path: &Path) -> SidBuffer {
     let handle = open_backup_semantics(path);
-    let raw: HANDLE = handle.as_raw_handle();
-    let mut owner: PSID = std::ptr::null_mut();
-    let mut descriptor: *mut core::ffi::c_void = std::ptr::null_mut();
-    let status = unsafe {
-        GetSecurityInfo(
-            raw,
-            SE_FILE_OBJECT,
-            OWNER_SECURITY_INFORMATION,
-            &mut owner,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            &mut descriptor,
-        )
-    };
-    assert_eq!(status, 0, "GetSecurityInfo(owner) failed: {status}");
-    let copied = SidBuffer::copied_from_valid(owner).unwrap();
-    if !descriptor.is_null() {
-        unsafe { windows_sys::Win32::Foundation::LocalFree(descriptor) };
-    }
-    copied
+    crate::system::token_sid::read_owner_sid(&handle).expect("GetSecurityInfo(owner) must succeed")
 }
 
 /// Enables a privilege already present-but-disabled on this process's token,
@@ -247,7 +226,7 @@ fn a_parent_junction_is_refused() {
     let real_target = root.join("real-target");
     std::fs::create_dir(&real_target).unwrap();
     let junction = root.join("lockdir");
-    make_junction(&junction, &real_target);
+    create_junction(&junction, &real_target);
 
     let error = directory::ensure_private(&junction)
         .expect_err("a directory reached only through a junction must be refused");
@@ -259,14 +238,4 @@ fn a_parent_junction_is_refused() {
     std::fs::remove_dir_all(&real_target).unwrap();
     let _ = std::fs::remove_dir(&junction);
     std::fs::remove_dir_all(&root).unwrap();
-}
-
-fn make_junction(link: &Path, target: &Path) {
-    let status = std::process::Command::new("cmd")
-        .args(["/C", "mklink", "/J"])
-        .arg(link)
-        .arg(target)
-        .status()
-        .unwrap();
-    assert!(status.success(), "mklink /J failed to create the junction");
 }

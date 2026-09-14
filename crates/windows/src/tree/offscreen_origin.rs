@@ -10,10 +10,6 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
-use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
-};
-
 /// Gap left between the virtual-screen edge and a parked window's near edge.
 const OFFSCREEN_INSET: i32 = 48;
 
@@ -52,14 +48,7 @@ impl VirtualScreenRect {
 }
 
 fn live_virtual_screen_rect() -> VirtualScreenRect {
-    let (left, top, width, height) = unsafe {
-        (
-            GetSystemMetrics(SM_XVIRTUALSCREEN),
-            GetSystemMetrics(SM_YVIRTUALSCREEN),
-            GetSystemMetrics(SM_CXVIRTUALSCREEN),
-            GetSystemMetrics(SM_CYVIRTUALSCREEN),
-        )
-    };
+    let (left, top, width, height) = crate::tree::hit_test::virtual_screen_metrics();
     VirtualScreenRect {
         left,
         top,

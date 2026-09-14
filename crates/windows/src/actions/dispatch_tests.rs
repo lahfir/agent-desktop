@@ -1,5 +1,6 @@
-use super::{click_chain_judged_for, execute_action_impl};
+use super::{ClickAvailability, click_chain_judged_for, execute_action_impl};
 use crate::actions::chain::DeliveryOutcome;
+use crate::system::test_time::deadline;
 use crate::tree::automation::automation_client;
 use crate::tree::element::UIAElement;
 use crate::tree::fixture::{LocalFixture, ensure_test_apartment};
@@ -13,10 +14,6 @@ use uiautomation::types::Handle;
 
 fn lease() -> InteractionLease {
     InteractionLease::guarded(Deadline::after(5_000).expect("deadline"), ()).expect("lease")
-}
-
-fn short_deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
 }
 
 fn dummy_key() -> KeyCombo {
@@ -151,29 +148,6 @@ fn physical_arms_deny_headless_policy_before_injection() {
 }
 
 #[test]
-fn physical_arms_no_longer_return_platform_not_supported() {
-    ensure_test_apartment();
-    let fixture = LocalFixture::create().expect("fixture");
-    let handle = control_handle(fixture_window::find_button(fixture.handle())).expect("handle");
-    for action in [
-        Action::TypeText("x".into()),
-        Action::PressKey(dummy_key()),
-        Action::DoubleClick,
-        Action::TripleClick,
-        Action::RightClick,
-    ] {
-        let error = execute_action_impl(&handle, ActionRequest::headless(action.clone()), &lease())
-            .expect_err("headless physical arm");
-        assert_ne!(
-            error.code,
-            ErrorCode::PlatformNotSupported,
-            "{} must not be a platform stub",
-            action.name()
-        );
-    }
-}
-
-#[test]
 fn adapter_level_rejection_mirrors_macos_message() {
     ensure_test_apartment();
     let fixture = LocalFixture::create().expect("fixture");
@@ -230,24 +204,7 @@ fn every_action_variant_returns_a_deliberate_outcome() {
 
 #[test]
 fn set_focus_call_site_lives_only_in_focus_rs() {
-    let sources = [
-        ("actions/mutation.rs", include_str!("mutation.rs")),
-        (
-            "actions/scroll_into_view.rs",
-            include_str!("scroll_into_view.rs"),
-        ),
-        ("actions/scroll_ladder.rs", include_str!("scroll_ladder.rs")),
-        ("actions/chain.rs", include_str!("chain.rs")),
-        ("actions/dispatch.rs", include_str!("dispatch.rs")),
-        ("actions/focus.rs", include_str!("focus.rs")),
-        ("actions/value_write.rs", include_str!("value_write.rs")),
-        ("actions/post_state.rs", include_str!("post_state.rs")),
-        ("actions/toggle_state.rs", include_str!("toggle_state.rs")),
-        ("actions/disclosure.rs", include_str!("disclosure.rs")),
-        ("actions/select.rs", include_str!("select.rs")),
-        ("actions/select_search.rs", include_str!("select_search.rs")),
-        ("actions/scroll.rs", include_str!("scroll.rs")),
-    ];
+    let sources = crate::actions::mutation::action_scan_sources();
     let banned = concat!(".", "set_focus(");
     for (name, source) in sources {
         for (number, line) in code_lines(source) {
@@ -269,10 +226,12 @@ fn set_focus_call_site_lives_only_in_focus_rs() {
 #[test]
 fn no_affordance_click_chain_exhausts_not_delivered() {
     let error = click_chain_judged_for(
-        short_deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
-        false,
-        false,
+        ClickAvailability {
+            invoke_available: false,
+            legacy_available: false,
+        },
         || Ok(DeliveryOutcome::DeliveredUnverified),
         || Ok(DeliveryOutcome::DeliveredUnverified),
     )

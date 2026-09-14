@@ -221,7 +221,7 @@ mod imp {
             let vocabulary = walk_vocabulary(&properties, &label);
             (
                 properties.clone(),
-                properties.into_locator_evidence(vocabulary),
+                properties.locator_evidence(vocabulary),
                 failed,
             )
         }
@@ -289,7 +289,7 @@ mod imp {
         ) {
             (
                 ElementProperties::default(),
-                ElementProperties::default().into_locator_evidence(ResolvedVocabulary::unknown()),
+                ElementProperties::default().locator_evidence(ResolvedVocabulary::unknown()),
                 0,
             )
         }

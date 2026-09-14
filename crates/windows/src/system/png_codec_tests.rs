@@ -1,14 +1,12 @@
 use super::{decode_png_to_bgra, encode_bgra_to_png};
-use agent_desktop_core::{Deadline, ErrorCode, MAX_PNG_INPUT_BYTES, parse_png_dimensions};
+use agent_desktop_core::{ErrorCode, MAX_PNG_INPUT_BYTES, parse_png_dimensions};
 use std::fs;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static TEMP_ENV_LOCK: Mutex<()> = Mutex::new(());
 
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("codec tests use a generous deadline")
-}
+use crate::system::test_time::deadline;
 
 fn pattern_bgra(width: u32, height: u32, stride: u32) -> Vec<u8> {
     let mut pixels = vec![0u8; (stride * height) as usize];
@@ -43,7 +41,7 @@ fn known_bgra_encodes_with_dimensions_core_accepts() {
     let stride = width * 4;
     let pixels = pattern_bgra(width, height, stride);
 
-    let png = encode_bgra_to_png(&pixels, width, height, stride, deadline())
+    let png = encode_bgra_to_png(&pixels, width, height, stride, deadline(5_000))
         .expect("encode a known BGRA buffer");
 
     assert_eq!(parse_png_dimensions(&png), Some((width, height)));
@@ -57,10 +55,10 @@ fn encode_decode_round_trips_non_square_and_padded_stride() {
         let pixels = pattern_bgra(width, height, stride);
         let expected = packed_from_strided(&pixels, width, height, stride);
 
-        let png = encode_bgra_to_png(&pixels, width, height, stride, deadline())
+        let png = encode_bgra_to_png(&pixels, width, height, stride, deadline(5_000))
             .expect("encode should succeed");
         let (decoded, out_w, out_h) =
-            decode_png_to_bgra(&png, deadline()).expect("decode should succeed");
+            decode_png_to_bgra(&png, deadline(5_000)).expect("decode should succeed");
 
         assert_eq!((out_w, out_h), (width, height));
         assert_eq!(decoded, expected, "{width}x{height} stride={stride}");
@@ -75,10 +73,10 @@ fn thin_strip_round_trips() {
     let stride = width * 4;
     let pixels = pattern_bgra(width, height, stride);
 
-    let png = encode_bgra_to_png(&pixels, width, height, stride, deadline())
+    let png = encode_bgra_to_png(&pixels, width, height, stride, deadline(5_000))
         .expect("encode a thin strip");
     let (decoded, out_w, out_h) =
-        decode_png_to_bgra(&png, deadline()).expect("decode a thin strip");
+        decode_png_to_bgra(&png, deadline(5_000)).expect("decode a thin strip");
 
     assert_eq!((out_w, out_h), (width, height));
     assert_eq!(decoded, pixels);
@@ -89,7 +87,7 @@ fn zero_dimensions_rejected_before_com() {
     crate::tree::fixture::bootstrap();
     let pixels = [0u8; 4];
 
-    let zero_width = encode_bgra_to_png(&pixels, 0, 1, 4, deadline()).expect_err("zero width");
+    let zero_width = encode_bgra_to_png(&pixels, 0, 1, 4, deadline(5_000)).expect_err("zero width");
     assert_eq!(zero_width.code, ErrorCode::InvalidArgs);
     assert!(
         zero_width.platform_detail.is_none(),
@@ -97,7 +95,8 @@ fn zero_dimensions_rejected_before_com() {
         zero_width.platform_detail
     );
 
-    let zero_height = encode_bgra_to_png(&pixels, 1, 0, 4, deadline()).expect_err("zero height");
+    let zero_height =
+        encode_bgra_to_png(&pixels, 1, 0, 4, deadline(5_000)).expect_err("zero height");
     assert_eq!(zero_height.code, ErrorCode::InvalidArgs);
     assert!(
         zero_height.platform_detail.is_none(),
@@ -113,13 +112,13 @@ fn malformed_png_returns_classified_error() {
     let height = 2;
     let stride = width * 4;
     let pixels = pattern_bgra(width, height, stride);
-    let mut png = encode_bgra_to_png(&pixels, width, height, stride, deadline())
+    let mut png = encode_bgra_to_png(&pixels, width, height, stride, deadline(5_000))
         .expect("encode a valid PNG to corrupt");
     for byte in &mut png[8..] {
         *byte ^= 0xff;
     }
 
-    let error = decode_png_to_bgra(&png, deadline()).expect_err("corrupt PNG must fail");
+    let error = decode_png_to_bgra(&png, deadline(5_000)).expect_err("corrupt PNG must fail");
     assert!(
         matches!(
             error.code,
@@ -140,7 +139,7 @@ fn wrong_signature_png_returns_classified_error() {
     let mut png = vec![1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
     png.extend_from_slice(b"not-a-png-payload");
 
-    let error = decode_png_to_bgra(&png, deadline()).expect_err("wrong signature must fail");
+    let error = decode_png_to_bgra(&png, deadline(5_000)).expect_err("wrong signature must fail");
     assert_ne!(error.code, ErrorCode::Timeout);
     assert!(error.platform_detail.is_some() || error.code == ErrorCode::InvalidArgs);
 }
@@ -149,12 +148,12 @@ fn wrong_signature_png_returns_classified_error() {
 fn oversized_encode_rejected_before_allocation() {
     crate::tree::fixture::bootstrap();
     let tiny = [0u8; 4];
-    let error = encode_bgra_to_png(&tiny, 1 << 15, 1 << 15, 1 << 17, deadline())
+    let error = encode_bgra_to_png(&tiny, 1 << 15, 1 << 15, 1 << 17, deadline(5_000))
         .expect_err("pixel-ceiling violation must fail");
     assert_eq!(error.code, ErrorCode::InvalidArgs);
     assert!(error.platform_detail.is_none());
 
-    let over_bytes = encode_bgra_to_png(&tiny, 4097, 4096, 4097 * 4, deadline())
+    let over_bytes = encode_bgra_to_png(&tiny, 4097, 4096, 4097 * 4, deadline(5_000))
         .expect_err("byte-ceiling violation must fail");
     assert_eq!(over_bytes.code, ErrorCode::InvalidArgs);
     assert!(over_bytes.platform_detail.is_none());
@@ -164,7 +163,8 @@ fn oversized_encode_rejected_before_allocation() {
 fn oversized_decode_rejected_before_allocation() {
     crate::tree::fixture::bootstrap();
     let oversized = vec![0u8; MAX_PNG_INPUT_BYTES + 1];
-    let error = decode_png_to_bgra(&oversized, deadline()).expect_err("oversize PNG must fail");
+    let error =
+        decode_png_to_bgra(&oversized, deadline(5_000)).expect_err("oversize PNG must fail");
     assert_eq!(error.code, ErrorCode::InvalidArgs);
     assert!(error.platform_detail.is_none());
 }
@@ -194,7 +194,7 @@ fn encoding_creates_no_temp_files() {
     let height = 4;
     let stride = width * 4;
     let pixels = pattern_bgra(width, height, stride);
-    let png = encode_bgra_to_png(&pixels, width, height, stride, deadline());
+    let png = encode_bgra_to_png(&pixels, width, height, stride, deadline(5_000));
 
     let leftover: Vec<_> = fs::read_dir(&sandbox)
         .map(|entries| {

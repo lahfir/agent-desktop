@@ -95,40 +95,9 @@ fn class_b_windowless_close_escalation_is_action_failed_not_delivered() {
     }
 }
 
-/// Kills and reaps the wrapped child on drop, including on panic unwind, so
-/// a failed assertion below cannot orphan this diagnostic child for the
-/// ~60 seconds its ping duration allows.
-#[cfg(target_os = "windows")]
-struct KillOnDrop(std::process::Child);
-
-#[cfg(target_os = "windows")]
-impl Drop for KillOnDrop {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
 #[cfg(target_os = "windows")]
 fn windowless_close_live_error() -> AdapterError {
-    use std::os::windows::process::CommandExt;
-    let child = std::process::Command::new("cmd")
-        .args(["/C", "ping", "-n", "60", "127.0.0.1", ">", "NUL"])
-        .creation_flags(0x0800_0000)
-        .spawn()
-        .expect("windowless child");
-    let pid = ProcessId::from(child.id());
-    let _child = KillOnDrop(child);
-    let started = std::time::Instant::now();
-    let token = loop {
-        if let Ok(Some(token)) = crate::system::process_identity::token_for_pid(pid) {
-            break token;
-        }
-        if started.elapsed() > std::time::Duration::from_secs(5) {
-            panic!("windowless child never exposed a creation-time token");
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    };
+    let (_child, pid, token) = crate::system::lifecycle_test_support::spawn_windowless_child();
     let app = AppInfo {
         name: "cmd.exe".into(),
         pid,

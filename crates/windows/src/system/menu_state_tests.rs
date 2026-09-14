@@ -50,13 +50,8 @@ use crate::tree::fixture_menu::MenuFixture;
 
 const STATE_TIMEOUT: Duration = Duration::from_secs(5);
 
-fn deadline() -> Deadline {
-    Deadline::after(10_000).expect("bounded deadline")
-}
+use crate::system::test_time::deadline;
 
-/// Forces `handle` to the OS foreground window even from a background
-/// process, mirroring `key_dispatch_tests.rs::raise_handle` (private to that
-/// module, so duplicated here rather than imported).
 /// Whether the OS actually granted the fixture window the foreground.
 ///
 /// `SetForegroundWindow` is advisory: Windows refuses it unless the calling
@@ -71,33 +66,11 @@ fn foreground_granted(handle: isize) -> bool {
     crate::system::window_ops::is_foreground_window(handle as _)
 }
 
+/// Forces `handle` to the OS foreground window even from a background
+/// process, via the same raw-Win32 stage every live test needing a focused
+/// window uses.
 fn raise_handle(handle: isize) {
-    use windows_sys::Win32::Foundation::FALSE;
-    use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
-    };
-
-    let hwnd = handle as _;
-    let foreground = unsafe { GetForegroundWindow() };
-    let mut foreground_tid = 0_u32;
-    if !foreground.is_null() {
-        unsafe {
-            GetWindowThreadProcessId(foreground, &mut foreground_tid);
-        }
-    }
-    let current_tid = unsafe { GetCurrentThreadId() };
-    let attached = foreground_tid != 0
-        && foreground_tid != current_tid
-        && unsafe { AttachThreadInput(current_tid, foreground_tid, 1) } != FALSE;
-    unsafe {
-        let _ = SetForegroundWindow(hwnd);
-    }
-    if attached {
-        unsafe {
-            let _ = AttachThreadInput(current_tid, foreground_tid, 0);
-        }
-    }
+    let _ = crate::system::test_support::stage_foreground(handle);
 }
 
 #[test]
@@ -126,8 +99,8 @@ fn a_pid_with_no_gui_threads_reports_closed_rather_than_erroring() {
         .expect("a bare console process starts");
     let pid = ProcessId::from(child.id());
 
-    let open =
-        menu_is_open(pid, deadline()).expect("a console-only process must not error the predicate");
+    let open = menu_is_open(pid, deadline(10_000))
+        .expect("a console-only process must not error the predicate");
 
     assert!(!open, "a process with no GUI thread has no menu open");
 
@@ -148,7 +121,8 @@ fn classic_source_detects_the_fixtures_context_menu_open_and_closed() {
     let fixture = MenuFixture::spawn().expect("the menu fixture starts");
     let pid = ProcessId::from(fixture.process_id());
 
-    let classic = || classic_menu_mode_active(pid, deadline()).expect("classic probe reads it");
+    let classic =
+        || classic_menu_mode_active(pid, deadline(10_000)).expect("classic probe reads it");
     assert!(
         !classic(),
         "the fixture must not be in menu mode before any command is sent"
@@ -180,10 +154,11 @@ fn uia_source_detects_the_fixtures_context_menu_open_and_closed() {
     let pid = ProcessId::from(fixture.process_id());
 
     assert!(
-        !uia_menu_reachable(pid, deadline()).expect("uia probe reads the fixture"),
+        !uia_menu_reachable(pid, deadline(10_000)).expect("uia probe reads the fixture"),
         "no root-level tool window with a reachable menu family exists before any command is sent"
     );
-    let reachable = || uia_menu_reachable(pid, deadline()).expect("uia probe reads the fixture");
+    let reachable =
+        || uia_menu_reachable(pid, deadline(10_000)).expect("uia probe reads the fixture");
 
     fixture.open_context_menu();
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
@@ -211,13 +186,13 @@ fn menu_is_open_reports_the_fixtures_transition_in_both_directions() {
     let fixture = MenuFixture::spawn().expect("the menu fixture starts");
     let pid = ProcessId::from(fixture.process_id());
 
-    assert!(!menu_is_open(pid, deadline()).expect("predicate reads the fixture"));
+    assert!(!menu_is_open(pid, deadline(10_000)).expect("predicate reads the fixture"));
 
     fixture.open_context_menu();
     assert!(fixture.wait_for_menu_state(true, STATE_TIMEOUT));
     assert!(settles_to(STATE_TIMEOUT, true, || menu_is_open(
         pid,
-        deadline()
+        deadline(10_000)
     )
     .expect("predicate reads the fixture")));
 
@@ -225,7 +200,7 @@ fn menu_is_open_reports_the_fixtures_transition_in_both_directions() {
     assert!(fixture.wait_for_menu_state(false, STATE_TIMEOUT));
     assert!(settles_to(STATE_TIMEOUT, false, || menu_is_open(
         pid,
-        deadline()
+        deadline(10_000)
     )
     .expect("predicate reads the fixture")));
 }
@@ -263,13 +238,13 @@ fn menu_is_open_is_isolated_to_the_queried_process() {
     assert!(
         settles_to(STATE_TIMEOUT, true, || menu_is_open(
             fixture_pid,
-            deadline()
+            deadline(10_000)
         )
         .expect("predicate reads the fixture")),
         "the fixture's own pid must report its menu open"
     );
     assert!(
-        !menu_is_open(self_pid, deadline()).expect("predicate reads this process"),
+        !menu_is_open(self_pid, deadline(10_000)).expect("predicate reads this process"),
         "another process's open menu must not leak into this process's own pid"
     );
 
@@ -344,7 +319,7 @@ fn menus_open_for_takes_one_snapshot_regardless_of_target_count() {
     }
 
     let _drain = thread_snapshot_calls::take();
-    let _outcome = menus_open_for(&live, deadline());
+    let _outcome = menus_open_for(&live, deadline(10_000));
 
     assert_eq!(
         thread_snapshot_calls::take(),
@@ -369,7 +344,7 @@ fn menus_open_for_takes_one_snapshot_regardless_of_target_count() {
 #[test]
 fn a_failed_snapshot_open_is_an_error_not_an_empty_enumeration() {
     let outcome = crate::system::thread_walk::force_open_failure::with(|| {
-        menu_is_open(ProcessId::from(std::process::id()), deadline())
+        menu_is_open(ProcessId::from(std::process::id()), deadline(10_000))
     });
 
     let error = outcome.expect_err(

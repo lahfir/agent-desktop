@@ -113,7 +113,7 @@ unsafe extern "system" fn window_proc(
 }
 
 fn swallow_wm_close() -> bool {
-    std::env::var_os("AGENT_DESKTOP_FIXTURE_SWALLOW_WM_CLOSE").is_some()
+    std::env::var_os(crate::tree::fixture::SWALLOW_WM_CLOSE_FLAG).is_some()
 }
 
 fn activate_common_controls_v6() {
@@ -144,11 +144,17 @@ fn install_common_controls_v6() {
     }
 }
 
+pub(crate) type WndProc = unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT;
+
 pub(crate) fn register_class(class_name: &str) -> Result<(), String> {
+    register_class_with_proc(class_name, window_proc)
+}
+
+pub(crate) fn register_class_with_proc(class_name: &str, proc: WndProc) -> Result<(), String> {
     let name = wide(class_name);
     let class = WNDCLASSEXW {
         cbSize: size_of::<WNDCLASSEXW>() as u32,
-        lpfnWndProc: Some(window_proc),
+        lpfnWndProc: Some(proc),
         hInstance: unsafe { GetModuleHandleW(std::ptr::null()) },
         hCursor: unsafe { LoadCursorW(std::ptr::null_mut(), IDC_ARROW) },
         lpszClassName: name.as_ptr(),
@@ -245,7 +251,7 @@ pub(crate) fn host_window_at(
     debug_assert!(!controls.password.is_null());
     unsafe { ShowWindow(window, SW_SHOWNOACTIVATE) };
     unsafe { PostMessageW(window, WM_FIXTURE_READY, 0, 0) };
-    pump_until_destroyed(window as isize, ready);
+    pump_until_destroyed(window as isize, ready, WM_FIXTURE_READY);
 }
 
 /// Locates the fixture's primary `BUTTON` by its window text.
@@ -296,14 +302,18 @@ fn create_controls(window: HWND) -> FixtureControls {
     }
 }
 
-fn pump_until_destroyed(handle: isize, ready: Sender<Result<PumpHandle, String>>) {
+pub(crate) fn pump_until_destroyed(
+    handle: isize,
+    ready: Sender<Result<PumpHandle, String>>,
+    ready_message: u32,
+) {
     let thread_id = unsafe { GetCurrentThreadId() };
     let mut message = MSG::default();
     let mut announced = false;
     while unsafe { GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) } > 0 {
         unsafe { TranslateMessage(&message) };
         unsafe { DispatchMessageW(&message) };
-        if !announced && message.message == WM_FIXTURE_READY {
+        if !announced && message.message == ready_message {
             announced = true;
             let _ = ready.send(Ok(PumpHandle {
                 window: handle,

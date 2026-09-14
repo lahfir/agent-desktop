@@ -47,11 +47,6 @@ pub(crate) use multi::menus_open_for;
 mod locate;
 pub(crate) use locate::{MenuLocation, locate_menu};
 
-#[cfg(target_os = "windows")]
-#[path = "menu_state_chromium.rs"]
-mod chromium;
-
-#[cfg(not(target_os = "windows"))]
 #[path = "menu_state_chromium.rs"]
 mod chromium;
 
@@ -189,10 +184,6 @@ fn uia_menu_reachable(_pid: ProcessId, deadline: Deadline) -> Result<bool, Adapt
 /// [`self::chromium`]. Neither of the other two sources can see a Chromium
 /// context menu - it is a DOM menu inside the application's own non-tool
 /// window, so no classic flag fires and no tool window carries it.
-#[cfg(target_os = "windows")]
-use chromium::chromium_dom_menu_reachable;
-
-#[cfg(not(target_os = "windows"))]
 use chromium::chromium_dom_menu_reachable;
 
 #[cfg(target_os = "windows")]
@@ -208,26 +199,36 @@ fn tool_window_candidates(pid: ProcessId) -> Result<Vec<isize>, AdapterError> {
     Ok(handles)
 }
 
+/// One `ControlType` narrowed to a UIA property condition, the building
+/// block every menu-family search ORs together - shared with
+/// `chromium::menu_family_condition_without_bar`.
+#[cfg(target_os = "windows")]
+fn control_type_condition(
+    client: &uiautomation::UIAutomation,
+    control: uiautomation::types::ControlType,
+) -> Result<uiautomation::core::UICondition, AdapterError> {
+    use uiautomation::types::UIProperty;
+    use uiautomation::variants::Variant;
+
+    client
+        .create_property_condition(UIProperty::ControlType, Variant::from(control as i32), None)
+        .map_err(|error| {
+            narrow_to_permitted_codes(crate::tree::automation::uia_error(
+                &error,
+                "build the menu-family search condition",
+            ))
+        })
+}
+
 #[cfg(target_os = "windows")]
 fn menu_family_condition(
     client: &uiautomation::UIAutomation,
 ) -> Result<uiautomation::core::UICondition, AdapterError> {
-    use uiautomation::types::{ControlType, UIProperty};
-    use uiautomation::variants::Variant;
+    use uiautomation::types::ControlType;
 
-    let control_type_condition = |control: ControlType| {
-        client
-            .create_property_condition(UIProperty::ControlType, Variant::from(control as i32), None)
-            .map_err(|error| {
-                narrow_to_permitted_codes(crate::tree::automation::uia_error(
-                    &error,
-                    "build the menu-family search condition",
-                ))
-            })
-    };
-    let menu = control_type_condition(ControlType::Menu)?;
-    let menu_bar = control_type_condition(ControlType::MenuBar)?;
-    let menu_item = control_type_condition(ControlType::MenuItem)?;
+    let menu = control_type_condition(client, ControlType::Menu)?;
+    let menu_bar = control_type_condition(client, ControlType::MenuBar)?;
+    let menu_item = control_type_condition(client, ControlType::MenuItem)?;
     let menu_or_bar = client
         .create_or_condition(menu, menu_bar)
         .map_err(|error| {
