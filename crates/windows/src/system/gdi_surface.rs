@@ -13,8 +13,7 @@
 use agent_desktop_core::{AdapterError, ErrorCode};
 use windows_sys::Win32::Graphics::Gdi::{BI_RGB, BITMAPINFO, BITMAPINFOHEADER, HDC};
 
-use super::hresult::{com_hresult_detail, hresult_record};
-use super::process_state::hresult_from_win32;
+use super::hresult::win32_last_error;
 
 /// Refuses a capture whose pixel byte count would overflow the `i32`
 /// arithmetic a raw GDI write depends on, before either backend creates any
@@ -62,18 +61,6 @@ pub(super) fn top_down_bgra_bitmap_info(width: i32, height: i32) -> BITMAPINFO {
         },
         ..Default::default()
     }
-}
-
-pub(super) fn win32_last_error(message: &str) -> AdapterError {
-    let error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-    let hresult = hresult_from_win32(error);
-    let record = hresult_record(hresult);
-    let mut err =
-        AdapterError::new(record.code, message).with_platform_detail(com_hresult_detail(hresult));
-    if let Some(suggestion) = record.suggestion {
-        err = err.with_suggestion(suggestion);
-    }
-    err
 }
 
 /// The screen DC and its paired compatible memory DC, released together.

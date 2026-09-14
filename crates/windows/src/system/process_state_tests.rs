@@ -79,8 +79,11 @@ fn still_active_code_without_wait_gate_would_look_exited() {
 
 #[test]
 fn hresult_from_win32_matches_facility_win32_shape() {
-    assert_eq!(hresult_from_win32(5), 0x8007_0005_u32 as i32);
-    assert_eq!(hresult_from_win32(0), 0);
+    assert_eq!(
+        crate::system::hresult::hresult_from_win32(5),
+        0x8007_0005_u32 as i32
+    );
+    assert_eq!(crate::system::hresult::hresult_from_win32(0), 0);
 }
 
 #[cfg(target_os = "windows")]

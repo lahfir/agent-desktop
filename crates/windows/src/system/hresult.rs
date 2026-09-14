@@ -13,6 +13,8 @@
 //! record per code makes a code's disposition and its error code the same
 //! fact, written once.
 
+#[cfg(target_os = "windows")]
+use agent_desktop_core::AdapterError;
 use agent_desktop_core::ErrorCode;
 
 pub(crate) const S_OK: i32 = 0;
@@ -266,6 +268,39 @@ pub(crate) fn com_hresult_symbol(hresult: i32) -> Option<(&'static str, &'static
         _ => return None,
     };
     Some(symbol)
+}
+
+/// `HRESULT_FROM_WIN32` — the measured path for Win32 codes into the one
+/// HRESULT table (A21-8).
+pub(crate) fn hresult_from_win32(error: u32) -> i32 {
+    if error == 0 {
+        0
+    } else if (error as i32) < 0 {
+        error as i32
+    } else {
+        ((error & 0xFFFF) | 0x8007_0000) as i32
+    }
+}
+
+/// A Win32 error code rendered through the one HRESULT table.
+#[cfg(target_os = "windows")]
+pub(crate) fn adapter_error_from_win32(error: u32, message: &str) -> AdapterError {
+    let hresult = hresult_from_win32(error);
+    let record = hresult_record(hresult);
+    let mut err =
+        AdapterError::new(record.code, message).with_platform_detail(com_hresult_detail(hresult));
+    if let Some(suggestion) = record.suggestion {
+        err = err.with_suggestion(suggestion);
+    }
+    err
+}
+
+/// Win32 `GetLastError` → `HRESULT_FROM_WIN32` into the shared HRESULT table
+/// (A21-8).
+#[cfg(target_os = "windows")]
+pub(crate) fn win32_last_error(message: &str) -> AdapterError {
+    let error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+    adapter_error_from_win32(error, message)
 }
 
 #[cfg(test)]

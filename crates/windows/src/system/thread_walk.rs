@@ -1,3 +1,4 @@
+use super::hresult::win32_last_error;
 use agent_desktop_core::{AdapterError, Deadline};
 
 use super::permissions::ensure_budget;
@@ -76,21 +77,6 @@ fn open_failure_error() -> AdapterError {
 /// Win32 `GetLastError` -> `HRESULT_FROM_WIN32` into the shared HRESULT
 /// table, the convention every native-failure module in this crate uses for
 /// its own local errors.
-fn win32_last_error(message: &str) -> AdapterError {
-    let error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-    adapter_error_from_win32(error, message)
-}
-
-fn adapter_error_from_win32(error: u32, message: &str) -> AdapterError {
-    let hresult = super::process_state::hresult_from_win32(error);
-    let record = super::hresult::hresult_record(hresult);
-    let mut err = AdapterError::new(record.code, message)
-        .with_platform_detail(super::hresult::com_hresult_detail(hresult));
-    if let Some(suggestion) = record.suggestion {
-        err = err.with_suggestion(suggestion);
-    }
-    err
-}
 
 /// Counts snapshot handle opens so a test can prove every `ToolHelp`
 /// snapshot this walk creates is matched by exactly one close, across every

@@ -103,9 +103,12 @@ fn invalid_identifier_is_not_delivered() {
 
 #[test]
 fn elevation_required_maps_through_hresult_from_win32() {
-    let hresult = hresult_from_win32(740);
+    let hresult = crate::system::hresult::hresult_from_win32(740);
     assert_eq!(hresult, 0x8007_02E4_u32 as i32);
-    let error = adapter_error_from_win32(740, "CreateProcessW failed to start the application");
+    let error = crate::system::hresult::adapter_error_from_win32(
+        740,
+        "CreateProcessW failed to start the application",
+    );
     assert!(
         error
             .platform_detail

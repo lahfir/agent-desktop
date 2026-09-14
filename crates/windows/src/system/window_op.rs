@@ -1,3 +1,5 @@
+#[cfg(target_os = "windows")]
+use super::hresult::win32_last_error;
 use agent_desktop_core::{
     AdapterError, Deadline, DeliverySemantics, ErrorCode, WindowInfo, WindowOp,
 };
@@ -370,21 +372,6 @@ fn recycled_before_write() -> AdapterError {
         ErrorCode::WindowNotFound,
         "Target window handle changed ownership before window operation",
     ))
-}
-
-#[cfg(target_os = "windows")]
-fn win32_last_error(message: &str) -> AdapterError {
-    use super::process_state::hresult_from_win32;
-
-    let error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-    let hresult = hresult_from_win32(error);
-    let record = super::hresult::hresult_record(hresult);
-    let mut err = AdapterError::new(record.code, message)
-        .with_platform_detail(super::hresult::com_hresult_detail(hresult));
-    if let Some(suggestion) = record.suggestion {
-        err = err.with_suggestion(suggestion);
-    }
-    err
 }
 
 fn before_write(error: AdapterError) -> AdapterError {

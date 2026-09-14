@@ -4,9 +4,10 @@ use agent_desktop_core::{
 use std::time::Duration;
 
 use super::app_ops::is_protected_process;
+#[cfg(target_os = "windows")]
+use super::hresult::{adapter_error_from_win32, win32_last_error};
 use super::permissions::ensure_budget;
 use super::process_identity;
-use super::process_state::hresult_from_win32;
 
 const EXIT_POLL: Duration = Duration::from_millis(25);
 
@@ -357,23 +358,6 @@ fn handle_matches_instance(
         ticks % TICKS_PER_SECOND
     );
     Ok(from_handle == instance)
-}
-
-#[cfg(target_os = "windows")]
-fn win32_last_error(message: &str) -> AdapterError {
-    let error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-    adapter_error_from_win32(error, message)
-}
-
-fn adapter_error_from_win32(error: u32, message: &str) -> AdapterError {
-    let hresult = hresult_from_win32(error);
-    let record = super::hresult::hresult_record(hresult);
-    let mut err = AdapterError::new(record.code, message)
-        .with_platform_detail(super::hresult::com_hresult_detail(hresult));
-    if let Some(suggestion) = record.suggestion {
-        err = err.with_suggestion(suggestion);
-    }
-    err
 }
 
 fn before_termination(error: AdapterError) -> AdapterError {

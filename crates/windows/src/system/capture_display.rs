@@ -10,7 +10,8 @@ use agent_desktop_core::{AdapterError, Deadline, ErrorCode, ImageBuffer, ImageFo
 
 use super::display::display_at;
 pub(crate) use super::gdi_surface::gdi_balance;
-use super::gdi_surface::{self, GdiDcPair, win32_last_error};
+use super::gdi_surface::{self, GdiDcPair};
+use super::hresult::win32_last_error;
 use super::permissions::ensure_budget;
 use super::png_codec::encode_bgra_to_png;
 
