@@ -3,14 +3,11 @@ use super::*;
 use crate::input::keyboard_send::keyboard_send_fake_sink as key_sink;
 use crate::input::mouse_send::mouse_send_fake_sink as mouse_sink;
 use crate::input::mouse_send::{MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MOVE, MOUSEEVENTF_VIRTUALDESK};
+use crate::system::test_time::deadline;
 use agent_desktop_core::{
     Deadline, DeliveryDisposition, ErrorCode, MAX_MOUSE_CLICK_COUNT, Modifier, MouseButton,
     MouseEvent, MouseEventKind, Point,
 };
-
-fn deadline() -> Deadline {
-    Deadline::after(1_000).expect("bounded test deadline")
-}
 
 fn move_event(point: Point) -> MouseEvent {
     MouseEvent {
@@ -38,7 +35,7 @@ fn click_event(
 #[test]
 fn move_posts_exactly_one_absolute_move_event() {
     reset_sinks();
-    synthesize_mouse(move_event(origin()), deadline()).expect("move succeeds");
+    synthesize_mouse(move_event(origin()), deadline(1_000)).expect("move succeeds");
 
     let recorded = mouse_sink::recorded();
     assert_eq!(recorded.len(), 1);
@@ -54,7 +51,7 @@ fn a_single_click_posts_a_move_then_one_down_up_pair() {
     reset_sinks();
     synthesize_mouse(
         click_event(origin(), 1, Vec::new(), MouseButton::Left),
-        deadline(),
+        deadline(1_000),
     )
     .expect("click succeeds");
 
@@ -70,7 +67,7 @@ fn a_triple_click_posts_a_move_then_three_down_up_pairs() {
     reset_sinks();
     synthesize_mouse(
         click_event(origin(), 3, Vec::new(), MouseButton::Left),
-        deadline(),
+        deadline(1_000),
     )
     .expect("triple click succeeds");
 
@@ -93,7 +90,7 @@ fn right_button_click_uses_the_right_button_flags_never_the_left() {
     reset_sinks();
     synthesize_mouse(
         click_event(origin(), 1, Vec::new(), MouseButton::Right),
-        deadline(),
+        deadline(1_000),
     )
     .expect("right click succeeds");
 
@@ -120,7 +117,7 @@ fn a_click_with_modifiers_holds_them_down_for_the_click_then_releases_them() {
     reset_sinks();
     synthesize_mouse(
         click_event(origin(), 1, vec![Modifier::Ctrl], MouseButton::Left),
-        deadline(),
+        deadline(1_000),
     )
     .expect("modified click succeeds");
 
@@ -140,7 +137,7 @@ fn a_click_with_modifiers_holds_them_down_for_the_click_then_releases_them() {
 #[test]
 fn an_off_primary_move_sets_the_virtual_desktop_flag() {
     reset_sinks();
-    synthesize_mouse(move_event(Point { x: -5.0, y: -5.0 }), deadline())
+    synthesize_mouse(move_event(Point { x: -5.0, y: -5.0 }), deadline(1_000))
         .expect("off-primary move still succeeds");
 
     let recorded = mouse_sink::recorded();
@@ -154,7 +151,7 @@ fn an_off_primary_move_sets_the_virtual_desktop_flag() {
 #[test]
 fn a_primary_move_never_sets_the_virtual_desktop_flag() {
     reset_sinks();
-    synthesize_mouse(move_event(origin()), deadline()).expect("primary move succeeds");
+    synthesize_mouse(move_event(origin()), deadline(1_000)).expect("primary move succeeds");
 
     let recorded = mouse_sink::recorded();
     assert_eq!(recorded[0].flags & MOUSEEVENTF_VIRTUALDESK, 0);
@@ -221,7 +218,7 @@ fn down_is_rejected_as_a_standalone_state_error_with_zero_injection() {
         button: MouseButton::Left,
         modifiers: Vec::new(),
     };
-    let error = synthesize_mouse(event, deadline()).expect_err("standalone down is rejected");
+    let error = synthesize_mouse(event, deadline(1_000)).expect_err("standalone down is rejected");
 
     assert_eq!(error.code, ErrorCode::ActionNotSupported);
     let details = error
@@ -245,7 +242,7 @@ fn up_is_rejected_as_a_standalone_state_error_with_zero_injection() {
         button: MouseButton::Left,
         modifiers: Vec::new(),
     };
-    let error = synthesize_mouse(event, deadline()).expect_err("standalone up is rejected");
+    let error = synthesize_mouse(event, deadline(1_000)).expect_err("standalone up is rejected");
 
     assert_eq!(error.code, ErrorCode::ActionNotSupported);
     assert!(mouse_sink::recorded().is_empty());
@@ -256,7 +253,7 @@ fn a_zero_click_count_is_rejected_with_zero_injection() {
     reset_sinks();
     let error = synthesize_mouse(
         click_event(origin(), 0, Vec::new(), MouseButton::Left),
-        deadline(),
+        deadline(1_000),
     )
     .expect_err("zero click count is rejected");
 
@@ -274,7 +271,7 @@ fn a_click_count_beyond_the_maximum_is_rejected_with_zero_injection() {
             Vec::new(),
             MouseButton::Left,
         ),
-        deadline(),
+        deadline(1_000),
     )
     .expect_err("out-of-bounds click count is rejected");
 
@@ -289,7 +286,7 @@ fn an_invalid_point_is_rejected_with_zero_injection() {
         x: f64::NAN,
         y: 0.0,
     });
-    let error = synthesize_mouse(event, deadline()).expect_err("NaN point is rejected");
+    let error = synthesize_mouse(event, deadline(1_000)).expect_err("NaN point is rejected");
 
     assert_eq!(error.code, ErrorCode::InvalidArgs);
     assert!(mouse_sink::recorded().is_empty());

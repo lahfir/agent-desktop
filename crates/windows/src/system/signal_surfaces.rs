@@ -140,7 +140,7 @@ fn sheet_surfaces(
             continue;
         };
         match root_from_hwnd(handle as isize, deadline) {
-            Ok(root) if window_is_modal_sheet(&root, false) => {
+            Ok(root) if window_is_modal_sheet(&root) => {
                 surfaces.push(sheet_signal(target, handle));
             }
             Ok(_) => {}

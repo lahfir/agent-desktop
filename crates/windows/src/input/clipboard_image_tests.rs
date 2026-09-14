@@ -3,11 +3,8 @@ use super::{
     decode_dib_clipboard, decode_png_clipboard, dib_to_bgra, encode_dib_from_png,
     pixel_array_offset, png_bytes_for_clipboard,
 };
-use agent_desktop_core::{Deadline, ErrorCode, ImageBuffer, ImageFormat, parse_png_dimensions};
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("image marshalling tests use a generous deadline")
-}
+use crate::system::test_time::deadline;
+use agent_desktop_core::{ErrorCode, ImageBuffer, ImageFormat, parse_png_dimensions};
 
 fn pattern_bgra(width: u32, height: u32) -> Vec<u8> {
     let mut pixels = vec![0u8; (width * height * 4) as usize];
@@ -103,7 +100,7 @@ fn build_dib(
 fn png_passthrough_preserves_bytes_and_metadata() {
     crate::tree::fixture::bootstrap();
     let bgra = pattern_bgra(3, 2);
-    let png = crate::system::png_codec::encode_bgra_to_png(&bgra, 3, 2, 12, deadline())
+    let png = crate::system::png_codec::encode_bgra_to_png(&bgra, 3, 2, 12, deadline(5_000))
         .expect("encode fixture PNG");
     let image = decode_png_clipboard(&png).expect("decode PNG clipboard");
     assert_eq!(image.data, png);
@@ -173,10 +170,15 @@ fn png_dib_png_round_trips_pixels() {
     let width = 5u32;
     let height = 3u32;
     let bgra = pattern_bgra(width, height);
-    let png =
-        crate::system::png_codec::encode_bgra_to_png(&bgra, width, height, width * 4, deadline())
-            .expect("encode source PNG");
-    let dib = encode_dib_from_png(&png, deadline()).expect("PNG to DIB");
+    let png = crate::system::png_codec::encode_bgra_to_png(
+        &bgra,
+        width,
+        height,
+        width * 4,
+        deadline(5_000),
+    )
+    .expect("encode source PNG");
+    let dib = encode_dib_from_png(&png, deadline(5_000)).expect("PNG to DIB");
     assert_eq!(
         u32::from_le_bytes(dib[0..4].try_into().unwrap()),
         BITMAPINFOHEADER_SIZE
@@ -185,12 +187,13 @@ fn png_dib_png_round_trips_pixels() {
         i32::from_le_bytes(dib[8..12].try_into().unwrap()),
         height as i32
     );
-    let image = decode_dib_clipboard(&dib, deadline()).expect("DIB to PNG");
+    let image = decode_dib_clipboard(&dib, deadline(5_000)).expect("DIB to PNG");
     assert!(matches!(image.format, ImageFormat::Png));
     assert_eq!(image.scale_factor, 1.0);
     assert_eq!(parse_png_dimensions(&image.data), Some((width, height)));
     let (decoded, out_w, out_h) =
-        crate::system::png_codec::decode_png_to_bgra(&image.data, deadline()).expect("decode PNG");
+        crate::system::png_codec::decode_png_to_bgra(&image.data, deadline(5_000))
+            .expect("decode PNG");
     assert_eq!((out_w, out_h), (width, height));
     assert_eq!(decoded, bgra);
 }
@@ -199,8 +202,8 @@ fn png_dib_png_round_trips_pixels() {
 fn write_helpers_preserve_original_png_bytes() {
     crate::tree::fixture::bootstrap();
     let bgra = pattern_bgra(2, 2);
-    let png =
-        crate::system::png_codec::encode_bgra_to_png(&bgra, 2, 2, 8, deadline()).expect("encode");
+    let png = crate::system::png_codec::encode_bgra_to_png(&bgra, 2, 2, 8, deadline(5_000))
+        .expect("encode");
     let image = ImageBuffer {
         data: png.clone(),
         format: ImageFormat::Png,

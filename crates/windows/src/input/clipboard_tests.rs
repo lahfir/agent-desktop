@@ -7,6 +7,7 @@ use crate::input::clipboard_guard::MoveableMemory;
 use crate::input::clipboard_session::ClipboardSession;
 use crate::input::clipboard_text::encode_utf16_text;
 use crate::system::png_codec::encode_bgra_to_png;
+use crate::system::test_time::deadline;
 use crate::tree::fixture::bootstrap;
 use crate::tree::fixture_clipboard::{
     ContendingClipboardHolder, DelayedClipboardOwner, clipboard_test_lock,
@@ -68,24 +69,20 @@ impl SavedClipboard {
     }
 }
 
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
-
 fn with_restored_clipboard(body: impl FnOnce()) {
     let _lock = clipboard_test_lock();
     bootstrap();
-    let saved = SavedClipboard::capture(deadline()).expect("capture clipboard for restore");
+    let saved = SavedClipboard::capture(deadline(5_000)).expect("capture clipboard for restore");
     let body_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
     saved
-        .restore(deadline())
+        .restore(deadline(5_000))
         .expect("restore every saved clipboard format");
     if let Err(panic) = body_result {
         std::panic::resume_unwind(panic);
     }
     assert!(
         saved
-            .matches_current(deadline())
+            .matches_current(deadline(5_000))
             .expect("re-read clipboard for round-trip check"),
         "every raw clipboard format must round-trip through save/restore"
     );
@@ -96,10 +93,10 @@ fn text_image_and_files_round_trip_under_save_restore_lock() {
     with_restored_clipboard(|| {
         set_content(
             &ClipboardContent::Text("agent-desktop-u8".into()),
-            deadline(),
+            deadline(5_000),
         )
         .expect("set text");
-        match get_clipboard_content(ClipboardFormat::Text, deadline())
+        match get_clipboard_content(ClipboardFormat::Text, deadline(5_000))
             .expect("get text")
             .expect("text present")
         {
@@ -117,10 +114,10 @@ fn text_image_and_files_round_trip_under_save_restore_lock() {
                 height,
                 scale_factor: 1.0,
             }),
-            deadline(),
+            deadline(5_000),
         )
         .expect("set image");
-        match get_clipboard_content(ClipboardFormat::Image, deadline())
+        match get_clipboard_content(ClipboardFormat::Image, deadline(5_000))
             .expect("get image")
             .expect("image present")
         {
@@ -136,9 +133,12 @@ fn text_image_and_files_round_trip_under_save_restore_lock() {
             .join("agent-desktop-clipboard-u8.txt")
             .to_string_lossy()
             .into_owned();
-        set_content(&ClipboardContent::FileUrls(vec![path.clone()]), deadline())
-            .expect("set files");
-        match get_clipboard_content(ClipboardFormat::FileUrls, deadline())
+        set_content(
+            &ClipboardContent::FileUrls(vec![path.clone()]),
+            deadline(5_000),
+        )
+        .expect("set files");
+        match get_clipboard_content(ClipboardFormat::FileUrls, deadline(5_000))
             .expect("get files")
             .expect("files present")
         {
@@ -151,7 +151,7 @@ fn text_image_and_files_round_trip_under_save_restore_lock() {
 #[test]
 fn empty_clipboard_returns_ok_none_distinct_from_transport_error() {
     with_restored_clipboard(|| {
-        clear(deadline()).expect("clear");
+        clear(deadline(5_000)).expect("clear");
         for format in [
             ClipboardFormat::Text,
             ClipboardFormat::Image,
@@ -159,12 +159,12 @@ fn empty_clipboard_returns_ok_none_distinct_from_transport_error() {
             ClipboardFormat::Auto,
         ] {
             assert!(
-                get_clipboard_content(format, deadline())
+                get_clipboard_content(format, deadline(5_000))
                     .expect("absence is Ok")
                     .is_none()
             );
         }
-        set_content(&ClipboardContent::Text("held".into()), deadline()).expect("seed");
+        set_content(&ClipboardContent::Text("held".into()), deadline(5_000)).expect("seed");
         let mut holder = ContendingClipboardHolder::spawn().expect("holder");
         let error =
             get_clipboard_content(ClipboardFormat::Text, Deadline::after(200).expect("short"))
@@ -187,11 +187,11 @@ fn auto_prefers_files_then_image_then_text() {
                 height,
                 scale_factor: 1.0,
             }),
-            deadline(),
+            deadline(5_000),
         )
         .expect("image");
         add_text_without_clearing().expect("add text");
-        let auto = get_clipboard_content(ClipboardFormat::Auto, deadline())
+        let auto = get_clipboard_content(ClipboardFormat::Auto, deadline(5_000))
             .expect("auto")
             .expect("content");
         assert!(matches!(auto, ClipboardContent::Image(_)));
@@ -200,8 +200,8 @@ fn auto_prefers_files_then_image_then_text() {
             .join("agent-desktop-clipboard-auto.txt")
             .to_string_lossy()
             .into_owned();
-        set_content(&ClipboardContent::FileUrls(vec![path]), deadline()).expect("files");
-        let auto = get_clipboard_content(ClipboardFormat::Auto, deadline())
+        set_content(&ClipboardContent::FileUrls(vec![path]), deadline(5_000)).expect("files");
+        let auto = get_clipboard_content(ClipboardFormat::Auto, deadline(5_000))
             .expect("auto files")
             .expect("content");
         assert!(matches!(auto, ClipboardContent::FileUrls(_)));
@@ -214,7 +214,7 @@ fn hung_delay_owner_returns_app_unresponsive() {
         let owner = DelayedClipboardOwner::create().expect("delayed owner");
         assert!(owner.format_available());
         let started = Instant::now();
-        let error = get_clipboard_content(ClipboardFormat::Text, deadline())
+        let error = get_clipboard_content(ClipboardFormat::Text, deadline(5_000))
             .expect_err("hung owner must fail closed");
         assert_eq!(error.code, ErrorCode::AppUnresponsive);
         assert_eq!(error.disposition, DeliverySemantics::not_delivered());
@@ -229,9 +229,9 @@ fn hung_delay_owner_returns_app_unresponsive() {
 fn sequence_retry_is_observed_when_clipboard_moves_mid_read() {
     with_restored_clipboard(|| {
         reset_sequence_retries_observed();
-        set_content(&ClipboardContent::Text("stable".into()), deadline()).expect("set");
+        set_content(&ClipboardContent::Text("stable".into()), deadline(5_000)).expect("set");
         super::inject_sequence_mismatch_once();
-        let content = get_clipboard_content(ClipboardFormat::Text, deadline())
+        let content = get_clipboard_content(ClipboardFormat::Text, deadline(5_000))
             .expect("retry must still return content")
             .expect("text present");
         assert!(matches!(content, ClipboardContent::Text(_)));
@@ -245,9 +245,9 @@ fn sequence_retry_is_observed_when_clipboard_moves_mid_read() {
 #[test]
 fn oversized_clipboard_payload_is_rejected_before_copy() {
     with_restored_clipboard(|| {
-        set_content(&ClipboardContent::Text("small".into()), deadline()).expect("set");
+        set_content(&ClipboardContent::Text("small".into()), deadline(5_000)).expect("set");
         with_global_size_override_for_test(MAX_CLIPBOARD_PAYLOAD_BYTES + 1, || {
-            let error = get_clipboard_content(ClipboardFormat::Text, deadline())
+            let error = get_clipboard_content(ClipboardFormat::Text, deadline(5_000))
                 .expect_err("hostile GlobalSize must fail before allocating the payload");
             assert_eq!(error.code, ErrorCode::InvalidArgs);
             assert_eq!(error.disposition, DeliverySemantics::not_delivered());
@@ -268,13 +268,13 @@ fn sample_png() -> Vec<u8> {
         2,
         2,
         8,
-        deadline(),
+        deadline(5_000),
     )
     .expect("png")
 }
 
 fn add_text_without_clearing() -> Result<(), AdapterError> {
-    let _session = ClipboardSession::open_for_write(deadline())?;
+    let _session = ClipboardSession::open_for_write(deadline(5_000))?;
     let bytes = encode_utf16_text("alongside")?;
     MoveableMemory::from_bytes(&bytes)?.set_clipboard_data(13)?;
     Ok(())

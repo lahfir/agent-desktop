@@ -7,9 +7,10 @@
 //! failure is which, each of which could be deleted with the rest of the suite
 //! still green.
 
+use crate::system::test_time::deadline;
 use crate::tree::automation::{ERR_INACTIVE, ERR_TIMEOUT, UiaFailure, uia_failure_error};
 use crate::tree::resolve::retry_incomplete_until;
-use crate::tree::test_support::{generous_deadline, short_deadline, unreachable_handle};
+use crate::tree::test_support::unreachable_handle;
 use agent_desktop_core::{AdapterError, ErrorCode};
 
 /// A provider's own transport timeout is retried, driven through the real
@@ -38,7 +39,7 @@ fn a_providers_own_transport_timeout_is_retried_within_the_budget() {
     );
 
     let mut attempts = 0;
-    let result = retry_incomplete_until(generous_deadline(), || {
+    let result = retry_incomplete_until(deadline(5_000), || {
         attempts += 1;
         if attempts < 3 {
             Err(uia_failure_error(
@@ -60,7 +61,7 @@ fn a_providers_own_transport_timeout_is_retried_within_the_budget() {
 #[test]
 fn an_unresponsive_provider_is_retried_on_the_same_tier() {
     let mut attempts = 0;
-    let result = retry_incomplete_until(generous_deadline(), || {
+    let result = retry_incomplete_until(deadline(5_000), || {
         attempts += 1;
         if attempts < 2 {
             Err(uia_failure_error(
@@ -82,7 +83,7 @@ fn an_unresponsive_provider_is_retried_on_the_same_tier() {
 #[test]
 fn a_settled_absence_is_not_admitted_by_the_retry_code_set() {
     let mut attempts = 0;
-    let result = retry_incomplete_until(generous_deadline(), || {
+    let result = retry_incomplete_until(deadline(5_000), || {
         attempts += 1;
         Err(uia_failure_error(
             UiaFailure::Sentinel(crate::tree::automation::ERR_INVALID_ARG),
@@ -114,7 +115,7 @@ fn a_timeout_after_an_incomplete_returns_the_stamped_diagnosis_not_the_timeout()
         }));
 
     let mut attempts = 0;
-    let result = retry_incomplete_until(generous_deadline(), || {
+    let result = retry_incomplete_until(deadline(5_000), || {
         attempts += 1;
         if attempts == 1 {
             Err(incomplete.clone())
@@ -143,7 +144,7 @@ fn a_timeout_after_an_incomplete_returns_the_stamped_diagnosis_not_the_timeout()
 /// substitute rather than unconditional.
 #[test]
 fn a_timeout_with_no_prior_incomplete_is_returned_as_itself() {
-    let result = retry_incomplete_until(short_deadline(), || {
+    let result = retry_incomplete_until(deadline(200), || {
         Err(AdapterError::new(ErrorCode::Timeout, "the budget ran out"))
     });
 

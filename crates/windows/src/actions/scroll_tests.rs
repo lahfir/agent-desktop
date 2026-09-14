@@ -1,12 +1,9 @@
 use super::{SCROLL_LABEL, ScrollPlan, axis_name, scroll_effect_verified, scroll_judged_for};
+use crate::system::test_time::deadline;
 use agent_desktop_core::{
-    ActionStepOutcome, AdapterError, Deadline, DeliveryDisposition, Direction, ErrorCode, Rect,
+    ActionStepOutcome, AdapterError, DeliveryDisposition, Direction, ErrorCode, Rect,
 };
 use std::cell::Cell;
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
 
 fn plan(amount: u32, axis_scrollable: bool) -> ScrollPlan {
     ScrollPlan {
@@ -25,8 +22,13 @@ fn down_times_three_issues_three_vertical_small_increments() {
         Ok(())
     };
     let mut observe = || true;
-    let steps = scroll_judged_for(deadline(), plan(3, true), &mut scroll_once, &mut observe)
-        .expect("scroll");
+    let steps = scroll_judged_for(
+        deadline(5_000),
+        plan(3, true),
+        &mut scroll_once,
+        &mut observe,
+    )
+    .expect("scroll");
     assert_eq!(calls.get(), 3);
     assert_eq!(steps[0].label(), SCROLL_LABEL);
     assert_eq!(steps[0].verified(), Some(true));
@@ -43,7 +45,7 @@ fn unscrollable_axis_is_not_delivered_and_names_the_axis() {
     };
     let mut observe = || false;
     let error = scroll_judged_for(
-        deadline(),
+        deadline(5_000),
         ScrollPlan {
             scroll_available: true,
             axis_scrollable: false,
@@ -107,7 +109,7 @@ fn scroll_unavailable_is_not_delivered() {
     let mut scroll_once = || Ok(());
     let mut observe = || true;
     let error = scroll_judged_for(
-        deadline(),
+        deadline(5_000),
         ScrollPlan {
             scroll_available: false,
             axis_scrollable: true,
@@ -139,8 +141,13 @@ fn mid_scroll_failure_is_delivered_unverified() {
         Ok(())
     };
     let mut observe = || false;
-    let error = scroll_judged_for(deadline(), plan(3, true), &mut scroll_once, &mut observe)
-        .expect_err("partial");
+    let error = scroll_judged_for(
+        deadline(5_000),
+        plan(3, true),
+        &mut scroll_once,
+        &mut observe,
+    )
+    .expect_err("partial");
     assert_eq!(calls.get(), 2);
     assert_eq!(
         error.disposition.delivery(),

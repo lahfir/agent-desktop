@@ -2,21 +2,14 @@ use super::{
     CheckUncheckPlan, ToggleAvailability, ToggleKind, check_uncheck_judged_for, toggle_judged_for,
 };
 use crate::actions::chain::DeliveryOutcome;
-use agent_desktop_core::{ActionStepOutcome, Deadline, ErrorCode, InteractionPolicy};
+use crate::system::test_time::deadline;
+use agent_desktop_core::{ActionStepOutcome, ErrorCode, InteractionPolicy};
 use std::cell::Cell;
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
-
-fn zero_deadline() -> Deadline {
-    Deadline::after(0).expect("zero deadline")
-}
 
 #[test]
 fn toggle_change_observed_is_verified() {
     let steps = toggle_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
         ToggleAvailability {
             toggle_ok: true,
@@ -34,7 +27,7 @@ fn toggle_change_observed_is_verified() {
 #[test]
 fn toggle_no_change_is_unverified() {
     let steps = toggle_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
         ToggleAvailability {
             toggle_ok: true,
@@ -50,7 +43,7 @@ fn toggle_no_change_is_unverified() {
 #[test]
 fn toggle_before_unreadable_is_unverified() {
     let steps = toggle_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
         ToggleAvailability {
             toggle_ok: true,
@@ -68,7 +61,7 @@ fn toggle_absent_falls_to_invoke() {
     let toggle = Cell::new(0u8);
     let invoke = Cell::new(0u8);
     let steps = toggle_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
         ToggleAvailability {
             toggle_ok: false,
@@ -95,7 +88,7 @@ fn check_from_off_toggles_once() {
     let toggles = Cell::new(0u8);
     let state = Cell::new(Some(ToggleKind::Off));
     let steps = check_uncheck_judged_for(
-        deadline(),
+        deadline(5_000),
         CheckUncheckPlan {
             want_checked: true,
             toggle_ok: true,
@@ -120,7 +113,7 @@ fn check_from_indeterminate_toggles_twice() {
     let toggles = Cell::new(0u8);
     let state = Cell::new(Some(ToggleKind::Indeterminate));
     let steps = check_uncheck_judged_for(
-        deadline(),
+        deadline(5_000),
         CheckUncheckPlan {
             want_checked: true,
             toggle_ok: true,
@@ -150,7 +143,7 @@ fn check_already_on_skips_without_invoke() {
     let toggles = Cell::new(0u8);
     let invokes = Cell::new(0u8);
     let steps = check_uncheck_judged_for(
-        deadline(),
+        deadline(5_000),
         CheckUncheckPlan {
             want_checked: true,
             toggle_ok: true,
@@ -178,7 +171,7 @@ fn check_already_on_skips_without_invoke() {
 fn uncheck_already_off_skips_without_invoke() {
     let toggles = Cell::new(0u8);
     let steps = check_uncheck_judged_for(
-        deadline(),
+        deadline(5_000),
         CheckUncheckPlan {
             want_checked: false,
             toggle_ok: true,
@@ -200,7 +193,7 @@ fn uncheck_already_off_skips_without_invoke() {
 fn zero_budget_check_times_out_without_sleeping_past_deadline() {
     let toggles = Cell::new(0u8);
     let error = check_uncheck_judged_for(
-        zero_deadline(),
+        deadline(0),
         CheckUncheckPlan {
             want_checked: true,
             toggle_ok: true,
@@ -223,7 +216,7 @@ fn check_does_not_invoke_after_unverified_toggle_delivery() {
     let toggles = Cell::new(0u8);
     let invokes = Cell::new(0u8);
     let steps = check_uncheck_judged_for(
-        deadline(),
+        deadline(5_000),
         CheckUncheckPlan {
             want_checked: true,
             toggle_ok: true,

@@ -1,17 +1,8 @@
 use super::{DisclosureInput, ExpandKind, disclosure_judged_for, disclosure_plan, invoke_allowed};
 use crate::actions::chain::DeliveryOutcome;
-use agent_desktop_core::{
-    ActionStepOutcome, Deadline, DeliveryDisposition, ErrorCode, InteractionPolicy,
-};
+use crate::system::test_time::deadline;
+use agent_desktop_core::{ActionStepOutcome, DeliveryDisposition, ErrorCode, InteractionPolicy};
 use std::cell::Cell;
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
-
-fn zero_deadline() -> Deadline {
-    Deadline::after(0).expect("zero deadline")
-}
 
 fn input(
     want_expanded: bool,
@@ -52,7 +43,7 @@ fn disclosure_plan_never_blindly_toggles_unknown_or_leaf() {
 fn expand_collapsed_delivers_verified() {
     let pattern = Cell::new(0u8);
     let steps = disclosure_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
         input(true, Some(ExpandKind::Collapsed), true, true),
         || {
@@ -72,7 +63,7 @@ fn expand_already_expanded_is_satisfied() {
     let pattern = Cell::new(0u8);
     let invoke = Cell::new(0u8);
     let steps = disclosure_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
         input(true, Some(ExpandKind::Expanded), true, true),
         || {
@@ -97,7 +88,7 @@ fn expand_leaf_node_exhausts_without_pattern_or_invoke() {
     let pattern = Cell::new(0u8);
     let invoke = Cell::new(0u8);
     let error = disclosure_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
         input(true, Some(ExpandKind::LeafNode), true, true),
         || {
@@ -124,7 +115,7 @@ fn unknown_state_never_blind_fires_invoke() {
     let pattern = Cell::new(0u8);
     let invoke = Cell::new(0u8);
     let steps = disclosure_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
         input(true, None, true, true),
         || {
@@ -146,7 +137,7 @@ fn unknown_state_never_blind_fires_invoke() {
 fn invoke_fallback_only_when_known_opposite() {
     let invoke = Cell::new(0u8);
     let steps = disclosure_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
         input(true, Some(ExpandKind::Collapsed), false, true),
         || Ok(DeliveryOutcome::DeliveredVerified),
@@ -163,7 +154,7 @@ fn invoke_fallback_only_when_known_opposite() {
 #[test]
 fn collapse_expanded_delivers_verified() {
     let steps = disclosure_judged_for(
-        deadline(),
+        deadline(5_000),
         InteractionPolicy::headless(),
         input(false, Some(ExpandKind::Expanded), true, false),
         || Ok(DeliveryOutcome::DeliveredVerified),
@@ -177,7 +168,7 @@ fn collapse_expanded_delivers_verified() {
 #[test]
 fn zero_budget_disclosure_times_out() {
     let error = disclosure_judged_for(
-        zero_deadline(),
+        deadline(0),
         InteractionPolicy::headless(),
         input(true, Some(ExpandKind::Collapsed), true, false),
         || Ok(DeliveryOutcome::DeliveredVerified),

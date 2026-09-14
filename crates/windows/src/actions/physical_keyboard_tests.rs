@@ -3,14 +3,10 @@ use super::{
 };
 use crate::actions::physical_target::ensure_keyboard_policy;
 use crate::input::keyboard_send_fake_sink as key_sink;
+use crate::system::test_time::deadline;
 use agent_desktop_core::{
-    ActionStepOutcome, Deadline, DeliveryDisposition, ErrorCode, InteractionPolicy, KeyCombo,
-    StepMechanism,
+    ActionStepOutcome, DeliveryDisposition, ErrorCode, InteractionPolicy, KeyCombo, StepMechanism,
 };
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
 
 fn combo() -> KeyCombo {
     KeyCombo {
@@ -36,7 +32,7 @@ fn type_text_lost_focus_fails_not_delivered_with_zero_injection() {
     key_sink::reset();
 
     let error =
-        type_text_from_gate("hello", false, deadline(), |_| Ok(())).expect_err("lost focus");
+        type_text_from_gate("hello", false, deadline(5_000), |_| Ok(())).expect_err("lost focus");
 
     assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_eq!(
@@ -50,7 +46,7 @@ fn type_text_lost_focus_fails_not_delivered_with_zero_injection() {
 fn type_text_with_focus_ready_synthesizes() {
     key_sink::reset();
 
-    let step = type_text_from_gate("hi", true, deadline(), |_| Ok(())).expect("type");
+    let step = type_text_from_gate("hi", true, deadline(5_000), |_| Ok(())).expect("type");
 
     assert_eq!(step.label(), "SendInput.type_text");
     assert_eq!(step.mechanism(), Some(StepMechanism::PhysicalSynthetic));
@@ -63,7 +59,7 @@ fn type_text_with_focus_ready_synthesizes() {
 fn press_key_element_gate_synthesizes_when_focus_ready() {
     key_sink::reset();
 
-    let step = press_key_from_gate(&combo(), true, deadline()).expect("press");
+    let step = press_key_from_gate(&combo(), true, deadline(5_000)).expect("press");
 
     assert_eq!(step.label(), "SendInput.press_key");
     assert_eq!(step.mechanism(), Some(StepMechanism::PhysicalSynthetic));
@@ -74,7 +70,7 @@ fn press_key_element_gate_synthesizes_when_focus_ready() {
 fn press_key_global_synthesizes_without_focus_gate() {
     key_sink::reset();
 
-    let result = press_key_global(&combo(), deadline()).expect("global press");
+    let result = press_key_global(&combo(), deadline(5_000)).expect("global press");
 
     assert_eq!(result.action, "press");
     assert_eq!(result.steps.len(), 1);
@@ -90,7 +86,7 @@ fn press_key_global_synthesizes_without_focus_gate() {
 fn press_key_lost_focus_fails_not_delivered_with_zero_injection() {
     key_sink::reset();
 
-    let error = press_key_from_gate(&combo(), false, deadline()).expect_err("lost focus");
+    let error = press_key_from_gate(&combo(), false, deadline(5_000)).expect_err("lost focus");
 
     assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_eq!(
@@ -111,7 +107,7 @@ fn type_text_stops_synthesizing_when_focus_is_lost_between_chunks() {
     let chunks_seen = Cell::new(0_u32);
     let long_text = "x".repeat(200);
 
-    let error = type_text_from_gate(&long_text, true, deadline(), |_| {
+    let error = type_text_from_gate(&long_text, true, deadline(5_000), |_| {
         chunks_seen.set(chunks_seen.get() + 1);
         if chunks_seen.get() > 1 {
             Err(focus_lost_before_delivery())

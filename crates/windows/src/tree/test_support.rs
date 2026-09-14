@@ -5,7 +5,7 @@
 use crate::tree::properties::{ElementProperties, PropertyOutcome, PropertyValue};
 use crate::tree::property_ids::TreeProperty;
 #[cfg(target_os = "windows")]
-use agent_desktop_core::{Deadline, NativeHandle};
+use agent_desktop_core::NativeHandle;
 
 /// Builds an `ElementProperties` from an explicit read set, the way every
 /// producer test stages one node's evidence.
@@ -33,16 +33,6 @@ pub(crate) fn text(value: &str) -> PropertyOutcome {
 #[cfg(target_os = "windows")]
 pub(crate) fn unreachable_handle() -> NativeHandle {
     NativeHandle::new(())
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) fn short_deadline() -> Deadline {
-    Deadline::after(200).expect("a deadline")
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) fn generous_deadline() -> Deadline {
-    Deadline::after(5_000).expect("a deadline")
 }
 
 /// Asserts that no non-doc line of any `(name, source)` pair satisfies

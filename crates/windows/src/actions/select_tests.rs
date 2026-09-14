@@ -3,13 +3,10 @@ use super::{
 };
 use crate::actions::chain::DeliveryOutcome;
 use crate::actions::value_write::gated_value_compare;
+use crate::system::test_time::deadline;
 use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
-use agent_desktop_core::{ActionStepOutcome, AdapterError, Deadline, ErrorCode};
+use agent_desktop_core::{ActionStepOutcome, AdapterError, ErrorCode};
 use std::cell::Cell;
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
 
 fn known_flag(value: bool) -> PropertyOutcome {
     PropertyOutcome::Known(PropertyValue::Flag(value))
@@ -35,7 +32,7 @@ fn self_match_selects_and_verifies_is_selected() {
         Ok(DeliveryOutcome::DeliveredVerified)
     };
     let steps = select_judged_for(
-        deadline(),
+        deadline(5_000),
         plan(true, false, 3),
         SelectOps {
             expand: &mut expand,
@@ -61,7 +58,7 @@ fn value_mismatch_is_element_not_found_with_char_count_not_text() {
     let mut realize = || Ok(());
     let mut select_item = || Ok(DeliveryOutcome::DeliveredVerified);
     let error = select_judged_for(
-        deadline(),
+        deadline(5_000),
         plan(false, false, marker.chars().count()),
         SelectOps {
             expand: &mut expand,
@@ -100,7 +97,7 @@ fn container_search_selects_when_find_hits() {
         Ok(DeliveryOutcome::DeliveredVerified)
     };
     let steps = select_judged_for(
-        deadline(),
+        deadline(5_000),
         plan(false, false, 4),
         SelectOps {
             expand: &mut expand,
@@ -134,7 +131,7 @@ fn budget_exhaustion_surfaces_honest_error() {
     let mut realize = || Ok(());
     let mut select_item = || Ok(DeliveryOutcome::DeliveredVerified);
     let error = select_judged_for(
-        deadline(),
+        deadline(5_000),
         plan(false, false, 1),
         SelectOps {
             expand: &mut expand,
@@ -178,7 +175,7 @@ fn collapsed_combobox_expands_first_and_collapses_on_failure() {
         )
     };
     let error = select_judged_for(
-        deadline(),
+        deadline(5_000),
         plan(false, true, 2),
         SelectOps {
             expand: &mut expand,

@@ -6,6 +6,7 @@ use crate::adapter::WindowsAdapter;
 use crate::system::hresult::{
     E_ACCESSDENIED, RPC_E_DISCONNECTED, UIA_E_ELEMENTNOTAVAILABLE, com_hresult_detail,
 };
+use crate::system::test_time::deadline;
 use crate::tree::automation::{UiaFailure, automation_client};
 use crate::tree::element::UIAElement;
 use crate::tree::fixture::{LocalFixture, ensure_test_apartment};
@@ -14,8 +15,8 @@ use crate::tree::properties::{read_one, rect_has_area};
 use crate::tree::property_ids::TreeProperty;
 use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
 use agent_desktop_core::{
-    ActionOps, AdapterError, Deadline, DeliveryDisposition, DeliverySemantics, ErrorCode,
-    InteractionLease, Rect,
+    ActionOps, AdapterError, DeliveryDisposition, DeliverySemantics, ErrorCode, InteractionLease,
+    Rect,
 };
 use std::cell::Cell;
 use std::ffi::c_void;
@@ -45,10 +46,6 @@ fn hidden_sample(bounds: Rect) -> VisibilitySample {
         offscreen: Some(true),
         viewport: Some(rect(0.0, 0.0, 100.0, 100.0)),
     }
-}
-
-fn short_deadline() -> Deadline {
-    Deadline::after(2_000).expect("deadline")
 }
 
 fn invoke_hr(hresult: i32) -> Option<UiaFailure> {
@@ -113,7 +110,7 @@ fn verified_visible_after_invoke_is_ok() {
     let bounds = rect(10.0, 10.0, 40.0, 20.0);
     let viewport = rect(0.0, 0.0, 200.0, 200.0);
     let result = scroll_into_view_judged_for(
-        short_deadline(),
+        deadline(2_000),
         Some(bounds),
         None,
         Duration::from_millis(800),
@@ -147,7 +144,7 @@ fn observation_failure_is_delivered_unverified_never_bare_read_err() {
     let before = rect(10.0, 10.0, 20.0, 20.0);
     let calls = Cell::new(0);
     let error = scroll_into_view_judged_for(
-        short_deadline(),
+        deadline(2_000),
         Some(before),
         None,
         Duration::from_millis(800),
@@ -235,7 +232,7 @@ fn transport_failed_invoke_unchanged_completed_observation_is_not_delivered() {
 fn transport_failed_invoke_with_failed_observation_is_delivered_unverified() {
     let before = rect(10.0, 10.0, 20.0, 20.0);
     let error = scroll_into_view_judged_for(
-        short_deadline(),
+        deadline(2_000),
         Some(before),
         invoke_hr(RPC_E_DISCONNECTED),
         Duration::from_millis(800),
@@ -275,7 +272,7 @@ fn live_element_without_scroll_item_is_unsupported_through_the_adapter() {
         "the gate is a gated property read that genuinely answered false"
     );
     let handle = element.into_native_handle();
-    let lease = InteractionLease::guarded(short_deadline(), ()).expect("an interaction lease");
+    let lease = InteractionLease::guarded(deadline(2_000), ()).expect("an interaction lease");
     let error = WindowsAdapter::new()
         .scroll_into_view(&handle, &lease)
         .expect_err("a BUTTON carries no ScrollItemPattern");
@@ -302,7 +299,7 @@ fn fixture_element(control: *mut c_void) -> Option<UIAElement> {
 fn zero_verify_window_unchanged_reaches_not_delivered() {
     let bounds = rect(8.0, 8.0, 25.0, 15.0);
     let error = scroll_into_view_judged_for(
-        short_deadline(),
+        deadline(2_000),
         Some(bounds),
         None,
         Duration::from_millis(0),

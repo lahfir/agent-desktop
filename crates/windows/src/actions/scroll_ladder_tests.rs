@@ -5,6 +5,7 @@ use super::{
 use crate::actions::chain::DeliveryOutcome;
 use crate::actions::scroll::scroll_amounts;
 use crate::actions::scroll_into_view::{VisibilitySample, visibility_verified};
+use crate::system::test_time::deadline;
 use agent_desktop_core::{
     AdapterError, Deadline, DeliveryDisposition, DeliverySemantics, Direction, ErrorCode, Rect,
 };
@@ -18,10 +19,6 @@ fn rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
         width,
         height,
     }
-}
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
 }
 
 #[test]
@@ -67,7 +64,7 @@ fn visible_at_rung_zero_is_satisfied_no_delivery() {
         scrolls.set(scrolls.get() + 1);
         Ok(())
     };
-    let outcome = ladder_judged_for(deadline(), &mut next, &mut scroll).expect("visible");
+    let outcome = ladder_judged_for(deadline(5_000), &mut next, &mut scroll).expect("visible");
     assert_eq!(outcome, DeliveryOutcome::SatisfiedNoDelivery);
     assert_eq!(scrolls.get(), 0);
 }
@@ -86,7 +83,7 @@ fn visible_after_n_rungs_is_delivered_verified() {
         scrolls.set(scrolls.get() + 1);
         Ok(())
     };
-    let outcome = ladder_judged_for(deadline(), &mut next, &mut scroll).expect("ladder");
+    let outcome = ladder_judged_for(deadline(5_000), &mut next, &mut scroll).expect("ladder");
     assert_eq!(outcome, DeliveryOutcome::DeliveredVerified);
     assert_eq!(scrolls.get(), 3);
 }
@@ -115,7 +112,7 @@ fn unclipped_below_fold_does_not_verify_without_intersection() {
         calls.set(calls.get() + 1);
         Ok(())
     };
-    let error = ladder_judged_for(deadline(), &mut next, &mut scroll).expect_err("below-fold");
+    let error = ladder_judged_for(deadline(5_000), &mut next, &mut scroll).expect_err("below-fold");
     assert!(seen.get());
     assert_eq!(calls.get(), MAX_ANCESTOR_SCROLLS as u8);
     assert_eq!(
@@ -153,7 +150,7 @@ fn delivered_verified_requires_intersection_signal() {
         scrolls.set(scrolls.get() + 1);
         Ok(())
     };
-    let outcome = ladder_judged_for(deadline(), &mut next, &mut scroll).expect("verified");
+    let outcome = ladder_judged_for(deadline(5_000), &mut next, &mut scroll).expect("verified");
     assert_eq!(outcome, DeliveryOutcome::DeliveredVerified);
 }
 
@@ -165,7 +162,7 @@ fn ten_rungs_exhausted_is_delivered_unverified() {
         calls.set(calls.get() + 1);
         Ok(())
     };
-    let error = ladder_judged_for(deadline(), &mut next, &mut scroll).expect_err("exhausted");
+    let error = ladder_judged_for(deadline(5_000), &mut next, &mut scroll).expect_err("exhausted");
     assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
     assert_eq!(calls.get(), MAX_ANCESTOR_SCROLLS as u8);
@@ -191,7 +188,7 @@ fn classified_write_error_aborts_without_further_scrolls() {
         Err(AdapterError::new(ErrorCode::PermDenied, "denied write")
             .with_disposition(DeliverySemantics::not_delivered()))
     };
-    let error = ladder_judged_for(deadline(), &mut next, &mut scroll).expect_err("denied");
+    let error = ladder_judged_for(deadline(5_000), &mut next, &mut scroll).expect_err("denied");
     assert_eq!(error.code, ErrorCode::PermDenied);
     assert_eq!(calls.get(), 1);
     assert_eq!(
@@ -217,7 +214,8 @@ fn later_scroll_failure_after_mutation_is_delivered_unverified() {
             .with_disposition(DeliverySemantics::not_delivered()))
         }
     };
-    let error = ladder_judged_for(deadline(), &mut next, &mut scroll).expect_err("after scroll");
+    let error =
+        ladder_judged_for(deadline(5_000), &mut next, &mut scroll).expect_err("after scroll");
     assert_eq!(calls.get(), 2);
     assert_eq!(
         error.disposition.delivery(),

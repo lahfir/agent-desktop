@@ -3,7 +3,7 @@ use agent_desktop_core::NodeDescriptor;
 use super::properties::ElementProperties;
 use super::property_ids::TreeProperty;
 
-/// Produces the P2-O8 descriptor group from the read set.
+/// Produces the descriptor group from the read set.
 ///
 /// Every slot is a positive claim: a failed or gated source read contributes
 /// nothing, per the tri-state rule (`emit-state-on-a-positive-claim-never-on-a-default`).

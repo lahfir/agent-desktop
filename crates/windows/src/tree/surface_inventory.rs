@@ -3,7 +3,6 @@ use agent_desktop_core::{
 };
 
 use super::automation::root_from_hwnd;
-use super::chromium;
 use super::surfaces::window_is_modal_sheet;
 use crate::system::menu_state::{MenuLocation, locate_menu};
 use crate::system::window_enum::{EnumeratedWindow, WindowHandle, enumerate_top_level};
@@ -198,10 +197,7 @@ fn trace_unreadable_window(handle: WindowHandle, error: &AdapterError) {
 /// the window's UIA root exactly as `snapshot --surface sheet` reads it.
 fn is_modal_sheet(handle: WindowHandle, deadline: Deadline) -> Result<bool, AdapterError> {
     let root = root_from_hwnd(handle as isize, deadline)?;
-    Ok(window_is_modal_sheet(
-        &root,
-        chromium::is_chromium_root(&root),
-    ))
+    Ok(window_is_modal_sheet(&root))
 }
 
 fn menu_surface(menu: &MenuLocation) -> Result<SurfaceInfo, AdapterError> {

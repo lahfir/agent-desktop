@@ -2,7 +2,6 @@ use agent_desktop_core::{AdapterError, Deadline, ErrorCode, ObservationRoot, Sna
 use serde_json::json;
 
 use super::automation::root_from_hwnd;
-use super::chromium;
 use super::element::UIAElement;
 #[cfg(target_os = "windows")]
 use super::properties::read_one;
@@ -35,7 +34,7 @@ pub(crate) fn surface_root(
         (ObservationRoot::Window(window), SnapshotSurface::Sheet) => {
             let handle = focused_hwnd_of(&window.id)?;
             let element = root_from_hwnd(handle, deadline)?;
-            if window_is_modal_sheet(&element, chromium::is_chromium_root(&element)) {
+            if window_is_modal_sheet(&element) {
                 Ok(element)
             } else {
                 Err(AdapterError::new(
@@ -136,7 +135,7 @@ fn focused_hwnd_of(expected: &str) -> Result<isize, AdapterError> {
 /// This classifies a Chromium modal as a `Sheet` surface, making it reachable
 /// via the sheet surface.
 #[cfg(target_os = "windows")]
-pub(crate) fn window_is_modal_sheet(root: &UIAElement, _chromium: bool) -> bool {
+pub(crate) fn window_is_modal_sheet(root: &UIAElement) -> bool {
     matches!(
         read_one(root, TreeProperty::WindowIsModal).flag(),
         Some(true)
@@ -144,7 +143,7 @@ pub(crate) fn window_is_modal_sheet(root: &UIAElement, _chromium: bool) -> bool 
 }
 
 #[cfg(not(target_os = "windows"))]
-pub(crate) fn window_is_modal_sheet(_root: &UIAElement, _chromium: bool) -> bool {
+pub(crate) fn window_is_modal_sheet(_root: &UIAElement) -> bool {
     false
 }
 

@@ -10,6 +10,7 @@ use crate::input::{
     DragReleaseGuard, KeyReleaseGuard, NormalizedPoint, ensure_chunk_budget,
     keyboard_send_fake_sink as key_sink, mouse_send_fake_sink as mouse_sink, preflight_text,
 };
+use crate::system::test_time::deadline;
 use agent_desktop_core::{
     Action, ActionResult, ActionStep, AdapterError, AppError, Deadline, DeliverySemantics,
     ErrorCode, ErrorPayload, InteractionPolicy, KeyCombo, MouseButton, Point, Rect,
@@ -19,10 +20,6 @@ use std::time::Duration;
 
 const INTEGRITY_RID_MEDIUM: u32 = 0x2000;
 const INTEGRITY_RID_HIGH: u32 = 0x3000;
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
 
 fn bounds() -> Rect {
     Rect {
@@ -88,7 +85,7 @@ fn assert_result_disposition(json: &Value, expected: DeliverySemantics) {
 #[test]
 fn physical_type_text_step_wire_uses_physical_synthetic_and_unverified() {
     key_sink::reset();
-    let step = type_text_from_gate("hi", true, deadline(), |_| Ok(())).expect("type");
+    let step = type_text_from_gate("hi", true, deadline(5_000), |_| Ok(())).expect("type");
 
     let json = serialize_action_result(&Action::TypeText("hi".into()), vec![step]);
     assert_eq!(json["steps"][0]["outcome"], "succeeded");
@@ -111,7 +108,7 @@ fn physical_click_step_wire_uses_physical_synthetic_and_unverified() {
             button: MouseButton::Left,
             count: 2,
         },
-        deadline(),
+        deadline(5_000),
     )
     .expect("click");
 
@@ -125,7 +122,7 @@ fn physical_click_step_wire_uses_physical_synthetic_and_unverified() {
 #[test]
 fn press_key_global_result_disposition_matches_projection() {
     key_sink::reset();
-    let result = press_key_global(&combo(), deadline()).expect("press");
+    let result = press_key_global(&combo(), deadline(5_000)).expect("press");
     let json = serde_json::to_value(&result).expect("serializes");
 
     assert_eq!(json["steps"][0]["mechanism"], "physical_synthetic");

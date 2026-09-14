@@ -4,17 +4,14 @@ use crate::input::mouse_send::{
     MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE,
 };
 use crate::input::mouse_send_fake_sink as mouse_sink;
+use crate::system::test_time::deadline;
 use agent_desktop_core::{
-    ActionStepOutcome, Deadline, DeliveryDisposition, ErrorCode, InteractionPolicy, MouseButton,
-    Point, Rect, StepMechanism,
+    ActionStepOutcome, DeliveryDisposition, ErrorCode, InteractionPolicy, MouseButton, Point, Rect,
+    StepMechanism,
 };
 
 const MOUSEEVENTF_RIGHTDOWN: u32 = 0x0008;
 const MOUSEEVENTF_RIGHTUP: u32 = 0x0010;
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
 
 fn bounds() -> Rect {
     Rect {
@@ -66,7 +63,7 @@ fn lost_foreground_fails_not_delivered_with_zero_injection() {
             button: MouseButton::Left,
             count: 2,
         },
-        deadline(),
+        deadline(5_000),
     )
     .expect_err("lost foreground");
 
@@ -92,7 +89,7 @@ fn double_click_issues_left_button_down_up_pairs() {
             button: MouseButton::Left,
             count: 2,
         },
-        deadline(),
+        deadline(5_000),
     )
     .expect("double click");
 
@@ -134,7 +131,7 @@ fn triple_click_issues_three_left_button_cycles() {
             button: MouseButton::Left,
             count: 3,
         },
-        deadline(),
+        deadline(5_000),
     )
     .expect("triple click");
 
@@ -159,7 +156,7 @@ fn right_click_issues_right_button_flags() {
             button: MouseButton::Right,
             count: 1,
         },
-        deadline(),
+        deadline(5_000),
     )
     .expect("right click");
 

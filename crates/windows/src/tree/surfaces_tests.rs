@@ -26,7 +26,7 @@ fn a_malformed_window_id_is_rejected_before_the_platform_is_reached() {
 fn an_absent_window_modal_read_is_not_a_sheet() {
     use super::super::element::{CannedElement, UIAElement};
     let element = UIAElement::from(CannedElement);
-    assert!(!window_is_modal_sheet(&element, true));
+    assert!(!window_is_modal_sheet(&element));
 }
 
 /// The shipped predicate, on the lane that runs it.
@@ -53,11 +53,7 @@ fn a_live_non_modal_window_is_not_classified_as_a_sheet() {
         Some(false),
         "the provider must answer this read for the classification below to be tested"
     );
-    assert!(!window_is_modal_sheet(&root, false));
-    assert!(
-        !window_is_modal_sheet(&root, true),
-        "the chromium flag is not consulted by this classification"
-    );
+    assert!(!window_is_modal_sheet(&root));
 }
 
 #[cfg(all(test, target_os = "windows"))]

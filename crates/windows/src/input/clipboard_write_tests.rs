@@ -1,13 +1,10 @@
 use super::{clear_clipboard, force_ownership_loss_for_test, set_clipboard_content};
+use crate::system::test_time::deadline;
 use crate::tree::fixture::bootstrap;
 use crate::tree::fixture_clipboard::clipboard_test_lock;
 use agent_desktop_core::{
-    ClipboardContent, Deadline, DeliverySemantics, ErrorCode, ImageBuffer, ImageFormat,
+    ClipboardContent, DeliverySemantics, ErrorCode, ImageBuffer, ImageFormat,
 };
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
 
 #[test]
 fn image_metadata_mismatch_is_rejected_before_native_open() {
@@ -21,7 +18,7 @@ fn image_metadata_mismatch_is_rejected_before_native_open() {
             height: 99,
             scale_factor: 1.0,
         }),
-        deadline(),
+        deadline(5_000),
     )
     .expect_err("metadata mismatch must fail");
     assert_eq!(error.code, ErrorCode::InvalidArgs);
@@ -40,7 +37,7 @@ fn ownership_loss_reports_delivered_unverified_not_ok() {
     }
     let _reset = Reset;
     force_ownership_loss_for_test(true);
-    let error = set_clipboard_content(&ClipboardContent::Text("owned".into()), deadline())
+    let error = set_clipboard_content(&ClipboardContent::Text("owned".into()), deadline(5_000))
         .expect_err("lost ownership must not report ok");
     assert_eq!(error.code, ErrorCode::AppUnresponsive);
     assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
@@ -50,8 +47,9 @@ fn ownership_loss_reports_delivered_unverified_not_ok() {
 fn clear_empties_text_format() {
     let _lock = clipboard_test_lock();
     bootstrap();
-    set_clipboard_content(&ClipboardContent::Text("temporary".into()), deadline()).expect("set");
-    clear_clipboard(deadline()).expect("clear");
+    set_clipboard_content(&ClipboardContent::Text("temporary".into()), deadline(5_000))
+        .expect("set");
+    clear_clipboard(deadline(5_000)).expect("clear");
     assert!(
         unsafe { windows_sys::Win32::System::DataExchange::IsClipboardFormatAvailable(13) == 0 },
         "clear must remove CF_UNICODETEXT"
@@ -66,7 +64,7 @@ fn tiny_png() -> Vec<u8> {
         2,
         2,
         8,
-        deadline(),
+        deadline(5_000),
     )
     .expect("encode")
 }

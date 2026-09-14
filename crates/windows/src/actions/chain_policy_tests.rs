@@ -4,12 +4,9 @@
 //! declares, which is `false`, so a future flip is caught.
 
 use super::{ChainRung, DeliveryOutcome, execute_chain};
-use agent_desktop_core::{Deadline, InteractionPolicy};
+use crate::system::test_time::deadline;
+use agent_desktop_core::InteractionPolicy;
 use std::cell::Cell;
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
 
 #[test]
 fn value_write_chain_does_not_continue_after_unverified_delivery() {
@@ -31,7 +28,7 @@ fn value_write_chain_stops_after_unverified_delivery_with_no_second_rung() {
         Ok(DeliveryOutcome::DeliveredVerified)
     };
     let steps = execute_chain(
-        deadline(),
+        deadline(5_000),
         &crate::actions::value_write::VALUE_WRITE_CHAIN,
         InteractionPolicy::headless(),
         &mut [

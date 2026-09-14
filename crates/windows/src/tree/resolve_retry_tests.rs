@@ -2,7 +2,8 @@
 //! retries within budget, and expiry carries the last diagnosis.
 
 use super::*;
-use crate::tree::test_support::{generous_deadline, short_deadline, unreachable_handle};
+use crate::system::test_time::deadline;
+use crate::tree::test_support::unreachable_handle;
 use agent_desktop_core::DeliverySemantics;
 
 fn retryable_incomplete(message: &str) -> AdapterError {
@@ -30,7 +31,7 @@ fn err_code_owned(result: Result<NativeHandle, AdapterError>) -> AdapterError {
 #[test]
 fn an_incomplete_attempt_retries_and_succeeds_within_the_deadline() {
     let mut attempts = 0;
-    let deadline = generous_deadline();
+    let deadline = deadline(5_000);
     let result = retry_incomplete_until(deadline, || {
         attempts += 1;
         if attempts < 3 {
@@ -48,7 +49,7 @@ fn an_incomplete_attempt_retries_and_succeeds_within_the_deadline() {
 #[test]
 fn a_settled_non_match_never_retries() {
     let mut attempts = 0;
-    let deadline = generous_deadline();
+    let deadline = deadline(5_000);
     let result = retry_incomplete_until(deadline, || {
         attempts += 1;
         Err(AdapterError::new(
@@ -69,7 +70,7 @@ fn a_settled_non_match_never_retries() {
 #[test]
 fn an_unstamped_unresponsive_error_is_not_retried() {
     let mut attempts = 0;
-    let deadline = generous_deadline();
+    let deadline = deadline(5_000);
     let result = retry_incomplete_until(deadline, || {
         attempts += 1;
         Err(AdapterError::new(
@@ -89,7 +90,7 @@ fn an_unstamped_unresponsive_error_is_not_retried() {
 /// discards the diagnosis.
 #[test]
 fn deadline_expiry_mid_incompleteness_returns_the_last_diagnosis_stamped() {
-    let deadline = short_deadline();
+    let deadline = deadline(200);
     let result = retry_incomplete_until(deadline, || Err(retryable_incomplete("stuck")));
     let error = err_code_owned(result);
     assert_eq!(error.code, agent_desktop_core::ErrorCode::AppUnresponsive);
@@ -107,7 +108,7 @@ fn deadline_expiry_mid_incompleteness_returns_the_last_diagnosis_stamped() {
 /// is nothing more informative to surface.
 #[test]
 fn deadline_expiry_with_no_incomplete_returns_the_timeout() {
-    let deadline = short_deadline();
+    let deadline = deadline(200);
     let result = retry_incomplete_until(deadline, || {
         Err(AdapterError::new(
             agent_desktop_core::ErrorCode::Timeout,

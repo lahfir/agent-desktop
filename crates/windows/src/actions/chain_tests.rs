@@ -2,15 +2,11 @@ use super::{
     ChainDef, ChainRung, DeliveryOutcome, build_step, execute_chain, exhaustion_disposition,
     record_step_outcome, rung_allowed,
 };
+use crate::system::test_time::deadline;
 use agent_desktop_core::{
-    ActionStepOutcome, AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionPolicy,
-    StepMechanism,
+    ActionStepOutcome, AdapterError, DeliverySemantics, ErrorCode, InteractionPolicy, StepMechanism,
 };
 use std::cell::Cell;
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
 
 #[test]
 fn delivery_and_verification_are_independent() {
@@ -95,7 +91,7 @@ fn not_delivered_falls_through_with_skipped_step() {
         continue_after_unverified_delivery: false,
     };
     let steps = execute_chain(
-        deadline(),
+        deadline(5_000),
         &def,
         InteractionPolicy::headless(),
         &mut [
@@ -136,7 +132,7 @@ fn genuine_err_aborts_with_no_later_rung() {
         continue_after_unverified_delivery: false,
     };
     let error = execute_chain(
-        deadline(),
+        deadline(5_000),
         &def,
         InteractionPolicy::headless(),
         &mut [
@@ -174,7 +170,7 @@ fn policy_disallowed_rung_is_silently_skipped() {
         continue_after_unverified_delivery: false,
     };
     let steps = execute_chain(
-        deadline(),
+        deadline(5_000),
         &def,
         InteractionPolicy::headless(),
         &mut [
@@ -291,7 +287,7 @@ fn genuine_err_after_prior_delivery_upgrades_disposition_to_delivered_unverified
         continue_after_unverified_delivery: true,
     };
     let error = execute_chain(
-        deadline(),
+        deadline(5_000),
         &def,
         InteractionPolicy::headless(),
         &mut [
@@ -329,7 +325,7 @@ fn genuine_err_without_prior_delivery_keeps_classifier_disposition() {
         continue_after_unverified_delivery: true,
     };
     let error = execute_chain(
-        deadline(),
+        deadline(5_000),
         &def,
         InteractionPolicy::headless(),
         &mut [
@@ -362,7 +358,7 @@ fn exhausted_chain_carries_suggestion_and_disposition() {
         continue_after_unverified_delivery: false,
     };
     let error = execute_chain(
-        deadline(),
+        deadline(5_000),
         &def,
         InteractionPolicy::headless(),
         &mut [

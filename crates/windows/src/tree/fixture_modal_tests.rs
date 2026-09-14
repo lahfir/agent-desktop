@@ -75,7 +75,7 @@ fn the_modal_fixture_window_is_owned_and_carries_the_measured_modal_properties()
     let root = crate::tree::automation::root_from_hwnd(fixture.modal_handle(), deadline)
         .expect("the modal window resolves to a UI Automation root");
     assert!(
-        crate::tree::surfaces::window_is_modal_sheet(&root, false),
+        crate::tree::surfaces::window_is_modal_sheet(&root),
         "UI Automation's WindowIsModal must agree once the modal is shown"
     );
 

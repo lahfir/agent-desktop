@@ -1,11 +1,8 @@
 use super::{SelectOps, SelectPlan, push_order, select_judged_for};
 use crate::actions::chain::DeliveryOutcome;
-use agent_desktop_core::{AdapterError, Deadline, DeliveryDisposition, ErrorCode};
+use crate::system::test_time::deadline;
+use agent_desktop_core::{AdapterError, DeliveryDisposition, ErrorCode};
 use std::cell::Cell;
-
-fn deadline() -> Deadline {
-    Deadline::after(5_000).expect("deadline")
-}
 
 fn plan(self_match: bool, needs_expand: bool, value_chars: usize) -> SelectPlan {
     SelectPlan {
@@ -31,7 +28,7 @@ fn first_match_still_realizes_before_select() {
     };
     let mut select_item = || Ok(DeliveryOutcome::DeliveredVerified);
     select_judged_for(
-        deadline(),
+        deadline(5_000),
         plan(false, false, 3),
         SelectOps {
             expand: &mut expand,
@@ -61,7 +58,7 @@ fn mid_realize_search_ambiguity_aborts() {
     };
     let mut select_item = || Ok(DeliveryOutcome::DeliveredVerified);
     let error = select_judged_for(
-        deadline(),
+        deadline(5_000),
         plan(false, false, 3),
         SelectOps {
             expand: &mut expand,
@@ -96,7 +93,7 @@ fn post_realize_duplicate_is_ambiguous() {
     let mut realize = || Ok(());
     let mut select_item = || Ok(DeliveryOutcome::DeliveredVerified);
     let error = select_judged_for(
-        deadline(),
+        deadline(5_000),
         plan(false, false, 3),
         SelectOps {
             expand: &mut expand,
@@ -133,7 +130,7 @@ fn miss_after_realize_still_collapses_when_expanded() {
     };
     let mut select_item = || Ok(DeliveryOutcome::DeliveredVerified);
     let error = select_judged_for(
-        deadline(),
+        deadline(5_000),
         plan(false, true, 7),
         SelectOps {
             expand: &mut expand,
