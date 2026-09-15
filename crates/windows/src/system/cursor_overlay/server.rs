@@ -19,12 +19,13 @@
 //! a broken pipe to the caller waiting on it.
 
 #[cfg(target_os = "windows")]
+use super::parked_flush::ParkedFlush;
+#[cfg(target_os = "windows")]
 use crate::system::cursor_overlay::wide::{wide, win32_error};
 #[cfg(target_os = "windows")]
 use crate::system::cursor_overlay::{framing, peer};
 #[cfg(target_os = "windows")]
 use agent_desktop_core::{AdapterError, CursorOverlayControl};
-#[cfg(target_os = "windows")]
 use std::sync::Arc;
 #[cfg(target_os = "windows")]
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -209,9 +210,13 @@ impl Listener {
     /// Giving up costs only the acknowledgement, which the client is
     /// already prepared to time out on.
     fn wait_for_the_client_to_read(&self) {
+        let Some(parked) = ParkedFlush::claim() else {
+            return;
+        };
         let shared = SharedHandle(self.handle as isize);
         let (done, taken) = sync_channel::<()>(1);
         std::thread::spawn(move || {
+            let _parked = parked;
             unsafe { FlushFileBuffers(shared.get()) };
             let _ = done.send(());
         });

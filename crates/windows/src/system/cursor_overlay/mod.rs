@@ -25,6 +25,8 @@ pub(crate) mod geometry;
 pub(crate) mod image_identity;
 pub(crate) mod label;
 pub(crate) mod monitors;
+#[cfg(target_os = "windows")]
+pub(crate) mod parked_flush;
 pub(crate) mod peer;
 pub(crate) mod pipe_name;
 pub(crate) mod raster;
@@ -33,7 +35,6 @@ pub(crate) mod retire;
 pub(crate) mod reveal;
 pub(crate) mod rounded;
 pub(crate) mod schedule;
-#[cfg(target_os = "windows")]
 pub(crate) mod server;
 pub(crate) mod session_state;
 pub(crate) mod spawn;

@@ -208,3 +208,20 @@ fn a_renderer_that_answers_on_a_later_attempt_ends_the_loop() {
         "the loop stops at the answer, it does not run on"
     );
 }
+
+/// `broadcast` reaches only the endpoints `discover` can name, and a retired
+/// generation's pipe is not one of them - so a teardown that skipped the sweep
+/// left the earlier generation's window drawn with nothing left to remove it.
+#[test]
+fn ending_a_session_sweeps_retired_generations_as_starting_one_does() {
+    assert!(super::sweeps_retired_generations(
+        &CursorOverlayControl::enable(session(), CursorOverlayStyle::default())
+    ));
+    assert!(super::sweeps_retired_generations(
+        &CursorOverlayControl::disable(session())
+    ));
+    assert!(
+        !super::sweeps_retired_generations(&CursorOverlayControl::hide(session())),
+        "a control inside a live session must not reach retired pipes"
+    );
+}

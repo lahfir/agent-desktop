@@ -25,25 +25,30 @@ const ENABLE_BUDGET: Duration =
 /// the window to be gone rather than for a frame to land.
 const TEARDOWN_BUDGET: Duration = Duration::from_secs(4);
 
-/// The stale-generation sweep runs here — on an `Enable`, before the reach on
-/// the current name — rather than on the spawn path below. A sweep further
-/// down would miss the case that motivates it: both generations alive at once,
-/// the current one answering, so the reach returns `Delivered` and the spawn
-/// path is never taken while the earlier generation's window is still drawn.
+/// The stale-generation sweep runs here — before the reach on the current
+/// name — rather than on the spawn path below. A sweep further down would miss
+/// the case that motivates it: both generations alive at once, the current one
+/// answering, so the reach returns `Delivered` and the spawn path is never
+/// taken while the earlier generation's window is still drawn.
+///
+/// It runs on `Disable` as well as `Enable`, because `broadcast` reaches the
+/// endpoints `discover` can name and a retired generation's pipe is not one of
+/// them. An operator ending a session means all of it; leaving the earlier
+/// generation's window drawn is the one outcome teardown must not produce.
 pub(crate) fn update(control: &CursorOverlayControl) -> Result<(), AdapterError> {
     control.validate()?;
     let root = state_root()?;
     let budget = budget_for(control);
+
+    if sweeps_retired_generations(control) {
+        retire::sweep(&root, control.session_id());
+    }
 
     if control.is_disable() {
         return broadcast(&root, control, budget);
     }
 
     let name = pipe_name::pipe_name(&root, control.session_id(), control.agent_id());
-
-    if control.is_enable() {
-        retire::sweep(&root, control.session_id());
-    }
 
     match transport::reach(&name, control, budget) {
         ReachOutcome::Delivered => return Ok(()),
@@ -85,6 +90,16 @@ fn broadcast(
         }
     }
     first_error.map_or(Ok(()), Err)
+}
+
+/// Which controls clear retired protocol generations.
+///
+/// Establishing a session and ending one both have to. A control inside a
+/// live session does not, and sweeping on those would reach retired pipes on
+/// every mutating command. Pure, so the choice can be asserted without a
+/// renderer to aim at.
+fn sweeps_retired_generations(control: &CursorOverlayControl) -> bool {
+    control.is_enable() || control.is_disable()
 }
 
 fn budget_for(control: &CursorOverlayControl) -> Duration {
