@@ -1,0 +1,181 @@
+{
+    "Probe":  "03-pattern-census",
+    "Stack":  "uia3-com",
+    "Authoritative":  true,
+    "Scope":  "app/provider",
+    "Source":  "captures/08-uia3-com/census.json, produced by U7 shim mode \"census\" over hand-declared ComImport UIA3 (CUIAutomation8); reshaped here, not re-measured",
+    "SourceRationale":  "KTD1 puts pattern availability on the COM stack because the managed stack structurally cannot name LegacyIAccessible, Drag, DropTarget, Annotation, Styles or TextChild. Re-walking the same four targets a second time would add a second sample of the same fact and a second chance for drift, so this probe consumes the committed measurement.",
+    "View":  "RawView walk (shim census mode); inControlView is recorded per element in the source capture",
+    "MatrixRecordFormat":  "one row per line, space separated key=value fields in fixed order: target=\u003ccensus target label\u003e ct=\u003cUIA ControlType short name\u003e n=\u003celements of that ControlType in the RawView walk\u003e withpat=\u003chow many of them advertise at least one pattern\u003e pats=\u003cName:count comma separated, \"-\" when none\u003e. Counts are element occurrences, not distinct patterns.",
+    "Targets":  [
+                    {
+                        "Label":  "winforms-default",
+                        "ProcessName":  "ScratchForms",
+                        "RootFrameworkId":  "WinForm",
+                        "ControlViewNodes":  35,
+                        "RawViewNodes":  35,
+                        "ElementsWithAnyPattern":  35,
+                        "ElementsWithAnyPatternExcludingLegacy":  11
+                    },
+                    {
+                        "Label":  "winforms-host-providers",
+                        "ProcessName":  "ScratchForms",
+                        "RootFrameworkId":  "WinForm",
+                        "ControlViewNodes":  46,
+                        "RawViewNodes":  46,
+                        "ElementsWithAnyPattern":  46,
+                        "ElementsWithAnyPatternExcludingLegacy":  37
+                    },
+                    {
+                        "Label":  "wpf",
+                        "ProcessName":  "powershell",
+                        "RootFrameworkId":  "WPF",
+                        "ControlViewNodes":  32,
+                        "RawViewNodes":  34,
+                        "ElementsWithAnyPattern":  34,
+                        "ElementsWithAnyPatternExcludingLegacy":  33
+                    },
+                    {
+                        "Label":  "notepad",
+                        "ProcessName":  "notepad",
+                        "RootFrameworkId":  "Win32",
+                        "ControlViewNodes":  26,
+                        "RawViewNodes":  26,
+                        "ElementsWithAnyPattern":  26,
+                        "ElementsWithAnyPatternExcludingLegacy":  18
+                    }
+                ],
+    "PatternTotalsByTarget":  {
+                                  "winforms-default":  "ExpandCollapse:1,Invoke:6,LegacyIAccessible:35,RangeValue:1,Scroll:1,Transform:1,Value:1,Window:1",
+                                  "winforms-host-providers":  "ExpandCollapse:4,Invoke:24,LegacyIAccessible:46,RangeValue:1,Scroll:1,ScrollItem:7,Selection:2,SelectionItem:7,Toggle:1,Transform:1,Value:5,Window:1",
+                                  "wpf":  "ExpandCollapse:2,Invoke:5,ItemContainer:2,LegacyIAccessible:34,RangeValue:4,Scroll:5,ScrollItem:5,Selection:2,SelectionItem:5,SynchronizedInput:28,Text:2,Toggle:1,Transform:1,Value:3,Window:1",
+                                  "notepad":  "ExpandCollapse:6,Invoke:13,LegacyIAccessible:26,RangeValue:2,Scroll:1,Text:1,Text2:1,Transform:1,Value:2,Window:1"
+                              },
+    "Rows":  [
+                 "target=winforms-default ct=Button n=6 withpat=6 pats=Invoke:6,LegacyIAccessible:6",
+                 "target=winforms-default ct=MenuBar n=1 withpat=1 pats=LegacyIAccessible:1",
+                 "target=winforms-default ct=MenuItem n=1 withpat=1 pats=ExpandCollapse:1,LegacyIAccessible:1",
+                 "target=winforms-default ct=Pane n=23 withpat=23 pats=LegacyIAccessible:23,Scroll:1",
+                 "target=winforms-default ct=ScrollBar n=1 withpat=1 pats=LegacyIAccessible:1,RangeValue:1",
+                 "target=winforms-default ct=Thumb n=1 withpat=1 pats=LegacyIAccessible:1",
+                 "target=winforms-default ct=TitleBar n=1 withpat=1 pats=LegacyIAccessible:1,Value:1",
+                 "target=winforms-default ct=Window n=1 withpat=1 pats=LegacyIAccessible:1,Transform:1,Window:1",
+                 "target=winforms-host-providers ct=Button n=18 withpat=18 pats=Invoke:18,LegacyIAccessible:18",
+                 "target=winforms-host-providers ct=CheckBox n=1 withpat=1 pats=Invoke:1,LegacyIAccessible:1,Toggle:1",
+                 "target=winforms-host-providers ct=ComboBox n=1 withpat=1 pats=ExpandCollapse:1,LegacyIAccessible:1,Value:1",
+                 "target=winforms-host-providers ct=Edit n=2 withpat=2 pats=LegacyIAccessible:2,Value:2",
+                 "target=winforms-host-providers ct=List n=1 withpat=1 pats=LegacyIAccessible:1,Selection:1",
+                 "target=winforms-host-providers ct=ListItem n=5 withpat=5 pats=Invoke:5,LegacyIAccessible:5,ScrollItem:5,SelectionItem:5",
+                 "target=winforms-host-providers ct=MenuBar n=1 withpat=1 pats=LegacyIAccessible:1",
+                 "target=winforms-host-providers ct=MenuItem n=1 withpat=1 pats=ExpandCollapse:1,LegacyIAccessible:1",
+                 "target=winforms-host-providers ct=Pane n=1 withpat=1 pats=LegacyIAccessible:1,Scroll:1",
+                 "target=winforms-host-providers ct=ScrollBar n=1 withpat=1 pats=LegacyIAccessible:1,RangeValue:1",
+                 "target=winforms-host-providers ct=Slider n=1 withpat=1 pats=LegacyIAccessible:1,Value:1",
+                 "target=winforms-host-providers ct=Text n=6 withpat=6 pats=LegacyIAccessible:6",
+                 "target=winforms-host-providers ct=Thumb n=2 withpat=2 pats=LegacyIAccessible:2",
+                 "target=winforms-host-providers ct=TitleBar n=1 withpat=1 pats=LegacyIAccessible:1,Value:1",
+                 "target=winforms-host-providers ct=Tree n=1 withpat=1 pats=LegacyIAccessible:1,Selection:1",
+                 "target=winforms-host-providers ct=TreeItem n=2 withpat=2 pats=ExpandCollapse:2,LegacyIAccessible:2,ScrollItem:2,SelectionItem:2",
+                 "target=winforms-host-providers ct=Window n=1 withpat=1 pats=LegacyIAccessible:1,Transform:1,Window:1",
+                 "target=wpf ct=Button n=5 withpat=5 pats=Invoke:5,LegacyIAccessible:5,SynchronizedInput:2",
+                 "target=wpf ct=CheckBox n=1 withpat=1 pats=LegacyIAccessible:1,SynchronizedInput:1,Toggle:1",
+                 "target=wpf ct=ComboBox n=1 withpat=1 pats=ExpandCollapse:1,ItemContainer:1,LegacyIAccessible:1,Selection:1,SynchronizedInput:1",
+                 "target=wpf ct=Edit n=2 withpat=2 pats=LegacyIAccessible:2,Scroll:2,SynchronizedInput:2,Text:2,Value:2",
+                 "target=wpf ct=List n=1 withpat=1 pats=ItemContainer:1,LegacyIAccessible:1,Scroll:1,Selection:1,SynchronizedInput:1",
+                 "target=wpf ct=ListItem n=5 withpat=5 pats=LegacyIAccessible:5,ScrollItem:5,SelectionItem:5,SynchronizedInput:5",
+                 "target=wpf ct=MenuBar n=1 withpat=1 pats=LegacyIAccessible:1",
+                 "target=wpf ct=MenuItem n=1 withpat=1 pats=ExpandCollapse:1,LegacyIAccessible:1",
+                 "target=wpf ct=Pane n=2 withpat=2 pats=LegacyIAccessible:2,Scroll:2,SynchronizedInput:2",
+                 "target=wpf ct=ScrollBar n=4 withpat=4 pats=LegacyIAccessible:4,RangeValue:4,SynchronizedInput:4",
+                 "target=wpf ct=Text n=9 withpat=9 pats=LegacyIAccessible:9,SynchronizedInput:9",
+                 "target=wpf ct=TitleBar n=1 withpat=1 pats=LegacyIAccessible:1,Value:1",
+                 "target=wpf ct=Window n=1 withpat=1 pats=LegacyIAccessible:1,SynchronizedInput:1,Transform:1,Window:1",
+                 "target=notepad ct=Button n=7 withpat=7 pats=Invoke:7,LegacyIAccessible:7",
+                 "target=notepad ct=Document n=1 withpat=1 pats=LegacyIAccessible:1,Scroll:1,Text:1,Text2:1,Value:1",
+                 "target=notepad ct=MenuBar n=2 withpat=2 pats=LegacyIAccessible:2",
+                 "target=notepad ct=MenuItem n=6 withpat=6 pats=ExpandCollapse:6,Invoke:6,LegacyIAccessible:6",
+                 "target=notepad ct=ScrollBar n=2 withpat=2 pats=LegacyIAccessible:2,RangeValue:2",
+                 "target=notepad ct=StatusBar n=1 withpat=1 pats=LegacyIAccessible:1",
+                 "target=notepad ct=Text n=4 withpat=4 pats=LegacyIAccessible:4",
+                 "target=notepad ct=Thumb n=1 withpat=1 pats=LegacyIAccessible:1",
+                 "target=notepad ct=TitleBar n=1 withpat=1 pats=LegacyIAccessible:1,Value:1",
+                 "target=notepad ct=Window n=1 withpat=1 pats=LegacyIAccessible:1,Transform:1,Window:1"
+             ],
+    "SanityAnchors":  [
+                          {
+                              "Target":  "winforms-default",
+                              "ButtonElements":  6,
+                              "ButtonsWithInvoke":  6,
+                              "ButtonAnchorHolds":  true,
+                              "TextElements":  0,
+                              "TextWithInvoke":  0,
+                              "TextAnchorHolds":  true,
+                              "TextControlTypePresent":  false
+                          },
+                          {
+                              "Target":  "winforms-host-providers",
+                              "ButtonElements":  18,
+                              "ButtonsWithInvoke":  18,
+                              "ButtonAnchorHolds":  true,
+                              "TextElements":  6,
+                              "TextWithInvoke":  0,
+                              "TextAnchorHolds":  true,
+                              "TextControlTypePresent":  true
+                          },
+                          {
+                              "Target":  "wpf",
+                              "ButtonElements":  5,
+                              "ButtonsWithInvoke":  5,
+                              "ButtonAnchorHolds":  true,
+                              "TextElements":  9,
+                              "TextWithInvoke":  0,
+                              "TextAnchorHolds":  true,
+                              "TextControlTypePresent":  true
+                          },
+                          {
+                              "Target":  "notepad",
+                              "ButtonElements":  7,
+                              "ButtonsWithInvoke":  7,
+                              "ButtonAnchorHolds":  true,
+                              "TextElements":  4,
+                              "TextWithInvoke":  0,
+                              "TextAnchorHolds":  true,
+                              "TextControlTypePresent":  true
+                          }
+                      ],
+    "SanityAnchorNote":  "Invoke on Button and no-Invoke on Text are the two anchors that would catch a census reading the wrong property ids. winforms-default has no Text ControlType at all: its custom IRawElementProviderSimple collapses every child to Pane, so the Text anchor there is vacuously true and is reported with TextControlTypePresent=false rather than silently counted as a pass.",
+    "Uia3OnlyPatterns":  [
+                             {
+                                 "pattern":  "LegacyIAccessible",
+                                 "availabilityPropertyDiscovered":  true,
+                                 "availabilityPropertyId":  30090
+                             },
+                             {
+                                 "pattern":  "Drag",
+                                 "availabilityPropertyDiscovered":  true,
+                                 "availabilityPropertyId":  30137
+                             },
+                             {
+                                 "pattern":  "DropTarget",
+                                 "availabilityPropertyDiscovered":  true,
+                                 "availabilityPropertyId":  30141
+                             },
+                             {
+                                 "pattern":  "Annotation",
+                                 "availabilityPropertyDiscovered":  true,
+                                 "availabilityPropertyId":  30118
+                             },
+                             {
+                                 "pattern":  "Styles",
+                                 "availabilityPropertyDiscovered":  true,
+                                 "availabilityPropertyId":  30127
+                             },
+                             {
+                                 "pattern":  "TextChild",
+                                 "availabilityPropertyDiscovered":  true,
+                                 "availabilityPropertyId":  30136
+                             }
+                         ],
+    "PropertyIdNote":  "every availability property id in Uia3OnlyPatterns was discovered from the OS at runtime by U7, not written from memory. IsAnnotationPatternAvailable is 30118 on this build; 30113 - the value a from-memory table would carry - is a different property. A hardcoded id table is the single most likely silent failure in a Rust pattern-availability check.",
+    "FixtureModeNote":  "winforms-default is a fixture artifact, not a Win32/WinForms platform fact: the scratch app installs a custom server-side IRawElementProviderSimple that suppresses both the client-side proxies and WinForms own providers, so every child collapses to Pane with LegacyIAccessible only. winforms-host-providers is the apples-to-apples WinForms row - there chkToggle is CheckBox+Toggle, txtValue is Edit+Value, cboChoice is ComboBox+ExpandCollapse+Value."
+}

@@ -68,9 +68,13 @@ fn select_unique_app(mut candidates: Vec<AppInfo>, label: &str) -> Result<AppInf
             ErrorCode::AppNotFound,
             format!("Application '{label}' was not found with exact process identity"),
         )
+        .with_suggestion(
+            "Application name as reported by list-apps, with or without .exe suffix on Windows",
+        )
         .into()),
         1 => Ok(candidates.swap_remove(0)),
         _ => {
+            let candidate_pids = candidates.iter().map(|c| c.pid).collect::<Vec<_>>();
             let summaries = candidates
                 .iter()
                 .take(10)
@@ -82,14 +86,16 @@ fn select_unique_app(mut candidates: Vec<AppInfo>, label: &str) -> Result<AppInf
                     })
                 })
                 .collect::<Vec<_>>();
-            Err(AdapterError::ambiguous_target(format!(
-                "Multiple application instances matched '{label}'"
-            ))
-            .with_details(json!({
-                "candidate_count": candidates.len(),
-                "candidate_summaries_truncated": candidates.len() > summaries.len(),
-                "candidates": summaries,
-            }))
+            Err(AdapterError::ambiguous_process_target_with_details(
+                format!("Multiple application instances matched '{label}'"),
+                &candidate_pids,
+                json!({
+                    "candidate_count": candidates.len(),
+                    "candidate_pids": candidate_pids,
+                    "candidate_summaries_truncated": candidates.len() > summaries.len(),
+                    "candidates": summaries,
+                }),
+            )
             .into())
         }
     }

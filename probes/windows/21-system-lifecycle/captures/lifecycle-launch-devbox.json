@@ -1,0 +1,34 @@
+{
+    "probe":  "21-system-lifecycle",
+    "question":  "CreateProcessW identity, attach_if_running detection, child-window pid split, elevation-required",
+    "create_process_ok":  true,
+    "process_id_nonzero":  true,
+    "process_handle_nonzero":  true,
+    "thread_handle_nonzero":  true,
+    "window_appeared_for_pid":  true,
+    "attach_if_running_detection":  {
+                                        "image_count_after_first":  1,
+                                        "single_match_attachable":  true,
+                                        "two_plus_is_ambiguous":  false,
+                                        "toolhelp_detects_running":  true
+                                    },
+    "child_window_spawner":  {
+                                 "parent_launch_ok":  true,
+                                 "child_pid_nonzero":  true,
+                                 "child_window_appeared":  true,
+                                 "parent_has_visible_window":  false,
+                                 "window_at_different_pid":  true,
+                                 "branch":  "launcher_style_child_pid_window"
+                             },
+    "elevation_required":  {
+                               "measurable":  false,
+                               "branch":  "medium_available_but_nested_elev_launch_not_instrumented",
+                               "note":  "ERROR_ELEVATION_REQUIRED 740 not observed from High-IL host; Medium manufacture tried next",
+                               "medium_manufacture_available":  true,
+                               "cite":  [
+                                            "A18-4",
+                                            "A19-4",
+                                            "A20-2"
+                                        ]
+                           }
+}

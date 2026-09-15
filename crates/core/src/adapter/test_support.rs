@@ -125,6 +125,64 @@ macro_rules! exact_window_focus {
 
 pub(crate) use exact_window_focus;
 
+/// The emptiest possible [`crate::RefEntry`]: no bounds, no capabilities, no
+/// source window, no scope path. Callers that need more build on it with
+/// struct-update syntax or direct field mutation rather than re-listing every
+/// field.
+pub(crate) fn minimal_ref_entry(role: &str, name: Option<&str>) -> crate::RefEntry {
+    crate::RefEntry {
+        process: crate::RefProcess {
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+        },
+        identity: crate::RefEntryIdentity {
+            role: role.into(),
+            name: name.map(String::from),
+            value: None,
+            description: None,
+            native_id: None,
+        },
+        geometry: crate::RefGeometry {
+            bounds: None,
+            bounds_hash: None,
+        },
+        capabilities: crate::RefCapabilities {
+            states: Vec::new(),
+            available_actions: Vec::new(),
+        },
+        source: crate::RefSource {
+            source_app: None,
+            source_window_id: None,
+            source_window_title: None,
+            source_window_bounds_hash: None,
+            source_surface: crate::SnapshotSurface::Window,
+        },
+        scope: crate::RefScope {
+            root_ref: None,
+            path_is_absolute: false,
+            path: crate::refs::RefPath::default(),
+        },
+    }
+}
+
+/// An [`crate::AccessibilityNode`] with no ref, no bounds, no children, and
+/// no truncation - only a role and a name. Callers that need more mutate the
+/// 1-2 fields they need on the returned value.
+pub(crate) fn minimal_accessibility_node(role: &str, name: &str) -> crate::AccessibilityNode {
+    crate::AccessibilityNode {
+        ref_id: None,
+        role: role.into(),
+        identity: crate::NodeIdentity {
+            name: Some(name.into()),
+            ..Default::default()
+        },
+        presentation: Default::default(),
+        children_count: None,
+        subtree_truncated: false,
+        children: vec![],
+    }
+}
+
 pub(crate) fn live_identity(name: &str) -> crate::LiveIdentity {
     crate::LiveIdentity {
         name: crate::LocatorField::Known(name.into()),
@@ -197,6 +255,7 @@ pub(crate) fn observed_tree(
                     .map(LocatorField::Known)
                     .unwrap_or(LocatorField::Absent),
                 available_actions: LocatorField::Known(node.presentation.available_actions),
+                descriptors: node.presentation.descriptors.clone(),
             },
         };
         let children = node.children.into_iter().map(subtree).collect();

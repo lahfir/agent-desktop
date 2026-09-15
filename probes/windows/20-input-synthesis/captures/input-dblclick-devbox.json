@@ -1,0 +1,38 @@
+{
+    "probe":  "20-input-synthesis",
+    "question":  "does SendInput double-click encoding register on btnDoubleClick within GetDoubleClickTime",
+    "get_double_click_time_ms":  500,
+    "label_before_series":  "dbl:0",
+    "trials":  [
+                   {
+                       "trial":  "zero_gap",
+                       "inter_click_ms":  0,
+                       "get_double_click_time_ms":  500,
+                       "label_before":  "dbl:0",
+                       "label_after":  "dbl:1",
+                       "sent":  true,
+                       "recognized":  true
+                   },
+                   {
+                       "trial":  "half_window",
+                       "inter_click_ms":  250,
+                       "get_double_click_time_ms":  500,
+                       "label_before":  "dbl:0",
+                       "label_after":  "dbl:2",
+                       "sent":  true,
+                       "recognized":  true
+                   },
+                   {
+                       "trial":  "within_window",
+                       "inter_click_ms":  490,
+                       "get_double_click_time_ms":  500,
+                       "label_before":  "dbl:0",
+                       "label_after":  "dbl:3",
+                       "sent":  true,
+                       "recognized":  true
+                   }
+               ],
+    "branch":  "paired_clicks_within_getdoubleclicktime_suffice",
+    "product_mapping_note":  "MouseEventKind::Click{count:2} maps to count down/up pairs; inter-click delay may need explicit pacing",
+    "interference":  null
+}

@@ -76,10 +76,6 @@ impl ActionabilityRequirements {
     }
 }
 
-pub(crate) fn requires_stability(action: &Action) -> bool {
-    ActionabilityRequirements::for_action(action).stable
-}
-
 #[cfg(test)]
 #[path = "requirements_tests.rs"]
 mod tests;

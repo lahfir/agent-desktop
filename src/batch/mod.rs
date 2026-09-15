@@ -25,6 +25,10 @@ mod result_entry;
 #[path = "baseline_tests.rs"]
 mod baseline_tests;
 
+#[cfg(test)]
+#[path = "open_system_surface_parity_tests.rs"]
+mod open_system_surface_parity_tests;
+
 pub(crate) fn execute(
     args: BatchArgs,
     adapter: &dyn PlatformAdapter,
@@ -80,6 +84,7 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "maximize" => decode(command, item.args).map(Commands::Maximize),
         "restore" => decode(command, item.args).map(Commands::Restore),
         "list-surfaces" => decode(command, item.args).map(Commands::ListSurfaces),
+        "open-system-surface" => decode(command, item.args).map(Commands::OpenSystemSurface),
         "list-notifications" => decode(command, item.args).map(Commands::ListNotifications),
         "dismiss-notification" => decode(command, item.args).map(Commands::DismissNotification),
         "dismiss-all-notifications" => {

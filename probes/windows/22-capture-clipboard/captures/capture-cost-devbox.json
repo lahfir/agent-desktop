@@ -1,0 +1,94 @@
+{
+    "probe":  "22-capture-clipboard",
+    "question":  "hot-path legacy capture, WIC-proxy encode, clipboard text/image (min-of-seven, warm-up discarded)",
+    "methodology_cites":  [
+                              "A15-13",
+                              "A18-7",
+                              "A21-cost"
+                          ],
+    "legacy_window":  {
+                          "samples_ms":  [
+                                             32.0176,
+                                             23.0439,
+                                             26.372700000000002,
+                                             11.1609,
+                                             11.130600000000001,
+                                             16.113500000000002,
+                                             11.0923,
+                                             10.106900000000001
+                                         ],
+                          "min_ms":  11.0923,
+                          "median_ms":  16.113500000000002,
+                          "max_ms":  32.0176,
+                          "n":  7,
+                          "warmup_discarded":  true
+                      },
+    "legacy_display":  {
+                           "samples_ms":  [
+                                              25.7157,
+                                              33.4609,
+                                              33.8355,
+                                              17.4598,
+                                              44.5021,
+                                              17.4536,
+                                              18.128500000000003,
+                                              17.8174
+                                          ],
+                           "min_ms":  17.4598,
+                           "median_ms":  25.7157,
+                           "max_ms":  44.5021,
+                           "n":  7,
+                           "warmup_discarded":  true
+                       },
+    "wic_encode_proxy":  {
+                             "samples_ms":  [
+                                                0.45380000000000004,
+                                                0.6447,
+                                                0.36360000000000003,
+                                                0.3559,
+                                                0.3985,
+                                                0.5073,
+                                                0.4863,
+                                                0.6671
+                                            ],
+                             "min_ms":  0.36360000000000003,
+                             "median_ms":  0.4863,
+                             "max_ms":  0.6671,
+                             "n":  7,
+                             "warmup_discarded":  true
+                         },
+    "clipboard_text":  {
+                           "samples_ms":  [
+                                              2.8458,
+                                              0.0777,
+                                              0.0829,
+                                              0.0748,
+                                              0.0694,
+                                              0.069600000000000009,
+                                              0.0819,
+                                              0.094800000000000009
+                                          ],
+                           "min_ms":  0.069600000000000009,
+                           "median_ms":  0.0819,
+                           "max_ms":  2.8458,
+                           "n":  7,
+                           "warmup_discarded":  true
+                       },
+    "clipboard_image":  {
+                            "samples_ms":  [
+                                               50.982600000000005,
+                                               51.165200000000006,
+                                               50.9059,
+                                               50.8573,
+                                               50.752500000000005,
+                                               50.7198,
+                                               51.0516,
+                                               51.1864
+                                           ],
+                            "min_ms":  50.752500000000005,
+                            "median_ms":  50.982600000000005,
+                            "max_ms":  51.1864,
+                            "n":  7,
+                            "warmup_discarded":  true
+                        }
+}

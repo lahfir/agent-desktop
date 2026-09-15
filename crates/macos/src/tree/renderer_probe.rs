@@ -1,4 +1,4 @@
-use agent_desktop_core::{AdapterError, ErrorCode};
+use agent_desktop_core::{AdapterError, DeliverySemantics, ErrorCode};
 
 pub(crate) fn activation_supported(
     pid: i32,
@@ -6,9 +6,12 @@ pub(crate) fn activation_supported(
     deadline: std::time::Instant,
 ) -> Result<bool, AdapterError> {
     if !crate::system::process_identity::matches_instance(pid, process_instance)? {
-        return Err(AdapterError::stale_ref(
+        return Err(AdapterError::new(
+            ErrorCode::StaleRef,
             "Renderer process instance changed before activation probing",
-        ));
+        )
+        .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+        .with_disposition(DeliverySemantics::not_delivered()));
     }
     let application = super::element_for_pid(pid);
     super::locator_deadline::prepare(&application, deadline)?;

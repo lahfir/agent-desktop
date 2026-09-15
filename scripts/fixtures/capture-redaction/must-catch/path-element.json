@@ -1,0 +1,15 @@
+{
+  "probe": "self-test-fixture",
+  "matches": [
+    {
+      "ref_id": "e7",
+      "role": "button",
+      "name": "<redacted:2 chars>",
+      "path": [
+        "window:Some Real Title",
+        "group:<redacted:0 chars>",
+        "button:OK"
+      ]
+    }
+  ]
+}
