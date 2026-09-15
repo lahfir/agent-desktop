@@ -54,9 +54,7 @@ fn is_zero(v: &usize) -> bool {
 pub struct MergedTrace {
     pub events: Vec<Value>,
     pub segments: Vec<SegmentInfo>,
-    pub segments_truncated: bool,
     pub warnings: Vec<TraceWarning>,
-    pub warnings_truncated: bool,
     pub total_events: usize,
     pub matched_events: Option<usize>,
     pub returned_events: usize,
@@ -154,16 +152,14 @@ pub fn read_merged(trace_dir: &Path, options: &ReadOptions) -> Result<MergedTrac
 
     let (returned_events, truncated) = apply_tail_limit(filtered_events, options.limit);
 
-    let (segments, segments_truncated) = cap_list(segment_infos, METADATA_LIST_CAP);
-    let (warnings, warnings_truncated) = cap_list(warnings, METADATA_LIST_CAP);
+    let (segments, _) = cap_list(segment_infos, METADATA_LIST_CAP);
+    let (warnings, _) = cap_list(warnings, METADATA_LIST_CAP);
 
     Ok(MergedTrace {
         returned_events: returned_events.len(),
         events: returned_events,
         segments,
-        segments_truncated,
         warnings,
-        warnings_truncated,
         total_events,
         matched_events,
         truncated,
