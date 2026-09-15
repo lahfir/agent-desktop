@@ -6,9 +6,19 @@ name: Windows capability probe
 # sub-phase lands on feat/windows-adapter rather than on main, so a dispatch
 # trigger alone would never run on the branch that needs the measurement. The
 # path filter keeps this job off every unrelated pull request.
+#
+# The adapter and core crates are in that filter because areas 14 through 19
+# compile a probe binary that links them by path, outside the workspace. No
+# `cargo check --all-targets` reaches those sources, so renaming an adapter
+# method breaks them and every workspace lane still reports green. Watching
+# only `probes/**` watched the callers and not the thing they call: a rename
+# in `crates/windows` with no probe file touched skipped this job entirely
+# and landed broken.
 on:
   pull_request:
     paths:
+      - 'crates/core/**'
+      - 'crates/windows/**'
       - 'probes/windows/14-ci-capability/**'
       - 'probes/windows/15-vocabulary/**'
       - 'probes/windows/16-observation/**'

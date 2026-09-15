@@ -13,7 +13,7 @@
 //! The **product reading** drives the adapter's own live-read composition on
 //! the same element: `properties::read_live_bounded`,
 //! `name_evidence::read_label`, `walker::walk_vocabulary` and
-//! `ElementProperties::into_locator_evidence`, the four calls the adapter's
+//! `ElementProperties::locator_evidence`, the four calls the adapter's
 //! shared single-element read makes in that order. The withholding those calls
 //! apply to a control reporting `IsPassword` is the only thing standing between
 //! the provider reading and this one, so removing it changes this reading and
@@ -121,7 +121,7 @@ fn product_reading(element: &UIElement, provider: &ProviderReading) -> Value {
     let (properties, _errors) = read_live_bounded(&target, deadline);
     let label = read_label(&target, false);
     let vocabulary = walk_vocabulary(&properties, &label);
-    let evidence = properties.clone().into_locator_evidence(vocabulary);
+    let evidence = properties.locator_evidence(vocabulary);
 
     let published: Vec<&'static str> = TreeProperty::VALUE_BEARING
         .iter()
@@ -138,7 +138,7 @@ fn product_reading(element: &UIElement, provider: &ProviderReading) -> Value {
             "properties::read_live_bounded",
             "name_evidence::read_label",
             "walker::walk_vocabulary",
-            "ElementProperties::into_locator_evidence",
+            "ElementProperties::locator_evidence",
         ],
         "secure_gate_closed": properties.is_secure(),
         "value_bearing_slots_published": published.clone(),
