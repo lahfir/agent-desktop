@@ -57,7 +57,7 @@ body:
       render: shell
       placeholder: |
         $ agent-desktop snapshot --app Finder
-        {"version":"2.0","ok":false,"command":"snapshot","error":{"code":"APP_NOT_FOUND",...}}
+        {"version":"2.2","ok":false,"command":"snapshot","error":{"code":"APP_NOT_FOUND",...}}
     validations:
       required: true
 

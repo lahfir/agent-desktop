@@ -212,7 +212,7 @@ fn hit_test_probe_error_is_preserved_for_ref_targeted_resolution() {
     assert_eq!(err.code(), "INTERNAL");
 }
 
-/// Raw `--xy` input stays raw by design (KTD4): no ref means no occlusion
+/// Raw `--xy` input stays raw by design: no ref means no occlusion
 /// check, even against an adapter that would otherwise report occlusion.
 #[test]
 fn raw_xy_input_never_calls_hit_test() {

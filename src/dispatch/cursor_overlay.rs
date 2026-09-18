@@ -53,14 +53,22 @@ pub(crate) fn dispatch(
             Some(CursorOverlayControl::disable(session_id.to_owned())),
         ),
     };
-    let value = cursor_overlay::execute(session_id, action)?;
-    if let Some(control) = control
-        && let Err(error) = adapter.update_cursor_overlay(&control)
-    {
-        if control.is_disable() {
-            return Err(teardown_error(error));
+    let mut value = cursor_overlay::execute(session_id, action)?;
+    if let Some(control) = control {
+        let is_enable = control.is_enable();
+        let rendered = match adapter.update_cursor_overlay(&control) {
+            Ok(()) => true,
+            Err(error) => {
+                if control.is_disable() {
+                    return Err(teardown_error(error));
+                }
+                tracing::warn!(code = %error.code.as_str(), "cursor overlay lifecycle update was skipped");
+                false
+            }
+        };
+        if is_enable {
+            value["rendered"] = Value::from(rendered);
         }
-        tracing::warn!(code = %error.code.as_str(), "cursor overlay lifecycle update was skipped");
     }
     Ok(value)
 }

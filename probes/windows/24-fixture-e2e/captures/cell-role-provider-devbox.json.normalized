@@ -1,0 +1,33 @@
+{
+    "probe":  "24-fixture-e2e-06-cell-role-provider",
+    "question":  "can the fixture produce the DataItem + GridItem/TableItem shape the cell ref-able role arm needs: reconfirm the stock WinForms DataGridView shape on this box (A16-10), then determine whether a custom UIA provider (IRawElementProviderSimple + IGridItemProvider/ITableItemProvider) compiles with csc.exe 4.8 and reads back through a UIA client",
+    "cites":  [
+                  "A16-10"
+              ],
+    "overall":  {
+                    "measurable":  true,
+                    "branch":  "fixture_can_force_cell_shape_via_custom_provider",
+                    "conclusion":  "a custom UIA provider compiles with the pinned csc.exe 4.8 + UIAutomationProvider/Types toolchain and a UIA client reads DataItem + GridItem/TableItem back off it, so 2.12 can decide whether the cell arm should be exercised this way"
+                },
+    "stock_dgv":  {
+                      "measurable":  false,
+                      "branch":  "dgvRows_element_not_found"
+                  },
+    "custom_provider":  {
+                            "measurable":  true,
+                            "branch":  "custom_provider_forces_dataitem_griditem_tableitem_shape",
+                            "host_note":  "WM_GETOBJECT hook on a Panel child, same mechanism as ScratchForms.cs AutomationIdProvider/AutomationIdWindow, extended with IGridItemProvider + ITableItemProvider",
+                            "containing_grid_is_self":  true,
+                            "cell":  {
+                                         "control_type":  "DataItem",
+                                         "supported_patterns":  [
+                                                                    "GridItem",
+                                                                    "TableItem"
+                                                                ],
+                                         "grid_item_pattern_try_get":  true,
+                                         "grid_item_row":  2,
+                                         "grid_item_column":  1,
+                                         "table_item_pattern_try_get":  true
+                                     }
+                        }
+}

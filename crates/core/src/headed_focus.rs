@@ -50,7 +50,7 @@ fn focus_exact_window(
         || live.pid != expected.pid
         || live.process_instance != expected.process_instance
     {
-        return Err(AdapterError::stale_ref(
+        return Err(AdapterError::stale_ref_because(
             "Headed target window belongs to a different process instance",
         )
         .into());

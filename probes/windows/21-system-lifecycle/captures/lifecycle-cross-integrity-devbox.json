@@ -1,0 +1,20 @@
+{
+    "probe":  "21-system-lifecycle",
+    "question":  "cross-integrity SetForegroundWindow effect via A9-1 token-lowering",
+    "foundation_cites":  [
+                             "A9-1",
+                             "A18-4",
+                             "A19-4",
+                             "A20-2"
+                         ],
+    "measurable":  false,
+    "branch":  "medium_manufactured_cross_direction_effect_not_instrumented",
+    "manufacture_available":  true,
+    "medium_integrity_sid":  "S-1-16-8192",
+    "note":  "A9-1 manufacture path available; Medium-to-High focus effect remains with section 2.12 (same gate as A18-4/A19-4/A20-2)",
+    "cite":  [
+                 "A18-4",
+                 "A19-4",
+                 "A20-2"
+             ]
+}

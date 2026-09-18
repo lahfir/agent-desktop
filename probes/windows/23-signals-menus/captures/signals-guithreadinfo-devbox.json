@@ -1,0 +1,13 @@
+{
+    "probe":  "23-signals-menus",
+    "question":  "does GetGUIThreadInfo succeed against another process\u0027s threads at the same integrity level, and what does it return for a process with no GUI threads",
+    "cross_process_same_integrity":  {
+                                         "threads_total":  7,
+                                         "any_thread_read_ok":  true
+                                     },
+    "no_gui_thread_process":  {
+                                  "threads_total":  3,
+                                  "any_thread_read_ok":  false,
+                                  "flags_when_read_ok":  null
+                              }
+}

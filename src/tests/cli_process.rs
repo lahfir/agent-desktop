@@ -104,15 +104,7 @@ fn valid_absolute_state_root_env_allows_version_and_creates_nothing() {
 
 #[test]
 fn state_root_env_redirects_session_start_writes() {
-    let dir = std::env::temp_dir().join(format!(
-        "agent-desktop-cli-state-root-session-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&dir).expect("create state root");
+    let dir = unique_temp_dir("cli-state-root-session");
     let output = binary()
         .args(["session", "start"])
         .env("AGENT_DESKTOP_HOME", &dir)
@@ -136,15 +128,7 @@ fn state_root_env_redirects_session_start_writes() {
 
 #[test]
 fn status_reports_state_root_env_value_verbatim() {
-    let dir = std::env::temp_dir().join(format!(
-        "agent-desktop-cli-state-root-status-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&dir).expect("create state root");
+    let dir = unique_temp_dir("cli-state-root-status");
     let output = binary()
         .arg("status")
         .env("AGENT_DESKTOP_HOME", &dir)

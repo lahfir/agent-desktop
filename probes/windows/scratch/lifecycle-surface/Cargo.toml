@@ -1,0 +1,28 @@
+[package]
+name = "lifecycle-surface-check"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Standalone compile-check: same windows-sys feature set as crates/windows.
+# NOT a workspace member. Empty [workspace] keeps the parent repo workspace out.
+# CreateProcessW is gated on Win32_Security in windows-sys 0.61 (A21 measurement).
+[workspace]
+
+[dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_UI_HiDpi",
+  "Win32_Storage_FileSystem",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_System_ApplicationInstallationAndServicing",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Threading",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_Graphics_Gdi",
+  "Win32_Graphics_Dwm",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_WindowsAndMessaging",
+] }

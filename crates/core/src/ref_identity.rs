@@ -6,12 +6,9 @@ use crate::{
 };
 
 pub fn has_meaningful_identity(entry: &RefEntry) -> bool {
-    entry
-        .identity
-        .native_id
-        .as_ref()
-        .is_some_and(|identifier| meaningful_text(Some(&identifier.value)).is_some())
-        || has_stable_text_identity(entry)
+    entry.identity.native_id.as_ref().is_some_and(|identifier| {
+        crate::accname::non_blank(Some(identifier.value.as_str())).is_some()
+    }) || has_stable_text_identity(entry)
 }
 
 pub fn has_stable_text_identity(entry: &RefEntry) -> bool {
@@ -26,7 +23,7 @@ pub fn has_stable_text_identity(entry: &RefEntry) -> bool {
             entry.identity.value.as_deref(),
         )
         .is_some()
-        || meaningful_text(entry.identity.description.as_deref()).is_some()
+        || crate::accname::non_blank(entry.identity.description.as_deref()).is_some()
 }
 
 pub fn identity_match(
@@ -37,7 +34,7 @@ pub fn identity_match(
     actual_identifiers: &IdentifierEvidence,
 ) -> IdentityMatch {
     if let Some(expected) = entry.identity.native_id.as_ref() {
-        let Some(expected_value) = meaningful_text(Some(&expected.value)) else {
+        let Some(expected_value) = crate::accname::non_blank(Some(expected.value.as_str())) else {
             return IdentityMatch::Unknown;
         };
         if actual_identifiers
@@ -86,7 +83,15 @@ pub(crate) fn identity_matches(
     ) == IdentityMatch::Match
 }
 
-fn stable_text_match(
+/// Whether one element's stable text carves a live identity that can refute
+/// or corroborate the stored one.
+///
+/// Public because the Windows resolver composes it with `identity_match` to
+/// keep its AutomationId-first corroboration rule: an id that still resolves
+/// onto a candidate whose stable text drifted must be refuted, the A7-3
+/// wrong-target shape. macOS consumes only `identity_match`, which already
+/// routes id-less entries here; Windows runs the corroboration tier itself.
+pub fn stable_text_match(
     entry: &RefEntry,
     actual_name: &LocatorField<String>,
     actual_value: &LocatorField<String>,
@@ -101,7 +106,7 @@ fn stable_text_match(
         entry.identity.role.as_str(),
         entry.identity.value.as_deref(),
     );
-    let expected_description = meaningful_text(entry.identity.description.as_deref());
+    let expected_description = crate::accname::non_blank(entry.identity.description.as_deref());
     let actual_name = stable_name_field(entry.identity.role.as_str(), actual_name, actual_value);
     let actual_value = stable_value_field(entry.identity.role.as_str(), actual_value);
     let actual_description = meaningful_field(actual_description);
@@ -169,7 +174,7 @@ fn option_field(value: Option<&str>) -> LocatorField<String> {
 
 fn meaningful_field(field: &LocatorField<String>) -> LocatorField<&str> {
     match field {
-        LocatorField::Known(value) => meaningful_text(Some(value.as_str()))
+        LocatorField::Known(value) => crate::accname::non_blank(Some(value.as_str()))
             .map(LocatorField::Known)
             .unwrap_or(LocatorField::Absent),
         LocatorField::Absent => LocatorField::Absent,
@@ -204,13 +209,9 @@ fn stable_value_field<'a>(role: &str, value: &'a LocatorField<String>) -> Locato
     }
 }
 
-fn meaningful_text(value: Option<&str>) -> Option<&str> {
-    value.filter(|text| !text.trim().is_empty())
-}
-
 fn stable_name<'a>(role: &str, name: Option<&'a str>, value: Option<&str>) -> Option<&'a str> {
-    let name = meaningful_text(name)?;
-    if is_mutable_value_role(role) && value_matches_name(meaningful_text(value), name) {
+    let name = crate::accname::non_blank(name)?;
+    if is_mutable_value_role(role) && value_matches_name(crate::accname::non_blank(value), name) {
         None
     } else {
         Some(name)
@@ -219,7 +220,7 @@ fn stable_name<'a>(role: &str, name: Option<&'a str>, value: Option<&str>) -> Op
 
 fn stable_value<'a>(role: &str, value: Option<&'a str>) -> Option<&'a str> {
     (!is_mutable_value_role(role))
-        .then(|| meaningful_text(value))
+        .then(|| crate::accname::non_blank(value))
         .flatten()
 }
 

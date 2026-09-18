@@ -1,0 +1,14 @@
+{
+  "probe": "self-test-fixture",
+  "matches": [
+    {
+      "ref_id": "e7",
+      "role": "button",
+      "name": "<redacted:2 chars>",
+      "path": [
+        "window:Report ] Draft",
+        "button:CustomerRealName"
+      ]
+    }
+  ]
+}
