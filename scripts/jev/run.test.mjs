@@ -13,6 +13,7 @@ import {
   shouldStop,
   textSupply,
   validateChoice,
+  resolveModel,
 } from "./policy.mjs";
 
 const S = "s8f3k2p9";
@@ -203,6 +204,27 @@ const space = actionSpace(screen());
   assert.equal(safe.decision, "act");
   const risky = route({ target: "1", targetConfidence: 0.8, present: null, destructive: 0.9 });
   assert.equal(risky.decision, "confirm", "the same confidence is not enough once a step is hard to undo");
+}
+
+{
+  const saved = { ...process.env };
+  delete process.env.TYPESAFE_MODEL;
+  const native = "https://api.typesafe.ai/v1/systemone";
+  const router = "https://openrouter.ai/api/alpha/decisions";
+  assert.equal(resolveModel(undefined, native), "jev-latest", "the bare alias stays bare on the native API");
+  // Live-checked against OpenRouter: bare "jev-latest" and "~typesafe/jev-latest"
+  // both resolve, while "typesafe/jev-latest" answers 400 — so bare names scope
+  // through the registered tilde form.
+  assert.equal(
+    resolveModel(undefined, router),
+    "~typesafe/jev-latest",
+    "OpenRouter scopes the same alias through the tilde form",
+  );
+  assert.equal(resolveModel("jev-1.13.0", router), "~typesafe/jev-1.13.0", "a bare version scopes the same way");
+  process.env.TYPESAFE_MODEL = "jev-1.13";
+  assert.equal(resolveModel(), "jev-1.13", "TYPESAFE_MODEL is honoured on the native API");
+  for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+  Object.assign(process.env, saved);
 }
 
 console.log("ok");
