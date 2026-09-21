@@ -85,17 +85,18 @@ mod imp {
         let instant = crate::tree::locator_deadline::from_operation(deadline)?;
         let bounds = crate::tree::element_bounds::read_bounds_with_deadline(element, instant)?
             .ok_or_else(|| AdapterError::new(ErrorCode::ActionFailed, "Target has no bounds"))?;
-        let window = match crate::actions::scroll::find_scroll_area(element, deadline)? {
+        let viewport = match crate::actions::scroll::find_scroll_area(element, deadline)? {
             Some(viewport) => viewport,
             None => require_window(crate::tree::surface_read::element(
                 element, "AXWindow", instant,
             )?)?,
         };
-        let window_bounds = crate::tree::element_bounds::read_bounds_with_deadline(
-            &window, instant,
-        )?
-        .ok_or_else(|| AdapterError::new(ErrorCode::ActionFailed, "Target window has no bounds"))?;
-        Ok(direction_for_visibility(bounds, window_bounds))
+        let viewport_bounds =
+            crate::tree::element_bounds::read_bounds_with_deadline(&viewport, instant)?
+                .ok_or_else(|| {
+                    AdapterError::new(ErrorCode::ActionFailed, "Target viewport has no bounds")
+                })?;
+        Ok(direction_for_visibility(bounds, viewport_bounds))
     }
 
     pub(super) fn require_window(window: Option<AXElement>) -> Result<AXElement, AdapterError> {

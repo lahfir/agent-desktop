@@ -57,6 +57,15 @@ Inspect `disposition.retry` before retrying or choosing an alternative action, r
 - Focusing an inactive text field can change its selection. A pre-focus range cannot establish the expected insertion into a nonempty field; such a result is explicitly unverified rather than falsely contradicted.
 - A settle-loop pacing budget does not replace the caller's deadline for native reads. Tests assert deadline identity rather than arbitrary remaining-time thresholds.
 
+## Find result shape
+
+`find` match objects report the element's actual accessibility `name`. Elements
+without an accessible name omit `name` entirely; their content stays in `value`.
+Earlier output synthesized a display name — falling back to `value` or
+`description`, then a `(unnamed <role>)` placeholder — so consumers that treated
+`name` as always present must tolerate its absence and apply their own fallback
+to `role` or `value`.
+
 ## Error codes
 
 | Code | Meaning |

@@ -6,6 +6,13 @@ use std::io::{BufRead, Read};
 use std::os::fd::AsFd;
 
 const MAX_REQUEST_BYTES: u64 = 1_048_576;
+const RETAINED_PRUNE_INTERVAL: usize = 4_096;
+const IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(900);
+const IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+pub(crate) fn is_host_process() -> bool {
+    std::env::var("AGENT_DESKTOP_INTERNAL_COMMAND_HOST").as_deref() == Ok("1")
+}
 
 #[path = "command_host_budget.rs"]
 mod budget;
@@ -37,16 +44,20 @@ pub(crate) fn run() -> Result<(), AppError> {
         resolve_active_session(None, std::env::var("AGENT_DESKTOP_SESSION").ok().as_deref())?;
     let owner = agent_desktop_macos::RetainedRefSession::start()?;
     let store = agent_desktop_core::refs_store::RefStore::for_session(session.as_deref())?;
-    let mut next_prune = 4_096;
+    let mut next_prune = RETAINED_PRUNE_INTERVAL;
     let identity = endpoint::identity(session.as_deref())?;
     let socket_path = std::env::var_os("AGENT_DESKTOP_INTERNAL_HOST_SOCKET");
     let execute = |bytes: &[u8]| {
         if owner.capture_count() >= next_prune {
             match store.retained_object_tokens() {
                 Ok(tokens) => owner.retain(&tokens),
-                Err(error) => return crate::response("unknown", Err(error)),
+                Err(error) => {
+                    tracing::warn!(%error, "retained-token inventory failed; pruning deferred");
+                }
             }
-            next_prune = owner.capture_count().saturating_add(4_096);
+            next_prune = owner
+                .capture_count()
+                .saturating_add(RETAINED_PRUNE_INTERVAL);
         }
         if socket_path.is_some() {
             request::execute(bytes, &identity, session.as_deref())
@@ -65,14 +76,11 @@ pub(crate) fn run() -> Result<(), AppError> {
             input::read_frame(
                 &mut input,
                 MAX_REQUEST_BYTES as usize,
-                std::time::Duration::from_secs(900),
-                std::time::Duration::from_secs(5),
+                IDLE_TIMEOUT,
+                IO_TIMEOUT,
             )
         },
-        std::io::BufWriter::new(output::BoundedWriter::new(
-            output,
-            std::time::Duration::from_secs(5),
-        )?),
+        std::io::BufWriter::new(output::BoundedWriter::new(output, IO_TIMEOUT)?),
         execute,
     )?;
     Ok(())

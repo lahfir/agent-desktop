@@ -8,6 +8,7 @@ pub(crate) fn role_activates_by_selection(role: &str) -> bool {
     )
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn verify_selection(
     delivered: bool,
     verify: impl FnOnce() -> bool,

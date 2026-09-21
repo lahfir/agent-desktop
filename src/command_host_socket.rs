@@ -4,7 +4,7 @@ use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 pub(super) fn run(path: &Path, mut execute: impl FnMut(&[u8]) -> Response) -> Result<(), AppError> {
     validate_parent(path)?;
@@ -23,7 +23,7 @@ pub(super) fn run(path: &Path, mut execute: impl FnMut(&[u8]) -> Response) -> Re
         match super::input::wait_ready(
             listener.as_raw_fd(),
             libc::POLLIN,
-            Instant::now() + Duration::from_secs(900),
+            Instant::now() + super::IDLE_TIMEOUT,
         ) {
             Err(error) if error.kind() == io::ErrorKind::TimedOut => return Ok(()),
             result => result?,
@@ -72,13 +72,13 @@ fn serve_connection(
             super::input::read_frame(
                 &mut input,
                 super::MAX_REQUEST_BYTES as usize,
-                Duration::from_secs(5),
-                Duration::from_secs(5),
+                super::IO_TIMEOUT,
+                super::IO_TIMEOUT,
             )
         },
         BufWriter::new(super::output::BoundedWriter::new(
             stream,
-            Duration::from_secs(5),
+            super::IO_TIMEOUT,
         )?),
         execute,
     )

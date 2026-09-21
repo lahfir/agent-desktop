@@ -45,7 +45,7 @@ fn main() -> ExitCode {
         return exit_code;
     }
     #[cfg(target_os = "macos")]
-    if std::env::var("AGENT_DESKTOP_INTERNAL_COMMAND_HOST").as_deref() == Ok("1") {
+    if command_host::is_host_process() {
         init_tracing(false);
         return match command_host::run() {
             Ok(()) => ExitCode::SUCCESS,
@@ -176,6 +176,10 @@ fn execute_with_deadline(
             let mut context = context
                 .with_agent_id(agent_id)
                 .map_err(pre_dispatch_error)?;
+            #[cfg(target_os = "macos")]
+            if command_host::is_host_process() {
+                context = context.with_pinned_session_namespace();
+            }
             if let Some(deadline) = deadline {
                 context = context.with_inherited_deadline(deadline);
             }

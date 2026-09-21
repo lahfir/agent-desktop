@@ -6,8 +6,9 @@ pub(crate) fn collection_target(
     value: &str,
     deadline: std::time::Instant,
 ) -> Result<Option<crate::tree::AXElement>, AdapterError> {
-    let named = matches(element, value, deadline)?;
-    if !named && !text_value_matches(element, value, deadline)? {
+    let (read, stats) = candidate_read(element, deadline)?;
+    let named = evidence_matches(&read.evidence, value, stats)?;
+    if !named && !text_value_matches(element, &read.attrs, value, deadline)? {
         return Ok(None);
     }
     collection_owner(
@@ -68,15 +69,14 @@ fn collection_owner<T: Clone>(
 
 fn text_value_matches(
     element: &crate::tree::AXElement,
+    attrs: &crate::tree::NodeAttrs,
     value: &str,
     deadline: std::time::Instant,
 ) -> Result<bool, AdapterError> {
-    let role = crate::tree::surface_read::string(element, "AXRole", deadline)?;
-    if role.as_deref() != Some("AXTextField") {
+    if attrs.role.as_deref() != Some("AXTextField") {
         return Ok(false);
     }
-    let subrole = crate::tree::surface_read::string(element, "AXSubrole", deadline)?;
-    if subrole.as_deref() == Some("AXSecureTextField") {
+    if attrs.subrole.as_deref() == Some("AXSecureTextField") {
         return Ok(false);
     }
     Ok(
@@ -90,6 +90,20 @@ pub(crate) fn matches(
     value: &str,
     deadline: std::time::Instant,
 ) -> Result<bool, AdapterError> {
+    let (read, stats) = candidate_read(element, deadline)?;
+    evidence_matches(&read.evidence, value, stats)
+}
+
+fn candidate_read(
+    element: &crate::tree::AXElement,
+    deadline: std::time::Instant,
+) -> Result<
+    (
+        crate::tree::query::node_read::NodeRead,
+        agent_desktop_core::LocatorStats,
+    ),
+    AdapterError,
+> {
     let mut usage = crate::tree::observation_usage::ObservationUsage::with_defaults();
     let mut stats = agent_desktop_core::LocatorStats::default();
     let mut requirements = EvidenceRequirements {
@@ -120,7 +134,15 @@ pub(crate) fn matches(
             "Selection candidate became invalid",
         ));
     }
-    matches_evidence(&read.evidence, value).map_err(|mut error| {
+    Ok((read, stats))
+}
+
+fn evidence_matches(
+    evidence: &LocatorEvidence,
+    value: &str,
+    stats: agent_desktop_core::LocatorStats,
+) -> Result<bool, AdapterError> {
+    matches_evidence(evidence, value).map_err(|mut error| {
         if let Some(details) = error
             .details
             .as_mut()

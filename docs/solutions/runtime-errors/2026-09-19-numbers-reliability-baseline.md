@@ -1,3 +1,10 @@
+---
+module: agent-desktop
+date: 2026-09-19
+problem_type: runtime_error
+tags: [numbers, reliability, macos]
+---
+
 # Numbers reliability baseline: direct model-facing CLI
 
 Status: the follow-up timed sprint reached **7.5/10 provisional engineering

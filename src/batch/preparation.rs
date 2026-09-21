@@ -103,3 +103,33 @@ fn limit_error(message: &str, details: Value) -> AppError {
         .with_disposition(DeliverySemantics::not_delivered())
         .into()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pinned_namespace_rejects_foreign_item_sessions_before_dispatch() {
+        let context = CommandContext::default().with_pinned_session_namespace();
+        match prepare(
+            r#"[{"command":"version","session":"other"}]"#,
+            &PermissionReport::default(),
+            &context,
+        ) {
+            Ok(_) => panic!("a foreign item session must be rejected"),
+            Err(error) => assert!(
+                error
+                    .to_string()
+                    .contains("cannot switch snapshot namespaces")
+            ),
+        }
+        let prepared = prepare(
+            r#"[{"command":"version"}]"#,
+            &PermissionReport::default(),
+            &context,
+        )
+        .unwrap();
+        assert_eq!(prepared.len(), 1);
+        assert_eq!(prepared[0].context.session_id(), None);
+    }
+}

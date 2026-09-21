@@ -43,12 +43,8 @@ pub(super) fn forward(
         ));
     }
     let remaining = super::budget::remaining(expires_ns).map_err(crate::pre_dispatch_error)?;
-    let stream = connect_or_start(
-        &path,
-        session.as_deref(),
-        remaining.min(Duration::from_secs(5)),
-    )
-    .map_err(crate::pre_dispatch_error)?;
+    let stream = connect_or_start(&path, session.as_deref(), remaining.min(super::IO_TIMEOUT))
+        .map_err(crate::pre_dispatch_error)?;
     let remaining = super::budget::remaining(expires_ns).map_err(crate::pre_dispatch_error)?;
     exchange(stream, &payload, remaining).map_err(|error| {
         AdapterError::internal("Command host reply was lost; the command may have executed")
@@ -66,7 +62,7 @@ fn exchange(
     let reply_deadline = Instant::now() + remaining + Duration::from_secs(2);
     let mut output = BufWriter::new(super::output::BoundedWriter::new(
         stream.try_clone()?,
-        remaining.min(Duration::from_secs(5)),
+        remaining.min(super::IO_TIMEOUT),
     )?);
     output.write_all(payload)?;
     output.flush()?;
@@ -74,7 +70,7 @@ fn exchange(
         &mut BufReader::new(stream),
         64 * 1024 * 1024,
         reply_deadline.saturating_duration_since(Instant::now()),
-        Duration::from_secs(5),
+        super::IO_TIMEOUT,
     )?;
     if reply.last() != Some(&b'\n') || reply.len() > 64 * 1024 * 1024 {
         return Err(AppError::invalid_input(
@@ -167,4 +163,41 @@ fn connect_or_start(
         let _ = child.wait();
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+
+    fn replied(bytes: &[u8]) -> Result<serde_json::Value, AppError> {
+        let bytes = bytes.to_vec();
+        let (client, mut server) = UnixStream::pair().unwrap();
+        std::thread::spawn(move || {
+            let mut request = [0_u8; 64];
+            let _ = server.read(&mut request);
+            let _ = server.write_all(&bytes);
+        });
+        exchange(client, b"{}\n", Duration::from_secs(30))
+    }
+
+    #[test]
+    fn a_reply_without_its_newline_boundary_is_rejected() {
+        let error = replied(br#"{"version":"2.4","ok":true}"#).unwrap_err();
+        assert!(error.to_string().contains("incomplete or oversized"));
+    }
+
+    #[test]
+    fn a_reply_with_an_invalid_envelope_is_rejected() {
+        for reply in [
+            br#"{"version":"9.9","ok":true}"#.as_slice(),
+            br#"{"version":"2.4","ok":"yes"}"#.as_slice(),
+            br#"{"version":"2.4"}"#.as_slice(),
+        ] {
+            let mut framed = reply.to_vec();
+            framed.push(b'\n');
+            let error = replied(&framed).unwrap_err();
+            assert!(error.to_string().contains("invalid envelope"));
+        }
+    }
 }

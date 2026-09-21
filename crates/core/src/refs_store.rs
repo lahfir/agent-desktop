@@ -172,16 +172,18 @@ impl RefStore {
                 Err(error) => return Err(error.into()),
             };
             let mut tokens = std::collections::HashSet::new();
-            for (index, entry) in entries.enumerate() {
-                if index >= MAX_SAVED_SNAPSHOTS {
-                    return Err(AppError::invalid_input(
-                        "Snapshot inventory exceeds retention limit",
-                    ));
-                }
+            let mut candidates = 0_usize;
+            for entry in entries {
                 let entry = entry?;
                 let id = entry.file_name().to_string_lossy().into_owned();
                 if validate_snapshot_id(&id).is_err() {
                     continue;
+                }
+                candidates += 1;
+                if candidates > MAX_SAVED_SNAPSHOTS {
+                    return Err(AppError::invalid_input(
+                        "Snapshot inventory exceeds retention limit",
+                    ));
                 }
                 let map = self.load_snapshot(&id)?;
                 tokens.extend(map.retained_object_tokens().map(str::to_owned));

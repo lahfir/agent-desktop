@@ -165,8 +165,8 @@ fn experimental_cli_starts_and_reuses_its_host() {
     let directory = std::env::temp_dir().join(format!("ad-host-client-{}", std::process::id()));
     let mut hash = std::collections::hash_map::DefaultHasher::new();
     host_identity(&directory).hash(&mut hash);
-    let socket = std::path::PathBuf::from(format!(
-        "/tmp/agent-desktop-host-{}/{:016x}.sock",
+    let socket = std::env::temp_dir().join(format!(
+        "agent-desktop-host-{}/{:016x}.sock",
         unsafe { libc::geteuid() },
         hash.finish(),
     ));

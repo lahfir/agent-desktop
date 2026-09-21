@@ -2,7 +2,6 @@ use agent_desktop_core::{
     AdapterError, Deadline, ElementState, ErrorCode, EvidenceRequirements, LiveElement,
     LiveIdentity, LocatorField, Rect,
 };
-use std::time::Instant;
 
 use crate::tree::{AXElement, element_bounds::ancestor_viewport};
 
@@ -111,7 +110,7 @@ fn read_live_observation_once(
             stats: &mut stats,
             usage: &mut usage,
             requirements: EvidenceRequirements::snapshot(),
-            deadline: deadline_instant(deadline)?,
+            deadline: crate::tree::locator_deadline::from_operation(deadline)?,
             child_plan,
         },
     )?;
@@ -231,16 +230,6 @@ fn normalized_role(ax_role: Option<&str>, ax_subrole: Option<&str>) -> String {
         .map(|role| crate::tree::roles::ax_role_and_subrole_to_str(role, ax_subrole))
         .unwrap_or("unknown")
         .to_string()
-}
-
-fn deadline_instant(deadline: Deadline) -> Result<Instant, AdapterError> {
-    let remaining = deadline.remaining();
-    if remaining.is_zero() {
-        return Err(deadline.timeout_error());
-    }
-    Instant::now()
-        .checked_add(remaining)
-        .ok_or_else(|| AdapterError::new(ErrorCode::InvalidArgs, "Deadline is out of range"))
 }
 
 #[cfg(test)]

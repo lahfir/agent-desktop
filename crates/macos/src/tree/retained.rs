@@ -1,6 +1,8 @@
 use super::AXElement;
 use super::retained_store::RetainedStore;
-use agent_desktop_core::{AdapterError, IdentifierEvidence, IdentityMatch, RefEntry};
+use agent_desktop_core::{
+    AdapterError, DeliverySemantics, ErrorCode, IdentifierEvidence, IdentityMatch, RefEntry,
+};
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -114,10 +116,12 @@ pub(crate) fn validate(token: Option<&str>) -> Result<(), AdapterError> {
     if found {
         Ok(())
     } else {
-        Err(
-            AdapterError::stale_ref("The native object owner is no longer available")
-                .with_suggestion("Take a fresh snapshot in the active session"),
+        Err(AdapterError::new(
+            ErrorCode::StaleRef,
+            "The native object owner is no longer available",
         )
+        .with_suggestion("Take a fresh snapshot in the active session")
+        .with_disposition(DeliverySemantics::not_delivered()))
     }
 }
 

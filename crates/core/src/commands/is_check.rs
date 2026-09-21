@@ -60,7 +60,7 @@ pub fn execute(
             (visibility.applicable(), visibility.result())
         }
         IsProperty::Enabled => {
-            let enabled = live_state.and_then(|state| state.enabled);
+            let enabled = state.enabled;
             (enabled.is_some(), enabled == Some(true))
         }
         IsProperty::Focused => (true, state::has_state(&state.states, FOCUSED)),

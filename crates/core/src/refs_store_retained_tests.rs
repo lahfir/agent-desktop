@@ -43,6 +43,21 @@ fn retained_tokens_follow_all_saved_snapshots_and_the_selected_namespace() {
 }
 
 #[test]
+fn stray_directory_entries_do_not_count_toward_the_inventory_limit() {
+    let _home = HomeGuard::new();
+    let store = RefStore::new().unwrap();
+    store.save_new_snapshot(&map("host:1")).unwrap();
+    let snapshots = store.base_dir().join("snapshots");
+    for index in 0..MAX_SAVED_SNAPSHOTS {
+        std::fs::create_dir_all(snapshots.join(format!("stray file {index}.json"))).unwrap();
+    }
+    assert_eq!(
+        store.retained_object_tokens().unwrap(),
+        HashSet::from(["host:1".into()])
+    );
+}
+
+#[test]
 fn an_unreadable_snapshot_prevents_a_partial_prune() {
     let _home = HomeGuard::new();
     let store = RefStore::new().unwrap();
