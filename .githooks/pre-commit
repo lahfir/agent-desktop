@@ -79,13 +79,15 @@ fi
 # bypasses with SKIP_PRECOMMIT, which is how a formatting break and a
 # comment-rule violation reached CI. The sets below mirror the per-OS lanes in
 # .github/workflows/ci.yml: `test` (macOS), `test-windows`, `test-linux`. macOS
-# additionally keeps the two cross-compiling adapter crates that this hook has
-# always covered there, so the GA platform loses nothing.
+# additionally keeps agent-desktop-linux, which is still a stub and compiles
+# anywhere. agent-desktop-windows left that class the moment it gained a real UI
+# Automation adapter - it builds on Windows alone - so the macOS set no longer
+# names it, and the lane that covers it is `test-windows`.
 HOST_KERNEL="$(uname -s)"
 case "$HOST_KERNEL" in
     Darwin*)
-        HOST_PACKAGES=(-p agent-desktop-core -p agent-desktop-macos -p agent-desktop-windows
-            -p agent-desktop-linux -p agent-desktop -p agent-desktop-ffi)
+        HOST_PACKAGES=(-p agent-desktop-core -p agent-desktop-macos -p agent-desktop-linux
+            -p agent-desktop -p agent-desktop-ffi)
         ;;
     MINGW* | MSYS* | CYGWIN* | Windows_NT)
         HOST_PACKAGES=(-p agent-desktop-core -p agent-desktop-windows -p agent-desktop -p agent-desktop-ffi)
@@ -100,15 +102,29 @@ case "$HOST_KERNEL" in
 esac
 
 # The defect being fixed was an unbuildable crate sitting in the package set, so
-# the selection asserts it never names one again.
-case "$HOST_KERNEL:${HOST_PACKAGES[*]}" in
-    Darwin*) ;;
-    *agent-desktop-macos*)
-        echo "pre-commit: package set names agent-desktop-macos on $HOST_KERNEL, which cannot build it" >&2
-        echo "pre-commit: refusing the commit - the cargo gates below would fail for the wrong reason." >&2
-        exit 1
+# the selection asserts it never names one again. The first version of this guard
+# named agent-desktop-macos alone, and agent-desktop-windows walked straight past
+# it once that crate stopped being a stub, so the rule is stated per host now.
+case "$HOST_KERNEL" in
+    Darwin*)
+        UNBUILDABLE_HERE=(agent-desktop-windows)
+        ;;
+    MINGW* | MSYS* | CYGWIN* | Windows_NT)
+        UNBUILDABLE_HERE=(agent-desktop-macos)
+        ;;
+    *)
+        UNBUILDABLE_HERE=(agent-desktop-macos agent-desktop-windows)
         ;;
 esac
+for unbuildable in "${UNBUILDABLE_HERE[@]}"; do
+    case " ${HOST_PACKAGES[*]} " in
+        *" $unbuildable "*)
+            echo "pre-commit: package set names $unbuildable on $HOST_KERNEL, which cannot build it" >&2
+            echo "pre-commit: refusing the commit - the cargo gates below would fail for the wrong reason." >&2
+            exit 1
+            ;;
+    esac
+done
 
 printf 'pre-commit: host %s, cargo scoped to %s\n' "$HOST_KERNEL" "${HOST_PACKAGES[*]}"
 
