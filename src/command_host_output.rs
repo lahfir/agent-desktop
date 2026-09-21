@@ -97,25 +97,30 @@ mod tests {
     }
 
     #[test]
-    fn complete_frames_reset_the_budget_and_restore_descriptor_flags() {
-        let (sender, mut receiver) = UnixStream::pair().unwrap();
-        let flags = unsafe { libc::fcntl(sender.as_raw_fd(), libc::F_GETFL) };
-        {
-            let mut writer =
-                BoundedWriter::new(sender.try_clone().unwrap(), Duration::from_secs(60)).unwrap();
-            writer.write_all(b"one\n").unwrap();
-            assert!(writer.deadline.is_some());
-            writer.flush().unwrap();
-            assert!(writer.deadline.is_none());
-            writer.write_all(b"two\n").unwrap();
-            writer.flush().unwrap();
+    fn complete_frames_reset_the_budget_and_restore_nonblocking_mode() {
+        for initially_nonblocking in [false, true] {
+            let (sender, mut receiver) = UnixStream::pair().unwrap();
+            sender.set_nonblocking(initially_nonblocking).unwrap();
+            {
+                let mut writer =
+                    BoundedWriter::new(sender.try_clone().unwrap(), Duration::from_secs(60))
+                        .unwrap();
+                let flags = unsafe { libc::fcntl(sender.as_raw_fd(), libc::F_GETFL) };
+                assert!(flags >= 0);
+                assert_ne!(flags & libc::O_NONBLOCK, 0);
+                writer.write_all(b"one\n").unwrap();
+                assert!(writer.deadline.is_some());
+                writer.flush().unwrap();
+                assert!(writer.deadline.is_none());
+                writer.write_all(b"two\n").unwrap();
+                writer.flush().unwrap();
+            }
+            let flags = unsafe { libc::fcntl(sender.as_raw_fd(), libc::F_GETFL) };
+            assert!(flags >= 0);
+            assert_eq!(flags & libc::O_NONBLOCK != 0, initially_nonblocking);
+            let mut bytes = [0; 8];
+            receiver.read_exact(&mut bytes).unwrap();
+            assert_eq!(&bytes, b"one\ntwo\n");
         }
-        assert_eq!(
-            unsafe { libc::fcntl(sender.as_raw_fd(), libc::F_GETFL) },
-            flags
-        );
-        let mut bytes = [0; 8];
-        receiver.read_exact(&mut bytes).unwrap();
-        assert_eq!(&bytes, b"one\ntwo\n");
     }
 }
