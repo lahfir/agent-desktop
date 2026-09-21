@@ -241,6 +241,7 @@ fn saved_tree() -> crate::AccessibilityNode {
         ref_id: None,
         role: "window".into(),
         identity: crate::NodeIdentity {
+            retained_object: None,
             name: Some("Saved!".into()),
             ..Default::default()
         },

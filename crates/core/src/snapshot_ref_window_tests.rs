@@ -19,10 +19,11 @@ fn test_run_from_ref_resolves_source_window_among_same_process_windows() {
     let snapshot_id = save_latest(seed_skeleton_refmap_on_window(Some("w-467")));
 
     let subtree = named("button", "Save");
-    let adapter = StubAdapter::with_windows(
+    let mut adapter = StubAdapter::with_windows(
         subtree,
         vec![window_info("w-467", false), window_info("w-475", false)],
     );
+    adapter.expected_app = Some("TestApp".into());
 
     let result = run_from_ref(&adapter, &drill_opts(), "@e1", Some(&snapshot_id))
         .expect("drill must resolve its own source window, not the process");

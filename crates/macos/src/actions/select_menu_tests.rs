@@ -76,13 +76,3 @@ fn uncertain_collection_selection_never_falls_back_to_press() {
         assert_eq!(presses.get(), 0);
     }
 }
-
-#[test]
-fn selected_readback_distinguishes_contradiction_from_missing_evidence() {
-    assert_eq!(
-        selected_readback(Some(false)).unwrap_err().disposition,
-        DeliverySemantics::delivered_unverified()
-    );
-    assert!(selected_readback(Some(true)).unwrap());
-    assert!(!selected_readback(None).unwrap());
-}

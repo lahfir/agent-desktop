@@ -4,7 +4,7 @@ use agent_desktop_core::{
 };
 use std::time::Instant;
 
-use crate::tree::AXElement;
+use crate::tree::{AXElement, element_bounds::ancestor_viewport};
 
 pub(crate) fn read_element_state(
     element: &AXElement,
@@ -13,12 +13,7 @@ pub(crate) fn read_element_state(
     let read = read_live_observation(element, deadline)?;
     let attrs = read.attrs;
     let role = known_role(&read.evidence.role)?;
-    element_state_from_attrs(
-        element,
-        attrs,
-        role,
-        owning_window_bounds(element, deadline)?,
-    )
+    element_state_from_attrs(element, attrs, role, ancestor_viewport(element, deadline)?)
 }
 
 pub(crate) fn read_live_element(
@@ -35,13 +30,8 @@ pub(crate) fn read_live_element(
     let available_actions = known_actions(read.evidence.ref_evidence.available_actions)?;
     let attrs = read.attrs;
     let bounds = attrs.bounds;
-    let expanded_observed = attrs
-        .states
-        .control
-        .expanded
-        .or(attrs.states.control.disclosing)
-        .is_some();
-    let window_bounds = owning_window_bounds(element, deadline)?;
+    let expanded_observed = crate::tree::state_reader::expanded_from_attrs(&attrs).is_some();
+    let window_bounds = ancestor_viewport(element, deadline)?;
     let state = element_state_from_attrs(element, attrs, role, window_bounds)?;
     Ok(LiveElement {
         identity,
@@ -63,6 +53,50 @@ fn read_live_observation(
     element: &AXElement,
     deadline: Deadline,
 ) -> Result<crate::tree::query::node_read::NodeRead, AdapterError> {
+    read_observation_with_recovery(deadline, || read_live_observation_once(element, deadline))
+}
+
+fn read_observation_with_recovery<T>(
+    deadline: Deadline,
+    mut read: impl FnMut() -> Result<T, AdapterError>,
+) -> Result<T, AdapterError> {
+    for attempt in 0..3 {
+        if deadline.is_expired() {
+            return Err(deadline.timeout_error());
+        }
+        match read() {
+            Err(error) if attempt < 2 && transient_observation_failure(&error) => {
+                if deadline.is_expired() {
+                    return Err(error);
+                }
+                std::thread::sleep(
+                    deadline
+                        .remaining()
+                        .min(std::time::Duration::from_millis(1)),
+                );
+            }
+            result => return result,
+        }
+    }
+    Err(deadline.timeout_error())
+}
+
+fn transient_observation_failure(error: &AdapterError) -> bool {
+    error.code == ErrorCode::AppUnresponsive
+        && error.permits_retry_by_default()
+        && error.details.as_ref().is_some_and(|details| {
+            details["kind"] == "live_element_evidence"
+                && details
+                    .pointer("/query_stats/reads/cannot_complete")
+                    .and_then(serde_json::Value::as_u64)
+                    .is_some_and(|failures| failures > 0)
+        })
+}
+
+fn read_live_observation_once(
+    element: &AXElement,
+    deadline: Deadline,
+) -> Result<crate::tree::query::node_read::NodeRead, AdapterError> {
     let mut usage = new_usage();
     if !usage.claim_node() {
         return Err(incomplete_live_evidence());
@@ -70,7 +104,7 @@ fn read_live_observation(
     let mut stats = agent_desktop_core::LocatorStats::default();
     let child_plan =
         crate::tree::query::child_read_plan::ChildReadPlan::load(usage.child_capacity());
-    let read = crate::tree::query::node_read::read_node(
+    let mut read = crate::tree::query::node_read::read_node(
         element,
         crate::tree::query::node_read_context::NodeReadContext {
             tree: &crate::tree::TreeBuildContext::empty(false),
@@ -98,6 +132,8 @@ fn read_live_observation(
             "query_stats": stats,
         })));
     }
+    read.attrs.states.semantic.hidden =
+        hidden_state(read.attrs.states.semantic.hidden, &read.evidence.states);
     Ok(read)
 }
 
@@ -111,34 +147,6 @@ fn essential_live_evidence_complete(evidence: &agent_desktop_core::LocatorEviden
 
 fn new_usage() -> crate::tree::observation_usage::ObservationUsage {
     crate::tree::observation_usage::ObservationUsage::with_defaults()
-}
-
-fn owning_window_bounds(
-    element: &AXElement,
-    deadline: Deadline,
-) -> Result<Option<Rect>, AdapterError> {
-    crate::tree::attributes::set_messaging_timeout(element, deadline)?;
-    let window = first_owning_container(|attribute| {
-        crate::tree::attributes::copy_element_attr_result(element, attribute, deadline)
-    })
-    .map_err(|(attribute, error)| read_error(attribute, error))?;
-    if deadline.is_expired() {
-        return Err(deadline.timeout_error());
-    }
-    let Some(window) = window else {
-        return Ok(None);
-    };
-    crate::tree::element_bounds::read_bounds_with_deadline(&window, deadline_instant(deadline)?)
-}
-
-/// The viewport an element is clipped by. `AXTopLevelUIElement` is not a
-/// substitute: for menu content it resolves to the menu bar, a 29-point strip
-/// that reports every open menu item as offscreen. An element with no window is
-/// drawn on its own surface, so its clipping viewport is simply unknown.
-fn first_owning_container(
-    mut read: impl FnMut(&'static str) -> Result<Option<AXElement>, i32>,
-) -> Result<Option<AXElement>, (&'static str, i32)> {
-    read("AXWindow").map_err(|error| ("AXWindow", error))
 }
 
 fn known_role(role: &LocatorField<String>) -> Result<String, AdapterError> {
@@ -195,7 +203,7 @@ fn element_state_from_attrs(
     };
     let states = crate::tree::state_reader::states_from_element(element, &attrs, &role, &context);
     let enabled = Some(attrs.states.enabled);
-    let hidden = hidden_state(attrs.states.semantic.hidden);
+    let hidden = attrs.states.semantic.hidden;
     let offscreen = crate::tree::state_reader::offscreen(attrs.bounds, window_bounds);
     Ok(ElementState {
         role,
@@ -207,8 +215,14 @@ fn element_state_from_attrs(
     })
 }
 
-fn hidden_state(reported: Option<bool>) -> Option<bool> {
-    reported
+fn hidden_state(reported: Option<bool>, canonical: &LocatorField<Vec<String>>) -> Option<bool> {
+    reported.or_else(|| match canonical {
+        LocatorField::Known(states) => Some(agent_desktop_core::state::has_state(
+            states,
+            agent_desktop_core::state::HIDDEN,
+        )),
+        _ => None,
+    })
 }
 
 #[cfg(test)]
@@ -227,22 +241,6 @@ fn deadline_instant(deadline: Deadline) -> Result<Instant, AdapterError> {
     Instant::now()
         .checked_add(remaining)
         .ok_or_else(|| AdapterError::new(ErrorCode::InvalidArgs, "Deadline is out of range"))
-}
-
-fn read_error(attribute: &str, error: i32) -> AdapterError {
-    AdapterError::new(
-        if error == accessibility_sys::kAXErrorCannotComplete {
-            ErrorCode::Timeout
-        } else if error == accessibility_sys::kAXErrorAPIDisabled {
-            ErrorCode::PermDenied
-        } else if error == accessibility_sys::kAXErrorInvalidUIElement {
-            ErrorCode::StaleRef
-        } else {
-            ErrorCode::ActionFailed
-        },
-        format!("Could not read {attribute} for live state"),
-    )
-    .with_details(serde_json::json!({ "attribute": attribute, "ax_error": error }))
 }
 
 #[cfg(test)]

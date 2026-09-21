@@ -1,10 +1,9 @@
 use crate::{
     AppError,
     adapter::PlatformAdapter,
-    commands::{wait_predicate, wait_timeout},
+    commands::{helpers::load_ref_entry, wait_predicate, wait_timeout},
     context::CommandContext,
     ref_resolve_deadline::{POLL_INTERVAL, resolve_within_deadline},
-    refs_store::RefStore,
     resolve_attempt_outcome::ResolveAttemptOutcome,
 };
 use serde_json::{Value, json};
@@ -30,16 +29,7 @@ pub(crate) fn wait_for_element(
     } = input;
     let start = Instant::now();
     let deadline = crate::Deadline::at(start, timeout_ms)?;
-    let (resolved_snapshot_id, local_ref) =
-        crate::ref_token::resolve_ref_target(&ref_id, snapshot_id.as_deref())?;
-    let store = RefStore::for_session(context.session_id())?;
-    let refmap = store.load_snapshot(&resolved_snapshot_id)?;
-    let entry = refmap.get(&local_ref).cloned().ok_or_else(|| {
-        AppError::invalid_input_with_suggestion(
-            format!("Ref {ref_id} is not present in the requested snapshot"),
-            "Use a snapshot-qualified ref returned by that snapshot, or pair a legacy @eN ref with its snapshot_id.",
-        )
-    })?;
+    let entry = load_ref_entry(&ref_id, snapshot_id.as_deref(), context)?;
 
     let mut last_observed = json!(null);
     let mut expected_bounds_hash = None;
@@ -59,6 +49,14 @@ pub(crate) fn wait_for_element(
                 ) {
                     Ok(observed) => {
                         last_observed = observed;
+                        if deadline.is_expired() {
+                            return wait_timeout::element(
+                                ref_id,
+                                predicate,
+                                timeout_ms,
+                                last_observed,
+                            );
+                        }
                         if let Some(observed) = last_observed
                             .get("observed_bounds_hash")
                             .and_then(Value::as_u64)

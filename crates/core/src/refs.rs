@@ -84,6 +84,12 @@ impl RefMap {
         self.inner.is_empty()
     }
 
+    pub(crate) fn retained_object_tokens(&self) -> impl Iterator<Item = &str> {
+        self.inner
+            .values()
+            .filter_map(|entry| entry.identity.retained_object.as_deref())
+    }
+
     pub fn remove_by_root_ref(&mut self, root: &str) {
         let root_entry = self.inner.get(root).cloned();
         self.inner.retain(|ref_id, entry| {

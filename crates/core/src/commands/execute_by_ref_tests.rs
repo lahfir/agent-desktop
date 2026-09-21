@@ -26,6 +26,7 @@ fn snapshot_with_ref(role: &str, available_actions: &[&str]) -> String {
             process_instance: Some("test-instance".into()),
         },
         identity: crate::RefEntryIdentity {
+            retained_object: None,
             role: role.into(),
             name: Some("Target".into()),
             value: None,

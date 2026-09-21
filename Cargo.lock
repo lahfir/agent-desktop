@@ -21,6 +21,7 @@ dependencies = [
  "agent-desktop-windows",
  "base64",
  "clap",
+ "libc",
  "serde",
  "serde_json",
  "thiserror",

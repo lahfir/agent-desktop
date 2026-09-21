@@ -274,8 +274,11 @@ mod imp {
     ) -> Result<Option<String>, AdapterError> {
         use accessibility_sys::kAXRoleAttribute;
         prepare(el, deadline)?;
-        let role = crate::tree::attributes::copy_string_attr_result(el, kAXRoleAttribute, deadline)
-            .map_err(|error| read_failure(kAXRoleAttribute, error))?;
+        let read_deadline = crate::tree::ax_ipc::AxDeadline::absolute(deadline)?;
+        let role = crate::tree::read_recovery::read(read_deadline, || {
+            crate::tree::attributes::copy_string_attr_result(el, kAXRoleAttribute, read_deadline)
+        })
+        .map_err(|error| read_failure(kAXRoleAttribute, error))?;
         ensure_read_finished(deadline)?;
         Ok(role.map(|role| crate::tree::roles::ax_role_to_str(&role).to_string()))
     }

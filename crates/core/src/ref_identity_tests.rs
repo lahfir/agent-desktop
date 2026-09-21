@@ -18,6 +18,7 @@ fn entry() -> RefEntry {
             process_instance: Some("test-instance".into()),
         },
         identity: crate::RefEntryIdentity {
+            retained_object: None,
             role: "button".into(),
             name: None,
             value: None,
@@ -389,3 +390,5 @@ fn unknown_stable_text_field_does_not_collapse_to_absence() {
         IdentityMatch::Unknown
     );
 }
+#[path = "ref_identity_scroll_tests.rs"]
+mod scroll_tests;

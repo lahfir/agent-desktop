@@ -11,6 +11,7 @@ fn node(
         ref_id: None,
         role: role.into(),
         identity: crate::NodeIdentity {
+            retained_object: None,
             name: name.map(String::from),
             value: value.map(String::from),
             ..Default::default()

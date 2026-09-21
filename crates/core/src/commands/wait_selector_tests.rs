@@ -11,6 +11,7 @@ fn window_node(children: Vec<AccessibilityNode>) -> AccessibilityNode {
         ref_id: None,
         role: "window".into(),
         identity: crate::NodeIdentity {
+            retained_object: None,
             name: Some("Doc".into()),
             ..Default::default()
         },
@@ -26,6 +27,7 @@ fn button_node(label: &str) -> AccessibilityNode {
         ref_id: None,
         role: "button".into(),
         identity: crate::NodeIdentity {
+            retained_object: None,
             name: Some(label.into()),
             ..Default::default()
         },

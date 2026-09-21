@@ -108,6 +108,7 @@ fn entry() -> RefEntry {
             process_instance: Some("test-instance".into()),
         },
         identity: crate::RefEntryIdentity {
+            retained_object: None,
             role: "textfield".into(),
             name: Some("Run".into()),
             value: None,

@@ -125,7 +125,21 @@ mod imp {
         if let Some(value) = crate::tree::surface_read::boolean(element, "AXExpanded", instant)? {
             return Ok(Some(value));
         }
-        crate::tree::surface_read::boolean(element, "AXDisclosing", instant)
+        if let Some(value) = crate::tree::surface_read::boolean(element, "AXDisclosing", instant)? {
+            return Ok(Some(value));
+        }
+        let role = crate::tree::surface_read::string(element, "AXRole", instant)?;
+        if role.as_deref() != Some("AXDisclosureTriangle") {
+            return Ok(None);
+        }
+        let value = crate::tree::attributes::copy_value_typed_result(element, deadline).map_err(
+            |error| crate::tree::query::read_error::semantic_read(error, "disclosure.value"),
+        )?;
+        Ok(crate::tree::state_reader::expanded_state(
+            role.as_deref(),
+            None,
+            value.as_deref(),
+        ))
     }
 
     fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {

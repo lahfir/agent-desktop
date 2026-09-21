@@ -164,6 +164,32 @@ impl RefStore {
         self.read_latest_snapshot_id()
     }
 
+    pub fn retained_object_tokens(&self) -> Result<std::collections::HashSet<String>, AppError> {
+        self.with_write_lock(|| {
+            let entries = match std::fs::read_dir(self.snapshots_dir()) {
+                Ok(entries) => entries,
+                Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Default::default()),
+                Err(error) => return Err(error.into()),
+            };
+            let mut tokens = std::collections::HashSet::new();
+            for (index, entry) in entries.enumerate() {
+                if index >= MAX_SAVED_SNAPSHOTS {
+                    return Err(AppError::invalid_input(
+                        "Snapshot inventory exceeds retention limit",
+                    ));
+                }
+                let entry = entry?;
+                let id = entry.file_name().to_string_lossy().into_owned();
+                if validate_snapshot_id(&id).is_err() {
+                    continue;
+                }
+                let map = self.load_snapshot(&id)?;
+                tokens.extend(map.retained_object_tokens().map(str::to_owned));
+            }
+            Ok(tokens)
+        })
+    }
+
     fn save_snapshot_unlocked(&self, snapshot_id: &str, refmap: &RefMap) -> Result<(), AppError> {
         validate_snapshot_id(snapshot_id)?;
         let json = refmap.serialize_with_size_check()?;
@@ -282,3 +308,7 @@ mod trace_tests;
 #[cfg(test)]
 #[path = "refs_store_transaction_tests.rs"]
 mod transaction_tests;
+
+#[cfg(test)]
+#[path = "refs_store_retained_tests.rs"]
+mod retained_tests;

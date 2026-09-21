@@ -33,16 +33,26 @@ pub fn execute(
     let (prop_name, value) = match args.property {
         GetProperty::Role => ("role", json!(entry.identity.role)),
         GetProperty::Title => ("title", json!(entry.identity.name)),
-        GetProperty::Text => {
-            let live = optional_live_read(adapter.get_live_value(&handle, deadline))?;
-            ("text", json!(live.or(entry.identity.value)))
+        GetProperty::Text | GetProperty::Value => {
+            let property = if matches!(args.property, GetProperty::Text) {
+                "text"
+            } else {
+                "value"
+            };
+            let live = optional_live_read(adapter.get_live_value(&handle, deadline).map(Some))?;
+            (property, json!(live.unwrap_or(entry.identity.value)))
         }
-        GetProperty::Value => {
-            let live = optional_live_read(adapter.get_live_value(&handle, deadline))?;
-            ("value", json!(live.or(entry.identity.value)))
+        GetProperty::Bounds => {
+            let live = optional_live_read(adapter.get_element_bounds(&handle, deadline).map(Some))?;
+            ("bounds", json!(live.unwrap_or(entry.geometry.bounds)))
         }
-        GetProperty::Bounds => ("bounds", json!(entry.geometry.bounds)),
-        GetProperty::States => ("states", json!(entry.capabilities.states)),
+        GetProperty::States => {
+            let live = optional_live_read(adapter.get_live_state(&handle, deadline))?;
+            (
+                "states",
+                json!(live.map_or(entry.capabilities.states, |state| state.states)),
+            )
+        }
     };
 
     Ok(json!({ "property": prop_name, "ref": args.ref_id, "value": value }))

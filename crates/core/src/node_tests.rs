@@ -23,6 +23,7 @@ fn test_children_count_omitted_when_none() {
         ref_id: None,
         role: "group".into(),
         identity: crate::NodeIdentity {
+            retained_object: None,
             name: Some("Sidebar".into()),
             ..Default::default()
         },
@@ -41,6 +42,7 @@ fn test_children_count_present_when_set() {
         ref_id: None,
         role: "group".into(),
         identity: crate::NodeIdentity {
+            retained_object: None,
             name: Some("Sidebar".into()),
             ..Default::default()
         },
@@ -150,6 +152,7 @@ fn accessibility_node_bounds_none_omitted_from_json() {
         ref_id: None,
         role: "button".into(),
         identity: crate::NodeIdentity {
+            retained_object: None,
             name: Some("OK".into()),
             ..Default::default()
         },

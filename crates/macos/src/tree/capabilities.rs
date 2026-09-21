@@ -20,6 +20,21 @@ impl<T> NativeRead<T> {
 }
 
 #[cfg(target_os = "macos")]
+fn read_with_recovery<T>(
+    deadline: std::time::Instant,
+    mut read: impl FnMut() -> NativeRead<T>,
+) -> NativeRead<T> {
+    super::read_recovery::read(deadline, || {
+        let result = read();
+        match result.error {
+            Some(error) => Err(error),
+            None => Ok(result),
+        }
+    })
+    .unwrap_or_else(NativeRead::failure)
+}
+
+#[cfg(target_os = "macos")]
 mod imp {
     use super::NativeRead;
     use crate::{cf_type::created_cf_array, tree::AXElement};
@@ -35,16 +50,29 @@ mod imp {
         deadline: std::time::Instant,
     ) -> NativeRead<bool> {
         let cf_attr = CFString::new(attr);
-        let (err, settable) =
-            crate::tree::ax_ipc::is_attribute_settable(el, cf_attr.as_concrete_TypeRef(), deadline);
-        if err == kAXErrorSuccess {
-            NativeRead::success(settable)
-        } else {
-            NativeRead::failure(err)
-        }
+        super::read_with_recovery(deadline, || {
+            let (err, settable) = crate::tree::ax_ipc::is_attribute_settable(
+                el,
+                cf_attr.as_concrete_TypeRef(),
+                deadline,
+            );
+            if err == kAXErrorSuccess {
+                NativeRead::success(settable)
+            } else {
+                NativeRead::failure(err)
+            }
+        })
     }
 
     pub(crate) fn copy_action_names_with_status(
+        el: &AXElement,
+        deadline: std::time::Instant,
+        usage: &mut crate::tree::observation_usage::ObservationUsage,
+    ) -> NativeRead<Vec<String>> {
+        super::read_with_recovery(deadline, || copy_action_names_once(el, deadline, usage))
+    }
+
+    fn copy_action_names_once(
         el: &AXElement,
         deadline: std::time::Instant,
         usage: &mut crate::tree::observation_usage::ObservationUsage,
@@ -127,5 +155,52 @@ mod tests {
         assert!(flag.value.is_none());
         assert_eq!(strings.error, Some(-1));
         assert_eq!(flag.error, Some(-1));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn capability_read_recovers_only_transient_failures_within_a_fixed_attempt_bound() {
+        use accessibility_sys::{
+            kAXErrorAPIDisabled, kAXErrorCannotComplete, kAXErrorFailure, kAXErrorInvalidUIElement,
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut reads = 0;
+        let recovered = super::read_with_recovery(deadline, || {
+            reads += 1;
+            if reads < 3 {
+                NativeRead::failure(kAXErrorCannotComplete)
+            } else {
+                NativeRead::success(false)
+            }
+        });
+        assert_eq!(reads, 3);
+        assert_eq!(recovered.value, Some(false));
+        assert_eq!(recovered.error, None);
+        for code in [
+            kAXErrorCannotComplete,
+            kAXErrorAPIDisabled,
+            kAXErrorInvalidUIElement,
+            kAXErrorFailure,
+        ] {
+            let mut reads = 0;
+            let result = super::read_with_recovery::<bool>(deadline, || {
+                reads += 1;
+                NativeRead::failure(code)
+            });
+            assert_eq!(reads, if code == kAXErrorCannotComplete { 3 } else { 1 });
+            assert_eq!(result.error, Some(code));
+            assert_eq!(result.value, None);
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn expired_capability_budget_never_calls_native_reader() {
+        let result =
+            super::read_with_recovery::<bool>(std::time::Instant::now(), || panic!("expired read"));
+        assert_eq!(
+            result.error,
+            Some(accessibility_sys::kAXErrorCannotComplete)
+        );
     }
 }

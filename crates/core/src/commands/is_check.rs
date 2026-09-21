@@ -5,7 +5,7 @@ use crate::{
     context::CommandContext,
     element_state::ElementState,
     refs::RefEntry,
-    state::{self, CHECKED, DISABLED, EXPANDED, FOCUSED, SELECTED, VisibilityEvidence},
+    state::{self, CHECKED, EXPANDED, FOCUSED, SELECTED, VisibilityEvidence},
 };
 use serde_json::{Value, json};
 
@@ -59,7 +59,10 @@ pub fn execute(
             };
             (visibility.applicable(), visibility.result())
         }
-        IsProperty::Enabled => (true, !state::has_state(&state.states, DISABLED)),
+        IsProperty::Enabled => {
+            let enabled = live_state.and_then(|state| state.enabled);
+            (enabled.is_some(), enabled == Some(true))
+        }
         IsProperty::Focused => (true, state::has_state(&state.states, FOCUSED)),
         IsProperty::Checked => (
             crate::roles::is_toggleable_role(&entry.identity.role)

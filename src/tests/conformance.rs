@@ -168,6 +168,7 @@ fn entry(bounds: Rect) -> RefEntry {
             process_instance: Some("contract-process".into()),
         },
         identity: RefEntryIdentity {
+            retained_object: None,
             role: "button".into(),
             name: Some("OK".into()),
             value: None,

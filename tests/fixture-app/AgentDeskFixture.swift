@@ -334,7 +334,13 @@ struct ContentView: View {
 struct AgentDeskFixtureApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     var body: some Scene {
-        WindowGroup("AgentDesk Fixture") { ContentView() }
+        WindowGroup("AgentDesk Fixture") {
+            if ProcessInfo.processInfo.environment["AGENT_DESKTOP_FIXTURE_REF_CHURN"] == "1" {
+                RefChurnView()
+            } else {
+                ContentView()
+            }
+        }
             .commands {
                 // Custom top menu so the harness can verify the app menu bar is
                 // enumerable via `snapshot --surface menubar`. (SwiftUI

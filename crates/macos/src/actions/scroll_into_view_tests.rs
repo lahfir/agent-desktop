@@ -1,6 +1,6 @@
 use agent_desktop_core::{Direction, Rect};
 
-use super::{direction_for_visibility, intersects, rect_has_area, scroll_effect_observed};
+use super::{direction_for_visibility, rect_has_area, scroll_effect_observed};
 
 fn rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
     Rect {
@@ -21,17 +21,6 @@ fn area_requires_finite_positive_dimensions_and_coordinates() {
 }
 
 #[test]
-fn intersection_requires_positive_overlapping_area() {
-    let window = rect(0.0, 0.0, 100.0, 100.0);
-
-    assert!(intersects(rect(10.0, 10.0, 20.0, 20.0), window));
-    assert!(intersects(rect(90.0, 90.0, 20.0, 20.0), window));
-    assert!(intersects(rect(80.0, 10.0, 20.0, 20.0), window));
-    assert!(!intersects(rect(101.0, 10.0, 20.0, 20.0), window));
-    assert!(!intersects(rect(100.0, 10.0, 20.0, 20.0), window));
-}
-
-#[test]
 fn offscreen_direction_uses_global_viewport_edges() {
     let viewport = rect(1496.0, 87.0, 1496.0, 937.0);
 
@@ -44,6 +33,19 @@ fn offscreen_direction_uses_global_viewport_edges() {
         Some(Direction::Up)
     ));
     assert!(direction_for_visibility(rect(1500.0, 100.0, 73.0, 24.0), viewport).is_none());
+}
+
+#[test]
+fn nested_viewport_requires_scrolling_even_inside_window() {
+    let target = rect(370.0, 466.0, 202.0, 32.0);
+    let window = rect(300.0, 135.0, 500.0, 632.0);
+    let viewport = rect(350.0, 617.0, 300.0, 100.0);
+
+    assert!(direction_for_visibility(target, window).is_none());
+    assert!(matches!(
+        direction_for_visibility(target, viewport),
+        Some(Direction::Up)
+    ));
 }
 
 #[test]

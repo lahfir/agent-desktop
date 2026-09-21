@@ -1,6 +1,65 @@
 use super::*;
 use crate::tree::{node_attr_states::NodeAttrStates, node_attrs::NodeAttrs};
 
+fn transient_observation_error() -> AdapterError {
+    incomplete_live_evidence().with_details(serde_json::json!({
+        "kind": "live_element_evidence",
+        "retryable": true,
+        "query_stats": { "reads": { "cannot_complete": 1 } }
+    }))
+}
+
+#[test]
+fn live_observation_recovers_transient_native_reads_without_mutation() {
+    let mut reads = 0;
+    let result = read_observation_with_recovery(Deadline::after(5_000).unwrap(), || {
+        reads += 1;
+        if reads < 3 {
+            Err(transient_observation_error())
+        } else {
+            Ok("observed")
+        }
+    })
+    .unwrap();
+    assert_eq!(result, "observed");
+    assert_eq!(reads, 3);
+}
+
+#[test]
+fn live_observation_recovery_is_bounded_and_preserves_terminal_errors() {
+    for (error, expected_reads) in [
+        (transient_observation_error(), 3),
+        (AdapterError::permission_denied(), 1),
+        (AdapterError::stale_ref("replaced"), 1),
+        (incomplete_live_evidence(), 1),
+        (
+            transient_observation_error().with_details(serde_json::json!({
+                "kind": "live_element_evidence",
+                "retryable": false,
+                "query_stats": { "reads": { "cannot_complete": 1 } }
+            })),
+            1,
+        ),
+    ] {
+        let mut reads = 0;
+        let result = read_observation_with_recovery::<()>(Deadline::after(5_000).unwrap(), || {
+            reads += 1;
+            Err(error.clone())
+        })
+        .unwrap_err();
+        assert_eq!(reads, expected_reads);
+        assert_eq!(result.code, error.code);
+        assert_eq!(result.details, error.details);
+    }
+}
+
+#[test]
+fn expired_live_observation_budget_never_calls_native_reader() {
+    let deadline = Deadline::after(0).unwrap();
+    let result = read_observation_with_recovery::<()>(deadline, || panic!("expired read"));
+    assert_eq!(result.unwrap_err().code, ErrorCode::Timeout);
+}
+
 fn attrs_with_bounds(bounds: Rect) -> NodeAttrs {
     NodeAttrs {
         role: Some("AXButton".into()),
@@ -88,45 +147,36 @@ fn secure_subrole_never_exposes_its_value() {
 
 #[test]
 fn element_visibility_preserves_live_hidden_evidence_for_every_role() {
-    assert_eq!(hidden_state(None), None);
-    assert_eq!(hidden_state(Some(false)), Some(false));
-    assert_eq!(hidden_state(Some(true)), Some(true));
-}
-
-/// A menu item's `AXTopLevelUIElement` is the menu bar, whose 29-point height
-/// clips every open menu item. A window-less element therefore reports no
-/// clipping viewport rather than a wrong one.
-#[test]
-fn a_window_less_element_reports_no_clipping_viewport() {
-    let mut attributes = Vec::new();
-    let container = first_owning_container(|attribute| {
-        attributes.push(attribute);
-        Ok(None)
-    })
-    .unwrap();
-
-    assert!(container.is_none());
-    assert_eq!(attributes, ["AXWindow"]);
+    for canonical in [LocatorField::Unknown, LocatorField::Absent] {
+        assert_eq!(hidden_state(None, &canonical), None);
+        assert_eq!(hidden_state(Some(false), &canonical), Some(false));
+        assert_eq!(hidden_state(Some(true), &canonical), Some(true));
+    }
 }
 
 #[test]
-fn incomplete_window_read_never_falls_through_to_a_weaker_container() {
-    for error in [
-        accessibility_sys::kAXErrorCannotComplete,
-        accessibility_sys::kAXErrorInvalidUIElement,
-    ] {
-        let calls = std::cell::Cell::new(0);
-        let result = first_owning_container(|_| {
-            calls.set(calls.get() + 1);
-            Err(error)
+fn complete_visibility_evidence_does_not_require_an_expanded_attribute() {
+    let el = crate::tree::AXElement(std::ptr::null_mut());
+    let bounds = Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 28.0,
+        height: 28.0,
+    };
+    for hidden in [false, true] {
+        let mut attrs = attrs_with_bounds(bounds);
+        attrs.role = Some("AXMenuButton".into());
+        let canonical = LocatorField::Known(if hidden {
+            vec![agent_desktop_core::state::HIDDEN.into()]
+        } else {
+            Vec::new()
         });
-
-        let failure = match result {
-            Err(failure) => failure,
-            Ok(_) => panic!("incomplete AXWindow read must fail"),
-        };
-        assert_eq!(failure, ("AXWindow", error));
-        assert_eq!(calls.get(), 1);
+        attrs.states.semantic.hidden = hidden_state(None, &canonical);
+        let state =
+            element_state_from_attrs(&el, attrs, "menubutton".into(), Some(bounds)).unwrap();
+        assert_eq!(state.hidden, Some(hidden));
+        assert_eq!(state.offscreen, Some(false));
+        assert!(!states_are_complete(&state, false));
     }
 }
 

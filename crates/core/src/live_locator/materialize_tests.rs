@@ -239,6 +239,7 @@ fn source_entry() -> RefEntry {
             process_instance: Some("test-instance".into()),
         },
         identity: crate::RefEntryIdentity {
+            retained_object: None,
             role: "group".into(),
             name: Some("Scope".into()),
             value: None,

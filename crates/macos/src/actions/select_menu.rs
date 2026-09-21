@@ -81,7 +81,7 @@ pub(crate) fn select_collection_item(
     value: &str,
     deadline: Deadline,
 ) -> Result<bool, AdapterError> {
-    let Some(candidate) = find_named_descendant(element, value, deadline)? else {
+    let Some(candidate) = find_named_descendant(element, value, deadline, true)? else {
         return Err(AdapterError::new(
             ErrorCode::ElementNotFound,
             format!(
@@ -89,7 +89,8 @@ pub(crate) fn select_collection_item(
                 value.chars().count()
             ),
         )
-        .with_suggestion("Use find to inspect the collection's available items."));
+        .with_suggestion("Use find to inspect the collection's available items.")
+        .with_disposition(DeliverySemantics::not_delivered()));
     };
     select_collection_candidate(&candidate, deadline)
 }
@@ -117,7 +118,7 @@ fn select_open_menu_item(
             ));
         }
         if let Some(menu) = menu_root(pid, deadline)?
-            && let Some(candidate) = find_named_descendant(&menu, value, deadline)?
+            && let Some(candidate) = find_named_descendant(&menu, value, deadline, false)?
         {
             let verified = activate_menu_item(&candidate, deadline)?;
             return if verified {
@@ -142,9 +143,11 @@ fn find_named_descendant(
     root: &AXElement,
     value: &str,
     deadline: Deadline,
+    collection: bool,
 ) -> Result<Option<AXElement>, AdapterError> {
     let mut stack = vec![(root.clone(), 0_u8)];
     let mut visited = 0_usize;
+    let mut selected: Option<AXElement> = None;
     while let Some((candidate, depth)) = stack.pop() {
         visited = visited.saturating_add(1);
         if visited > MAX_SELECT_NODES {
@@ -159,21 +162,43 @@ fn find_named_descendant(
             })));
         }
         let instant = crate::tree::locator_deadline::from_operation(deadline)?;
-        if candidate_matches(&candidate, value, instant)? {
+        if collection {
+            if let Some(target) =
+                super::select_name::collection_target(&candidate, root, value, instant)?
+            {
+                if selected.as_ref().is_some_and(|previous| {
+                    !crate::tree::capabilities::same_element(previous, &target)
+                }) {
+                    return Err(AdapterError::ambiguous_target(
+                        "More than one collection item matched the requested value",
+                    )
+                    .with_disposition(DeliverySemantics::not_delivered()));
+                }
+                selected = Some(target);
+            }
+        } else if candidate_matches(&candidate, value, instant)? {
             return Ok(Some(candidate));
         }
+        let instant = crate::tree::locator_deadline::from_operation(deadline)?;
+        let children = crate::tree::surface_read::elements(&candidate, "AXChildren", instant)?;
         if depth >= MAX_SELECT_DEPTH {
+            if collection && !children.is_empty() {
+                return Err(AdapterError::new(
+                    ErrorCode::AppUnresponsive,
+                    "Collection selection search exceeded its depth budget",
+                )
+                .with_disposition(DeliverySemantics::not_delivered()));
+            }
             continue;
         }
-        let instant = crate::tree::locator_deadline::from_operation(deadline)?;
         stack.extend(
-            crate::tree::surface_read::elements(&candidate, "AXChildren", instant)?
+            children
                 .into_iter()
                 .rev()
                 .map(|child| (child, depth.saturating_add(1))),
         );
     }
-    Ok(None)
+    Ok(selected)
 }
 
 fn candidate_matches(
@@ -181,15 +206,7 @@ fn candidate_matches(
     value: &str,
     deadline: std::time::Instant,
 ) -> Result<bool, AdapterError> {
-    for attribute in ["AXTitle", "AXDescription"] {
-        if crate::tree::surface_read::string(candidate, attribute, deadline)?
-            .as_deref()
-            .is_some_and(|text| text.eq_ignore_ascii_case(value))
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+    super::select_name::matches(candidate, value, deadline)
 }
 
 fn activate_menu_item(candidate: &AXElement, deadline: Deadline) -> Result<bool, AdapterError> {
@@ -202,7 +219,13 @@ fn select_collection_candidate(
 ) -> Result<bool, AdapterError> {
     deliver_candidate(
         true,
-        || select_candidate_attribute(candidate, deadline),
+        || {
+            use super::chain_delivery::DeliveryOutcome;
+            match super::container_select::select_within_container(candidate, deadline)? {
+                DeliveryOutcome::NotDelivered => Ok(None),
+                outcome => Ok(Some(outcome.was_verified())),
+            }
+        },
         || press_candidate(candidate, deadline),
     )
 }
@@ -233,38 +256,6 @@ fn deliver_candidate(
         "The matching selection item did not support AXSelected or AXPress",
     )
     .with_disposition(DeliverySemantics::not_delivered()))
-}
-
-fn select_candidate_attribute(
-    candidate: &AXElement,
-    deadline: Deadline,
-) -> Result<Option<bool>, AdapterError> {
-    prepare(candidate, deadline)?;
-    if !crate::actions::ax_helpers::is_attr_settable(candidate, "AXSelected", deadline)? {
-        return Ok(None);
-    }
-    prepare(candidate, deadline)?;
-    if !crate::actions::ax_helpers::set_ax_bool_or_err(candidate, "AXSelected", true, deadline)? {
-        return Ok(None);
-    }
-    let instant =
-        crate::tree::locator_deadline::from_operation(deadline).map_err(after_menu_delivery)?;
-    let observed = crate::tree::surface_read::boolean(candidate, "AXSelected", instant)
-        .map_err(after_menu_delivery)?;
-    selected_readback(observed).map(Some)
-}
-
-fn selected_readback(observed: Option<bool>) -> Result<bool, AdapterError> {
-    match observed {
-        Some(false) => Err(AdapterError::new(
-            ErrorCode::ActionFailed,
-            "AXSelected write completed but the item remained unselected",
-        )
-        .with_disposition(DeliverySemantics::delivered_unverified())
-        .with_suggestion("Inspect the selection before deciding whether to retry.")),
-        Some(true) => Ok(true),
-        None => Ok(false),
-    }
 }
 
 fn press_candidate(candidate: &AXElement, deadline: Deadline) -> Result<bool, AdapterError> {

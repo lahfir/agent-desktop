@@ -176,23 +176,18 @@ fn collect_snapshot_matches(
     }
     if query::node_matches(node, query) {
         let interactive = node.ref_id.is_some();
-        let display_name = node
-            .identity
-            .name
-            .as_deref()
-            .or(node.identity.value.as_deref())
-            .or(node.identity.description.as_deref())
-            .map(String::from)
-            .unwrap_or_else(|| format!("(unnamed {})", node.role));
-        matches.push(json!({
-            "ref_id": node.ref_id,
-            "role": node.role,
-            "name": display_name,
-            "value": node.identity.value,
-            "states": node.presentation.states,
-            "interactive": interactive,
-            "path": path.clone()
-        }));
+        matches.push(
+            serde_json::to_value(crate::live_locator::LocatorMatchData {
+                ref_id: node.ref_id.clone(),
+                role: node.role.clone(),
+                name: node.identity.name.clone().unwrap_or_default(),
+                value: node.identity.value.clone(),
+                states: node.presentation.states.clone(),
+                interactive,
+                path: path.clone(),
+            })
+            .unwrap(),
+        );
         if max_matches.is_some_and(|limit| matches.len() >= limit) {
             return true;
         }

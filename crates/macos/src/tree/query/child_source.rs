@@ -6,7 +6,7 @@ use super::{
 const CANONICAL_CHILDREN: &str = "AXChildren";
 const READ_ATTEMPTS: usize = 3;
 
-pub(super) fn read_resilient(
+pub(crate) fn read_resilient(
     attributes: &[&str],
     deadline: std::time::Instant,
     mut read_attribute: impl FnMut(&str) -> ChildRead,
@@ -184,5 +184,57 @@ mod tests {
 
         assert_eq!(attempts, 3);
         assert!(!selected.complete);
+    }
+
+    #[test]
+    fn window_surface_recovers_without_losing_read_failure_evidence() {
+        let mut attempts = 0;
+        let selected = read_resilient(
+            &["AXWindows"],
+            std::time::Instant::now() + std::time::Duration::from_secs(60),
+            |attribute| {
+                assert_eq!(attribute, "AXWindows");
+                attempts += 1;
+                if attempts == 1 {
+                    let mut failed = read(0, false, ChildSourceAvailability::Unknown);
+                    failed.status.health.cannot_complete = 1;
+                    failed
+                } else {
+                    read(1, true, ChildSourceAvailability::Available)
+                }
+            },
+        );
+        assert_eq!(attempts, 2);
+        assert!(selected.complete);
+        assert_eq!(selected.elements.len(), 1);
+        assert_eq!(selected.status.health.cannot_complete, 1);
+    }
+
+    #[test]
+    fn window_surface_does_not_retry_terminal_or_complete_reads() {
+        for outcome in ["empty", "permission", "invalid", "expired"] {
+            let mut attempts = 0;
+            let deadline = std::time::Instant::now()
+                + std::time::Duration::from_secs(if outcome == "expired" { 0 } else { 60 });
+            let selected = read_resilient(&["AXWindows"], deadline, |_| {
+                attempts += 1;
+                let mut result = read(
+                    0,
+                    outcome == "empty",
+                    if outcome == "empty" {
+                        ChildSourceAvailability::Available
+                    } else {
+                        ChildSourceAvailability::Unknown
+                    },
+                );
+                result.status.api_disabled = outcome == "permission";
+                result.status.invalid_element = outcome == "invalid";
+                result
+            });
+            assert_eq!(attempts, 1, "{outcome}");
+            assert_eq!(selected.complete, outcome == "empty", "{outcome}");
+            assert_eq!(selected.status.api_disabled, outcome == "permission");
+            assert_eq!(selected.status.invalid_element, outcome == "invalid");
+        }
     }
 }

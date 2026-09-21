@@ -1,6 +1,5 @@
 use super::*;
 use crate::refs_test_support::HomeGuard;
-
 fn entry(role: &str, name: Option<&str>) -> RefEntry {
     RefEntry {
         process: crate::RefProcess {
@@ -8,6 +7,7 @@ fn entry(role: &str, name: Option<&str>) -> RefEntry {
             process_instance: Some("test-instance".into()),
         },
         identity: crate::RefEntryIdentity {
+            retained_object: None,
             role: role.into(),
             name: name.map(String::from),
             value: None,
@@ -62,6 +62,7 @@ fn test_get_existing() {
             process_instance: Some("test-instance".into()),
         },
         identity: crate::RefEntryIdentity {
+            retained_object: None,
             role: "textfield".into(),
             name: None,
             value: None,
@@ -255,6 +256,7 @@ fn test_save_load_roundtrip_with_home_override() {
             process_instance: Some("test-instance".into()),
         },
         identity: crate::RefEntryIdentity {
+            retained_object: None,
             role: "button".into(),
             name: Some("Send".into()),
             value: None,
@@ -367,7 +369,6 @@ fn test_write_private_file_ignores_stale_predictable_tmp_symlink() {
     std::os::unix::fs::symlink(&target, &stale).unwrap();
 
     write_private_file(&path, b"new").unwrap();
-
     assert_eq!(std::fs::read(&path).unwrap(), b"new");
     assert_eq!(std::fs::read(&target).unwrap(), b"existing");
     let _ = std::fs::remove_dir_all(dir);
@@ -393,7 +394,6 @@ fn test_write_private_file_cleans_tmp_when_rename_fails() {
     std::fs::create_dir_all(path.join("child")).unwrap();
 
     let result = write_private_file(&path, b"new");
-
     assert!(result.is_err());
     assert!(!dir.join("blocked.tmp").exists());
     let _ = std::fs::remove_dir_all(dir);

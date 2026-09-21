@@ -42,7 +42,8 @@ echo "== perf compare: HEAD ${head_sha} vs base ${base_sha} -> ${out}"
 
 echo "== building HEAD release binary"
 cargo build --release -p agent-desktop >/dev/null
-head_bin="$repo/target/release/agent-desktop"
+head_bin="$out/head-agent-desktop"
+cp "$repo/target/release/agent-desktop" "$head_bin"
 
 echo "== building base release binary (${base_sha}) in a temporary worktree"
 wt="$out/base-worktree"
@@ -69,7 +70,8 @@ cleanup() {
 }
 trap cleanup EXIT
 (cd "$wt" && cargo build --release -p agent-desktop >/dev/null)
-base_bin="$wt/target/release/agent-desktop"
+base_bin="$out/base-agent-desktop"
+cp "$wt/target/release/agent-desktop" "$base_bin"
 
 if [ "$skip_fixture" -ne 1 ]; then
     echo "== fixture A/B (${rounds} rounds; actions run against the fixture only)"

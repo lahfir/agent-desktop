@@ -8,6 +8,24 @@ pub(crate) fn role_activates_by_selection(role: &str) -> bool {
     )
 }
 
+fn verify_selection(
+    delivered: bool,
+    verify: impl FnOnce() -> bool,
+) -> Result<bool, agent_desktop_core::AdapterError> {
+    if !delivered {
+        return Ok(false);
+    }
+    if verify() {
+        return Ok(true);
+    }
+    Err(agent_desktop_core::AdapterError::new(
+        agent_desktop_core::ErrorCode::ActionFailed,
+        "Selection was delivered but its effect could not be verified",
+    )
+    .with_disposition(agent_desktop_core::DeliverySemantics::delivered_unverified())
+    .with_suggestion("Inspect the selection before deciding whether to act again."))
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
     use agent_desktop_core::{AdapterError, Deadline};
@@ -110,8 +128,11 @@ mod imp {
         if !crate::actions::ax_helpers::is_attr_settable(member, SELECTED, deadline)? {
             return Ok(false);
         }
-        crate::actions::ax_helpers::set_ax_bool_or_err(member, SELECTED, true, deadline)?;
-        Ok(crate::tree::attributes::copy_bool_attr(member, SELECTED, deadline) == Some(true))
+        let delivered =
+            crate::actions::ax_helpers::set_ax_bool_or_err(member, SELECTED, true, deadline)?;
+        super::verify_selection(delivered, || {
+            crate::tree::attributes::copy_bool_attr(member, SELECTED, deadline) == Some(true)
+        })
     }
 
     fn select_member_in_container(
@@ -131,9 +152,15 @@ mod imp {
                 members.as_CFTypeRef(),
                 deadline,
             )?;
-            if error == accessibility_sys::kAXErrorSuccess
-                && holds_selection(container, member, attribute, deadline)
-            {
+            let delivered = crate::actions::ax_mutation::classify_result(
+                container,
+                attribute,
+                "AXUIElementSetAttributeValue",
+                error,
+            )?;
+            if super::verify_selection(delivered, || {
+                holds_selection(container, member, attribute, deadline)
+            })? {
                 return Ok(true);
             }
         }
@@ -249,5 +276,35 @@ mod tests {
         for role in ["button", "textfield", "checkbox", "group", "table"] {
             assert!(!role_activates_by_selection(role));
         }
+    }
+
+    #[test]
+    fn accepted_selection_with_failed_readback_never_authorizes_another_write() {
+        let mut attempts = 0;
+        let result: Result<bool, agent_desktop_core::AdapterError> = (|| {
+            for verified in [false, true] {
+                attempts += 1;
+                if super::verify_selection(true, || verified)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        })();
+        let error = result.unwrap_err();
+        assert_eq!(attempts, 1);
+        assert_eq!(
+            error.disposition,
+            agent_desktop_core::DeliverySemantics::delivered_unverified()
+        );
+        assert_eq!(
+            error.disposition.retry(),
+            agent_desktop_core::RetryDisposition::Unsafe
+        );
+    }
+
+    #[test]
+    fn unsupported_selection_skips_readback_and_verified_selection_succeeds() {
+        assert!(!super::verify_selection(false, || panic!("not delivered")).unwrap());
+        assert!(super::verify_selection(true, || true).unwrap());
     }
 }

@@ -59,13 +59,13 @@ impl InputOps for LiveErrorPredicateAdapter {}
 impl SystemOps for LiveErrorPredicateAdapter {}
 
 #[test]
-fn snapshot_pinned_missing_ref_is_invalid_args() {
+fn snapshot_pinned_missing_ref_matches_get_recovery() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_with_one_ref();
 
     let err = wait_for_element_test(
         "@e2".into(),
-        Some(snapshot_id),
+        Some(snapshot_id.clone()),
         wait_predicate::ElementPredicate::Exists,
         1,
         &NoopAdapter,
@@ -73,8 +73,86 @@ fn snapshot_pinned_missing_ref_is_invalid_args() {
     )
     .unwrap_err();
 
-    assert_eq!(err.code(), "INVALID_ARGS");
+    let get_error = crate::commands::get::execute(
+        crate::commands::get::GetArgs {
+            ref_id: "@e2".into(),
+            snapshot_id: Some(snapshot_id),
+            property: crate::commands::get::GetProperty::Value,
+        },
+        &NoopAdapter,
+        &crate::context::CommandContext::default(),
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), get_error.code());
+    assert_eq!(err.code(), "STALE_REF");
     assert!(err.suggestion().is_some());
+}
+
+struct LateObservationAdapter {
+    delay_resolution: bool,
+    reads: AtomicU32,
+}
+
+impl ObservationOps for LateObservationAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        if self.delay_resolution {
+            while !deadline.is_expired() {
+                std::thread::sleep(deadline.remaining());
+            }
+        }
+        Ok(NativeHandle::null())
+    }
+
+    fn get_live_value(
+        &self,
+        _handle: &NativeHandle,
+        deadline: crate::Deadline,
+    ) -> Result<Option<String>, AdapterError> {
+        self.reads.fetch_add(1, Ordering::SeqCst);
+        while !deadline.is_expired() {
+            std::thread::sleep(deadline.remaining());
+        }
+        Ok(Some("ready".into()))
+    }
+}
+
+impl ActionOps for LateObservationAdapter {}
+impl InputOps for LateObservationAdapter {}
+impl SystemOps for LateObservationAdapter {}
+
+#[test]
+fn element_wait_rejects_late_resolution_and_late_matching_value() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_with_one_ref();
+    for delay_resolution in [true, false] {
+        let adapter = LateObservationAdapter {
+            delay_resolution,
+            reads: AtomicU32::new(0),
+        };
+        let predicate = if delay_resolution {
+            wait_predicate::ElementPredicate::Exists
+        } else {
+            wait_predicate::ElementPredicate::Value("ready".into())
+        };
+        let error = wait_for_element_test(
+            "@e1".into(),
+            Some(snapshot_id.clone()),
+            predicate,
+            500,
+            &adapter,
+            &crate::context::CommandContext::default(),
+        )
+        .expect_err("late observations cannot satisfy a bounded wait");
+        assert_eq!(error.code(), "TIMEOUT");
+        assert_eq!(
+            adapter.reads.load(Ordering::SeqCst),
+            u32::from(!delay_resolution)
+        );
+    }
 }
 
 #[test]

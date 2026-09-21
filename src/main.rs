@@ -3,6 +3,8 @@
 mod batch;
 mod cli;
 mod cli_args;
+#[cfg(target_os = "macos")]
+mod command_host;
 mod command_policy;
 mod diagnostic;
 mod dispatch;
@@ -41,6 +43,15 @@ fn main() -> ExitCode {
     #[cfg(target_os = "macos")]
     if let Some(exit_code) = run_permission_prompt_helper() {
         return exit_code;
+    }
+    #[cfg(target_os = "macos")]
+    if std::env::var("AGENT_DESKTOP_INTERNAL_COMMAND_HOST").as_deref() == Ok("1") {
+        init_tracing(false);
+        return match command_host::run() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(AppError::Io(error)) => report_output_failure(error),
+            Err(error) => finish("host", Err(error)),
+        };
     }
     run()
 }
@@ -100,20 +111,38 @@ fn run() -> ExitCode {
     };
 
     let cmd_name = cmd.name();
-
-    if let Err(err) = cli.visual_debug.validate(&cmd) {
-        return finish(cmd_name, Err(err));
+    #[cfg(target_os = "macos")]
+    if std::env::var("AGENT_DESKTOP_INTERNAL_HOST_CLIENT").as_deref() == Ok("1") {
+        return match command_host::forward(&cli, &cmd) {
+            Ok(response) => match emit_response(&response) {
+                Err(error) => report_output_failure(error),
+                Ok(()) if response["ok"] == true => ExitCode::SUCCESS,
+                Ok(()) => ExitCode::FAILURE,
+            },
+            Err(error) => finish(cmd_name, Err(error)),
+        };
     }
+    finish(cmd_name, execute(cli, cmd))
+}
 
-    if let Err(err) = agent_desktop_core::validate_state_root_env() {
-        return finish(cmd_name, Err(pre_dispatch_error(err)));
+fn execute(cli: Cli, cmd: Commands) -> Result<serde_json::Value, AppError> {
+    execute_with_deadline(cli, cmd, None)
+}
+
+fn execute_with_deadline(
+    cli: Cli,
+    cmd: Commands,
+    deadline: Option<agent_desktop_core::Deadline>,
+) -> Result<serde_json::Value, AppError> {
+    if let Some(deadline) = deadline.filter(|deadline| deadline.is_expired()) {
+        return Err(pre_dispatch_error(deadline.timeout_error().into()));
     }
-
+    cli.visual_debug.validate(&cmd)?;
+    agent_desktop_core::validate_state_root_env().map_err(pre_dispatch_error)?;
     match cmd {
-        Commands::Version => finish(
-            cmd_name,
-            agent_desktop_core::commands::version::execute().map_err(pre_dispatch_error),
-        ),
+        Commands::Version => {
+            agent_desktop_core::commands::version::execute().map_err(pre_dispatch_error)
+        }
         Commands::Skills(a) => {
             let result = match a.action.unwrap_or(SkillsAction::List) {
                 SkillsAction::List => agent_desktop_core::commands::skills::list(),
@@ -126,45 +155,34 @@ fn run() -> ExitCode {
                     },
                 ),
             };
-            finish(cmd_name, result.map_err(pre_dispatch_error))
+            result.map_err(pre_dispatch_error)
         }
         cmd => {
-            let wait_selector = match build_wait_selector(&cli) {
-                Ok(wait_selector) => wait_selector,
-                Err(error) => return finish(cmd_name, Err(error)),
-            };
-            let session_id = match resolve_active_session(
+            let wait_selector = build_wait_selector(&cli)?;
+            let session_id = resolve_active_session(
                 cli.identity.session.as_deref(),
                 std::env::var("AGENT_DESKTOP_SESSION").ok().as_deref(),
-            ) {
-                Ok(session_id) => session_id,
-                Err(err) => {
-                    return finish(cmd_name, Err(pre_dispatch_error(err)));
-                }
-            };
-            let context = match CommandContext::new(session_id, cli.trace, cli.trace_strict) {
-                Ok(context) => context
-                    .with_headed(cli.interaction.headed)
-                    .with_wait_selector(wait_selector.clone()),
-                Err(err) => {
-                    return finish(cmd_name, Err(pre_dispatch_error(err)));
-                }
-            };
+            )
+            .map_err(pre_dispatch_error)?;
+            let context = CommandContext::new(session_id, cli.trace, cli.trace_strict)
+                .map_err(pre_dispatch_error)?
+                .with_headed(cli.interaction.headed)
+                .with_wait_selector(wait_selector.clone());
             let agent_id = cli
                 .identity
                 .agent_id
                 .clone()
                 .or_else(|| std::env::var("AGENT_DESKTOP_AGENT_ID").ok());
-            let context = match context.with_agent_id(agent_id) {
-                Ok(context) => context,
-                Err(err) => return finish(cmd_name, Err(pre_dispatch_error(err))),
-            };
-            if let Some(wait) = wait_selector.as_ref() {
-                if let Err(err) = validate_wait_for_command(&cmd, wait) {
-                    return finish(cmd_name, Err(err));
-                }
+            let mut context = context
+                .with_agent_id(agent_id)
+                .map_err(pre_dispatch_error)?;
+            if let Some(deadline) = deadline {
+                context = context.with_inherited_deadline(deadline);
             }
-            run_with_adapter(cmd, cmd_name, &context, &cli.visual_debug)
+            if let Some(wait) = wait_selector.as_ref() {
+                validate_wait_for_command(&cmd, wait)?;
+            }
+            execute_with_adapter(cmd, &context, &cli.visual_debug, deadline)
         }
     }
 }
@@ -211,58 +229,55 @@ fn validate_wait_for_command(cmd: &Commands, wait: &WaitSelector) -> Result<(), 
     Ok(())
 }
 
-fn run_with_adapter(
+fn execute_with_adapter(
     mut cmd: Commands,
-    cmd_name: &str,
     context: &CommandContext,
     debug: &visual_debug::options::DebugOptions,
-) -> ExitCode {
+    deadline: Option<agent_desktop_core::Deadline>,
+) -> Result<serde_json::Value, AppError> {
     let adapter = build_adapter();
     let adapter: &dyn agent_desktop_core::PlatformAdapter = &adapter;
     let report = if command_policy::requires_permission_report(&cmd) {
-        match agent_desktop_core::Deadline::standard()
+        match deadline
+            .map_or_else(agent_desktop_core::Deadline::standard, Ok)
             .map_err(AppError::from)
             .and_then(|deadline| adapter.permission_report(deadline).map_err(AppError::from))
         {
             Ok(report) => report,
-            Err(err) => return finish(cmd_name, Err(pre_dispatch_error(err))),
+            Err(err) => return Err(pre_dispatch_error(err)),
         }
     } else {
         agent_desktop_core::PermissionReport::default()
     };
-    if let Err(err) = command_policy::preflight(&cmd, &report) {
-        return finish(cmd_name, Err(err));
-    }
-    if let Err(err) = command_policy::preflight_context(&cmd, context) {
-        return finish(cmd_name, Err(err));
-    }
+    command_policy::preflight(&cmd, &report)?;
+    command_policy::preflight_context(&cmd, context)?;
 
     if debug.debug && report.screen_recording_denied() {
-        return finish(
-            cmd_name,
-            Err(pre_dispatch_error(
-                AdapterError::new(
-                    ErrorCode::PermDenied,
-                    "Visual debug requires Screen Recording permission",
-                )
-                .with_suggestion(
-                    report
-                        .screen_recording_suggestion()
-                        .unwrap_or("Grant Screen Recording permission and retry"),
-                )
-                .into(),
-            )),
-        );
+        return Err(pre_dispatch_error(
+            AdapterError::new(
+                ErrorCode::PermDenied,
+                "Visual debug requires Screen Recording permission",
+            )
+            .with_suggestion(
+                report
+                    .screen_recording_suggestion()
+                    .unwrap_or("Grant Screen Recording permission and retry"),
+            )
+            .into(),
+        ));
     }
     let capture = match visual_debug::DebugCapture::prepare(&mut cmd, debug, adapter, context) {
         Ok(capture) => capture,
-        Err(error) => return finish(cmd_name, Err(pre_dispatch_error(error))),
+        Err(error) => return Err(pre_dispatch_error(error)),
     };
+    if let Some(deadline) = deadline.filter(|deadline| deadline.is_expired()) {
+        return Err(pre_dispatch_error(deadline.timeout_error().into()));
+    }
     let mut result = dispatch::dispatch(cmd, adapter, &report, context);
     if let Some(capture) = capture {
         capture.finish(&mut result, adapter, context);
     }
-    finish(cmd_name, result)
+    result
 }
 
 fn pre_dispatch_error(error: AppError) -> AppError {
@@ -278,22 +293,21 @@ fn pre_dispatch_error(error: AppError) -> AppError {
 }
 
 fn finish(cmd_name: &str, result: Result<serde_json::Value, AppError>) -> ExitCode {
+    let response = response(cmd_name, result);
+    if let Err(write_err) = emit_response(&response) {
+        return report_output_failure(write_err);
+    }
+    if response.ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
+fn response(cmd_name: &str, result: Result<serde_json::Value, AppError>) -> Response {
     match result {
-        Ok(data) => {
-            if let Err(write_err) = emit_response(&Response::ok(cmd_name, data)) {
-                return report_output_failure(write_err);
-            }
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            if let Err(write_err) = emit_response(&Response::err(
-                cmd_name,
-                agent_desktop_core::ErrorPayload::from_app_error(&e),
-            )) {
-                return report_output_failure(write_err);
-            }
-            ExitCode::FAILURE
-        }
+        Ok(data) => Response::ok(cmd_name, data),
+        Err(error) => Response::err(cmd_name, ErrorPayload::from_app_error(&error)),
     }
 }
 
@@ -302,7 +316,7 @@ fn report_output_failure(write_err: std::io::Error) -> ExitCode {
     ExitCode::FAILURE
 }
 
-fn emit_response(response: &Response) -> std::io::Result<()> {
+fn emit_response(response: &impl serde::Serialize) -> std::io::Result<()> {
     let stdout = std::io::stdout();
     let mut writer = BufWriter::new(stdout.lock());
     serde_json::to_writer(&mut writer, response).map_err(std::io::Error::other)?;

@@ -55,6 +55,7 @@ struct StubAdapter {
     resolve_calls: AtomicU32,
     drops: Arc<AtomicU32>,
     windows: Vec<crate::WindowInfo>,
+    expected_app: Option<String>,
 }
 
 impl StubAdapter {
@@ -65,6 +66,7 @@ impl StubAdapter {
             resolve_calls: AtomicU32::new(0),
             drops: Arc::new(AtomicU32::new(0)),
             windows: vec![window_info("w-42", true)],
+            expected_app: None,
         }
     }
 
@@ -75,6 +77,7 @@ impl StubAdapter {
             resolve_calls: AtomicU32::new(0),
             drops: Arc::new(AtomicU32::new(0)),
             windows,
+            expected_app: None,
         }
     }
 
@@ -85,6 +88,7 @@ impl StubAdapter {
             resolve_calls: AtomicU32::new(0),
             drops: Arc::new(AtomicU32::new(0)),
             windows: vec![window_info("w-42", true)],
+            expected_app: None,
         }
     }
 }
@@ -118,9 +122,12 @@ impl ObservationOps for StubAdapter {
 
     fn list_windows(
         &self,
-        _filter: &crate::adapter::WindowFilter,
+        filter: &crate::adapter::WindowFilter,
         _deadline: crate::Deadline,
     ) -> Result<Vec<crate::WindowInfo>, AdapterError> {
+        if let Some(expected) = &self.expected_app {
+            assert_eq!(filter.app.as_ref(), Some(expected));
+        }
         Ok(self.windows.clone())
     }
 

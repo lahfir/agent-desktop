@@ -169,7 +169,8 @@ fn resolve_query_attempt(
     aggregate: &mut LocatorStats,
 ) -> Result<LocatorResolution, AppError> {
     let observation_request =
-        ObservationRequest::locator_for_root(query, request, root, request.deadline).validate()?;
+        ObservationRequest::locator_for_root(query, request, root, observation_deadline(request))
+            .validate()?;
     let tree = crate::renderer_accessibility::observe_tree(adapter, root, &observation_request)?;
     let mut tree = tree;
     tree.stats.reads.counts.observation_attempts =
@@ -191,4 +192,38 @@ fn resolve_query_attempt(
         }
     }
     Ok(resolution)
+}
+
+fn observation_deadline(request: &LocatorResolveRequest) -> crate::Deadline {
+    if request.materialization != super::LocatorMaterialization::SelectedMatches {
+        return request.deadline;
+    }
+    let remaining = request.deadline.remaining();
+    let reserve = (remaining / 2).min(Duration::from_secs(1));
+    request.deadline.capped(remaining.saturating_sub(reserve))
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    #[test]
+    fn selected_ref_hydration_has_budget_without_extending_the_operation() {
+        let request = LocatorResolveRequest {
+            selection: super::super::LocatorSelection::First,
+            deadline: crate::Deadline::after(60_000).unwrap(),
+            max_raw_depth: 50,
+            surface: None,
+            materialization: super::super::LocatorMaterialization::SelectedMatches,
+        };
+        let observation = observation_deadline(&request);
+        assert!(observation.was_capped());
+        assert!(!request.deadline.was_capped());
+        assert_eq!(observation.timeout_ms(), request.deadline.timeout_ms());
+        let count_request = LocatorResolveRequest {
+            materialization: super::super::LocatorMaterialization::None,
+            ..request
+        };
+        assert_eq!(observation_deadline(&count_request), request.deadline);
+    }
 }

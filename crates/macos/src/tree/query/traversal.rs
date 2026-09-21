@@ -92,7 +92,7 @@ impl LocatorTraversal {
             logical_depth,
             self.request.max_logical_depth,
         );
-        let read = read_node(
+        let mut read = read_node(
             &element,
             super::node_read_context::NodeReadContext {
                 tree: &self.context,
@@ -145,14 +145,24 @@ impl LocatorTraversal {
             )
         } else {
             self.usage.claim_edges(loaded_child_count);
-            let (children, complete) =
-                self.visit_children(read.child_read, (child_logical_depth, raw_depth))?;
+            let original_viewport = self.context.window_bounds;
+            self.context.window_bounds = crate::tree::element_bounds::clipped_viewport(
+                original_viewport,
+                read.attrs.role.as_deref().unwrap_or(""),
+                read.attrs.bounds,
+            );
+            let result = self.visit_children(read.child_read, (child_logical_depth, raw_depth));
+            self.context.window_bounds = original_viewport;
+            let (children, complete) = result?;
             (children, None, complete)
         };
         self.arena.ancestors.remove(&pointer);
         self.arena.drop_handles(1);
         if !subtree_complete {
             self.arena.mark_incomplete();
+        }
+        if let Some(token) = crate::tree::retained::capture(&element)? {
+            read.evidence.identifiers = read.evidence.identifiers.with_retained_object(token);
         }
         Ok(Some(ObservedSubtree::new(
             read.evidence,

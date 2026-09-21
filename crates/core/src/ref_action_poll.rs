@@ -68,7 +68,7 @@ fn handle_actionability_failure(
     error: AdapterError,
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
-    if is_permanent_actionability_error(&error.code) {
+    if is_permanent_actionability_error(&error.code) || !error.permits_retry_by_default() {
         return Err(error);
     }
     let stability_changed = failed_check(&error, "stable");
@@ -204,6 +204,25 @@ pub(crate) fn timeout_with_last_report(last_report: serde_json::Value) -> Adapte
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preflight_preserves_explicit_non_retryable_failures() {
+        for code in [
+            ErrorCode::ActionFailed,
+            ErrorCode::AppUnresponsive,
+            ErrorCode::Timeout,
+        ] {
+            let mut state = RefActionPollState::default();
+            let error = AdapterError::new(code.clone(), "terminal native read")
+                .with_details(json!({ "retryable": false, "native_error": -25202 }));
+            let result =
+                handle_actionability_failure(&mut state, error, Deadline::after(5_000).unwrap());
+            let error = result.expect_err("an explicit stop must not become another poll");
+            assert_eq!(error.code, code);
+            assert_eq!(error.details.unwrap()["native_error"], -25202);
+            assert!(state.last_report.is_none());
+        }
+    }
 
     #[test]
     fn preflight_identity_failures_are_terminal() {

@@ -92,6 +92,14 @@ mod imp {
         );
         if error != kAXErrorSuccess {
             release_if_present(value);
+            if error == accessibility_sys::kAXErrorNoValue {
+                let role = copy_string_attr_result(el, "AXRole", deadline)?;
+                let subrole = copy_string_attr_result(el, "AXSubrole", deadline)?;
+                if crate::tree::empty_text::eligible(role.as_deref(), subrole.as_deref()) {
+                    return crate::tree::empty_text::read(el, deadline)
+                        .map(|value| value.map(|text| BoundedString::from_owned(text, usage)));
+                }
+            }
             return if is_absent_error(error) {
                 Ok(None)
             } else {

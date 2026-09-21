@@ -6,12 +6,22 @@ pub(crate) fn elements(
     attribute: &str,
     deadline: Instant,
 ) -> Result<Vec<super::AXElement>, AdapterError> {
-    let read = super::query::child_read::read_attribute_children(
-        element,
-        attribute,
-        agent_desktop_core::ObservationBudget::default().max_children_per_node,
-        deadline,
-    );
+    elements_with_reader(attribute, deadline, |attribute| {
+        super::query::child_read::read_attribute_children(
+            element,
+            attribute,
+            agent_desktop_core::ObservationBudget::default().max_children_per_node,
+            deadline,
+        )
+    })
+}
+
+fn elements_with_reader(
+    attribute: &str,
+    deadline: Instant,
+    read_attribute: impl FnMut(&str) -> super::query::child_read::ChildRead,
+) -> Result<Vec<super::AXElement>, AdapterError> {
+    let read = super::query::child_source::read_resilient(&[attribute], deadline, read_attribute);
     ensure_before_deadline(deadline)?;
     if read.status.api_disabled {
         return Err(map_error(attribute, accessibility_sys::kAXErrorAPIDisabled));
@@ -196,5 +206,23 @@ mod tests {
     #[test]
     fn native_ax_error_is_absent_without_any_native_failure() {
         assert_eq!(native_ax_error(false, false, 0), None);
+    }
+
+    #[test]
+    fn surface_read_recovers_transient_failure_before_reporting_missing_windows() {
+        let mut calls = 0;
+        let result = elements_with_reader(
+            "AXWindows",
+            Instant::now() + std::time::Duration::from_secs(60),
+            |attribute| {
+                assert_eq!(attribute, "AXWindows");
+                calls += 1;
+                let mut read = super::super::query::child_read::ChildRead::empty(calls > 1);
+                read.status.health.cannot_complete = u64::from(calls == 1);
+                read
+            },
+        );
+        assert_eq!(calls, 2);
+        assert!(result.unwrap().is_empty());
     }
 }

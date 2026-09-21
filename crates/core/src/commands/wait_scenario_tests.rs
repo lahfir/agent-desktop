@@ -17,6 +17,7 @@ impl ObservationOps for TextlessTreeAdapter {
                 ref_id: None,
                 role: "window".into(),
                 identity: crate::NodeIdentity {
+                    retained_object: None,
                     name: Some("Doc".into()),
                     ..Default::default()
                 },
@@ -57,6 +58,7 @@ impl ObservationOps for TextlessTreeAdapter {
             ref_id: None,
             role: "window".into(),
             identity: crate::NodeIdentity {
+                retained_object: None,
                 name: Some("Doc".into()),
                 ..Default::default()
             },

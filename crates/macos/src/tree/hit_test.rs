@@ -286,25 +286,8 @@ mod imp {
         Ok(None)
     }
 
-    pub(super) fn intersect_rects(left: Rect, right: Rect) -> Option<Rect> {
-        let x = left.x.max(right.x);
-        let y = left.y.max(right.y);
-        let right_edge = (left.x + left.width).min(right.x + right.width);
-        let bottom_edge = (left.y + left.height).min(right.y + right.height);
-        (right_edge > x && bottom_edge > y).then_some(Rect {
-            x,
-            y,
-            width: right_edge - x,
-            height: bottom_edge - y,
-        })
-    }
-
-    fn clips_descendants(role: &str) -> bool {
-        matches!(
-            role,
-            "AXWindow" | "AXScrollArea" | "AXWebArea" | "AXSheet" | "AXPopover"
-        )
-    }
+    use crate::tree::element_bounds::clips_descendants;
+    pub(super) use crate::tree::element_bounds::intersect_rects;
 
     pub(super) fn remember_ancestor(visited: &mut Vec<AXElement>, current: &AXElement) -> bool {
         if visited

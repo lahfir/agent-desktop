@@ -8,7 +8,7 @@ Modes:
               arbitrary real apps (Slack, Chrome, ...). Never dispatches
               actions.
 
-Each binary runs under an isolated HOME so cross-revision store formats
+Each binary runs under an isolated state root so cross-revision store formats
 never collide. Rounds alternate between binaries to cancel machine drift.
 """
 import argparse
@@ -27,7 +27,8 @@ ENVS = {}
 def env_for(binary):
     if binary not in ENVS:
         env = dict(os.environ)
-        env["HOME"] = tempfile.mkdtemp(prefix="ad-perf-home-")
+        env["AGENT_DESKTOP_HOME"] = tempfile.mkdtemp(prefix="ad-perf-state-")
+        env.pop("AGENT_DESKTOP_SESSION", None)
         ENVS[binary] = env
     return ENVS[binary]
 
@@ -129,8 +130,9 @@ def collect(binaries, cases_for, rounds):
                 env = envelope(proc)
                 ok = bool(env.get("ok"))
                 results[label].setdefault(name, []).append((elapsed, ok))
-                if ok and name.startswith("snapshot") and name not in shapes[label]:
-                    shapes[label][name] = tree_stats(env)
+                if name.startswith("snapshot"):
+                    complete = ok and env.get("data", {}).get("complete") is True
+                    shapes[label].setdefault(name, []).append(tree_stats(env) if complete else None)
     return results, shapes
 
 
@@ -139,11 +141,16 @@ def summarize(results, shapes):
     for label, cases in results.items():
         for name, samples in cases.items():
             times = sorted(t for t, ok in samples if ok)
+            observed = shapes[label].get(name, [])
+            stable_shape = observed[0] if observed and all(shape == observed[0] for shape in observed) else None
             report.setdefault(name, {})[label] = {
                 "p50_ms": round(statistics.median(times), 1) if times else None,
                 "p95_ms": round(times[math.ceil(len(times) * 0.95) - 1], 1) if times else None,
                 "ok_rate": sum(1 for _, ok in samples if ok) / len(samples),
-                "shape": shapes[label].get(name),
+                "shape": stable_shape,
+                "observed_shapes": observed,
+                "complete_rate": sum(shape is not None for shape in observed) / len(observed) if observed else None,
+                "samples_ms": [round(elapsed, 1) for elapsed, _ in samples],
             }
     return report
 
@@ -171,7 +178,8 @@ def main():
             json.dump(payload, handle, indent=1)
     json.dump(payload, sys.stdout, indent=1)
     print()
-    if any(side["ok_rate"] < 1.0 for case in report.values() for side in case.values()):
+    if any(side["ok_rate"] < 1.0 or side["complete_rate"] not in (None, 1.0)
+           for case in report.values() for side in case.values()):
         raise SystemExit(1)
 
 

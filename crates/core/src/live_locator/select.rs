@@ -35,13 +35,7 @@ pub(crate) fn match_data(
         .known()
         .cloned()
         .unwrap_or_else(|| "unknown".into());
-    let name = node
-        .evidence
-        .name
-        .meaningful_string()
-        .or_else(|| node.evidence.value.meaningful_string())
-        .or_else(|| node.evidence.description.meaningful_string())
-        .unwrap_or_else(|| format!("(unnamed {role})"));
+    let name = node.evidence.name.meaningful_string().unwrap_or_default();
     let mut ancestor_indices = Vec::new();
     let mut parent = parents.get(index).copied().flatten();
     while let Some(parent_index) = parent {
@@ -85,4 +79,38 @@ fn node_label(node: &super::ObservedNode) -> String {
         .or_else(|| node.evidence.value.meaningful_string())
         .map(|label| format!("{role}:{label}"))
         .unwrap_or_else(|| role.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::live_locator::{LocatorField, test_support};
+
+    #[test]
+    fn match_names_never_substitute_values_descriptions_or_placeholders() {
+        for name in [
+            LocatorField::Absent,
+            LocatorField::Unknown,
+            LocatorField::Known(String::new()),
+            LocatorField::Known("Editor".into()),
+        ] {
+            let expected = name.meaningful_string();
+            let mut evidence = test_support::evidence("textfield", None);
+            evidence.name = name;
+            evidence.value = LocatorField::Known("seed-target".into());
+            evidence.description = LocatorField::Known("Help text".into());
+            let tree = test_support::tree(
+                vec![test_support::node(0, evidence, Vec::new(), &[])],
+                vec![0],
+                true,
+            );
+            let data = match_data(&tree, 0, &[None]).unwrap();
+            let result = serde_json::to_value(data).unwrap();
+            assert_eq!(
+                result.get("name").and_then(|name| name.as_str()),
+                expected.as_deref()
+            );
+            assert_eq!(result["value"], "seed-target");
+        }
+    }
 }

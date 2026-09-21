@@ -90,9 +90,11 @@ pub fn is_mutable_value_role(role: &str) -> bool {
         crate::Role::from_token(role),
         crate::Role::ComboBox
             | crate::Role::Checkbox
+            | crate::Role::Handle
             | crate::Role::Incrementor
             | crate::Role::ListBox
             | crate::Role::RadioButton
+            | crate::Role::ScrollBar
             | crate::Role::Slider
             | crate::Role::Switch
             | crate::Role::TextField

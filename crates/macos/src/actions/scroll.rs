@@ -232,7 +232,7 @@ fn try_sub_elements(
     Ok(false)
 }
 
-fn find_scroll_area(
+pub(crate) fn find_scroll_area(
     element: &AXElement,
     deadline: Deadline,
 ) -> Result<Option<AXElement>, AdapterError> {
