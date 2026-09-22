@@ -65,8 +65,7 @@ impl ObservationOps for WindowsAdapter {
 
     /// The FFI legacy entrypoint: a thin wrapper over the same `observe_tree`
     /// path the binary's `snapshot` uses (mirroring
-    /// `crates/macos/src/tree/adapter.rs`). `get_subtree` has no live caller
-    /// on any platform and stays unimplemented.
+    /// `crates/macos/src/tree/adapter.rs`).
     fn get_tree(
         &self,
         window: &WindowInfo,

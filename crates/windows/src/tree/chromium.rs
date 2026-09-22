@@ -204,6 +204,7 @@ mod tests {
                     process_instance: None,
                 },
                 identity: agent_desktop_core::RefEntryIdentity {
+                    retained_object: None,
                     role: "button".into(),
                     name: None,
                     value: None,

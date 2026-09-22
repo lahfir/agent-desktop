@@ -173,6 +173,7 @@ pub(crate) fn list_apps_live(deadline: Deadline) -> Result<Vec<AppInfo>, Adapter
             pid,
             bundle_id: None,
             process_instance: token,
+            presentation: None,
         });
     }
     apps.sort_by(|left, right| left.name.cmp(&right.name));

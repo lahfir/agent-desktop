@@ -130,7 +130,7 @@ fn candidate_read(
         },
     )?;
     if read.invalid_element {
-        return Err(AdapterError::stale_ref(
+        return Err(AdapterError::stale_ref_because(
             "Selection candidate became invalid",
         ));
     }
@@ -264,6 +264,7 @@ mod tests {
             ref_evidence: LocatorRefEvidence {
                 bounds: LocatorField::Unknown,
                 available_actions: LocatorField::Known(vec!["Click".into()]),
+                descriptors: Default::default(),
             },
         };
         assert!(matches_evidence(&evidence, "math").unwrap());

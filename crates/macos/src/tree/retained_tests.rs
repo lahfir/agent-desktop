@@ -53,6 +53,7 @@ fn text_evidence(name: &str) -> agent_desktop_core::LocatorEvidence {
         ref_evidence: LocatorRefEvidence {
             bounds: LocatorField::Absent,
             available_actions: LocatorField::Absent,
+            descriptors: Default::default(),
         },
     }
 }

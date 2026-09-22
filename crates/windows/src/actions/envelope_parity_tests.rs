@@ -5,21 +5,8 @@ use crate::system::hresult::{
     UIA_E_ELEMENTNOTENABLED, UIA_E_INVALIDOPERATION, UIA_E_TIMEOUT,
 };
 use crate::tree::automation::UiaFailure;
-use agent_desktop_core::{
-    Action, ActionResult, AppError, DeliverySemantics, Direction, ElementState, ErrorPayload,
-};
+use agent_desktop_core::{Action, ActionResult, AppError, DeliverySemantics, ErrorPayload};
 use serde_json::Value;
-
-fn state_bearing(value: &str) -> ElementState {
-    ElementState {
-        role: "control".into(),
-        states: vec![],
-        value: Some(value.into()),
-        enabled: Some(true),
-        hidden: Some(false),
-        offscreen: Some(false),
-    }
-}
 
 fn succeeded_step(label: &'static str, verified: bool) -> agent_desktop_core::ActionStep {
     build_step(
@@ -59,9 +46,8 @@ fn assert_disposition_matches_projection(json: &Value, semantics: DeliverySemant
 fn serialize_result(
     action: &Action,
     steps: Vec<agent_desktop_core::ActionStep>,
-    post_state: Option<ElementState>,
 ) -> (ActionResult, Value) {
-    let result = ActionResult::from_execution(action, steps, post_state).expect("ActionResult");
+    let result = ActionResult::from_execution(action, steps);
     let json = serde_json::to_value(&result).expect("ActionResult serializes");
     (result, json)
 }
@@ -71,7 +57,6 @@ fn succeeded_step_wire_uses_semantic_api_and_succeeded() {
     let (result, json) = serialize_result(
         &Action::Click,
         vec![succeeded_step("InvokePattern.Invoke", false)],
-        None,
     );
 
     assert_eq!(json["steps"][0]["outcome"], "succeeded");
@@ -91,7 +76,6 @@ fn skipped_step_wire_uses_semantic_api_and_skipped() {
             skipped_step("InvokePattern.Invoke"),
             succeeded_step("LegacyIAccessible.DoDefaultAction", false),
         ],
-        None,
     );
 
     assert_eq!(json["steps"][0]["outcome"], "skipped");
@@ -104,11 +88,7 @@ fn skipped_step_wire_uses_semantic_api_and_skipped() {
 
 #[test]
 fn satisfied_without_delivery_wire_is_not_delivered_safe() {
-    let (result, json) = serialize_result(
-        &Action::Check,
-        vec![satisfied_step("AlreadyInState")],
-        Some(state_bearing("1")),
-    );
+    let (result, json) = serialize_result(&Action::Check, vec![satisfied_step("AlreadyInState")]);
 
     assert_eq!(json["steps"][0]["outcome"], "skipped");
     assert_eq!(json["steps"][0]["mechanism"], "semantic_api");
@@ -128,7 +108,6 @@ fn verified_delivery_wire_is_delivered_verified_unsafe() {
     let (result, json) = serialize_result(
         &Action::SetValue("done".into()),
         vec![succeeded_step("ValuePattern.SetValue", true)],
-        Some(state_bearing("done")),
     );
 
     assert_eq!(
@@ -138,59 +117,6 @@ fn verified_delivery_wire_is_delivered_verified_unsafe() {
     assert_disposition_matches_projection(&json, DeliverySemantics::delivered_verified());
     assert_eq!(json["disposition"]["delivery"], "delivered_verified");
     assert_eq!(json["disposition"]["retry"], "unsafe");
-}
-
-#[test]
-fn post_state_present_for_state_bearing_actions_when_delivered() {
-    let cases = [
-        (Action::SetValue("x".into()), "observed"),
-        (Action::Clear, ""),
-        (Action::Toggle, "1"),
-        (Action::Check, "1"),
-        (Action::Uncheck, "0"),
-        (Action::Expand, "expanded"),
-        (Action::Collapse, "collapsed"),
-    ];
-    for (action, value) in cases {
-        let (_result, json) = serialize_result(
-            &action,
-            vec![succeeded_step("Pattern.Write", true)],
-            Some(state_bearing(value)),
-        );
-        assert!(
-            json.get("post_state").is_some(),
-            "{} must serialize post_state when delivered with state",
-            action.name()
-        );
-        assert_eq!(json["post_state"]["role"], "control");
-        assert_eq!(json["post_state"]["value"], value);
-    }
-}
-
-#[test]
-fn post_state_absent_for_click_scroll_and_focus() {
-    let cases = [
-        (
-            Action::Click,
-            vec![succeeded_step("InvokePattern.Invoke", false)],
-        ),
-        (
-            Action::Scroll(Direction::Down, 1),
-            vec![succeeded_step("ScrollPattern.Scroll", false)],
-        ),
-        (
-            Action::SetFocus,
-            vec![succeeded_step("Element.SetFocus", true)],
-        ),
-    ];
-    for (action, steps) in cases {
-        let (_result, json) = serialize_result(&action, steps, None);
-        assert!(
-            json.get("post_state").is_none(),
-            "{} must omit post_state",
-            action.name()
-        );
-    }
 }
 
 fn classify_hresult(code: i32) -> agent_desktop_core::AdapterError {

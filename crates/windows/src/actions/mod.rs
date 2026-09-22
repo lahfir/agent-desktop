@@ -8,7 +8,6 @@ pub(crate) mod mutation;
 pub(crate) mod physical_click;
 pub(crate) mod physical_keyboard;
 pub(crate) mod physical_target;
-pub(crate) mod post_state;
 pub(crate) mod scroll;
 pub(crate) mod scroll_into_view;
 pub(crate) mod scroll_ladder;

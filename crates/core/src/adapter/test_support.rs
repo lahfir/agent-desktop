@@ -136,6 +136,7 @@ pub(crate) fn minimal_ref_entry(role: &str, name: Option<&str>) -> crate::RefEnt
             process_instance: Some("test-instance".into()),
         },
         identity: crate::RefEntryIdentity {
+            retained_object: None,
             role: role.into(),
             name: name.map(String::from),
             value: None,

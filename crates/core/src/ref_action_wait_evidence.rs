@@ -43,22 +43,6 @@ pub(crate) fn failed_check(error: &AdapterError, check_name: &str) -> bool {
         })
 }
 
-pub(crate) fn only_stability_pending(error: &AdapterError) -> bool {
-    error
-        .details
-        .as_ref()
-        .and_then(|details| details.get("checks"))
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|checks| {
-            checks
-                .iter()
-                .any(|check| check["check"] == "stable" && check["status"] != "pass")
-                && checks
-                    .iter()
-                    .all(|check| check["check"] == "stable" || check["status"] == "pass")
-        })
-}
-
 pub(crate) fn observed_bounds_hash(error: &AdapterError) -> Option<u64> {
     error
         .details

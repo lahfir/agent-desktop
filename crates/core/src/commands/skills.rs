@@ -24,6 +24,8 @@ const SKILL_WINDOWS_REF_CHROMIUM: &str =
 const SKILL_WINDOWS_REF_TROUBLESHOOTING: &str =
     include_str!("../../../../skills/agent-desktop-windows/references/troubleshooting.md");
 
+const SKILL_JEV_MAIN: &str = include_str!("../../../../skills/jev-desktop/SKILL.md");
+
 const SKILL_FFI_MAIN: &str = include_str!("../../../../skills/agent-desktop-ffi/SKILL.md");
 const SKILL_FFI_REF_BUILD: &str =
     include_str!("../../../../skills/agent-desktop-ffi/references/build-and-link.md");
@@ -112,6 +114,13 @@ const SKILLS: &[Skill] = &[
         summary: "Primary guide. Snapshot/ref loop, JSON envelope, 60 commands including session lifecycle, cursor overlay, observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
         main: SKILL_DESKTOP_MAIN,
         refs: SKILL_DESKTOP_REFS,
+    },
+    Skill {
+        canonical: "jev-desktop",
+        aliases: &["jev", "jev-desktop"],
+        summary: "Driving a desktop app from a plain-language goal without reading the accessibility tree. run.mjs takes a whole goal, act.mjs takes one step.",
+        main: SKILL_JEV_MAIN,
+        refs: &[],
     },
     Skill {
         canonical: "agent-desktop-ffi",

@@ -13,6 +13,7 @@ fn window(id: &str, app: &str, pid: u32, instance: &str) -> WindowInfo {
         bounds: None,
         state: WindowState {
             is_focused: false,
+            accessible: true,
             minimized: None,
             visible: None,
         },

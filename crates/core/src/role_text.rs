@@ -69,6 +69,7 @@ pub fn value_is_the_readable_text(role: &str) -> bool {
         Role::Note => false,
         Role::Option => false,
         Role::Outline => false,
+        Role::Page => false,
         Role::Paragraph => false,
         Role::Popover => false,
         Role::ProgressBar => false,

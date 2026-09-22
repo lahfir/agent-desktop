@@ -85,7 +85,7 @@ impl RetainedStore {
 
     pub(super) fn capture(&mut self, element: &AXElement) -> Result<String, AdapterError> {
         if element.0.is_null() {
-            return Err(AdapterError::stale_ref(
+            return Err(AdapterError::stale_ref_because(
                 "Cannot retain a null native object",
             ));
         }

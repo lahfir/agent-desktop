@@ -146,12 +146,12 @@ fn bounds_falls_back_to_snapshot_geometry_when_no_live_read_is_available() {
 }
 
 /// A live read can succeed and still report no bounds (collapsed, not laid
-/// out, virtualized). The response must not be indistinguishable from a
-/// live-verified rectangle: a caller piping this into `mouse-click --x --y`
-/// needs to know the rectangle it received is the snapshot-time fallback,
-/// not the element's current position.
+/// out, virtualized). The answer is `null`, not the snapshot-time rectangle:
+/// a caller piping bounds into `mouse-click --x --y` must never receive
+/// coordinates the element may no longer occupy. `live` stays `true`, because
+/// the null did come from a live read.
 #[test]
-fn bounds_marks_snapshot_fallback_as_not_live_when_a_successful_live_read_finds_no_bounds() {
+fn bounds_reports_null_not_the_snapshot_rect_when_a_live_read_finds_no_bounds() {
     let _guard = HomeGuard::new();
     let snapshot_id = save_entry(entry_with_bounds(Some(stale_snapshot_bounds())));
     let adapter = LiveBoundsAdapter::resolvable_but_boundless();
@@ -167,8 +167,8 @@ fn bounds_marks_snapshot_fallback_as_not_live_when_a_successful_live_read_finds_
     )
     .unwrap();
 
-    assert_eq!(result["value"]["y"], -322.0);
-    assert_eq!(result["live"], false);
+    assert!(result["value"].is_null());
+    assert_eq!(result["live"], true);
 }
 
 /// `text` answers the text a person reads on the control, which is the value
