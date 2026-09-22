@@ -92,7 +92,7 @@ impl WindowOwnerSnapshot {
 }
 
 pub(crate) fn list_apps_until(deadline: Instant) -> Result<Vec<AppInfo>, AdapterError> {
-    list_apps_with(deadline, |_| true)
+    list_apps_with(deadline, |_| true, true)
 }
 
 pub(crate) fn list_apps_scoped_until(
@@ -100,19 +100,23 @@ pub(crate) fn list_apps_scoped_until(
     bundle_id: Option<&str>,
     deadline: Instant,
 ) -> Result<Vec<AppInfo>, AdapterError> {
-    list_apps_with(deadline, |app| {
-        (agent_desktop_core::app_name_matches(&app.name, name)
-            || (bundle_id.is_none()
-                && app
-                    .bundle_id
-                    .as_deref()
-                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(name))))
-            && bundle_id.is_none_or(|bundle| {
-                app.bundle_id
-                    .as_deref()
-                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(bundle))
-            })
-    })
+    list_apps_with(
+        deadline,
+        |app| {
+            (agent_desktop_core::app_name_matches(&app.name, name)
+                || (bundle_id.is_none()
+                    && app
+                        .bundle_id
+                        .as_deref()
+                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(name))))
+                && bundle_id.is_none_or(|bundle| {
+                    app.bundle_id
+                        .as_deref()
+                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(bundle))
+                })
+        },
+        false,
+    )
 }
 
 pub(crate) fn window_owner_snapshot_until(
@@ -128,6 +132,7 @@ pub(crate) fn window_owner_snapshot_until(
 fn list_apps_with(
     deadline: Instant,
     include: impl Fn(&BridgedApplication) -> bool,
+    skip_cross_uid: bool,
 ) -> Result<Vec<AppInfo>, AdapterError> {
     ensure_before_deadline(deadline)?;
     crate::system::cocoa_runtime::ensure_cocoa_multithreaded()?;
@@ -137,6 +142,7 @@ fn list_apps_with(
         &bytes,
         deadline,
         include,
+        skip_cross_uid,
         crate::system::process_identity::token_for_pid,
     )
 }
@@ -147,6 +153,7 @@ fn apps_from_json(bytes: &[u8], deadline: Instant) -> Result<Vec<AppInfo>, Adapt
         bytes,
         deadline,
         |_| true,
+        true,
         crate::system::process_identity::token_for_pid,
     )
 }
@@ -155,6 +162,7 @@ fn apps_from_json_with(
     bytes: &[u8],
     deadline: Instant,
     include: impl Fn(&BridgedApplication) -> bool,
+    skip_cross_uid: bool,
     mut resolve: impl FnMut(i32) -> Result<Option<String>, AdapterError>,
 ) -> Result<Vec<AppInfo>, AdapterError> {
     let bridged = bridged_snapshot(bytes)?;
@@ -172,8 +180,21 @@ fn apps_from_json_with(
                 "AppKit returned invalid running-application identity",
             ));
         }
-        let process_instance = resolve(app.pid)?
-            .ok_or_else(|| inventory_error("Selected application exited during inventory"))?;
+        let process_instance = match resolve(app.pid) {
+            Ok(Some(instance)) => instance,
+            Ok(None) => {
+                return Err(inventory_error(
+                    "Selected application exited during inventory",
+                ));
+            }
+            Err(error)
+                if skip_cross_uid
+                    && crate::system::process_apps::is_cross_uid_identity_error(&error) =>
+            {
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         apps.push(AppInfo {
             name: app.name,
             pid: crate::system::process_identity::from_pid_t(app.pid)?,

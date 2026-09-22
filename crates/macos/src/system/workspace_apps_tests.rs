@@ -226,6 +226,7 @@ fn app_inventory_labels_menu_bar_apps_and_drops_headless_services() {
         bytes,
         deadline(),
         |_| true,
+        true,
         |pid| {
             probed.push(pid);
             Ok(Some(format!("instance-{pid}")))
@@ -269,6 +270,7 @@ fn scoped_lookup_never_probes_unrelated_applications() {
         bytes,
         deadline(),
         |app| app.name == "Target",
+        false,
         |pid| {
             probed.push(pid);
             if pid == 418 {
@@ -297,6 +299,7 @@ fn scoped_lookup_propagates_selected_identity_denial() {
         bytes,
         deadline(),
         |_| true,
+        false,
         |_| Err(AdapterError::permission_denied()),
     )
     .unwrap_err();
@@ -319,9 +322,74 @@ fn scoped_lookup_preserves_all_same_name_processes() {
         bytes,
         deadline(),
         |app| app.name.eq_ignore_ascii_case("Target"),
+        false,
         |pid| Ok(Some(format!("instance-{pid}"))),
     )
     .unwrap();
 
     assert_eq!(apps.iter().map(|app| app.pid).collect::<Vec<_>>(), [10, 11]);
+}
+
+fn cross_uid_identity_denial() -> AdapterError {
+    AdapterError::new(
+        ErrorCode::PermDenied,
+        "Permission denied reading process identity for pid 526",
+    )
+    .with_details(serde_json::json!({
+        "kind": "process_identity_permission",
+        "source": "libproc",
+        "operation": "PROC_PIDTBSDINFO",
+        "pid": 526,
+    }))
+}
+
+#[test]
+fn complete_inventory_skips_apps_owned_by_another_uid() {
+    let bytes = br#"{
+        "applications":[
+            {"name":"Finder","pid":10,"launch_time":100.25,"activation_policy":"regular"},
+            {"name":"FoxitPDFReaderUpdateService","pid":526,"launch_time":90.0,"activation_policy":"accessory"},
+            {"name":"Safari","pid":12,"launch_time":102.75,"activation_policy":"regular"}
+        ],
+        "frontmost_pid":10,
+        "frontmost_launch_time":100.25
+    }"#;
+    let apps = apps_from_json_with(
+        bytes,
+        deadline(),
+        |_| true,
+        true,
+        |pid| {
+            if pid == 526 {
+                Err(cross_uid_identity_denial())
+            } else {
+                Ok(Some(format!("instance-{pid}")))
+            }
+        },
+    )
+    .unwrap();
+
+    let pids: Vec<u32> = apps.iter().map(|app| u32::from(app.pid)).collect();
+    assert_eq!(pids, [10, 12]);
+}
+
+#[test]
+fn scoped_lookup_still_reports_cross_uid_denial_of_the_selected_app() {
+    let bytes = br#"{
+        "applications":[
+            {"name":"Target","pid":526,"launch_time":100.25,"activation_policy":"regular"}
+        ],
+        "frontmost_pid":526,
+        "frontmost_launch_time":100.25
+    }"#;
+    let error = apps_from_json_with(
+        bytes,
+        deadline(),
+        |_| true,
+        false,
+        |_| Err(cross_uid_identity_denial()),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, ErrorCode::PermDenied);
 }
