@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3](https://github.com/lahfir/agent-desktop/compare/v0.9.2...v0.9.3) (2026-09-22)
+
+
+### Bug Fixes
+
+* harden native accessibility targeting and delivery ([#210](https://github.com/lahfir/agent-desktop/issues/210)) ([882c4c4](https://github.com/lahfir/agent-desktop/commit/882c4c4695c0db7d75b83f2655ece178591deb6c))
+
 ## [0.9.2](https://github.com/lahfir/agent-desktop/compare/v0.9.1...v0.9.2) (2026-09-17)
 
 
