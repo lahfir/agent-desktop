@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildRequest, collect, describe, label, offerable, overlayRole, readAnswers, reconcile, route, toArgv } from "./act.mjs";
+import { ask, buildRequest, collect, describe, label, offerable, overlayRole, readAnswers, reconcile, route, toArgv } from "./act.mjs";
 
 const S = "s8f3k2p9";
 const screen = collect({
@@ -82,5 +82,38 @@ assert.deepEqual(toArgv("click", `@${S}:e3`, null), ["click", `@${S}:e3`]);
 assert.deepEqual(toArgv("set-value", `@${S}:e1`, "poem.txt"), ["set-value", `@${S}:e1`, "poem.txt"]);
 assert.deepEqual(toArgv("scroll", `@${S}:e1`, null), ["scroll", `@${S}:e1`, "--direction", "down"]);
 assert.deepEqual(toArgv("hover", `@${S}:e3`, null), ["--headed", "hover", `@${S}:e3`]);
+
+{
+  const saved = { ...process.env };
+  const realFetch = globalThis.fetch;
+  const endpoint = "http://127.0.0.1:9/decisions";
+  process.env.TYPESAFE_BASE_URL = endpoint;
+  process.env.TYPESAFE_API_KEY = "test-key";
+  const sent = [];
+  globalThis.fetch = async (url, init) => {
+    sent.push({ url, auth: init.headers.Authorization, body: JSON.parse(init.body) });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        answers: {
+          target: { type: "choice", choice: "1", confidence: 0.9 },
+          command: { type: "choice", choice: "CLICK", confidence: 0.9 },
+        },
+      }),
+    };
+  };
+  try {
+    const answer = await ask(req);
+    assert.deepEqual(sent.map((call) => call.url), [endpoint], "act asks the configured endpoint");
+    assert.equal(sent[0].auth, "Bearer test-key", "the key travels with the question");
+    assert.deepEqual(sent[0].body, JSON.parse(JSON.stringify(req)), "act posts the request it built");
+    assert.equal(answer.command, "CLICK", "the endpoint's answer is read back");
+  } finally {
+    globalThis.fetch = realFetch;
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+  }
+}
 
 console.log("ok");

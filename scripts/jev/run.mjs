@@ -49,6 +49,12 @@ const post = async (url, key, body) => {
   throw new Error("the model stayed unavailable");
 };
 
+export const decide = (goal, screen, space, history, values) =>
+  post(typesafeApi(), process.env.TYPESAFE_API_KEY, buildRequest(goal, screen, space, history, { values }));
+
+export const rateRisk = (goal, screen, operation, node, values) =>
+  post(typesafeApi(), process.env.TYPESAFE_API_KEY, riskRequest(goal, screen, operation, node, { values }));
+
 export const run = async function* (
   goal,
   app,
@@ -68,9 +74,7 @@ export const run = async function* (
         yield { stop: "nothing on this screen can be acted on", screen };
         return;
       }
-      const answers = (
-        await post(typesafeApi(), process.env.TYPESAFE_API_KEY, buildRequest(goal, screen, space, state.history, { values }))
-      ).answers;
+      const answers = (await decide(goal, screen, space, state.history, values)).answers;
       state.calls += 1;
       const options = [
         ...Object.keys(space.targets),
@@ -100,11 +104,7 @@ export const run = async function* (
         confidence = head.confidence;
         let destructive = null;
         if (needsRiskCheck(confidence)) {
-          const rated = await post(
-            typesafeApi(),
-            process.env.TYPESAFE_API_KEY,
-            riskRequest(goal, screen, state.operation, node, { values }),
-          );
+          const rated = await rateRisk(goal, screen, state.operation, node, values);
           state.calls += 1;
           const answer = rated.answers?.destructive?.noul;
           destructive = typeof answer === "number" ? answer : 1;

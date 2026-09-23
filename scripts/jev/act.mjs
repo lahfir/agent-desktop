@@ -172,7 +172,7 @@ const run = (bin, argv) => {
   }
 };
 
-const ask = async (payload) => {
+export const ask = async (payload) => {
   const api = typesafeApi();
   const res = await fetch(api, {
     method: "POST",
