@@ -74,7 +74,7 @@ fn visibility_evidence(
 
 #[test]
 fn explicit_typed_hidden_state_wins() {
-    let check = gates::visibility(&visibility_evidence(Some(true), Vec::new(), true));
+    let check = gates::visibility(&visibility_evidence(Some(true), Vec::new(), true), true);
 
     assert_eq!(check.status, ActionabilityStatus::Fail);
     assert_eq!(check.reason.as_deref(), Some("live hidden state is true"));
@@ -82,11 +82,10 @@ fn explicit_typed_hidden_state_wins() {
 
 #[test]
 fn complete_canonical_hidden_state_fails_when_typed_state_is_absent() {
-    let check = gates::visibility(&visibility_evidence(
-        None,
-        vec![crate::state::HIDDEN.into()],
+    let check = gates::visibility(
+        &visibility_evidence(None, vec![crate::state::HIDDEN.into()], true),
         true,
-    ));
+    );
 
     assert_eq!(check.status, ActionabilityStatus::Fail);
     assert_eq!(
@@ -97,14 +96,14 @@ fn complete_canonical_hidden_state_fails_when_typed_state_is_absent() {
 
 #[test]
 fn complete_canonical_states_without_hidden_allow_visibility_checks_to_continue() {
-    let check = gates::visibility(&visibility_evidence(None, Vec::new(), true));
+    let check = gates::visibility(&visibility_evidence(None, Vec::new(), true), true);
 
     assert_eq!(check.status, ActionabilityStatus::Pass);
 }
 
 #[test]
 fn incomplete_canonical_states_keep_missing_typed_hidden_unknown() {
-    let check = gates::visibility(&visibility_evidence(None, Vec::new(), false));
+    let check = gates::visibility(&visibility_evidence(None, Vec::new(), false), true);
 
     assert_eq!(check.status, ActionabilityStatus::Unknown);
     assert_eq!(
@@ -150,7 +149,7 @@ fn disabled_entry_fails_before_action_dispatch() {
 }
 
 #[test]
-fn zero_sized_bounds_fail_visibility() {
+fn zero_sized_bounds_fail_headed_visibility() {
     let mut entry = entry();
     let bounds = Rect {
         x: 1.0,
@@ -161,7 +160,7 @@ fn zero_sized_bounds_fail_visibility() {
     entry.geometry.bounds = Some(bounds);
     entry.geometry.bounds_hash = bounds.bounds_hash();
 
-    let err = check(&entry, &ActionRequest::headless(Action::Click)).unwrap_err();
+    let err = check(&entry, &ActionRequest::headed(Action::Click)).unwrap_err();
 
     assert!(err.message.contains("visible"));
 }
