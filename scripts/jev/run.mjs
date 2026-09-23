@@ -103,6 +103,7 @@ export const run = async function* (
           const rated = await post(
             typesafeApi(),
             process.env.TYPESAFE_API_KEY,
+            riskRequest(goal, screen, state.operation, node, { values }),
           );
           state.calls += 1;
           const answer = rated.answers?.destructive?.noul;
