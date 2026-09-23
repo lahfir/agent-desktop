@@ -64,6 +64,7 @@ fn visual_debug_nodes_distinguish_anchors_actions_and_context() {
     let tree: AccessibilityNode = serde_json::from_value(json!({
         "role": "window", "children": [
             {"role":"group", "ref_id":"@sdemo:e1", "name":"Sidebar", "children_count":20, "available_actions":["SetFocus"]},
+            {"role":"group", "ref_id":"@sdemo:e4", "name":"Board", "children_count":9, "available_actions":["RightClick","ScrollTo"]},
             {"role":"button", "ref_id":"@sdemo:e2", "name":"Save"},
             {"role":"scrollarea", "ref_id":"@sdemo:e3", "available_actions":["Scroll"]},
             {"role":"group", "children":[{"role":"statictext", "name":"Context"}]}
@@ -71,14 +72,15 @@ fn visual_debug_nodes_distinguish_anchors_actions_and_context() {
     })).unwrap();
     let mut nodes = Vec::new();
     capture::collect_nodes(&tree, 0, &mut nodes);
-    assert_eq!(nodes.len(), 6);
+    assert_eq!(nodes.len(), 7);
     assert_eq!(nodes[0]["kind"], "root");
     assert_eq!(nodes[1]["kind"], "drill");
     assert_eq!(nodes[1]["children_count"], 20);
-    assert_eq!(nodes[2]["kind"], "action");
+    assert_eq!(nodes[2]["kind"], "drill");
     assert_eq!(nodes[3]["kind"], "action");
-    assert_eq!(nodes[4]["kind"], "context");
-    assert_eq!(nodes[5]["depth"], 2);
+    assert_eq!(nodes[4]["kind"], "action");
+    assert_eq!(nodes[5]["kind"], "context");
+    assert_eq!(nodes[6]["depth"], 2);
 }
 
 #[test]

@@ -56,16 +56,28 @@ pub(crate) fn ref_entry_from_node(
     }
 }
 
+/// Affordances that do not make an element addressable on their own.
+/// Focusability is not a primary action, and web runtimes (Chromium/Electron)
+/// advertise context-menu (`RightClick`) and scroll-into-view (`ScrollTo`) on
+/// nearly every node, so counting them would ref-allocate every inert
+/// container and text run and overflow the refmap size limit on web apps.
+const UBIQUITOUS_AFFORDANCES: [&str; 3] = [
+    crate::capability::SET_FOCUS,
+    crate::capability::RIGHT_CLICK,
+    crate::capability::SCROLL_TO,
+];
+
 /// An element receives a ref when it is addressable for an action: either its
-/// role is interactive, or it advertises an available action regardless of
-/// role. Container roles like `scrollarea` (Scroll) and `disclosure`
-/// (Expand/Collapse) are not "interactive" by role but are genuinely
-/// actionable, and `scroll` / `expand` / `collapse` need a ref to target
-/// them — so action-bearing elements must be ref-able even when their current
-/// bounds are zero-sized. Visibility remains a live actionability concern. A
-/// bare `SetFocus` affordance does not qualify on its own: focusability is not
-/// a primary action and would ref-allocate large numbers of inert containers.
-pub(crate) fn is_ref_able(node: &AccessibilityNode) -> bool {
+/// role is interactive, or it advertises an available action other than the
+/// [`UBIQUITOUS_AFFORDANCES`] regardless of role. Container roles like
+/// `scrollarea` (Scroll) and `disclosure` (Expand/Collapse) are not
+/// "interactive" by role but are genuinely actionable, and `scroll` /
+/// `expand` / `collapse` need a ref to target them — so action-bearing
+/// elements must be ref-able even when their current bounds are zero-sized.
+/// Visibility remains a live actionability concern. Snapshot allocation,
+/// skeleton anchors, live-locator materialization, and visual-debug
+/// classification all share this rule.
+pub fn is_ref_able(node: &AccessibilityNode) -> bool {
     is_ref_able_role_actions(&node.role, &node.presentation.available_actions)
 }
 
@@ -76,7 +88,7 @@ pub(crate) fn is_ref_able_role_actions(role: &str, available_actions: &[String])
 fn advertises_primary_action(available_actions: &[String]) -> bool {
     available_actions
         .iter()
-        .any(|action| action != crate::capability::SET_FOCUS)
+        .any(|action| !UBIQUITOUS_AFFORDANCES.contains(&action.as_str()))
 }
 
 pub(crate) fn is_collapsible(node: &AccessibilityNode) -> bool {

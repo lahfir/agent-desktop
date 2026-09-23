@@ -208,16 +208,85 @@ fn actionable_container_roles_receive_refs() {
     assert!(is_ref_able(&disclosure));
 }
 
-/// A bare SetFocus affordance is not a primary action; ref-allocating every
-/// focusable container would bloat the refmap.
+/// Focus, context-menu, and scroll-into-view affordances are advertised on
+/// nearly every node by web runtimes (Chromium/Electron), so on their own they
+/// must not ref-allocate inert containers or text.
 #[test]
-fn focus_only_container_does_not_receive_a_ref() {
-    let mut group = node("group", Some("Panel"));
-    group.presentation.available_actions = vec!["SetFocus".into()];
-    assert!(!is_ref_able(&group));
+fn ubiquitous_affordances_alone_do_not_confer_a_ref() {
+    for actions in [
+        vec!["SetFocus"],
+        vec!["RightClick"],
+        vec!["ScrollTo"],
+        vec!["RightClick", "ScrollTo"],
+        vec!["SetFocus", "RightClick", "ScrollTo"],
+    ] {
+        let mut group = node("group", Some("Panel"));
+        group.presentation.available_actions = actions.iter().map(|a| a.to_string()).collect();
+        assert!(
+            !is_ref_able(&group),
+            "group advertising only {actions:?} must not be ref-able"
+        );
+    }
+
+    let mut paragraph = node("statictext", Some("Paragraph"));
+    paragraph.presentation.available_actions = vec!["ScrollTo".into()];
+    assert!(!is_ref_able(&paragraph));
 
     let inert = node("statictext", Some("Label"));
     assert!(!is_ref_able(&inert));
+}
+
+#[test]
+fn primary_action_or_interactive_role_still_confers_a_ref_on_web_nodes() {
+    let mut clickable = node("group", Some("Row"));
+    clickable.presentation.available_actions =
+        vec!["Click".into(), "RightClick".into(), "ScrollTo".into()];
+    assert!(is_ref_able(&clickable));
+
+    let mut button = node("button", Some("Menu"));
+    button.presentation.available_actions = vec!["RightClick".into(), "ScrollTo".into()];
+    assert!(is_ref_able(&button));
+}
+
+#[test]
+fn allocate_refs_skips_web_container_noise() {
+    let web_action = |role: &str, actions: &[&str]| {
+        let mut n = node(role, Some(role));
+        n.presentation.available_actions = actions.iter().map(|a| a.to_string()).collect();
+        n
+    };
+    let mut wrapper = web_action("group", &["RightClick", "ScrollTo"]);
+    wrapper.children = vec![web_action("statictext", &["ScrollTo"])];
+    let mut root = node("window", Some("w"));
+    root.children = vec![
+        wrapper,
+        web_action("group", &["Click", "RightClick", "ScrollTo"]),
+        web_action("button", &["RightClick", "ScrollTo"]),
+    ];
+
+    let mut refmap = RefMap::new();
+    let config = RefAllocConfig {
+        options: crate::ref_alloc_options::RefAllocOptions {
+            include_bounds: true,
+            interactive_only: true,
+            compact: false,
+        },
+        source: source(7),
+        scope: crate::ref_alloc_scope::RefAllocScope {
+            root_ref_id: None,
+            path_prefix: &[],
+        },
+    };
+    let out = allocate_refs(root, &mut refmap, &config).unwrap();
+
+    assert_eq!(refmap.len(), 2);
+    let roles: Vec<_> = out
+        .children
+        .iter()
+        .map(|child| child.role.as_str())
+        .collect();
+    assert_eq!(roles, ["group", "button"]);
+    assert!(out.children.iter().all(|child| child.ref_id.is_some()));
 }
 
 #[test]

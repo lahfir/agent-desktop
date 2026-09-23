@@ -138,8 +138,9 @@ impl RefMap {
         self.validate()?;
         let json = serde_json::to_string(self)?;
         if json.len() as u64 > MAX_REFMAP_BYTES {
-            return Err(AppError::Internal(
-                "RefMap exceeds 1MB size limit on write".into(),
+            return Err(AppError::invalid_input_with_suggestion(
+                "RefMap exceeds 1MB size limit on write",
+                "Narrow the observation: snapshot with --skeleton, --max-depth, or --root @ref, or use find with a tighter query or --limit",
             ));
         }
         Ok(json)

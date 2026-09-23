@@ -93,13 +93,8 @@ fn first_ref(node: &AccessibilityNode) -> Option<&str> {
 }
 
 pub(super) fn collect_nodes(node: &AccessibilityNode, depth: usize, nodes: &mut Vec<Value>) {
-    let primary = node
-        .presentation
-        .available_actions
-        .iter()
-        .any(|a| a != agent_desktop_core::capability::SET_FOCUS);
-    let interactive = agent_desktop_core::roles::is_interactive_role(&node.role);
-    let (kind, reason) = if node.ref_id.is_some() && !interactive && !primary {
+    let addressable = agent_desktop_core::ref_alloc::is_ref_able(node);
+    let (kind, reason) = if node.ref_id.is_some() && !addressable {
         (
             "drill",
             "Resolvable container retained as a drill-down anchor for a truncated branch.",

@@ -217,14 +217,11 @@ fn test_serialize_with_size_check_rejects_oversized() {
         map.allocate(entry("button", Some(&big_name)));
     }
 
-    let result = map.serialize_with_size_check();
-    assert!(result.is_err(), "oversized refmap should be rejected");
-    let err = result.unwrap_err();
-    let msg = err.to_string();
-    assert!(
-        msg.contains("1MB"),
-        "error should mention the 1MB limit, got: {msg}"
-    );
+    let err = map.serialize_with_size_check().unwrap_err();
+    assert_eq!(err.code(), "INVALID_ARGS");
+    assert!(err.to_string().contains("1MB"), "got: {err}");
+    let suggestion = err.suggestion().unwrap_or_default();
+    assert!(suggestion.contains("--skeleton") && suggestion.contains("find"));
 }
 
 #[test]

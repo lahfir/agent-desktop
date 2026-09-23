@@ -84,8 +84,8 @@ When you know the target's role or exact name, use `find --role ... --name ... -
 ## Ref System
 
 - Refs are assigned depth-first and emitted with their snapshot, for example `@s8f3k2p9:e1`, `@s8f3k2p9:e2`, `@s8f3k2p9:e3`. Legacy bare refs require an explicit `--snapshot`.
-- An element gets a ref when it is addressable for an action: an interactive role (button, textfield, checkbox, link, menuitem, tab, slider, combobox, treeitem, cell, radiobutton, switch, ...) **or** any element advertising an action — so `scrollarea` (Scroll) and `disclosure` (Expand/Collapse) are ref-able and `scroll`/`expand`/`collapse` can target them
-- A `SetFocus`-only affordance does not earn a ref on its own
+- An element gets a ref when it is addressable for an action: an interactive role (button, textfield, checkbox, link, menuitem, tab, slider, combobox, treeitem, cell, radiobutton, switch, ...) **or** any element advertising a primary action — so `scrollarea` (Scroll) and `disclosure` (Expand/Collapse) are ref-able and `scroll`/`expand`/`collapse` can target them
+- `SetFocus`, `RightClick`, and `ScrollTo` alone do not earn a ref: web/Electron apps advertise them on nearly every node. `find` returns `bounds` instead of a ref for such matches
 - In skeleton mode, each truncated branch exposes the deepest safely resolvable drill target using stable text, native ID, or bounds evidence; the nearest resolvable ancestor is used when the boundary itself is anonymous
 - Static text and non-actionable groups/containers remain in tree for context but have no ref
 - Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
