@@ -37,7 +37,7 @@ impl Default for AvailableActionsRead {
 pub(crate) fn read_platform_available_actions(
     el: &AXElement,
     role: &str,
-    has_scrollbars: bool,
+    attrs: &super::NodeAttrs,
     deadline: std::time::Instant,
     usage: &mut crate::tree::observation_usage::ObservationUsage,
 ) -> AvailableActionsRead {
@@ -77,11 +77,12 @@ pub(crate) fn read_platform_available_actions(
     if has("AXScrollToVisible") {
         push_unique(&mut read.actions, capability::SCROLL_TO);
     }
-    if has_scroll_mechanism(&has, has_scrollbars) {
+    if has_scroll_mechanism(&has, attrs.has_scrollbars) {
         push_unique(&mut read.actions, capability::SCROLL);
     }
-    let value_settable = role_may_bear_value(role)
-        && read_settable(el, kAXValueAttribute, deadline, &mut read).unwrap_or(false);
+    let value_settable = value_settable(role, attrs.states.control.readonly, || {
+        read_settable(el, kAXValueAttribute, deadline, &mut read)
+    });
     if has("AXIncrement") || has("AXDecrement") || value_settable {
         push_unique(&mut read.actions, capability::SET_VALUE);
     }
@@ -163,6 +164,18 @@ fn role_may_bear_value(role: &str) -> bool {
     )
 }
 
+fn value_settable(
+    role: &str,
+    readonly: Option<bool>,
+    probe: impl FnOnce() -> Option<bool>,
+) -> bool {
+    role_may_bear_value(role)
+        && readonly
+            .map(|readonly| !readonly)
+            .or_else(probe)
+            .unwrap_or(false)
+}
+
 fn role_may_accept_focus(role: &str) -> bool {
     agent_desktop_core::roles::is_interactive_role(role)
         || matches!(
@@ -187,7 +200,7 @@ fn role_may_insert_text(role: &str) -> bool {
 pub(crate) fn read_platform_available_actions(
     _el: &AXElement,
     _role: &str,
-    _has_scrollbars: bool,
+    _attrs: &super::NodeAttrs,
     _deadline: std::time::Instant,
     _usage: &mut crate::tree::observation_usage::ObservationUsage,
 ) -> AvailableActionsRead {
@@ -221,6 +234,26 @@ fn has_scroll_mechanism(has: &impl Fn(&str) -> bool, has_scrollbars: bool) -> bo
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn value_capability_reuses_observed_settability_and_probes_only_unknown_controls() {
+        for (readonly, expected) in [(Some(true), false), (Some(false), true)] {
+            assert_eq!(
+                super::value_settable("textfield", readonly, || panic!("duplicate AX read")),
+                expected
+            );
+        }
+        let mut calls = 0;
+        assert!(super::value_settable("textfield", None, || {
+            calls += 1;
+            Some(true)
+        }));
+        assert_eq!(calls, 1);
+        assert!(!super::value_settable("group", None, || panic!(
+            "inapplicable value read"
+        )));
+        assert!(!super::value_settable("textfield", None, || None));
+    }
+
     #[cfg(target_os = "macos")]
     use super::{AvailableActionsRead, record_error};
     use super::{

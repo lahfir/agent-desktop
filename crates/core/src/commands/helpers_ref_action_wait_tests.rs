@@ -56,6 +56,7 @@ impl ObservationOps for ScopedWaitAdapter {
                 ref_id: None,
                 role: "window".into(),
                 identity: crate::NodeIdentity {
+                    retained_object: None,
                     name: Some("Saved!".into()),
                     ..Default::default()
                 },
@@ -105,6 +106,7 @@ impl ObservationOps for ScopedWaitAdapter {
             ref_id: None,
             role: "window".into(),
             identity: crate::NodeIdentity {
+                retained_object: None,
                 name: Some("Saved!".into()),
                 ..Default::default()
             },
@@ -199,6 +201,7 @@ impl ObservationOps for MultiWindowAdapter {
                 ref_id: None,
                 role: "button".into(),
                 identity: crate::NodeIdentity {
+                    retained_object: None,
                     name: Some("Saved!".into()),
                     ..Default::default()
                 },
@@ -215,6 +218,7 @@ impl ObservationOps for MultiWindowAdapter {
                 ref_id: None,
                 role: "window".into(),
                 identity: crate::NodeIdentity {
+                    retained_object: None,
                     name: Some(window.title.clone()),
                     ..Default::default()
                 },
@@ -278,6 +282,7 @@ impl ObservationOps for MultiWindowAdapter {
                 ref_id: None,
                 role: "button".into(),
                 identity: crate::NodeIdentity {
+                    retained_object: None,
                     name: Some("Saved!".into()),
                     ..Default::default()
                 },
@@ -293,6 +298,7 @@ impl ObservationOps for MultiWindowAdapter {
             ref_id: None,
             role: "window".into(),
             identity: crate::NodeIdentity {
+                retained_object: None,
                 name: Some(win.title.clone()),
                 ..Default::default()
             },

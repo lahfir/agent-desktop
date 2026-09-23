@@ -68,11 +68,7 @@ pub(crate) fn read_node(
     let value = (!secure).then(|| attrs.value.clone()).flatten();
     let actions = if let Some(actions) = requirements.ref_evidence.actions.then(|| {
         crate::tree::action_list::read_platform_available_actions(
-            element,
-            &role,
-            attrs.has_scrollbars,
-            deadline,
-            usage,
+            element, &role, &attrs, deadline, usage,
         )
     }) {
         stats.reads.counts.action_reads += 1;
@@ -200,7 +196,7 @@ pub(crate) fn read_node(
         } else {
             LocatorField::Unknown
         },
-        identifiers,
+        identifiers: crate::tree::retained::evidence(element, identifiers),
         states: if !requirements.states || read.status.states_unknown() {
             LocatorField::Unknown
         } else {

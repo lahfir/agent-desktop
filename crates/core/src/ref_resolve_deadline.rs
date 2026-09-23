@@ -19,6 +19,7 @@ pub(crate) fn resolve_within_deadline(
         return ResolveAttemptOutcome::DeadlinePassed;
     }
     match adapter.resolve_element_strict(entry, deadline.capped(RESOLVE_ATTEMPT)) {
+        Ok(_) if deadline.is_expired() => ResolveAttemptOutcome::DeadlinePassed,
         Ok(handle) => ResolveAttemptOutcome::Resolved(handle),
         Err(error) => classify_error(error, deadline),
     }

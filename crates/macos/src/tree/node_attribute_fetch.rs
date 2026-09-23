@@ -65,7 +65,7 @@ mod imp {
             return failed_node_attribute_read(kAXErrorFailure, requested_count, false, 1);
         }
         let mut batch_reads = 1;
-        let fallback_reads = 0;
+        let mut fallback_reads = 0;
 
         let mut texts: [Option<String>; 17] = Default::default();
         let mut labelled_by_text = None;
@@ -168,11 +168,13 @@ mod imp {
                         },
                     );
                 } else if let Some(values) = created_cf_array(value_result) {
+                    let mut absent_value = false;
                     match values.into_iter().next() {
-                        Some(item) if node_attribute_decode::is_null(&item) => {}
+                        Some(item) if node_attribute_decode::is_null(&item) => absent_value = true,
                         Some(item) => {
                             if let Some(error) = node_attribute_decode::slot_error(&item) {
                                 status.record_native_slot_error(VALUE, error);
+                                absent_value = error == accessibility_sys::kAXErrorNoValue;
                             } else {
                                 match node_attribute_decode::text(VALUE, &item, usage) {
                                     Some(value) if value.complete => {
@@ -184,6 +186,15 @@ mod imp {
                             }
                         }
                         None => status.record_slot_error(VALUE, kAXErrorFailure),
+                    }
+                    if absent_value
+                        && crate::tree::empty_text::eligible(role.as_deref(), subrole.as_deref())
+                    {
+                        fallback_reads += 1;
+                        match crate::tree::empty_text::read(element, deadline) {
+                            Ok(value) => texts[VALUE] = value,
+                            Err(error) => status.record_slot_error(VALUE, error),
+                        }
                     }
                 } else {
                     status.record_slot_error(VALUE, kAXErrorFailure);

@@ -6,6 +6,9 @@ use crate::{
 };
 
 pub fn has_meaningful_identity(entry: &RefEntry) -> bool {
+    if entry.identity.retained_object.is_some() {
+        return true;
+    }
     entry
         .identity
         .native_id
@@ -36,6 +39,15 @@ pub fn identity_match(
     actual_description: &LocatorField<String>,
     actual_identifiers: &IdentifierEvidence,
 ) -> IdentityMatch {
+    if let Some(expected) = entry.identity.retained_object.as_deref() {
+        return match (
+            meaningful_text(Some(expected)),
+            actual_identifiers.retained_object(),
+        ) {
+            (Some(expected), Some(actual)) => equality_match(expected, actual),
+            _ => IdentityMatch::Unknown,
+        };
+    }
     if let Some(expected) = entry.identity.native_id.as_ref() {
         let Some(expected_value) = meaningful_text(Some(&expected.value)) else {
             return IdentityMatch::Unknown;

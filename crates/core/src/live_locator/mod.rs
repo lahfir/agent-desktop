@@ -100,6 +100,8 @@ mod resolve_query_tests;
 #[cfg(test)]
 mod resolve_tests;
 #[cfg(test)]
+mod retained_identity_tests;
+#[cfg(test)]
 mod scrollarea_name_tests;
 #[cfg(test)]
 mod selected_hydration_churn_tests;

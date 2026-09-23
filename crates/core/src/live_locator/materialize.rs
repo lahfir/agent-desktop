@@ -64,6 +64,11 @@ pub(crate) fn ref_entry(
             process_instance: None,
         },
         identity: crate::RefEntryIdentity {
+            retained_object: node
+                .evidence
+                .identifiers
+                .retained_object()
+                .map(str::to_owned),
             role: role.clone(),
             name: node.evidence.name.meaningful_string(),
             value: node.evidence.value.meaningful_string(),

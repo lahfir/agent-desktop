@@ -80,7 +80,13 @@ fn role_only_geometry_anchor_accepts_unknown_optional_identity_once() {
     assert_eq!(adapter.window_observations.load(Ordering::SeqCst), 1);
     assert_eq!(adapter.strict_resolutions.load(Ordering::SeqCst), 1);
     assert_eq!(adapter.hydration_observations.load(Ordering::SeqCst), 1);
-    assert_eq!(resolution.matches[0].data.name, "(name unavailable)");
+    assert!(resolution.matches[0].data.name.is_empty());
+    assert!(
+        serde_json::to_value(&resolution.matches[0].data)
+            .unwrap()
+            .get("name")
+            .is_none()
+    );
     let entry = resolution.refmap.unwrap().get("@e1").unwrap().clone();
     assert_eq!(entry.identity.name, None);
     assert_eq!(entry.geometry.bounds, Some(bounds()));

@@ -139,6 +139,10 @@ agent-desktop click @s8f3k2p9:e5 --debug --screenshot /tmp/click-visual.html
 
 ## find
 
+Results use the same accessible `name` as name matching. Unnamed elements omit
+`name`; their current content remains in `value`. Use `--value` to locate editable
+content, rather than treating that content as the element's name.
+
 Search elements by role, name, value, or text content.
 
 ```bash
@@ -223,12 +227,19 @@ agent-desktop get @s8f3k2p9:e1 --property title
 
 | Property | Returns |
 |----------|---------|
-| `text` | Accessible name/label (default) |
+| `text` | Current text value, an alias of `value` (default) |
 | `value` | Current value (text content, slider position, etc.) |
 | `title` | Window or element title |
 | `bounds` | `{ x, y, width, height }` rectangle |
 | `role` | Element role string |
 | `states` | Array of active states |
+
+`text`, `value`, `bounds`, and `states` use live reads when the adapter supports
+them. An absent live value or bounds returns `null`; it does not resurrect
+snapshot text or coordinates. For these properties, snapshot fallback applies
+only when the adapter does not support that live read. State reads retain the
+snapshot fallback when live state is unavailable. Native read failures remain
+errors. Use `title` for the saved element name.
 
 ## is
 
@@ -252,6 +263,9 @@ agent-desktop is @s8f3k2p9:e6 --property selected
 | `focused` | Element has keyboard focus |
 | `expanded` | Disclosure/tree item is expanded |
 | `selected` | Selectable element is selected |
+
+For `enabled`, an unknown native value returns `result: false` with
+`applicable: false`. This means unknown, not known to be disabled.
 
 **Output:**
 ```json

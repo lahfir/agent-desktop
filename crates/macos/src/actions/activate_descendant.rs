@@ -1,3 +1,24 @@
+#[cfg(any(target_os = "macos", test))]
+use crate::actions::chain_delivery::DeliveryOutcome;
+#[cfg(any(target_os = "macos", test))]
+use agent_desktop_core::AdapterError;
+
+#[cfg(any(target_os = "macos", test))]
+fn activate_candidates<T>(
+    children: &[T],
+    mut perform: impl FnMut(&T, &str) -> Result<DeliveryOutcome, AdapterError>,
+) -> Result<DeliveryOutcome, AdapterError> {
+    for child in children {
+        for action in crate::tree::action_list::PRIMARY_ACTIVATION_ACTIONS {
+            let outcome = perform(child, action)?;
+            if outcome.terminates_chain() {
+                return Ok(outcome);
+            }
+        }
+    }
+    Ok(DeliveryOutcome::NotDelivered)
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
     use agent_desktop_core::{AdapterError, Deadline};
@@ -13,10 +34,8 @@ mod imp {
     /// which the row accepts and reports back while the application never
     /// navigates.
     ///
-    /// Descending is a guess about which child owns the row's behaviour, so
-    /// only an observed effect ends the chain here. A child that merely claims
-    /// success — Xcode's rows answer that to `AXConfirm` and do nothing — must
-    /// not consume the selection step that actually works for them.
+    /// Unverified delivery ends the search too: absence of an observed effect
+    /// cannot authorize another mutation on the same child or a sibling.
     pub(crate) fn activate_descendant(
         element: &AXElement,
         deadline: Deadline,
@@ -32,16 +51,9 @@ mod imp {
         .flatten()
         .unwrap_or_default();
 
-        for child in children {
-            for action in crate::tree::action_list::PRIMARY_ACTIVATION_ACTIONS {
-                let outcome =
-                    crate::actions::ax_helpers::perform_observed_action(&child, action, deadline)?;
-                if outcome.was_verified() {
-                    return Ok(outcome);
-                }
-            }
-        }
-        Ok(DeliveryOutcome::NotDelivered)
+        super::activate_candidates(&children, |child, action| {
+            crate::actions::ax_helpers::perform_observed_action(child, action, deadline)
+        })
     }
 }
 
@@ -61,3 +73,40 @@ mod imp {
 }
 
 pub(crate) use imp::activate_descendant;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unverified_descendant_delivery_stops_before_another_action_or_sibling() {
+        let mut attempts = Vec::new();
+        let outcome = activate_candidates(&[1, 2], |child, action| {
+            attempts.push((*child, action.to_owned()));
+            Ok(if attempts.len() == 1 {
+                DeliveryOutcome::NotDelivered
+            } else {
+                DeliveryOutcome::DeliveredUnverified
+            })
+        })
+        .unwrap();
+        assert_eq!(outcome, DeliveryOutcome::DeliveredUnverified);
+        assert_eq!(attempts, [(1, "AXPress".into()), (1, "AXOpen".into())]);
+    }
+
+    #[test]
+    fn unsupported_descendant_actions_can_reach_a_verified_sibling() {
+        let mut attempts = 0;
+        let outcome = activate_candidates(&[1, 2, 3], |child, _| {
+            attempts += 1;
+            Ok(if *child == 2 {
+                DeliveryOutcome::DeliveredVerified
+            } else {
+                DeliveryOutcome::NotDelivered
+            })
+        })
+        .unwrap();
+        assert_eq!(outcome, DeliveryOutcome::DeliveredVerified);
+        assert_eq!(attempts, 4);
+    }
+}

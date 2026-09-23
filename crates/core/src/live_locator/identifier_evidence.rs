@@ -3,6 +3,7 @@ pub struct IdentifierEvidence {
     identifiers: Vec<crate::ElementIdentifier>,
     preferred: Option<usize>,
     complete: bool,
+    retained_object: Option<String>,
 }
 
 impl IdentifierEvidence {
@@ -46,7 +47,17 @@ impl IdentifierEvidence {
             identifiers: normalized,
             preferred: normalized_preferred,
             complete,
+            retained_object: None,
         }
+    }
+
+    pub fn with_retained_object(mut self, token: String) -> Self {
+        self.retained_object = Some(token);
+        self
+    }
+
+    pub fn retained_object(&self) -> Option<&str> {
+        self.retained_object.as_deref()
     }
 
     pub fn absent() -> Self {

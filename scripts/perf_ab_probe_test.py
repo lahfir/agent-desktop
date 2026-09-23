@@ -44,6 +44,20 @@ def check_report_and_cases():
     assert "FAIL" in html and "not revision A/B" in html and "Refs re-resolvable" in html
 
 
+def check_all_snapshot_shapes_and_completeness():
+    results = {"HEAD": {"snapshot": [(1, True), (2, True)]}}
+    for observed, expected, complete in [
+        ([(2, 1, 1), (2, 1, 1)], (2, 1, 1), 1.0),
+        ([(2, 1, 1), (3, 1, 2)], None, 1.0),
+        ([(2, 1, 1), None], None, 0.5),
+    ]:
+        summary = probe.summarize(results, {"HEAD": {"snapshot": observed}})["snapshot"]["HEAD"]
+        assert summary["shape"] == expected
+        assert summary["complete_rate"] == complete
+        assert summary["observed_shapes"] == observed
+
+
 if __name__ == "__main__":
     check_balanced_order_and_percentile()
     check_report_and_cases()
+    check_all_snapshot_shapes_and_completeness()

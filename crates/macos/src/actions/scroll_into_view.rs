@@ -36,9 +36,17 @@ mod imp {
     ) -> Result<DeliveryOutcome, AdapterError> {
         let mut delivery = crate::actions::DeliveryTracker::default();
         for attempt in 0..MAX_ANCESTOR_SCROLLS {
-            let Some(direction) =
-                direction_to_window(element, deadline).map_err(|error| delivery.annotate(error))?
+            let Some(direction) = direction_to_viewport(element, deadline)
+                .map_err(|error| delivery.annotate(error))?
             else {
+                if !visible_through_ancestors(element, deadline)
+                    .map_err(|error| delivery.annotate(error))?
+                {
+                    return Err(delivery.annotate(AdapterError::new(
+                        ErrorCode::ActionFailed,
+                        "Target remains clipped or its visible bounds are unknown",
+                    )));
+                }
                 return Ok(if attempt == 0 {
                     DeliveryOutcome::SatisfiedNoDelivery
                 } else {
@@ -70,21 +78,25 @@ mod imp {
         .with_disposition(DeliverySemantics::delivered_unverified()))
     }
 
-    fn direction_to_window(
+    fn direction_to_viewport(
         element: &AXElement,
         deadline: Deadline,
     ) -> Result<Option<Direction>, AdapterError> {
         let instant = crate::tree::locator_deadline::from_operation(deadline)?;
         let bounds = crate::tree::element_bounds::read_bounds_with_deadline(element, instant)?
             .ok_or_else(|| AdapterError::new(ErrorCode::ActionFailed, "Target has no bounds"))?;
-        let window = require_window(crate::tree::surface_read::element(
-            element, "AXWindow", instant,
-        )?)?;
-        let window_bounds = crate::tree::element_bounds::read_bounds_with_deadline(
-            &window, instant,
-        )?
-        .ok_or_else(|| AdapterError::new(ErrorCode::ActionFailed, "Target window has no bounds"))?;
-        Ok(direction_for_visibility(bounds, window_bounds))
+        let viewport = match crate::actions::scroll::find_scroll_area(element, deadline)? {
+            Some(viewport) => viewport,
+            None => require_window(crate::tree::surface_read::element(
+                element, "AXWindow", instant,
+            )?)?,
+        };
+        let viewport_bounds =
+            crate::tree::element_bounds::read_bounds_with_deadline(&viewport, instant)?
+                .ok_or_else(|| {
+                    AdapterError::new(ErrorCode::ActionFailed, "Target viewport has no bounds")
+                })?;
+        Ok(direction_for_visibility(bounds, viewport_bounds))
     }
 
     pub(super) fn require_window(window: Option<AXElement>) -> Result<AXElement, AdapterError> {
@@ -125,7 +137,7 @@ mod imp {
         }
         let local_end = Instant::now() + Duration::from_millis(800);
         loop {
-            if visible_in_window(element, deadline).map_err(after_delivery)? {
+            if visible_through_ancestors(element, deadline).map_err(after_delivery)? {
                 return Ok(DeliveryOutcome::DeliveredVerified);
             }
             if deadline.is_expired() {
@@ -182,22 +194,17 @@ mod imp {
         .with_suggestion("Inspect target visibility before deciding whether to scroll again.")
     }
 
-    fn visible_in_window(element: &AXElement, deadline: Deadline) -> Result<bool, AdapterError> {
-        let instant = crate::tree::locator_deadline::from_operation(deadline)?;
-        let Some(bounds) =
-            crate::tree::element_bounds::read_bounds_with_deadline(element, instant)?
-        else {
+    fn visible_through_ancestors(
+        element: &AXElement,
+        deadline: Deadline,
+    ) -> Result<bool, AdapterError> {
+        if crate::actions::scroll_read::element(element, "AXWindow", deadline)?.is_none() {
             return Ok(false);
-        };
-        let Some(window) = crate::tree::surface_read::element(element, "AXWindow", instant)? else {
-            return Ok(false);
-        };
-        let Some(window_bounds) =
-            crate::tree::element_bounds::read_bounds_with_deadline(&window, instant)?
-        else {
-            return Ok(false);
-        };
-        Ok(rect_has_area(bounds) && intersects(bounds, window_bounds))
+        }
+        Ok(
+            crate::tree::hit_test::visible_bounds_ax_element(element, deadline)?
+                .is_some_and(rect_has_area),
+        )
     }
 
     pub(crate) fn rect_has_area(rect: Rect) -> bool {
@@ -207,13 +214,6 @@ mod imp {
             && rect.height.is_finite()
             && rect.width > 0.0
             && rect.height > 0.0
-    }
-
-    pub(crate) fn intersects(left: Rect, right: Rect) -> bool {
-        left.x < right.x + right.width
-            && left.x + left.width > right.x
-            && left.y < right.y + right.height
-            && left.y + left.height > right.y
     }
 
     fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {
@@ -244,7 +244,7 @@ pub(crate) use imp::scroll_into_view_impl;
 pub(crate) use imp::scroll_into_view_outcome;
 
 #[cfg(all(test, target_os = "macos"))]
-pub(crate) use imp::{direction_for_visibility, intersects, rect_has_area, scroll_effect_observed};
+pub(crate) use imp::{direction_for_visibility, rect_has_area, scroll_effect_observed};
 
 #[cfg(all(test, target_os = "macos"))]
 #[path = "scroll_into_view_tests.rs"]

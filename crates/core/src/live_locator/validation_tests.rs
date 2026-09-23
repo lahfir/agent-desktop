@@ -108,6 +108,7 @@ fn element_root_derives_surface_with_relative_depth_budgets() {
             process_instance: Some("instance-1".into()),
         },
         identity: crate::RefEntryIdentity {
+            retained_object: None,
             role: "group".into(),
             name: Some("Menu root".into()),
             value: None,

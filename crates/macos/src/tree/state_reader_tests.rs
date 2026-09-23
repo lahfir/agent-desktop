@@ -153,3 +153,22 @@ fn emitted_tokens_over_representative_inputs_are_vocabulary_members() {
 fn assert_states_in_vocabulary_rejects_bogus_token() {
     state::assert_states_in_vocabulary(&["zzz_bogus_state_token".to_string()]);
 }
+
+#[test]
+fn disclosure_value_is_role_scoped_and_explicit_state_wins() {
+    use super::expanded_state;
+    let role = Some("AXDisclosureTriangle");
+    assert_eq!(expanded_state(role, None, Some("1")), Some(true));
+    assert_eq!(expanded_state(role, None, Some("0")), Some(false));
+    assert_eq!(expanded_state(role, Some(false), Some("1")), Some(false));
+    for value in [None, Some("2"), Some("unknown")] {
+        assert_eq!(expanded_state(role, None, value), None);
+    }
+    for role in [None, Some("AXButton"), Some("AXRow"), Some("AXTextField")] {
+        assert_eq!(expanded_state(role, None, Some("1")), None);
+    }
+    let mut attrs = sample_attrs();
+    attrs.role = Some("AXDisclosureTriangle".into());
+    attrs.value = Some("1".into());
+    assert_eq!(super::expanded_from_attrs(&attrs), Some(true));
+}

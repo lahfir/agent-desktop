@@ -141,7 +141,7 @@ fn resolve_result_window(
         .list_windows(
             &WindowFilter {
                 focused_only: false,
-                app: None,
+                app: entry.source.source_app.clone(),
             },
             deadline,
         )?

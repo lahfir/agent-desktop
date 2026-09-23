@@ -221,7 +221,7 @@ fn collect_elements_recursive(
     match read.evidence.role.known() {
         Some(role) => {
             if role == &context.entry.identity.role {
-                match match_native_or_text_identity(context.entry, &read.evidence) {
+                match super::retained::candidate_match(element, context.entry, &read.evidence)? {
                     IdentityMatch::Match => {
                         push_unique(context.matches, element.clone());
                     }
@@ -277,7 +277,7 @@ fn candidate_identity(
     }
     let matched = match read.evidence.role.known() {
         Some(role) if role == &entry.identity.role => {
-            let identity = match_native_or_text_identity(entry, &read.evidence);
+            let identity = super::retained::candidate_match(element, entry, &read.evidence)?;
             if identity == IdentityMatch::Unknown && provisional_geometry_candidate(entry) {
                 IdentityMatch::Match
             } else {

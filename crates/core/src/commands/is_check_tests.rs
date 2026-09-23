@@ -91,6 +91,7 @@ fn entry(states: Vec<String>, value: Option<&str>, actions: Vec<&str>) -> RefEnt
             process_instance: Some("test-instance".into()),
         },
         identity: crate::RefEntryIdentity {
+            retained_object: None,
             role: "checkbox".into(),
             name: Some("Target".into()),
             value: value.map(str::to_string),
@@ -363,3 +364,6 @@ mod applicability_tests;
 
 #[path = "is_check_vocabulary_tests.rs"]
 mod vocabulary_tests;
+
+#[path = "get_consistency_tests.rs"]
+mod get_consistency_tests;

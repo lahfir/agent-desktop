@@ -49,6 +49,7 @@ mod tests {
             ref_id: None,
             role: "group".into(),
             identity: crate::NodeIdentity {
+                retained_object: None,
                 name: Some(name.into()),
                 ..Default::default()
             },

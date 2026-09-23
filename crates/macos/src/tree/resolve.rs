@@ -48,6 +48,7 @@ pub(crate) fn resolve_locator_anchor_with_deadline(
 
 #[cfg(target_os = "macos")]
 fn verify_process_instance(entry: &RefEntry) -> Result<(), AdapterError> {
+    super::retained::validate(entry.identity.retained_object.as_deref())?;
     let Some(instance) = entry.process.process_instance.as_deref() else {
         return Err(AdapterError::stale_ref(
             "Saved target has no process instance identity",

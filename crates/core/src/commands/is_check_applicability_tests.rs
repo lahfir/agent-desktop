@@ -9,6 +9,7 @@ fn action_availability_makes_toggle_and_expand_applicable() {
             process_instance: Some("test-instance".into()),
         },
         identity: crate::RefEntryIdentity {
+            retained_object: None,
             role: "cell".into(),
             name: Some("Disclosure".into()),
             value: None,

@@ -27,6 +27,11 @@ pub(crate) fn dispatch(
         }
         SessionAction::End(e) => {
             let id = resolve_end_session_id(e.id, context.session_id())?;
+            if context.session_namespace_is_pinned() && Some(id.as_str()) != context.session_id() {
+                return Err(AppError::invalid_input(
+                    "A command host cannot end a foreign session",
+                ));
+            }
             let value = session::execute(session::SessionAction::End { id: id.clone() })?;
             adapter
                 .update_cursor_overlay(&CursorOverlayControl::disable(id))
@@ -34,6 +39,9 @@ pub(crate) fn dispatch(
             Ok(value)
         }
         SessionAction::List => session::execute(session::SessionAction::List),
+        SessionAction::Gc(_) if context.session_namespace_is_pinned() => Err(
+            AppError::invalid_input("A command host cannot run global session garbage collection"),
+        ),
         SessionAction::Gc(g) => session::execute(session::SessionAction::Gc {
             older_than_secs: g.older_than,
             ended_only: g.ended,

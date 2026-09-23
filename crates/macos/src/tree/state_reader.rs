@@ -29,7 +29,7 @@ pub(crate) fn states_from_element(
     if ctx.is_secure_text {
         states.push(state::SECURE.into());
     }
-    if is_expanded(attrs) {
+    if expanded_from_attrs(attrs) == Some(true) {
         states.push(state::EXPANDED.into());
     }
     if super::roles::is_toggleable_role(role) {
@@ -66,13 +66,28 @@ pub(crate) fn states_from_element(
     states
 }
 
-fn is_expanded(attrs: &NodeAttrs) -> bool {
-    attrs
-        .states
-        .control
-        .expanded
-        .or(attrs.states.control.disclosing)
-        .unwrap_or(false)
+pub(crate) fn expanded_from_attrs(attrs: &NodeAttrs) -> Option<bool> {
+    expanded_state(
+        attrs.role.as_deref(),
+        attrs
+            .states
+            .control
+            .expanded
+            .or(attrs.states.control.disclosing),
+        attrs.value.as_deref(),
+    )
+}
+
+pub(crate) fn expanded_state(
+    native_role: Option<&str>,
+    explicit: Option<bool>,
+    value: Option<&str>,
+) -> Option<bool> {
+    explicit.or_else(|| {
+        (native_role == Some("AXDisclosureTriangle"))
+            .then(|| value.and_then(parse_checked_value))
+            .flatten()
+    })
 }
 
 pub(crate) fn parse_checked_value(value: &str) -> Option<bool> {
@@ -102,7 +117,9 @@ fn value_is_indeterminate(value: Option<&str>) -> bool {
 pub(crate) fn offscreen(bounds: Option<Rect>, window_bounds: Option<Rect>) -> Option<bool> {
     let (el, win) = bounds.zip(window_bounds)?;
     Some(
-        el.x + el.width <= win.x
+        win.width <= 0.0
+            || win.height <= 0.0
+            || el.x + el.width <= win.x
             || el.x >= win.x + win.width
             || el.y + el.height <= win.y
             || el.y >= win.y + win.height,

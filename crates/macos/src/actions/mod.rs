@@ -29,6 +29,8 @@ pub(crate) mod scroll;
 pub(crate) mod scroll_into_view;
 mod scroll_read;
 pub(crate) mod select_menu;
+mod select_name;
+mod select_search;
 pub(crate) mod toggle_state;
 pub(crate) mod type_text;
 

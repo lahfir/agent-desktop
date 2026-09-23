@@ -6,6 +6,7 @@ fn node(name: Option<&str>, value: Option<&str>, description: Option<&str>) -> A
         ref_id: None,
         role: "textfield".into(),
         identity: crate::NodeIdentity {
+            retained_object: None,
             name: name.map(String::from),
             value: value.map(String::from),
             description: description.map(String::from),

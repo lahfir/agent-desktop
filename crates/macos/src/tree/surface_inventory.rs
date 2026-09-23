@@ -20,8 +20,34 @@ pub(crate) fn list_surfaces_for_pid(
         collect_window_surfaces(&window, "focused-window", deadline, &mut surfaces)?;
     }
 
+    complete_menu_inventory(&mut surfaces, |surfaces| {
+        if let Some(menu) = super::surfaces::menu_element_for_pid(pid, deadline)? {
+            push_menu_surface(
+                &menu,
+                "context_menu",
+                "resolved/menu".into(),
+                deadline,
+                surfaces,
+            )?;
+        }
+        Ok(())
+    })?;
+
     ensure_before_deadline(deadline)?;
     Ok(surfaces)
+}
+
+fn complete_menu_inventory(
+    surfaces: &mut Vec<SurfaceInfo>,
+    discover: impl FnOnce(&mut Vec<SurfaceInfo>) -> Result<(), AdapterError>,
+) -> Result<(), AdapterError> {
+    if !surfaces
+        .iter()
+        .any(|surface| matches!(surface.kind.as_str(), "menu" | "context_menu"))
+    {
+        discover(surfaces)?;
+    }
+    Ok(())
 }
 
 fn collect_app_surfaces(

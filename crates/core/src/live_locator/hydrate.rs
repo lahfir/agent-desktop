@@ -1,7 +1,4 @@
-use super::{
-    LocatorField, LocatorResolution, ObservationRequest, ObservationRoot, ObservedNode,
-    ObservedTree,
-};
+use super::{LocatorResolution, ObservationRequest, ObservationRoot, ObservedNode, ObservedTree};
 use crate::{
     AdapterError, AppError, ErrorCode, IdentityMatch, adapter::PlatformAdapter,
     locator::LocatorQuery, refs::RefEntry, refs::RefMap,
@@ -81,7 +78,7 @@ pub(super) fn selected_matches(
             }
             let mut entry = super::materialize::ref_entry(node, &hydrated.source, query);
             preserve_verified_identity(&preliminary, node, &mut entry);
-            let name = display_name(node, &entry.identity.role);
+            let name = node.evidence.name.meaningful_string().unwrap_or_default();
             let value = node.evidence.value.meaningful_string();
             (entry, name, value, node.document_order)
         };
@@ -166,6 +163,7 @@ fn anchor_matches(preliminary: &RefEntry, node: &ObservedNode) -> bool {
         ) {
             IdentityMatch::Match => true,
             IdentityMatch::NoMatch => false,
+            IdentityMatch::Unknown if preliminary.identity.retained_object.is_some() => false,
             IdentityMatch::Unknown => preliminary
                 .geometry
                 .bounds_hash
@@ -196,19 +194,6 @@ fn preserve_verified_identity(preliminary: &RefEntry, node: &ObservedNode, entry
             .identity
             .native_id
             .clone_from(&preliminary.identity.native_id);
-    }
-}
-
-fn display_name(node: &ObservedNode, role: &str) -> String {
-    match &node.evidence.name {
-        LocatorField::Unknown => "(name unavailable)".into(),
-        LocatorField::Known(name) if !name.is_empty() => name.clone(),
-        LocatorField::Known(_) | LocatorField::Absent => node
-            .evidence
-            .value
-            .meaningful_string()
-            .or_else(|| node.evidence.description.meaningful_string())
-            .unwrap_or_else(|| format!("(unnamed {role})")),
     }
 }
 
@@ -289,4 +274,27 @@ fn evidence_incomplete(
             "query_stats": &tree.stats,
         }))
         .with_disposition(crate::DeliverySemantics::not_delivered())
+}
+
+#[cfg(test)]
+mod retained_tests {
+    use super::*;
+    use crate::live_locator::test_support::{evidence, node, tree};
+
+    #[test]
+    fn missing_retained_identity_cannot_pass_hydration_through_geometry() {
+        let mut observed = evidence("textfield", None);
+        observed.identifiers = observed.identifiers.with_retained_object("host:1".into());
+        let observed = node(0, observed, vec![], &[]);
+        let tree = tree(vec![observed.clone()], vec![0], true);
+        let entry =
+            super::super::materialize::ref_entry(&observed, &tree.source, &LocatorQuery::default());
+        assert!(anchor_matches(&entry, &observed));
+        let mut replacement = observed;
+        replacement.evidence.identifiers = crate::IdentifierEvidence::absent();
+        assert!(!anchor_matches(&entry, &replacement));
+        replacement.evidence.identifiers =
+            crate::IdentifierEvidence::absent().with_retained_object("host:2".into());
+        assert!(!anchor_matches(&entry, &replacement));
+    }
 }

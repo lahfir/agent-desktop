@@ -40,7 +40,7 @@ def live_report(payload):
     intro = (f'<p>{escape(str(payload.get("app", "unknown app")))}; '
              f'{escape(str(payload.get("rounds", "unknown")))} rounds. '
              'Latency uses successful samples only. OK rate includes failures; 100% OK does not verify action effects. '
-             'Shape = [nodes, depth, refs] from the first successful snapshot, not proof of identical content. '
+             'Shape = [nodes, depth, refs], reported only when every snapshot is complete and has the same shape; not proof of identical content. '
              'Deltas require successful runs and matching known snapshot shapes.</p>')
     return intro + (table(['Case', 'Side', 'p50 ms', 'p95 ms', 'OK %', 'Shape', 'p50 delta'], rows)
                     if rows else '<p>No case measurements available.</p>')

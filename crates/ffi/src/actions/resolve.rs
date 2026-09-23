@@ -11,7 +11,6 @@ use agent_desktop_core::{
 
 const MAX_REF_FIELD_BYTES: usize = 65_536;
 const MAX_REF_TOKEN_BYTES: usize = 256;
-
 /// # Safety
 ///
 /// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
@@ -275,6 +274,7 @@ unsafe fn decode_core_ref_entry(
             process_instance: Some(process_instance),
         },
         identity: RefEntryIdentity {
+            retained_object: None,
             role,
             name,
             value,

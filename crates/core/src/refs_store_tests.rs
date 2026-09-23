@@ -5,7 +5,6 @@ use crate::{
     refs::{RefEntry, RefMap},
     refs_test_support::HomeGuard,
 };
-
 fn entry(name: &str) -> RefEntry {
     let bounds = crate::Rect {
         x: 1.0,
@@ -19,6 +18,7 @@ fn entry(name: &str) -> RefEntry {
             process_instance: Some("test-instance".into()),
         },
         identity: crate::RefEntryIdentity {
+            retained_object: None,
             role: "button".into(),
             name: Some(name.into()),
             value: None,

@@ -39,6 +39,7 @@ impl ObservationOps for WaitSnapshotAdapter {
                 ref_id: None,
                 role: "window".into(),
                 identity: crate::NodeIdentity {
+                    retained_object: None,
                     name: Some("Doc".into()),
                     ..Default::default()
                 },
@@ -50,6 +51,7 @@ impl ObservationOps for WaitSnapshotAdapter {
                         ref_id: None,
                         role: "button".into(),
                         identity: crate::NodeIdentity {
+                            retained_object: None,
                             name: Some("Submit".into()),
                             ..Default::default()
                         },
@@ -62,6 +64,7 @@ impl ObservationOps for WaitSnapshotAdapter {
                         ref_id: None,
                         role: "button".into(),
                         identity: crate::NodeIdentity {
+                            retained_object: None,
                             name: Some("zero-bounds-button".into()),
                             ..Default::default()
                         },
@@ -112,6 +115,7 @@ impl ObservationOps for WaitSnapshotAdapter {
             ref_id: None,
             role: "window".into(),
             identity: crate::NodeIdentity {
+                retained_object: None,
                 name: Some("Doc".into()),
                 ..Default::default()
             },
@@ -122,6 +126,7 @@ impl ObservationOps for WaitSnapshotAdapter {
                 ref_id: None,
                 role: "button".into(),
                 identity: crate::NodeIdentity {
+                    retained_object: None,
                     name: Some("Submit".into()),
                     ..Default::default()
                 },

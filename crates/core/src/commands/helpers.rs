@@ -5,10 +5,8 @@ use crate::{
     commands::{wait_selector, wait_selector::WaitSelectorInput},
     context::CommandContext,
     ref_action_wait_context::RefActionWaitContext,
-    ref_resolve_deadline::resolve_within_deadline,
     refs::RefEntry,
     refs_store::RefStore,
-    resolve_attempt_outcome::ResolveAttemptOutcome,
     window_lookup,
 };
 use serde_json::{Value, json};
@@ -51,12 +49,7 @@ pub(crate) fn resolve_ref_with_context(
     )
 }
 
-/// Resolves a ref to a live element handle, capping the strict resolve to
-/// `deadline` when supplied (the `hover`/`drag` wait path) or resolving
-/// uncapped otherwise (`get`/`is`). Delegates entry loading and its
-/// `ref.resolve.start/entry/error` tracing to [`load_ref_entry`], then adds
-/// handle resolution and the `ref.resolve.ok` event, so budgeted and
-/// single-shot resolution trace identically.
+/// Resolves a saved ref under the caller deadline and records resolution traces.
 fn resolve_ref_within_deadline(
     ref_id: &str,
     snapshot_id: Option<&str>,
@@ -81,21 +74,16 @@ fn resolve_ref_within_deadline(
     Ok((entry, handle))
 }
 
-/// Performs the strict resolve for [`resolve_ref_within_deadline`], capping the
-/// attempt to `deadline` when one is supplied and surfacing an exhausted budget
-/// as a `TIMEOUT`, or resolving uncapped when it is not.
+/// Gives one-shot resolution its full caller budget; polling paths own their slices.
 pub(crate) fn resolve_handle_within_deadline(
     adapter: &dyn PlatformAdapter,
     entry: &RefEntry,
     deadline: crate::Deadline,
 ) -> Result<crate::adapter::NativeHandle, crate::AdapterError> {
-    match resolve_within_deadline(adapter, entry, deadline) {
-        ResolveAttemptOutcome::Resolved(handle) => Ok(handle),
-        ResolveAttemptOutcome::Failed(err) => Err(err),
-        ResolveAttemptOutcome::DeadlinePassed => Err(crate::AdapterError::timeout(
-            "Target did not resolve within the wait budget",
-        )),
+    if deadline.is_expired() {
+        return Err(deadline.timeout_error());
     }
+    adapter.resolve_element_strict(entry, deadline)
 }
 
 pub(crate) fn execute_ref_action_with_context(

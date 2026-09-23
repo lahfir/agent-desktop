@@ -5,7 +5,7 @@ pub(crate) mod child_read_budget;
 pub(crate) mod child_read_plan;
 mod child_read_status;
 mod child_read_telemetry;
-mod child_source;
+pub(crate) mod child_source;
 mod child_source_availability;
 mod evidence_fields;
 mod node_evidence;
@@ -55,11 +55,17 @@ pub(crate) fn observe_tree(
     let (tree, renderer_ready, stats) =
         traversal::LocatorTraversal::new(&request, resolved.context, deadline)
             .build(resolved.element, resolved.source)?;
+    tracing::debug!(?stats, "tree: native observation completed");
     let looked_deep_enough = observation_reached_tree_end(&stats, &request);
-    if resolved.activation_eligible && tree.is_complete() && !renderer_ready && looked_deep_enough {
+    if renderer_ready || (resolved.activation_eligible && tree.is_complete()) {
         if let Some(instance) = resolved.process_instance.as_deref() {
-            if crate::tree::renderer_probe::activation_supported(resolved.pid, instance, deadline)?
-            {
+            if crate::tree::renderer_probe::activation_required(
+                resolved.pid,
+                instance,
+                renderer_ready,
+                tree.is_complete() && looked_deep_enough,
+                deadline,
+            )? {
                 return Err(renderer_activation_required(resolved.pid, stats));
             }
         }
@@ -69,7 +75,7 @@ pub(crate) fn observe_tree(
 
 fn renderer_activation_required(pid: i32, stats: agent_desktop_core::LocatorStats) -> AdapterError {
     let mut error = AdapterError::renderer_accessibility_activation_required(
-        "The application exposes renderer activation but no web accessibility surface",
+        "The application requires accessibility activation before its surface is ready",
     );
     if let Some(details) = error
         .details
@@ -126,7 +132,10 @@ fn resolve_root(
             })?;
             let context =
                 crate::tree::TreeBuildContext::for_pid_with_deadline(pid, true, deadline)?
-                    .child_context(entry.geometry.bounds);
+                    .child_context(crate::tree::element_bounds::ancestor_viewport(
+                        &element,
+                        request.deadline,
+                    )?);
             Ok(ResolvedRoot {
                 element,
                 source,
@@ -243,6 +252,7 @@ mod tests {
                 process_instance: Some(process_instance),
             },
             identity: RefEntryIdentity {
+                retained_object: None,
                 role: "button".into(),
                 name: Some("Save".into()),
                 value: None,

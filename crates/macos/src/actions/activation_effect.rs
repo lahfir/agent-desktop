@@ -18,6 +18,7 @@ mod imp {
     pub(crate) struct FocusState {
         focused_element: Option<AXElement>,
         selected: Option<bool>,
+        menu_open: Option<bool>,
     }
 
     /// Accessibility hands back a fresh reference for the same element on every
@@ -57,7 +58,51 @@ mod imp {
             )
             .ok()
             .flatten(),
+            menu_open: owned_menu_open(element, deadline),
         })
+    }
+
+    fn owned_menu_open(element: &AXElement, deadline: Deadline) -> Option<bool> {
+        use crate::tree::surface_read;
+        let end = crate::tree::locator_deadline::from_operation(deadline).ok()?;
+        let role = surface_read::string(element, "AXRole", end).ok()??;
+        if !matches!(
+            role.as_str(),
+            "AXMenuButton" | "AXPopUpButton" | "AXMenuBarItem" | "AXMenuItem"
+        ) {
+            return None;
+        }
+        let mut complete = true;
+        for child in surface_read::elements(element, "AXChildren", end).ok()? {
+            if surface_read::string(&child, "AXRole", end).ok()?? != "AXMenu" {
+                continue;
+            }
+            let visible = surface_read::boolean(&child, "AXVisible", end).ok()?;
+            let hidden = surface_read::boolean(&child, "AXHidden", end).ok()?;
+            let bounds =
+                crate::tree::element_bounds::read_bounds_with_deadline(&child, end).ok()?;
+            match menu_visibility(visible, hidden, bounds) {
+                Some(true) => return Some(true),
+                Some(false) => {}
+                None => complete = false,
+            }
+        }
+        complete.then_some(false)
+    }
+
+    fn menu_visibility(
+        visible: Option<bool>,
+        hidden: Option<bool>,
+        bounds: Option<agent_desktop_core::Rect>,
+    ) -> Option<bool> {
+        if visible == Some(false) || hidden == Some(true) {
+            return Some(false);
+        }
+        let bounds = bounds?;
+        if bounds.width <= 0.0 || bounds.height <= 0.0 {
+            return Some(false);
+        }
+        (visible == Some(true) || hidden == Some(false)).then_some(true)
     }
 
     pub(crate) fn changed_now(
@@ -128,7 +173,15 @@ mod imp {
     ) -> bool {
         let focus_moved_to_target = target_focused
             && matches!((before, after), (Some(before), Some(after)) if before != after);
-        focus_moved_to_target || selection_turned_on(before, after)
+        focus_moved_to_target
+            || selection_turned_on(before, after)
+            || matches!(
+                (
+                    before.as_ref().and_then(|state| state.menu_open),
+                    after.as_ref().and_then(|state| state.menu_open),
+                ),
+                (Some(false), Some(true))
+            )
     }
 
     /// An element that was not selected and now is has been acted on, whatever
@@ -152,6 +205,7 @@ mod imp {
             Some(FocusState {
                 focused_element: Some(crate::tree::element_for_pid(pid)),
                 selected: None,
+                menu_open: None,
             })
         }
 
@@ -159,6 +213,7 @@ mod imp {
             Some(FocusState {
                 focused_element: None,
                 selected: value,
+                menu_open: None,
             })
         }
 
@@ -207,6 +262,57 @@ mod imp {
             assert!(!observed_change(&before, &before, true));
             assert!(!observed_change(&before, &after, false));
             assert!(!observed_change(&before, &after, true));
+        }
+
+        #[test]
+        fn only_a_newly_visible_owned_menu_verifies_delivery() {
+            for before in [None, Some(false), Some(true)] {
+                for after in [None, Some(false), Some(true)] {
+                    let state = |menu_open| {
+                        Some(FocusState {
+                            menu_open,
+                            ..FocusState::default()
+                        })
+                    };
+                    assert_eq!(
+                        observed_change(&state(before), &state(after), false),
+                        before == Some(false) && after == Some(true),
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn menu_verification_requires_visible_nonempty_geometry() {
+            let bounds = agent_desktop_core::Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+            };
+            assert_eq!(menu_visibility(None, Some(false), Some(bounds)), Some(true));
+            assert_eq!(menu_visibility(Some(true), None, Some(bounds)), Some(true));
+            assert_eq!(menu_visibility(None, None, Some(bounds)), None);
+            assert_eq!(menu_visibility(Some(true), None, None), None);
+            assert_eq!(
+                menu_visibility(Some(false), Some(false), Some(bounds)),
+                Some(false)
+            );
+            assert_eq!(
+                menu_visibility(Some(true), Some(true), Some(bounds)),
+                Some(false)
+            );
+            assert_eq!(
+                menu_visibility(
+                    Some(true),
+                    Some(false),
+                    Some(agent_desktop_core::Rect {
+                        width: 0.0,
+                        ..bounds
+                    })
+                ),
+                Some(false)
+            );
         }
     }
 }

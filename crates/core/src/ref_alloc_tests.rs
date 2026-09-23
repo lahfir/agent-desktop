@@ -6,6 +6,7 @@ fn node(role: &str, name: Option<&str>) -> AccessibilityNode {
         ref_id: None,
         role: role.into(),
         identity: crate::NodeIdentity {
+            retained_object: None,
             name: name.map(str::to_string),
             ..Default::default()
         },

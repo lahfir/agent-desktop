@@ -62,6 +62,7 @@ impl CrossAppWaitAdapter {
             ref_id: None,
             role: "button".into(),
             identity: crate::NodeIdentity {
+                retained_object: None,
                 name: Some("Dropped".into()),
                 ..Default::default()
             },
@@ -81,6 +82,7 @@ impl CrossAppWaitAdapter {
             ref_id: None,
             role: "window".into(),
             identity: crate::NodeIdentity {
+                retained_object: None,
                 name: Some(window.title.clone()),
                 ..Default::default()
             },

@@ -8,6 +8,7 @@ fn node(name: Option<&str>, value: Option<&str>, description: Option<&str>) -> A
         ref_id: Some("@e1".into()),
         role: "textfield".into(),
         identity: crate::NodeIdentity {
+            retained_object: None,
             name: name.map(String::from),
             value: value.map(String::from),
             description: description.map(String::from),
@@ -57,14 +58,15 @@ fn no_selection() -> FindSelectionArgs {
 }
 
 #[test]
-fn display_name_prefers_value_before_description() {
+fn unnamed_match_keeps_value_separate_from_name() {
     let root = node(None, Some("current value"), Some("help text"));
     let query = LocatorQuery::default();
     let mut matches = Vec::new();
 
     search_tree(&root, &query, &mut Vec::new(), &mut matches, None);
 
-    assert_eq!(matches[0]["name"], "current value");
+    assert!(matches[0].get("name").is_none());
+    assert_eq!(matches[0]["value"], "current value");
 }
 
 #[test]

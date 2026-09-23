@@ -149,6 +149,11 @@ impl ObservedTree {
             ref_id: node.ref_id.take(),
             role,
             identity: crate::NodeIdentity {
+                retained_object: node
+                    .evidence
+                    .identifiers
+                    .retained_object()
+                    .map(str::to_owned),
                 name: node
                     .evidence
                     .name

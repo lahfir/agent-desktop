@@ -7,6 +7,7 @@ fn ready_button(name: &str) -> crate::AccessibilityNode {
         ref_id: None,
         role: "button".into(),
         identity: crate::NodeIdentity {
+            retained_object: None,
             name: Some(name.into()),
             ..Default::default()
         },
@@ -22,6 +23,7 @@ fn truncated_container(child_count: u32) -> crate::AccessibilityNode {
         ref_id: None,
         role: "group".into(),
         identity: crate::NodeIdentity {
+            retained_object: None,
             name: Some("list".into()),
             ..Default::default()
         },
@@ -37,6 +39,7 @@ fn doc_window(children: Vec<crate::AccessibilityNode>) -> crate::AccessibilityNo
         ref_id: None,
         role: "window".into(),
         identity: crate::NodeIdentity {
+            retained_object: None,
             name: Some("Doc".into()),
             ..Default::default()
         },

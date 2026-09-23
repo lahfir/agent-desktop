@@ -385,3 +385,6 @@ fn ref_action_pipeline_resolves_under_lease_before_dispatch() {
     assert_eq!(adapter.executes.load(Ordering::SeqCst), 1);
     assert_eq!(adapter.drops.load(Ordering::SeqCst), 1);
 }
+
+#[path = "helpers_resolution_budget_tests.rs"]
+mod resolution_budget_tests;
