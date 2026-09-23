@@ -13,6 +13,8 @@ import { fileURLToPath } from "node:url";
 import { describe } from "./screen.mjs";
 import { clipboardGuard, execute, observe, startCursor, stopCursor } from "./desktop.mjs";
 import {
+  TERMINALS,
+  typesafeApi,
   actionSpace,
   buildRequest,
   criterion,
@@ -23,10 +25,8 @@ import {
   shouldStop,
   textSupply,
   validateChoice,
-  TERMINALS,
 } from "./policy.mjs";
 
-const API = "https://api.typesafe.ai/v1/systemone";
 
 const post = async (url, key, body) => {
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -69,7 +69,7 @@ export const run = async function* (
         return;
       }
       const answers = (
-        await post(API, process.env.TYPESAFE_API_KEY, buildRequest(goal, screen, space, state.history, { values }))
+        await post(typesafeApi(), process.env.TYPESAFE_API_KEY, buildRequest(goal, screen, space, state.history, { values }))
       ).answers;
       state.calls += 1;
       const options = [
@@ -101,9 +101,8 @@ export const run = async function* (
         let destructive = null;
         if (needsRiskCheck(confidence)) {
           const rated = await post(
-            API,
+            typesafeApi(),
             process.env.TYPESAFE_API_KEY,
-            riskRequest(goal, screen, state.operation, node, { values }),
           );
           state.calls += 1;
           const answer = rated.answers?.destructive?.noul;

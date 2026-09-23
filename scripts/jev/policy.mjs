@@ -18,6 +18,21 @@ export const MAX_CALLS = 80;
 const STALLED_TURNS = 3;
 
 /**
+ * Where decisions are asked. TypeSafe's native System One API by default; point
+ * TYPESAFE_BASE_URL at a compatible decisions router — such as OpenRouter's
+ * `https://openrouter.ai/api/alpha/decisions` — to reuse an OpenRouter key.
+ * Read lazily so programmatic callers may set the variable after import.
+ */
+export const typesafeApi = () =>
+  process.env.TYPESAFE_BASE_URL ?? "https://api.typesafe.ai/v1/systemone";
+
+/** OpenRouter resolves bare aliases ("jev-latest") and "~typesafe/…" aliases, but
+ * "typesafe/jev-latest" (scoped, unregistered) answers 400 — so scope bare names
+ * through the tilde form, which is registered. */
+export const resolveModel = (model = process.env.TYPESAFE_MODEL ?? "jev-latest", api = typesafeApi()) =>
+  !model.includes("/") && api.includes("openrouter.ai") ? `~typesafe/${model}` : model;
+
+/**
  * Each operation names the one capability a target must advertise. The element
  * lists are built from that, so an operation is offered only when something on
  * screen can receive it. `check` and `uncheck` are offered in place of a toggle
@@ -159,7 +174,7 @@ export const buildRequest = (goal, screen, space, history, { values = true } = {
     };
   }
   return {
-    model: process.env.TYPESAFE_MODEL ?? "jev-latest",
+    model: resolveModel(),
     state: {
       goal,
       app: screen.app,
@@ -230,7 +245,7 @@ export const route = (a, { floor = BARS.floor, act = BARS.act, risky = BARS.risk
 export const needsRiskCheck = (confidence) => confidence >= BARS.act && confidence < BARS.risky;
 
 export const riskRequest = (goal, screen, operation, node, { values = true } = {}) => ({
-  model: process.env.TYPESAFE_MODEL ?? "jev-latest",
+  model: resolveModel(),
   state: {
     goal,
     app: screen.app,

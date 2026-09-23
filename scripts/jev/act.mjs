@@ -19,11 +19,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { collect, describe, label, offerable, overlayRole } from "./screen.mjs";
-import { NO_MATCH, route } from "./policy.mjs";
+import { NO_MATCH, resolveModel, typesafeApi, route } from "./policy.mjs";
 
 export { collect, describe, label, offerable, overlayRole, route };
 
-const API = "https://api.typesafe.ai/v1/systemone";
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /** A Choice accepts 255 options. One is reserved for the no-match outcome. */
@@ -71,7 +70,7 @@ export const buildRequest = (intent, surface, candidates, rich = false) => ({
     surface: surface.overlay ?? "window",
     element_count: candidates.length,
   },
-  model: "jev-latest",
+  model: resolveModel(),
   questions: {
     target: {
       type: "choice",
@@ -174,7 +173,8 @@ const run = (bin, argv) => {
 };
 
 const ask = async (payload) => {
-  const res = await fetch(API, {
+  const api = typesafeApi();
+  const res = await fetch(api, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.TYPESAFE_API_KEY}`,
@@ -182,7 +182,7 @@ const ask = async (payload) => {
     },
     body: JSON.stringify(payload),
   }).catch((e) => ({ ok: false, status: 0, statusText: String(e) }));
-  if (!res.ok) throw new Error(`typesafe ${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(`decision endpoint ${api} ${res.status} ${res.statusText}`);
   return readAnswers(await res.json());
 };
 
