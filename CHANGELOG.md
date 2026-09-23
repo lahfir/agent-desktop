@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.4](https://github.com/lahfir/agent-desktop/compare/v0.9.3...v0.9.4) (2026-09-23)
+
+
+### Bug Fixes
+
+* sync cargo lock with the 0.9.3 release ([#217](https://github.com/lahfir/agent-desktop/issues/217)) ([8c1502e](https://github.com/lahfir/agent-desktop/commit/8c1502e43c6c78fe856980f0bb7b3585f877d347))
+
 ## [0.9.3](https://github.com/lahfir/agent-desktop/compare/v0.9.2...v0.9.3) (2026-09-22)
 
 
