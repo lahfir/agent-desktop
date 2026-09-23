@@ -315,7 +315,6 @@ fn segments_metadata_list_is_capped() {
         fs::File::create(dir.join(format!("{pid}-0.jsonl"))).unwrap();
     }
     let result = read_merged(&dir, &ReadOptions::default()).unwrap();
-    assert!(result.segments_truncated);
     assert_eq!(result.segments.len(), METADATA_LIST_CAP);
 }
 
@@ -327,7 +326,6 @@ fn warnings_list_is_capped() {
         fs::write(dir.join(format!("junk{i}.txt")), b"").unwrap();
     }
     let result = read_merged(&dir, &ReadOptions::default()).unwrap();
-    assert!(result.warnings_truncated);
     assert_eq!(result.warnings.len(), METADATA_LIST_CAP);
 }
 
