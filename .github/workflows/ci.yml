@@ -192,6 +192,11 @@ jobs:
         with:
           node-version: '24'
 
+      - name: jev-desktop tests
+        run: |
+          node scripts/jev/run.test.mjs
+          node scripts/jev/act.test.mjs
+
       - name: NPM package contents
         run: |
           node --test tests/npm/*.test.js
