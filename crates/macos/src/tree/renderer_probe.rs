@@ -24,6 +24,11 @@ pub(crate) fn activation_required(
     )
 }
 
+/// Electron's `AXManualAccessibility` getter compares for exactly the complete
+/// accessibility mode, while its setter enables that mode plus platform and
+/// screen-reader flags, so a false manual readback is not evidence. Manual
+/// renderers need activation only when a complete walk proved their web
+/// surface absent.
 fn activation_needed(
     web_surface: bool,
     absence_proven: bool,
@@ -33,8 +38,8 @@ fn activation_needed(
     let Some(attribute) = choose_attribute(supported)? else {
         return Ok(false);
     };
-    if !web_surface && attribute == MANUAL {
-        return Ok(absence_proven);
+    if attribute == MANUAL {
+        return Ok(!web_surface && absence_proven);
     }
     let enabled = enabled(attribute)?;
     if !web_surface {
@@ -196,6 +201,21 @@ mod tests {
             )
             .unwrap()
         );
+    }
+
+    #[test]
+    fn readable_manual_renderer_ignores_an_unconfirmed_manual_flag() {
+        for absence_proven in [false, true] {
+            assert!(
+                !activation_needed(
+                    true,
+                    absence_proven,
+                    |attribute| Ok(attribute == MANUAL),
+                    |_| Ok(Some(false)),
+                )
+                .unwrap()
+            );
+        }
     }
 
     #[test]
