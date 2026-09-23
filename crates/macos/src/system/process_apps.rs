@@ -47,7 +47,7 @@ fn enrich_process_instances(
     Ok(enriched)
 }
 
-fn is_cross_uid_identity_error(error: &AdapterError) -> bool {
+pub(crate) fn is_cross_uid_identity_error(error: &AdapterError) -> bool {
     error.code == ErrorCode::PermDenied
         && error
             .details
