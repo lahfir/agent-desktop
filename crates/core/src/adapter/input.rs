@@ -1,6 +1,6 @@
 use crate::{
-    AdapterError, ClipboardContent, ClipboardFormat, Deadline, DragParams, InteractionLease,
-    KeyCombo, MouseEvent,
+    AdapterError, BackgroundDeliveryReport, BackgroundKeyInput, ClipboardContent, ClipboardFormat,
+    Deadline, DragParams, InteractionLease, KeyCombo, MouseEvent, WindowInfo,
 };
 
 /// `get_clipboard`/`set_clipboard` were removed pre-1.0 in favor of
@@ -13,6 +13,45 @@ pub trait InputOps: Send + Sync {
         _lease: &InteractionLease,
     ) -> Result<(), AdapterError> {
         Err(AdapterError::not_supported("mouse_event"))
+    }
+
+    /// Posts `event` straight to the process that owns `window` without moving
+    /// the system cursor. Leaving the app inactive and keyboard focus where it
+    /// was is best effort, not a guarantee: the returned report carries the
+    /// frontmost application sampled before and after delivery plus the focus
+    /// guard outcome (summarized by `focus_change`) as evidence of whether
+    /// focus moved.
+    ///
+    /// Callers must have re-verified `window` (pid, process instance, and
+    /// exact window id) under `lease` and checked that the point lies inside
+    /// its bounds. Only `Move` and `Click` events are meaningful. The effect
+    /// itself is never verified here.
+    fn background_mouse_event(
+        &self,
+        _window: &WindowInfo,
+        _event: MouseEvent,
+        _lease: &InteractionLease,
+    ) -> Result<BackgroundDeliveryReport, AdapterError> {
+        Err(AdapterError::not_supported("background_mouse_event"))
+    }
+
+    /// Posts `input` as key events to the process that owns `window`, aimed
+    /// at that window, without moving the pointer or requiring a verified
+    /// focused element. Keeping the app inactive and the user's keyboard
+    /// focus in place is best effort, not a guarantee.
+    ///
+    /// Callers must have re-verified `window` (pid, process instance, and
+    /// exact window id) under `lease` and must never route app menu shortcuts
+    /// through this path; the target app alone decides how it handles the
+    /// keys. The report is the same evidence as for background pointer
+    /// delivery; the effect itself is never verified here.
+    fn background_key_input(
+        &self,
+        _window: &WindowInfo,
+        _input: &BackgroundKeyInput,
+        _lease: &InteractionLease,
+    ) -> Result<BackgroundDeliveryReport, AdapterError> {
+        Err(AdapterError::not_supported("background_key_input"))
     }
 
     fn key_event(

@@ -14,6 +14,9 @@ const SKILL_DESKTOP_REF_WORKFLOWS: &str =
 #[cfg(target_os = "macos")]
 const SKILL_DESKTOP_REF_MACOS: &str =
     include_str!("../../../../skills/agent-desktop/references/macos.md");
+#[cfg(target_os = "macos")]
+const SKILL_DESKTOP_REF_BACKGROUND: &str =
+    include_str!("../../../../skills/agent-desktop/references/background-input.md");
 
 const SKILL_FFI_MAIN: &str = include_str!("../../../../skills/agent-desktop-ffi/SKILL.md");
 const SKILL_FFI_REF_BUILD: &str =
@@ -59,6 +62,11 @@ const SKILL_DESKTOP_REFS: &[SkillRef] = &[
     SkillRef {
         rel_path: "references/macos.md",
         body: SKILL_DESKTOP_REF_MACOS,
+    },
+    #[cfg(target_os = "macos")]
+    SkillRef {
+        rel_path: "references/background-input.md",
+        body: SKILL_DESKTOP_REF_BACKGROUND,
     },
 ];
 

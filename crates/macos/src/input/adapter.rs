@@ -1,6 +1,6 @@
 use agent_desktop_core::{
-    AdapterError, ClipboardContent, ClipboardFormat, Deadline, DragParams, InputOps,
-    InteractionLease, KeyCombo, MouseEvent,
+    AdapterError, BackgroundDeliveryReport, BackgroundKeyInput, ClipboardContent, ClipboardFormat,
+    Deadline, DragParams, InputOps, InteractionLease, KeyCombo, MouseEvent, WindowInfo,
 };
 
 use crate::adapter::MacOSAdapter;
@@ -8,6 +8,26 @@ use crate::adapter::MacOSAdapter;
 impl InputOps for MacOSAdapter {
     fn mouse_event(&self, event: MouseEvent, lease: &InteractionLease) -> Result<(), AdapterError> {
         crate::input::mouse::synthesize_mouse(event, lease.deadline())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn background_mouse_event(
+        &self,
+        window: &WindowInfo,
+        event: MouseEvent,
+        lease: &InteractionLease,
+    ) -> Result<BackgroundDeliveryReport, AdapterError> {
+        crate::input::mouse_background::deliver(window, event, lease.deadline())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn background_key_input(
+        &self,
+        window: &WindowInfo,
+        input: &BackgroundKeyInput,
+        lease: &InteractionLease,
+    ) -> Result<BackgroundDeliveryReport, AdapterError> {
+        crate::input::keyboard_background::deliver(window, input, lease.deadline())
     }
 
     fn key_event(

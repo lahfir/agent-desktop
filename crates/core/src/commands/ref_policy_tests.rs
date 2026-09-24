@@ -20,6 +20,7 @@ use std::sync::Mutex;
 /// Adding a new ref-action command requires adding its stem here; the
 /// `all_context_request_callers_are_policy_tested` guard enforces this.
 const POLICY_TESTED_COMMANDS: &[&str] = &[
+    "background_keyboard",
     "check",
     "clear",
     "click",

@@ -322,3 +322,52 @@ fn every_cli_subcommand_is_known_to_batch_parser() {
         }
     }
 }
+
+#[test]
+fn batch_decodes_background_pointer_fields_like_the_cli() {
+    let command = parse_command(item(
+        "mouse-click",
+        serde_json::json!({ "xy": "10,20", "background": true, "window_id": "w-9555" }),
+    ))
+    .expect("background mouse-click parses");
+
+    match command {
+        Commands::MouseClick(args) => {
+            assert!(args.background);
+            assert_eq!(args.window_id.as_deref(), Some("w-9555"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn batch_background_items_share_cli_routing_and_rejections() {
+    let _home = crate::dispatch::test_support::HomeGuard::new();
+    let adapter = crate::dispatch::test_support::BackgroundAdapter::new();
+    let args = BatchArgs {
+        commands_json: serde_json::json!([
+            {"command": "mouse-click", "args": {"xy": "10,20", "background": true, "window_id": "w-9555"}},
+            {"command": "hover", "args": {"xy": "10,20", "background": true}},
+            {"command": "mouse-move", "args": {"xy": "10,20", "window_id": "w-9555"}}
+        ])
+        .to_string(),
+        stop_on_error: false,
+        timeout_ms: 60_000,
+    };
+
+    let value = execute(
+        args,
+        &adapter,
+        &PermissionReport::default(),
+        &agent_desktop_core::CommandContext::default(),
+    )
+    .unwrap();
+    let results = value["results"].as_array().unwrap();
+
+    assert_eq!(results[0]["ok"], true);
+    assert_eq!(results[0]["data"]["clicked"], true);
+    assert_eq!(results[1]["error"]["code"], "INVALID_ARGS");
+    assert_eq!(results[2]["error"]["code"], "INVALID_ARGS");
+    assert_eq!(adapter.background.lock().unwrap().len(), 1);
+    assert_eq!(*adapter.real_mouse_events.lock().unwrap(), 0);
+}

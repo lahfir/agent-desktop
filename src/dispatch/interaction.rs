@@ -17,6 +17,7 @@ use crate::cli_args::{
     RefArgs,
     actions::{ScrollArgs, SelectArgs, SetValueArgs, TypeArgs},
 };
+use crate::dispatch::background_keyboard;
 use crate::dispatch::parse::parse_direction;
 
 pub(super) fn click(
@@ -56,9 +57,19 @@ pub(super) fn type_text(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    if args.background {
+        return background_keyboard::type_text(args, adapter, context);
+    }
+    super::background_pointer::reject_window_id_without_background(args.window_id.as_deref())?;
+    let Some(ref_id) = args.ref_id else {
+        return Err(AppError::invalid_input_with_suggestion(
+            "type requires a ref",
+            "Pass the target element's ref from snapshot, e.g. type @s1:e3 \"text\".",
+        ));
+    };
     type_text_command::execute(
         type_text_command::TypeArgs {
-            ref_id: args.ref_id,
+            ref_id,
             snapshot_id: args.snapshot,
             text: args.text,
             timeout_ms: helpers::normalize_action_timeout_ms(args.timeout_ms),

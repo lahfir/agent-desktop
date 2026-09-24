@@ -63,3 +63,116 @@ impl SystemOps for FailingOverlayAdapter {
         ))
     }
 }
+
+/// Records background pointer and keyboard deliveries and counts real cursor
+/// events so routing tests can prove which path a command took.
+pub(crate) struct BackgroundAdapter {
+    pub(crate) background: Mutex<
+        Vec<(
+            agent_desktop_core::WindowInfo,
+            agent_desktop_core::MouseEvent,
+        )>,
+    >,
+    pub(crate) background_keys: Mutex<
+        Vec<(
+            agent_desktop_core::WindowInfo,
+            agent_desktop_core::BackgroundKeyInput,
+        )>,
+    >,
+    pub(crate) real_mouse_events: Mutex<u32>,
+}
+
+impl BackgroundAdapter {
+    pub(crate) const WINDOW_ID: &'static str = "w-9555";
+
+    pub(crate) fn new() -> Self {
+        Self {
+            background: Mutex::new(Vec::new()),
+            background_keys: Mutex::new(Vec::new()),
+            real_mouse_events: Mutex::new(0),
+        }
+    }
+
+    fn window() -> agent_desktop_core::WindowInfo {
+        agent_desktop_core::WindowInfo {
+            id: Self::WINDOW_ID.into(),
+            title: "Code".into(),
+            app: "Code".into(),
+            pid: agent_desktop_core::ProcessId::new(4242),
+            process_instance: Some("instance".into()),
+            bounds: Some(agent_desktop_core::Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 800.0,
+                height: 600.0,
+            }),
+            state: agent_desktop_core::WindowState::default(),
+        }
+    }
+}
+
+impl ObservationOps for BackgroundAdapter {
+    fn list_windows(
+        &self,
+        _filter: &agent_desktop_core::WindowFilter,
+        _deadline: agent_desktop_core::Deadline,
+    ) -> Result<Vec<agent_desktop_core::WindowInfo>, AdapterError> {
+        Ok(vec![Self::window()])
+    }
+}
+
+impl ActionOps for BackgroundAdapter {}
+
+impl InputOps for BackgroundAdapter {
+    fn mouse_event(
+        &self,
+        _event: agent_desktop_core::MouseEvent,
+        _lease: &agent_desktop_core::InteractionLease,
+    ) -> Result<(), AdapterError> {
+        *self.real_mouse_events.lock().unwrap() += 1;
+        Ok(())
+    }
+
+    fn background_mouse_event(
+        &self,
+        window: &agent_desktop_core::WindowInfo,
+        event: agent_desktop_core::MouseEvent,
+        _lease: &agent_desktop_core::InteractionLease,
+    ) -> Result<agent_desktop_core::BackgroundDeliveryReport, AdapterError> {
+        self.background
+            .lock()
+            .unwrap()
+            .push((window.clone(), event));
+        Ok(agent_desktop_core::BackgroundDeliveryReport::default())
+    }
+
+    fn background_key_input(
+        &self,
+        window: &agent_desktop_core::WindowInfo,
+        input: &agent_desktop_core::BackgroundKeyInput,
+        _lease: &agent_desktop_core::InteractionLease,
+    ) -> Result<agent_desktop_core::BackgroundDeliveryReport, AdapterError> {
+        self.background_keys
+            .lock()
+            .unwrap()
+            .push((window.clone(), input.clone()));
+        Ok(agent_desktop_core::BackgroundDeliveryReport::default())
+    }
+}
+
+impl SystemOps for BackgroundAdapter {
+    fn acquire_interaction_lease(
+        &self,
+        deadline: agent_desktop_core::Deadline,
+    ) -> Result<agent_desktop_core::InteractionLease, AdapterError> {
+        agent_desktop_core::InteractionLease::guarded(deadline, ())
+    }
+
+    fn resolve_window_strict(
+        &self,
+        _window: &agent_desktop_core::WindowInfo,
+        _deadline: agent_desktop_core::Deadline,
+    ) -> Result<agent_desktop_core::WindowInfo, AdapterError> {
+        Ok(Self::window())
+    }
+}

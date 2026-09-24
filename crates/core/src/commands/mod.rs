@@ -1,3 +1,8 @@
+pub(crate) mod background_delivery;
+pub mod background_keyboard;
+pub mod background_pointer;
+#[cfg(test)]
+mod background_wait_test_support;
 pub mod batch;
 pub mod check;
 pub mod clear;
