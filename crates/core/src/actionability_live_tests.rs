@@ -383,5 +383,8 @@ fn live_actionability_rejects_unstable_identity_resolved_bounds_change() {
     assert!(err.message.contains("stable"));
 }
 
+#[path = "actionability_semantic_geometry_tests.rs"]
+mod semantic_geometry_tests;
+
 #[path = "actionability_live_failure_tests.rs"]
 mod failure_tests;

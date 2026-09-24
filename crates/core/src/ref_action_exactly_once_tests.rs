@@ -84,6 +84,7 @@ impl ObservationOps for DispatchGuardAdapter {
         let live_bounds = match self.mode {
             "moving_once" => bounds_at(100.0),
             "moving_continuously" => bounds_at(f64::from(call + 1) * 10.0),
+            "zero_geometry" => zero_bounds(),
             _ => bounds(),
         };
         Ok(LiveElement {
@@ -111,6 +112,7 @@ impl ObservationOps for DispatchGuardAdapter {
         let bounds = match self.mode {
             "moving_once" => bounds_at(100.0),
             "moving_continuously" => bounds_at(f64::from(observed + 1) * 10.0),
+            "zero_geometry" => zero_bounds(),
             _ => bounds(),
         };
         Ok(Some(bounds))
@@ -170,6 +172,15 @@ impl SystemOps for DispatchGuardAdapter {
 
 fn bounds() -> Rect {
     bounds_at(10.0)
+}
+
+fn zero_bounds() -> Rect {
+    Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 0.0,
+        height: 0.0,
+    }
 }
 
 fn bounds_at(x: f64) -> Rect {
@@ -334,4 +345,11 @@ fn expired_preflight_never_scrolls_after_the_deadline() {
     assert_eq!(err.code, ErrorCode::Timeout);
     assert_eq!(adapter.scroll_calls.load(Ordering::SeqCst), 0);
     assert_eq!(adapter.dispatch_calls.load(Ordering::SeqCst), 0);
+}
+#[test]
+fn zero_geometry_semantic_click_dispatches_without_scrolling_into_view() {
+    let adapter = DispatchGuardAdapter::new("zero_geometry", 0);
+    execute(&adapter, 500).unwrap();
+    assert_eq!(adapter.scroll_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(adapter.dispatch_calls.load(Ordering::SeqCst), 1);
 }

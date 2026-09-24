@@ -55,6 +55,32 @@ impl ActionabilityRequirements {
         }
     }
 
+    /// Whether visibility must be proven from pointer bounds. Strictly headless
+    /// semantic delivery (AXPress/AXShowMenu, or an advertised editable-text
+    /// capability) does not use a pointer, so closed-menu items and editors
+    /// without usable bounds stay actionable. Explicit hidden/offscreen state
+    /// still gates them; headed, focus-fallback, and physical paths keep the
+    /// geometry requirement.
+    pub(crate) fn requires_geometry(
+        &self,
+        request: &crate::ActionRequest,
+        available_actions: &[String],
+    ) -> bool {
+        if request.policy != crate::InteractionPolicy::headless() {
+            return true;
+        }
+        let direct_pointer = crate::capability::supports_direct_semantic_pointer_delivery(
+            &request.action,
+            available_actions,
+        );
+        let direct_text = self.editable
+            && crate::capability::contains_any(
+                available_actions,
+                crate::capability::for_action(&request.action),
+            );
+        !(direct_pointer || direct_text)
+    }
+
     pub(crate) fn requires_stability(&self, pointer_delivery: PointerDelivery) -> bool {
         self.stable && !matches!(pointer_delivery, PointerDelivery::Semantic)
     }
