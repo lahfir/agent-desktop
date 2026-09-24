@@ -1,4 +1,5 @@
 use super::*;
+use agent_desktop_core::Modifier;
 
 #[test]
 fn process_preflight_failure_reports_no_key_delivery() {
@@ -25,12 +26,6 @@ fn key_dispatch_rejects_non_unique_display_names() {
     assert_eq!(error.code, ErrorCode::AmbiguousTarget);
 }
 
-#[test]
-fn menu_shortcut_requires_one_character() {
-    assert_eq!(single_uppercase_character("a").as_deref(), Some("A"));
-    assert!(single_uppercase_character("enter").is_none());
-}
-
 fn combo(modifiers: Vec<Modifier>) -> KeyCombo {
     KeyCombo {
         key: "a".into(),
@@ -38,28 +33,56 @@ fn combo(modifiers: Vec<Modifier>) -> KeyCombo {
     }
 }
 
+fn key(name: &str, modifiers: Vec<Modifier>) -> KeyCombo {
+    KeyCombo {
+        key: name.into(),
+        modifiers,
+    }
+}
+
 #[test]
-fn menu_modifier_encoding_distinguishes_command_from_no_command() {
+fn printable_keys_are_never_translated_into_ax_actions() {
+    for name in ["space", "a", "1", "tab", "delete"] {
+        assert_eq!(simple_key_action(&key(name, Vec::new())), None, "{name}");
+    }
+}
+
+#[test]
+fn return_and_escape_map_to_default_and_cancel_actions() {
     assert_eq!(
-        combo_to_ax_modifiers(&combo(vec![Modifier::Meta, Modifier::Alt])),
-        AX_MENU_MODIFIER_OPTION
+        simple_key_action(&key("return", Vec::new())),
+        Some("AXConfirm")
     );
     assert_eq!(
-        combo_to_ax_modifiers(&combo(vec![Modifier::Alt])),
-        AX_MENU_MODIFIER_OPTION | AX_MENU_MODIFIER_NO_COMMAND
+        simple_key_action(&key("enter", Vec::new())),
+        Some("AXConfirm")
     );
-    assert_ne!(
-        combo_to_ax_modifiers(&combo(vec![Modifier::Meta, Modifier::Alt])),
-        combo_to_ax_modifiers(&combo(vec![Modifier::Alt]))
+    assert_eq!(
+        simple_key_action(&key("escape", Vec::new())),
+        Some("AXCancel")
+    );
+    assert_eq!(
+        simple_key_action(&key("return", vec![Modifier::Meta])),
+        None
     );
 }
 
 #[test]
-fn malformed_menu_modifier_values_are_not_command_shortcuts() {
-    assert!(normalize_menu_modifiers(-1).is_err());
-    assert!(normalize_menu_modifiers(1 << 8).is_err());
-    assert_eq!(
-        normalize_menu_modifiers(AX_MENU_MODIFIER_NO_COMMAND as i64).unwrap(),
-        AX_MENU_MODIFIER_NO_COMMAND
-    );
+fn headless_press_never_performs_menu_shortcuts() {
+    let headless = agent_desktop_core::InteractionPolicy::headless();
+    assert!(!uses_menu_shortcut(
+        &key("n", vec![Modifier::Meta]),
+        headless
+    ));
+    assert!(!uses_menu_shortcut(
+        &key("n", vec![Modifier::Meta, Modifier::Shift]),
+        headless
+    ));
+}
+
+#[test]
+fn focus_authorized_press_keeps_menu_shortcuts_for_modified_keys() {
+    let headed = agent_desktop_core::InteractionPolicy::headed();
+    assert!(uses_menu_shortcut(&key("n", vec![Modifier::Meta]), headed));
+    assert!(!uses_menu_shortcut(&key("n", Vec::new()), headed));
 }

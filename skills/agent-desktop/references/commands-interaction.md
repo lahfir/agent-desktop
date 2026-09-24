@@ -247,7 +247,9 @@ agent-desktop press cmd+a --app "TextEdit"
 
 | Flag | Description |
 |------|-------------|
-| `--app` | Target application; key delivery is PID-targeted, and `--headed` additionally focuses its exact window first |
+| `--app` | Target application; key delivery is PID-targeted without focusing the app, and `--headed` additionally focuses its exact window first |
+
+With `--app`, `press` sends the keystroke to the app's process; only `return` and `escape` use the focused element's advertised `AXConfirm` or `AXCancel` instead. Printable keys, including `space`, always arrive as keystrokes, and delivery requires the app to report a focused element. Under `--headed`, a modified combo that matches a menu item's shortcut performs that item with `AXPress`. Headless `press` never performs menu items: an inactive app runs a menu action without a focused window, and some apps, such as VS Code, open and activate a new window in response. To run a menu command without keyboard delivery, find it with `--surface menubar` and `click` its ref. `data.steps` reports which route delivered the key: `CGEventPostToPid`, `AXConfirm`, `AXCancel`, or `AXPress menu item`.
 
 `press` reports `delivered_unverified`: delivery does not prove the shortcut produced the intended UI. Use the global CLI selector flags to wait for an expected accessible element in the requested app after sending the key once:
 
