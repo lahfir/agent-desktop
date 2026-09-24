@@ -141,7 +141,10 @@ pub(crate) struct PressArgs {
         help = "Key combo: return, escape, cmd+c, shift+tab ..."
     )]
     pub combo: String,
-    #[arg(long, help = "Target application name (focuses app before pressing)")]
+    #[arg(
+        long,
+        help = "Target application name; keys go to its process without focusing it (--headed focuses its window first)"
+    )]
     pub app: Option<String>,
     #[arg(
         long,
