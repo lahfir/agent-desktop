@@ -218,10 +218,15 @@ fn test_serialize_with_size_check_rejects_oversized() {
     }
 
     let err = map.serialize_with_size_check().unwrap_err();
-    assert_eq!(err.code(), "INVALID_ARGS");
+    assert_eq!(err.code(), "INTERNAL");
     assert!(err.to_string().contains("1MB"), "got: {err}");
     let suggestion = err.suggestion().unwrap_or_default();
     assert!(suggestion.contains("--skeleton") && suggestion.contains("find"));
+
+    let payload = crate::output::ErrorPayload::from_app_error(&err);
+    assert_eq!(payload.code, "INTERNAL");
+    assert!(payload.recovery.is_none());
+    assert_eq!(payload.disposition, crate::DeliverySemantics::unknown());
 }
 
 #[test]
