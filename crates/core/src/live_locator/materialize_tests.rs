@@ -119,6 +119,41 @@ fn full_refmap_uses_same_arena_evidence_and_document_order() {
 }
 
 #[test]
+fn web_node_with_only_ubiquitous_affordances_matches_without_a_ref() {
+    let mut row = evidence("group", Some("Task row"));
+    row.ref_evidence.available_actions = LocatorField::Known(vec![
+        capability::RIGHT_CLICK.into(),
+        capability::SCROLL_TO.into(),
+    ]);
+    let query = LocatorQuery {
+        identity: IdentityPredicate {
+            name: Some("Task row".into()),
+            ..IdentityPredicate::default()
+        },
+        ..LocatorQuery::default()
+    };
+
+    let resolution = evaluate_locator_tree(
+        tree(
+            vec![
+                node(0, evidence("window", Some("Fixture")), vec![1], &[]),
+                node(1, row, vec![], &[0]),
+            ],
+            vec![0],
+            true,
+        ),
+        &query,
+        &request(),
+    )
+    .unwrap();
+
+    assert!(resolution.meta.complete);
+    assert_eq!(resolution.refmap.as_ref().map_or(0, |map| map.len()), 0);
+    assert!(resolution.matches[0].data.ref_id.is_none());
+    assert!(!resolution.matches[0].data.interactive);
+}
+
+#[test]
 fn selected_identifier_prefers_typed_preferred_duplicate() {
     let mut button = evidence("button", Some("Checkout"));
     button.identifiers = IdentifierEvidence::typed(

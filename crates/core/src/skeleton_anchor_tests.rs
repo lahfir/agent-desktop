@@ -40,6 +40,24 @@ fn native_id_ancestor_covers_unnamed_boundaries() {
 }
 
 #[test]
+fn web_boundary_with_only_ubiquitous_affordances_gets_anchor_ref() {
+    let mut boundary = node("group");
+    boundary.identity.name = Some("Task list".into());
+    boundary.presentation.available_actions = vec!["RightClick".into(), "ScrollTo".into()];
+    boundary.children_count = Some(40);
+    let mut root = node("window");
+    root.children = vec![boundary];
+
+    let mut refmap = RefMap::new();
+    let result = ref_alloc::allocate_refs(root, &mut refmap, &run_config(false, false)).unwrap();
+
+    let boundary = &result.children[0];
+    let entry = refmap.get(boundary.ref_id.as_deref().unwrap()).unwrap();
+    assert!(entry.capabilities.available_actions.is_empty());
+    assert_eq!(refmap.len(), 1);
+}
+
+#[test]
 fn unlabeled_bounded_boundary_gets_drill_ref() {
     let mut boundary = node("group");
     boundary.children_count = Some(5);

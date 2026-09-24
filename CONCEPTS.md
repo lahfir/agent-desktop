@@ -34,6 +34,8 @@ Completeness is reported on the observation as a whole and on each node whose de
 ### Ref
 A short element identifier assigned by agent-desktop to an actionable or drillable node in a snapshot.
 
+A node is actionable when its role is interactive or it advertises a primary action. Focus, context-menu, and scroll-into-view affordances do not count on their own, because web runtimes advertise them on nearly every node.
+
 Refs are deterministic inside one snapshot but are not stable across UI changes. Snapshot and find output qualify each ref with its snapshot ID. Legacy bare refs require the producing snapshot ID as a separate argument.
 
 ### RefMap
