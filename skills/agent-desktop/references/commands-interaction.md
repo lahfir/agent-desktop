@@ -88,7 +88,7 @@ The command surface is platform-agnostic: every ref action builds an `Action` an
 | Command | Headless path (macOS) | Notes |
 |---------|---------------|-------|
 | `click`, `set-value`, `check`, `select`, `scroll`, `expand`, … | yes | semantic AX actions in strict headless mode |
-| `type` | yes | uses `AXSelectedText` headlessly; `--headed` synthesizes keyboard input |
+| `type` | yes | uses `AXSelectedText` headlessly, then one composed `AXValue` write when the insertion was ignored; `--headed` synthesizes keyboard input |
 | `double-click` | no | a real two-click gesture; requires `--headed` |
 | `triple-click` | no | macOS exposes no triple-click action; it is purely 3 physical clicks → `--headed` only |
 | `hover` | no | hovering *is* moving the cursor over an element; no AX equivalent |
@@ -144,6 +144,8 @@ agent-desktop type @s8f3k2p9:e2 "hello@example.com"
 agent-desktop type @s8f3k2p9:e2 "multi line\ntext"
 ```
 Headless `type` uses `AXSelectedText` without focusing the app or synthesizing keys. Pass `--headed` to focus the target and synthesize keyboard input. Use `set-value` when direct semantic value assignment is the intended interaction.
+
+Some editors, notably Chromium and Electron inputs, accept the `AXSelectedText` write but ignore it. When the readable value is unchanged and the insertion point is known, headless `type` writes the composed value (text inserted at the selection) through `AXValue` once, and the result lists both steps. Secure fields never take this path, including text fields with an `AXSecureTextField` subrole and fields whose subrole cannot be read. If the value still does not show the text, `type` returns `ACTION_FAILED` with `delivered_unverified` delivery; inspect `post_state`, then use `set-value` with the full intended value or `type --headed` keyboard delivery for editors such as Monaco that ignore accessibility text writes.
 
 When the value and selection are readable, insertion checks the resulting value. A mismatch or unavailable readback returns `ACTION_FAILED`; inspect the current state and delivery disposition before writing again. Secure-field redaction is the explicit exception described above: a delivered write remains unverified rather than failing solely because its value is hidden.
 

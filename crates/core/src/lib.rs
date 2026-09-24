@@ -238,7 +238,7 @@ pub use output::{ErrorPayload, Response};
 pub use permission_report::PermissionReport;
 pub use permission_state::PermissionState;
 pub use point::Point;
-pub use post_action::execute_verified_action;
+pub use post_action::{execute_verified_action, expected_insertion};
 pub use process_id::ProcessId;
 pub use process_identity::ProcessIdentity;
 pub use recovery_hint::RecoveryHint;

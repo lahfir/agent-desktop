@@ -60,6 +60,7 @@ Core resolves and validates a ref, applies its headed focus/cursor requirement, 
 - Return codes do not decide delivery. Finder answers `kAXErrorAttributeUnsupported` from an `AXOpen` that navigates and `kAXErrorSuccess` from an `AXConfirm` that does nothing, so a performed action is judged by observing the application.
 - Headed `right-click` uses physical right-click first; headless uses the bounded `AXShowMenu` family.
 - Headed `type`, `clear`, and `scroll` use PID-targeted keyboard, keyboard clear, and wheel delivery respectively; their headless paths use AX semantics.
+- Headless `type` writes `AXSelectedText`. When a readable value stays unchanged on a field that is neither `AXSecureTextField` by role nor by subrole (an unreadable subrole counts as secure) and `AXSelectedTextRange` is readable (or the field is empty), it writes the composed value to settable `AXValue` once. Chromium/Electron inputs ignore `AXSelectedText` but honour `AXValue`. The `AXValue` write is absolute, so a late-landing insertion cannot duplicate text. Monaco's hidden textarea may still ignore both, and Numbers cell editors are known to ignore both.
 - `expand` and `collapse` use a verified semantic disclosure mutation in both modes.
 - `set-value`, `select`, toggle/check/uncheck, focus, and `scroll-to` are semantic-only.
 - Double/triple-click, hover, and drag are physical gestures and require headed mode.

@@ -96,10 +96,7 @@ pub fn execute_verified_action(
         return Err(verification_error(
             &result,
             Some(&observed),
-            AdapterError::new(
-                ErrorCode::ActionFailed,
-                "Post-action state does not match the requested change",
-            ),
+            mismatch_error(&action),
         ));
     }
     result.post_state = Some(observed.state);
@@ -114,6 +111,19 @@ pub fn execute_verified_action(
     }
     Ok(result)
 }
+
+fn mismatch_error(action: &Action) -> AdapterError {
+    let error = AdapterError::new(
+        ErrorCode::ActionFailed,
+        "Post-action state does not match the requested change",
+    );
+    if matches!(action, Action::TypeText(_)) {
+        return error.with_suggestion(TYPE_MISMATCH_SUGGESTION);
+    }
+    error
+}
+
+const TYPE_MISMATCH_SUGGESTION: &str = "The field did not show the typed text, but the write was accepted, so do not retry blindly: inspect post_state first. Then use 'set-value' with the complete intended value, or keyboard delivery with 'type --headed' for editors such as Monaco that ignore accessibility text writes.";
 
 fn secure_value_is_redacted(action: &Action, observed: &LiveElement) -> bool {
     action.writes_element_value()
@@ -164,7 +174,10 @@ fn checked(element: &LiveElement) -> Option<bool> {
     ))
 }
 
-fn expected_insertion(
+/// Returns `before` with `text` replacing the UTF-16 `selection`. An empty
+/// value with no selection inserts at the start. Returns `None` when the
+/// range is unknown, out of bounds, or splits a surrogate pair.
+pub fn expected_insertion(
     before: &str,
     text: &str,
     selection: Option<std::ops::Range<usize>>,

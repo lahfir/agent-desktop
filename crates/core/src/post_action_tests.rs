@@ -343,3 +343,14 @@ mod focus_tests;
 
 #[path = "post_action_budget_tests.rs"]
 mod budget_tests;
+
+#[test]
+fn unobserved_text_insertion_names_value_and_keyboard_alternatives() {
+    let adapter = adapter(element(Some(""), &[]), element(Some(""), &[]));
+    let error = execute(&adapter, Action::TypeText("new".into())).unwrap_err();
+    assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
+    let suggestion = error.suggestion.unwrap();
+    assert!(suggestion.contains("set-value"), "{suggestion}");
+    assert!(suggestion.contains("type --headed"), "{suggestion}");
+    assert!(!suggestion.contains("--background"), "{suggestion}");
+}

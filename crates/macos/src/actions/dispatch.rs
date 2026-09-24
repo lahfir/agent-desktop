@@ -83,7 +83,7 @@ mod imp {
             }
 
             Action::TypeText(text) => {
-                steps.push(crate::actions::type_text::execute_type(
+                steps.extend(crate::actions::type_text::execute_type(
                     el,
                     text.as_str(),
                     request.policy,
