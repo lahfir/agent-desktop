@@ -60,8 +60,11 @@ Primary sources:
 - Check the enhanced mode even when web content is already readable. Do not
   treat a false `AXManualAccessibility` readback as disabled: Electron's getter
   compares for exactly the complete mode while its setter adds platform and
-  screen-reader flags, so an applied write can still read back false. v0.9.4
-  failed every Electron snapshot this way.
+  screen-reader flags, so an applied write can still read back false. In
+  v0.9.4, a readable manual-accessibility renderer (reproduced with VS Code and
+  ClickUp on macOS 26) was activated because the manual flag read back false,
+  and the activation was then rejected because the post-write readback was
+  still false.
 - Read the flag back after a write. A matching value can establish activation
   despite the setter's unsupported response; contradictory readback cannot.
 - Wait out Chromium's two-second enhanced-mode debounce within the existing
