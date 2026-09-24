@@ -321,7 +321,7 @@ fn run_travel_helper(
         button: MouseButton::Left,
         modifiers: Vec::new(),
     };
-    let result = dispatch_mouse_event_with_cursor(&adapter, &context, event, true, &lease);
+    let result = dispatch_mouse_event_with_cursor(&adapter, &context, event, None, &lease);
     let phases = adapter
         .presented
         .lock()

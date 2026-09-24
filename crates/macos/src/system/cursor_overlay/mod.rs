@@ -1,6 +1,7 @@
 mod bridge;
 mod child;
 mod endpoint;
+mod pose;
 mod spawn;
 
 pub(crate) use child::entry_from_env;

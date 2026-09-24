@@ -76,7 +76,7 @@ fn ordinary_session_routes_agent_actions_to_the_default_socket() {
         &adapter,
         &context(false, "agent-a"),
         click_event(),
-        true,
+        None,
         &lease(),
     )
     .expect("dispatch succeeds");
@@ -100,7 +100,7 @@ fn multi_agent_session_routes_agent_actions_to_the_per_agent_socket() {
         &adapter,
         &context(true, "agent-a"),
         click_event(),
-        true,
+        None,
         &lease(),
     )
     .expect("dispatch succeeds");

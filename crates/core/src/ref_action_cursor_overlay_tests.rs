@@ -10,6 +10,7 @@ struct CursorAdapter {
     events: Mutex<Vec<CursorEvent>>,
     value: Mutex<Option<String>>,
     fail_presentation: bool,
+    window: Result<Option<String>, AdapterError>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -26,11 +27,21 @@ impl CursorAdapter {
             events: Mutex::new(Vec::new()),
             value: Mutex::new(None),
             fail_presentation,
+            window: Ok(Some("w-79".into())),
         }
     }
 }
 
 impl ObservationOps for CursorAdapter {
+    fn get_presentation_window_id(
+        &self,
+        _handle: &NativeHandle,
+        deadline: crate::Deadline,
+    ) -> Result<Option<String>, AdapterError> {
+        assert!(!deadline.is_expired());
+        self.window.clone()
+    }
+
     fn resolve_element_strict(
         &self,
         _entry: &RefEntry,
@@ -95,7 +106,7 @@ impl SystemOps for CursorAdapter {
     }
 }
 
-fn entry() -> RefEntry {
+pub(super) fn entry() -> RefEntry {
     let bounds = crate::Rect {
         x: 1.0,
         y: 1.0,
@@ -162,6 +173,10 @@ fn enabled_cursor_moves_before_dispatch_then_clicks_after_it() {
     let travel = presented[0].instruction().expect("travel instruction");
     let click = presented[1].instruction().expect("click instruction");
 
+    for instruction in [travel, click] {
+        let encoded = serde_json::to_value(instruction).unwrap();
+        assert_eq!(encoded["window"], serde_json::json!([1, "w-79"]));
+    }
     assert_eq!(travel.destination(), &center);
     assert!(
         !travel.is_click(),
@@ -197,6 +212,56 @@ fn short_action_budget_skips_optional_travel_before_dispatch() {
         *adapter.events.lock().unwrap(),
         [CursorEvent::Dispatch, CursorEvent::Effect]
     );
+}
+
+#[test]
+fn missing_live_window_skips_target_cues_without_blocking_delivery() {
+    let mut adapter = CursorAdapter::new(false);
+    adapter.window = Ok(None);
+    let entry = entry();
+    execute_entry_with_context(
+        &adapter,
+        &entry,
+        ActionRequest::headless(Action::Click),
+        &enabled_context(),
+    )
+    .expect("semantic delivery does not require overlay identity");
+    assert_eq!(*adapter.events.lock().unwrap(), [CursorEvent::Dispatch]);
+    assert!(adapter.presented.lock().unwrap().is_empty());
+}
+
+#[test]
+fn bridge_failure_skips_target_cues_without_changing_delivery() {
+    let mut adapter = CursorAdapter::new(false);
+    adapter.window = Err(AdapterError::timeout("bridge failed"));
+    let result = execute_entry_with_context(
+        &adapter,
+        &entry(),
+        ActionRequest::headless(Action::Click),
+        &enabled_context(),
+    )
+    .expect("bridge failure is presentation-only");
+    assert_eq!(
+        result.disposition(),
+        crate::DeliverySemantics::DeliveredUnverified
+    );
+    assert_eq!(*adapter.events.lock().unwrap(), [CursorEvent::Dispatch]);
+    assert!(adapter.presented.lock().unwrap().is_empty());
+}
+
+#[test]
+fn exact_live_window_does_not_require_source_window() {
+    let adapter = CursorAdapter::new(false);
+    let mut entry = entry();
+    entry.source.source_window_id = None;
+    execute_entry_with_context(
+        &adapter,
+        &entry,
+        ActionRequest::headless(Action::Click),
+        &enabled_context(),
+    )
+    .expect("exact live identity suffices");
+    assert_eq!(adapter.presented.lock().unwrap().len(), 2);
 }
 
 #[test]
@@ -245,6 +310,7 @@ fn physical_effect_uses_verified_input_point_and_requires_delivery() {
         presentation_point: Some(crate::Point { x: 11.0, y: 11.0 }),
         presentation_bounds: entry().geometry.bounds,
         pointer_delivery: actionability::PointerDelivery::Physical,
+        presentation_window: Some((crate::ProcessId::new(1), "w-42".into())),
     };
     presentation::after_dispatch(
         &adapter,

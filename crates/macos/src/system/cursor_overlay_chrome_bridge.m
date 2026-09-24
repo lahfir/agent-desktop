@@ -1,4 +1,5 @@
 #import "cursor_overlay_chrome.h"
+#import "cursor_overlay_glow.h"
 
 const CGFloat ADRippleSize = 108.0;
 static const NSWindowLevel ADEffectLevel = 24;
@@ -19,6 +20,54 @@ static CGMutablePathRef ADTrailPath = NULL;
 static NSRect ADTrailDesktop = {{0.0, 0.0}, {0.0, 0.0}};
 static NSPoint ADTrailLast = {0.0, 0.0};
 static NSUInteger ADTrailPointCount = 0;
+
+static CAShapeLayer *ADDartLayer(void) {
+    static const CGPoint dart[] = {
+        {1.0, 35.0}, {29.6, 17.5}, {12.7, 16.3}, {4.2, 1.6},
+    };
+    CAShapeLayer *layer = [CAShapeLayer layer];
+    CGMutablePathRef path = CGPathCreateMutable();
+    CGPathMoveToPoint(path, NULL, dart[0].x, dart[0].y);
+    for (size_t index = 1; index < sizeof(dart) / sizeof(dart[0]); index += 1) {
+        CGPathAddLineToPoint(path, NULL, dart[index].x, dart[index].y);
+    }
+    CGPathCloseSubpath(path);
+    layer.path = path;
+    CGPathRelease(path);
+    layer.lineWidth = 3.0;
+    layer.lineJoin = kCALineJoinRound;
+    layer.shadowColor = NSColor.blackColor.CGColor;
+    layer.shadowOpacity = 0.32;
+    layer.shadowRadius = 5.0;
+    layer.shadowOffset = CGSizeMake(2.5, -3.0);
+    ADFreezeLayer(layer);
+    return layer;
+}
+
+CALayer *ADPointerLayer(void) {
+    CALayer *pointer = [CALayer layer];
+    pointer.bounds = CGRectMake(0.0, 0.0, 32.0, 40.0);
+    pointer.anchorPoint = CGPointMake(1.0 / 32.0, 35.0 / 40.0);
+    pointer.position = CGPointMake(88.0, 172.0);
+    ADFreezeLayer(pointer);
+    CAShapeLayer *rim = ADDartLayer();
+    rim.lineWidth = 6.5;
+    rim.shadowOpacity = 0.34;
+    [pointer addSublayer:rim];
+    [pointer addSublayer:ADDartLayer()];
+    return pointer;
+}
+
+void ADTintPointer(CALayer *pointer) {
+    const AgentDesktopCursorStyle *style = ADStyle();
+    CAShapeLayer *rim = (CAShapeLayer *)pointer.sublayers.firstObject;
+    CAShapeLayer *dart = (CAShapeLayer *)pointer.sublayers.lastObject;
+    rim.fillColor = ADColor(style->rim, 1.0);
+    rim.strokeColor = ADColor(style->rim, 1.0);
+    dart.fillColor = ADColor(style->fill, 1.0);
+    dart.strokeColor = ADColor(style->fill, 1.0);
+    pointer.transform = CATransform3DMakeScale(style->size, style->size, 1.0);
+}
 
 static void ADTrailRender(void) {
     CGRect bounds = CGPathGetBoundingBox(ADTrailPath);
@@ -98,6 +147,17 @@ NSWindow *ADWindow(NSRect frame) {
     window.contentView = view;
     ADFreezeLayer(view.layer);
     return window;
+}
+
+/// Sets the pointer, label, and target outline opacity without ordering any
+/// of them, so a cue that target-visibility gating has hidden stays hidden. The
+/// renderer resets them to 1.0 before every presentation and after clearing a
+/// pose.
+void ADSetOpacity(NSWindow *pointer, NSWindow *bubble, double alpha) {
+    CGFloat clamped = (CGFloat)fmin(fmax(alpha, 0.0), 1.0);
+    pointer.alphaValue = clamped;
+    bubble.alphaValue = clamped;
+    ADGlowSetOpacity(clamped);
 }
 
 void ADPump(NSApplication *app) {

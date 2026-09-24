@@ -474,7 +474,7 @@ Style is stored in the session manifest and inherited by every eligible headless
 | `--max-words N` | Label word limit, 1 to 12 | 6 |
 | `--fill HEX` | Cursor body colour | `#FFFFFF` |
 | `--rim HEX` | Cursor outline colour | `#111318` |
-| `--accent HEX` | Ripple and element outline colour | `#4299FF` |
+| `--accent HEX` | Ripple, element outline, and target window outline colour | `#4299FF` |
 | `--size N` | Cursor size multiplier, 0.5 to 4.0 | 1.0 |
 | `--no-ripple` | No ripple on click | ripple on |
 | `--no-highlight` | No element outline on click | outline on |
@@ -486,9 +486,11 @@ Behaviour:
 - A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
 - The card shows the label. With no label there is no card.
 - Drags show a live accent-colored path while held and fade after release, controlled by the ripple setting and suppressed under Reduce Motion.
-- Idle for 6 s it fades out; the next command restores it.
+- It stays fully visible for 5 s after the last action it presented, then fades out over about 1 s. The next action shows it again.
+- A cursor presented for a ref belongs to that ref's window: it hides while the window is hidden, minimized, or covered at the cursor's point and returns if the window comes back before the fade completes, at whatever opacity the fade has reached. After the fade it stays hidden until the next action, and visibility changes never extend the 5 s or the fade. Coordinate-only pointer commands and drags between two windows show an unbound cursor that is always drawn.
+- While it is shown, a thin accent outline traces the inside edge of the target window and fades with it. The outline is omitted whenever another window overlaps the target or it cannot be ordered directly above the target.
 - `disable` removes it and stops the renderer. Ending the session is not needed.
-- Headed actions retain it while the real pointer is in use.
+- Headed actions retain it while the real pointer is in use. Other cursors of the session hide during a headed action and return afterwards unless their fade has completed.
 - macOS renders it natively; other platforms use the adapter's presentation no-op.
 
 ### Shared-session subagent cursors (macOS)

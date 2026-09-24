@@ -1,15 +1,16 @@
 #import "cursor_overlay_chrome.h"
+#import "cursor_overlay_display.h"
+#import "cursor_overlay_glow.h"
+#import "cursor_overlay_lifecycle.h"
 #import <CoreGraphics/CoreGraphics.h>
 #import <stdbool.h>
 #import <stddef.h>
 #import <stdint.h>
-
 typedef struct {
     double x;
     double y;
     double ripple;
 } AgentDesktopCursorFrame;
-
 typedef struct {
     double frameSeconds;
     const char *label;
@@ -19,12 +20,10 @@ typedef struct {
     double highlightSeconds;
     uint8_t flags;
 } AgentDesktopCursorRenderConfig;
-
 static const uint8_t ADReduceMotion = 1 << 2;
 static const uint8_t ADHighlightCue = 1 << 3;
+static const uint8_t ADLayoutDeferred = 1 << 4;
 static const CGFloat ADStage = 240.0;
-static const CGFloat ADBoxWidth = 32.0;
-static const CGFloat ADBoxHeight = 40.0;
 static const CGFloat ADTipX = 88.0;
 static const CGFloat ADTipY = 172.0;
 static const CGFloat ADBubbleWidth = 232.0;
@@ -42,13 +41,33 @@ static bool ADDragTrail = false;
 static CGPoint ADDragLast = {0.0, 0.0};
 static CFTimeInterval ADDragArmDeadline = 0.0;
 static CFTimeInterval ADDragDeadline = 0.0;
+static ADPersistentCursorPose ADPersistentPose = {0};
 
-static void ADMoveCursor(const AgentDesktopCursorFrame *frame, double mainHeight);
+static void ADMoveCursor(const AgentDesktopCursorFrame *frame, double mainHeight) {
+    [ADCursorWindow setFrameOrigin:NSMakePoint(frame->x - ADTipX, mainHeight - frame->y - ADTipY)];
+}
 
 static void ADDragCancel(void) {
     ADDragArmed = false;
     ADDragStarted = false;
     ADTrailStop();
+}
+
+static void ADSuppress(void) {
+    ADDragCancel();
+    [ADCursorWindow orderOut:nil];
+    [ADBubbleWindow orderOut:nil];
+    [ADRipple orderOut:nil];
+    ADGlowHide();
+    ADHighlightStop();
+}
+
+static bool ADEnsureTargetVisible(void) {
+    if (agent_desktop_cursor_overlay_target_visible()) {
+        return true;
+    }
+    ADSuppress();
+    return false;
 }
 
 static void ADDragPoll(void) {
@@ -95,62 +114,17 @@ static void ADDragPoll(void) {
     }
     AgentDesktopCursorFrame frame = {.x = point.x, .y = point.y, .ripple = 0.0};
     ADMoveCursor(&frame, mainHeight);
+    double target[2];
+    if (agent_desktop_cursor_overlay_target_point(target)) {
+        ADPersistentCursorPoseMove(&ADPersistentPose,
+                                   point,
+                                   ADBubbleWindow.frame.origin,
+                                   CGPointMake(target[0], target[1]));
+    }
     if (ADDragTrail) {
         ADTrailAppend(NSMakePoint(point.x, mainHeight - point.y));
     }
     ADDragLast = point;
-}
-
-static CAShapeLayer *ADDartLayer(void) {
-    static const CGPoint dart[] = {
-        {1.0, 35.0}, {29.6, 17.5}, {12.7, 16.3}, {4.2, 1.6},
-    };
-    CAShapeLayer *layer = [CAShapeLayer layer];
-    CGMutablePathRef path = CGPathCreateMutable();
-    CGPathMoveToPoint(path, NULL, dart[0].x, dart[0].y);
-    for (size_t index = 1; index < sizeof(dart) / sizeof(dart[0]); index += 1) {
-        CGPathAddLineToPoint(path, NULL, dart[index].x, dart[index].y);
-    }
-    CGPathCloseSubpath(path);
-    layer.path = path;
-    CGPathRelease(path);
-    layer.lineWidth = 3.0;
-    layer.lineJoin = kCALineJoinRound;
-    layer.shadowColor = NSColor.blackColor.CGColor;
-    layer.shadowOpacity = 0.32;
-    layer.shadowRadius = 5.0;
-    layer.shadowOffset = CGSizeMake(2.5, -3.0);
-    ADFreezeLayer(layer);
-    return layer;
-}
-
-static void ADTintPointer(void) {
-    const AgentDesktopCursorStyle *style = ADStyle();
-    CAShapeLayer *rim = (CAShapeLayer *)ADPointer.sublayers.firstObject;
-    CAShapeLayer *dart = (CAShapeLayer *)ADPointer.sublayers.lastObject;
-    rim.fillColor = ADColor(style->rim, 1.0);
-    rim.strokeColor = ADColor(style->rim, 1.0);
-    dart.fillColor = ADColor(style->fill, 1.0);
-    dart.strokeColor = ADColor(style->fill, 1.0);
-    ADPointer.transform = CATransform3DMakeScale(style->size, style->size, 1.0);
-}
-
-static CALayer *ADPointerLayer(void) {
-    CALayer *pointer = [CALayer layer];
-    pointer.bounds = CGRectMake(0.0, 0.0, ADBoxWidth, ADBoxHeight);
-    pointer.anchorPoint = CGPointMake(1.0 / ADBoxWidth, 35.0 / ADBoxHeight);
-    pointer.position = CGPointMake(ADTipX, ADTipY);
-    ADFreezeLayer(pointer);
-    CAShapeLayer *rim = ADDartLayer();
-    rim.lineWidth = 6.5;
-    rim.shadowOpacity = 0.34;
-    [pointer addSublayer:rim];
-    [pointer addSublayer:ADDartLayer()];
-    return pointer;
-}
-
-static void ADMoveCursor(const AgentDesktopCursorFrame *frame, double mainHeight) {
-    [ADCursorWindow setFrameOrigin:NSMakePoint(frame->x - ADTipX, mainHeight - frame->y - ADTipY)];
 }
 
 static NSWindow *ADBubble(void) {
@@ -168,20 +142,72 @@ static NSWindow *ADBubble(void) {
     return window;
 }
 
+static void ADRefreshPersistent(void) {
+    bool visible = agent_desktop_cursor_overlay_target_visible();
+    ADPersistentCursorPresentation presentation =
+        ADPersistentCursorPosePresentation(&ADPersistentPose, visible);
+    if (presentation == ADPersistentCursorPresentationNone) {
+        ADSuppress();
+        return;
+    }
+    double target[2];
+    if (!agent_desktop_cursor_overlay_target_point(target)) {
+        ADSuppress();
+        return;
+    }
+    double dx = target[0] - ADPersistentPose.target.x;
+    double dy = target[1] - ADPersistentPose.target.y;
+    double mainHeight = CGDisplayBounds(CGMainDisplayID()).size.height;
+    AgentDesktopCursorFrame frame = {
+        .x = ADPersistentPose.pointer.x + dx,
+        .y = ADPersistentPose.pointer.y + dy,
+        .ripple = 0.0,
+    };
+    ADMoveCursor(&frame, mainHeight);
+    double bubble[2];
+    if ((presentation & ADPersistentCursorPresentationLabel) != 0
+        && !agent_desktop_cursor_overlay_label_position(frame.x, frame.y,
+                                                        ADBubbleWidth, ADBubbleHeight, bubble)) {
+        ADSuppress();
+        return;
+    }
+    if ((presentation & ADPersistentCursorPresentationLabel) != 0) {
+        [ADBubbleWindow setFrameOrigin:NSMakePoint(bubble[0], mainHeight - bubble[1] - ADBubbleHeight)];
+    }
+    [ADCursorWindow orderFrontRegardless];
+    if ((presentation & ADPersistentCursorPresentationLabel) != 0) {
+        [ADBubbleWindow orderFrontRegardless];
+    }
+    ADGlowRefresh();
+}
+
 void agent_desktop_cursor_overlay_idle(void) {
     @autoreleasepool {
-        ADDragPoll();
+        static CFTimeInterval checked = 0;
+        CFTimeInterval now = CACurrentMediaTime();
+        if (ADPersistentCursorPoseShouldRefresh(ADDragArmed)) {
+            if (now - checked >= 0.1) {
+                ADRefreshPersistent();
+                checked = now;
+            }
+        } else {
+            if (now - checked >= 0.1) {
+                if (!agent_desktop_cursor_overlay_target_visible()) {
+                    ADSuppress();
+                } else if (ADPersistentCursorPoseShows(&ADPersistentPose, true)) {
+                    ADGlowRefresh();
+                }
+                checked = now;
+            }
+            ADDragPoll();
+        }
         ADPump(NSApplication.sharedApplication);
     }
 }
 
 void agent_desktop_cursor_overlay_stop(void) {
-    ADDragCancel();
-    [ADCursorWindow orderOut:nil];
-    [ADBubbleWindow orderOut:nil];
-    [ADRipple orderOut:nil];
-    ADHighlightStop();
-    ADTrailStop();
+    ADSuppress();
+    ADPersistentCursorPoseClear(&ADPersistentPose);
     ADCursorWindow = nil;
     ADPointer = nil;
     ADRipple = nil;
@@ -189,30 +215,19 @@ void agent_desktop_cursor_overlay_stop(void) {
     ADBubbleText = nil;
 }
 
-void agent_desktop_cursor_overlay_rest(void) {
-    @autoreleasepool {
-        NSApplication *app = NSApplication.sharedApplication;
-        for (double step = 1.0; step > 0.0; step -= 0.08) {
-            ADCursorWindow.alphaValue = step;
-            ADBubbleWindow.alphaValue = step;
-            ADPump(app);
-            [NSThread sleepForTimeInterval:0.012];
-        }
-        [ADCursorWindow orderOut:nil];
-        [ADBubbleWindow orderOut:nil];
-        ADCursorWindow.alphaValue = 1.0;
-        ADBubbleWindow.alphaValue = 1.0;
-        ADTrailStop();
-    }
+void agent_desktop_cursor_overlay_hide(void) {
+    ADPersistentCursorPoseHide(&ADPersistentPose);
+    ADSuppress();
 }
 
-void agent_desktop_cursor_overlay_hide(void) {
-    ADDragCancel();
-    [ADCursorWindow orderOut:nil];
-    [ADBubbleWindow orderOut:nil];
-    [ADRipple orderOut:nil];
-    ADHighlightStop();
-    ADTrailStop();
+void agent_desktop_cursor_overlay_opacity(double alpha) {
+    ADSetOpacity(ADCursorWindow, ADBubbleWindow, alpha);
+}
+
+void agent_desktop_cursor_overlay_rest(void) {
+    ADSuppress();
+    ADSetOpacity(ADCursorWindow, ADBubbleWindow, 1.0);
+    ADPersistentCursorPoseClear(&ADPersistentPose);
 }
 
 void agent_desktop_cursor_overlay_drag_begin(double fromX, double fromY, bool trail) {
@@ -266,10 +281,8 @@ bool agent_desktop_cursor_overlay_drag_active(void) {
 }
 
 void agent_desktop_cursor_overlay_show(void) {
-    [ADCursorWindow orderFrontRegardless];
-    if (ADBubbleText.stringValue.length > 0) {
-        [ADBubbleWindow orderFrontRegardless];
-    }
+    ADPersistentCursorPoseShow(&ADPersistentPose);
+    ADRefreshPersistent();
 }
 
 static void ADHighlightTarget(const AgentDesktopCursorRenderConfig *config, double mainHeight) {
@@ -303,8 +316,8 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
                 ADBubbleWindow = ADBubble();
                 ADRipple = ADRippleWindow();
             }
-            ADTintPointer();
-            [ADCursorWindow orderFrontRegardless];
+            ADTintPointer(ADPointer);
+            ADSetOpacity(ADCursorWindow, ADBubbleWindow, 1.0);
 
             bool showsBubble = config->label != NULL && config->label[0] != '\0';
             NSString *nextLabel = showsBubble ? @(config->label) : @"";
@@ -314,7 +327,23 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
                                             mainHeight - config->bubbleY - ADBubbleHeight,
                                             ADBubbleWidth,
                                             ADBubbleHeight);
+            double targetAnchor[2] = {last->x, last->y};
+            agent_desktop_cursor_overlay_target_point(targetAnchor);
+            ADPersistentCursorPoseReplace(&ADPersistentPose,
+                                          CGPointMake(last->x, last->y),
+                                          bubbleFrame.origin,
+                                          CGPointMake(targetAnchor[0], targetAnchor[1]),
+                                          showsBubble);
+            if ((config->flags & ADLayoutDeferred) != 0) {
+                ADRefreshPersistent();
+                return true;
+            }
+            if (!ADEnsureTargetVisible()) {
+                return true;
+            }
             bool followsBubble = showsBubble && !changedLabel && ADBubbleWindow.isVisible;
+            [ADCursorWindow orderFrontRegardless];
+            ADGlowRefresh();
             [ADRipple setFrameOrigin:NSMakePoint(last->x - ADRippleSize * 0.5,
                                                  mainHeight - last->y - ADRippleSize * 0.5)];
             size_t movementFrameCount = frameCount;
@@ -329,6 +358,9 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
             bool highlighted = (config->flags & ADHighlightCue) == 0 || reduceMotion;
 
             for (size_t index = 0; index < movementFrameCount; index += 1) {
+                if (index % 6 == 0 && !ADEnsureTargetVisible()) {
+                    return true;
+                }
                 ADMoveCursor(&frames[index], mainHeight);
                 if (followsBubble) {
                     [ADBubbleWindow setFrameOrigin:NSMakePoint(
@@ -339,6 +371,9 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
                 if (index + 1 < movementFrameCount) {
                     [NSThread sleepForTimeInterval:config->frameSeconds];
                 }
+            }
+            if (!ADEnsureTargetVisible()) {
+                return true;
             }
             if (playsRipple) {
                 ADRipplePlay(ADRipple);

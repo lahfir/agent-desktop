@@ -3,12 +3,32 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{DirBuilderExt, FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
 
-pub(super) const PROTOCOL_VERSION: &str = "v2";
+/// Wire generation of the renderer protocol. Bump it whenever a control or
+/// instruction gains a field, because renderers decode with
+/// `deny_unknown_fields`; the version is hashed into every socket name, so a
+/// new CLI never hands its controls to an older renderer.
+pub(super) const PROTOCOL_VERSION: &str = "v3";
+
+/// The generation this one replaces. Its renderers are retired with a Disable,
+/// which every generation decodes, and are still reached by broadcast teardown.
+const PREVIOUS_PROTOCOL_VERSION: &str = "v2";
 
 pub(super) fn path(session_id: &str, agent_id: Option<&str>) -> Result<PathBuf, AdapterError> {
     let root = session::agent_desktop_dir()
         .map_err(|error| AdapterError::new(ErrorCode::InvalidArgs, error.to_string()))?;
     let path = path_for_root(&root, session_id, agent_id);
+    ensure_socket_parent(&path)?;
+    validate_socket_path(&path)?;
+    Ok(path)
+}
+
+pub(super) fn previous_generation_path(
+    session_id: &str,
+    agent_id: Option<&str>,
+) -> Result<PathBuf, AdapterError> {
+    let root = session::agent_desktop_dir()
+        .map_err(|error| AdapterError::new(ErrorCode::InvalidArgs, error.to_string()))?;
+    let path = path_for_protocol(&root, session_id, agent_id, PREVIOUS_PROTOCOL_VERSION);
     ensure_socket_parent(&path)?;
     validate_socket_path(&path)?;
     Ok(path)
@@ -36,18 +56,34 @@ pub(super) fn lock_path() -> Result<PathBuf, AdapterError> {
 }
 
 fn path_for_root(root: &Path, session_id: &str, agent_id: Option<&str>) -> PathBuf {
+    path_for_protocol(root, session_id, agent_id, PROTOCOL_VERSION)
+}
+
+fn path_for_protocol(
+    root: &Path,
+    session_id: &str,
+    agent_id: Option<&str>,
+    protocol: &str,
+) -> PathBuf {
     let name = match agent_id {
         Some(agent_id) => format!(
-            ".cursor-overlay-{:016x}-{:016x}.sock",
-            endpoint_hash(root, session_id, Some(PROTOCOL_VERSION)),
+            "{}{:016x}.sock",
+            agent_prefix(root, session_id, protocol),
             endpoint_hash(root, agent_id, Some("agent")),
         ),
         None => format!(
             ".cursor-overlay-{:016x}.sock",
-            endpoint_hash(root, session_id, Some(PROTOCOL_VERSION))
+            endpoint_hash(root, session_id, Some(protocol))
         ),
     };
     socket_for_name(root, name)
+}
+
+fn agent_prefix(root: &Path, session_id: &str, protocol: &str) -> String {
+    format!(
+        ".cursor-overlay-{:016x}-",
+        endpoint_hash(root, session_id, Some(protocol))
+    )
 }
 
 fn socket_for_name(root: &Path, name: String) -> PathBuf {
@@ -149,17 +185,19 @@ pub(super) fn discover(
 ) -> Result<(Vec<PathBuf>, Option<AdapterError>), AdapterError> {
     let root = session::agent_desktop_dir()
         .map_err(|error| AdapterError::new(ErrorCode::InvalidArgs, error.to_string()))?;
-    let prefix = format!(
-        ".cursor-overlay-{:016x}-",
-        endpoint_hash(&root, session_id, Some(PROTOCOL_VERSION))
-    );
+    let prefixes = [PROTOCOL_VERSION, PREVIOUS_PROTOCOL_VERSION]
+        .map(|protocol| agent_prefix(&root, session_id, protocol));
     let fallback = private_fallback_root();
     let expected = path_for_root(&root, session_id, None);
     ensure_socket_parent(&expected)?;
-    let mut paths = [expected, legacy_path(session_id)?]
-        .into_iter()
-        .filter(|path| is_private_socket(path))
-        .collect::<Vec<_>>();
+    let mut paths = [
+        expected,
+        previous_generation_path(session_id, None)?,
+        legacy_path(session_id)?,
+    ]
+    .into_iter()
+    .filter(|path| is_private_socket(path))
+    .collect::<Vec<_>>();
     let needs_fallback =
         path_for_root(&root, session_id, Some("agent")).parent() == Some(fallback.as_path());
     let directories = if needs_fallback && validate_private_directory(&fallback)? {
@@ -167,7 +205,7 @@ pub(super) fn discover(
     } else {
         vec![root.clone()]
     };
-    let (mut scanned, listing_error) = collect_session_sockets(&directories, &prefix);
+    let (mut scanned, listing_error) = collect_session_sockets(&directories, &prefixes);
     paths.append(&mut scanned);
     paths.sort();
     paths.dedup();
@@ -182,7 +220,7 @@ pub(super) fn discover(
 
 fn collect_session_sockets(
     directories: &[PathBuf],
-    prefix: &str,
+    prefixes: &[String],
 ) -> (Vec<PathBuf>, Option<String>) {
     let mut paths = Vec::new();
     let mut listing_error: Option<String> = None;
@@ -210,8 +248,9 @@ fn collect_session_sockets(
             };
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            let suffix = name
-                .strip_prefix(prefix)
+            let suffix = prefixes
+                .iter()
+                .find_map(|prefix| name.strip_prefix(prefix.as_str()))
                 .and_then(|value| value.strip_suffix(".sock"));
             if suffix.is_some_and(|value| {
                 value.len() == 16 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -242,127 +281,5 @@ fn endpoint_hash(root: &Path, session_id: &str, protocol: Option<&str>) -> u64 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::os::unix::fs::PermissionsExt;
-
-    #[test]
-    fn long_state_root_uses_a_short_deterministic_socket_path() {
-        let root = Path::new("/private/tmp").join("deep".repeat(40));
-        let first = path_for_root(&root, "run-1", None);
-        let second = path_for_root(&root, "run-1", None);
-
-        assert_eq!(first, second);
-        assert_eq!(first.parent(), Some(private_fallback_root().as_path()));
-        assert!(first.as_os_str().as_bytes().len() < 100);
-    }
-
-    #[test]
-    fn private_directory_is_owner_matched_and_mode_restricted() {
-        let directory = std::env::temp_dir().join(format!(
-            "agent-desktop-endpoint-test-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir(&directory);
-        std::fs::create_dir(&directory).expect("create test directory");
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755))
-            .expect("make test directory permissive");
-        assert!(ensure_private_directory(&directory).is_err());
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
-            .expect("protect test directory");
-
-        ensure_private_directory(&directory).expect("restrict test directory");
-        let metadata = std::fs::symlink_metadata(&directory).expect("read test directory");
-        assert!(metadata.file_type().is_dir());
-        assert_eq!(metadata.uid(), unsafe { libc::geteuid() });
-        assert_eq!(metadata.mode() & 0o777, 0o700);
-        std::fs::remove_dir(&directory).expect("remove test directory");
-    }
-
-    #[test]
-    fn protocol_generation_uses_a_distinct_socket() {
-        let root = Path::new("/private/tmp/state");
-
-        assert_ne!(
-            path_for_root(root, "run-1", None),
-            path_for_root(root, "run-1", Some("agent-a"))
-        );
-    }
-
-    #[test]
-    fn named_endpoints_are_distinct_and_session_prefixed() {
-        let root = Path::new("/private/tmp/state");
-        let first = path_for_root(root, "run-1", Some("agent-a"));
-        let second = path_for_root(root, "run-1", Some("agent-b"));
-        assert_ne!(first, second);
-        assert!(first.file_name().unwrap().to_string_lossy().contains('-'));
-    }
-
-    #[test]
-    fn v2_is_a_valid_agent_id_without_colliding_with_default() {
-        let root = Path::new("/private/tmp/state");
-        assert_ne!(
-            path_for_root(root, "run-1", None),
-            path_for_root(root, "run-1", Some("v2"))
-        );
-    }
-
-    fn bind_private_socket(path: &Path) -> std::os::unix::net::UnixListener {
-        let listener = std::os::unix::net::UnixListener::bind(path).expect("bind test socket");
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-            .expect("protect test socket");
-        listener
-    }
-
-    #[test]
-    fn socket_validation_uses_the_shared_ownership_predicate() {
-        let directory = std::env::temp_dir().join(format!("ae-p{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&directory);
-        std::fs::create_dir(&directory).expect("create predicate directory");
-        let missing = directory.join("missing.sock");
-        let regular = directory.join("regular.sock");
-        std::fs::write(&regular, "probe").expect("write probe file");
-        let link = directory.join("link.sock");
-        std::os::unix::fs::symlink(&regular, &link).expect("link probe file");
-        let socket = directory.join("live.sock");
-        let listener = bind_private_socket(&socket);
-        assert!(!is_private_socket(&missing));
-        assert!(validate_socket_path(&missing).is_ok());
-        for path in [&regular, &link, &directory] {
-            assert!(!is_private_socket(path));
-            assert!(validate_socket_path(path).is_err());
-        }
-        assert!(is_private_socket(&socket));
-        assert!(validate_socket_path(&socket).is_ok());
-        drop(listener);
-        std::fs::remove_dir_all(&directory).expect("remove predicate directory");
-    }
-
-    #[test]
-    fn partial_listing_keeps_sockets_but_reports_unconfirmed_teardown() {
-        if unsafe { libc::geteuid() } == 0 {
-            return;
-        }
-        let directory = std::env::temp_dir().join(format!("ae-s{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&directory);
-        let listed = directory.join("l");
-        let blocked = directory.join("b");
-        std::fs::create_dir_all(&listed).expect("create listed directory");
-        std::fs::create_dir_all(&blocked).expect("create blocked directory");
-        let prefix = ".co-0123abcd-";
-        let socket = listed.join(format!("{prefix}0011223344556677.sock"));
-        let listener = bind_private_socket(&socket);
-        let decoy = listed.join(format!("{prefix}aabbccddeeff0011.sock"));
-        std::fs::write(&decoy, "probe").expect("write decoy file");
-        std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o000))
-            .expect("block directory listing");
-        let (paths, error) = collect_session_sockets(&[listed, blocked.clone()], prefix);
-        std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o700))
-            .expect("restore blocked directory");
-        assert!(!paths.contains(&decoy));
-        assert_eq!(paths, vec![socket]);
-        assert!(error.is_some());
-        drop(listener);
-        std::fs::remove_dir_all(&directory).expect("remove scan directory");
-    }
-}
+#[path = "endpoint_tests.rs"]
+mod tests;

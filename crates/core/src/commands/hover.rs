@@ -90,7 +90,7 @@ pub fn execute(
             button: MouseButton::Left,
             modifiers: Vec::new(),
         },
-        false,
+        resolved.presentation_window.clone(),
         &lease,
     );
     result?;

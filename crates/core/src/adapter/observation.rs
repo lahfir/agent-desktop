@@ -141,6 +141,16 @@ pub trait ObservationOps: Send + Sync {
         Err(AdapterError::not_supported("get_live_element"))
     }
 
+    /// Exact native window hosting this live target, for presentation only.
+    /// Return None when unknown; an owning window or inferred sibling is not exact.
+    fn get_presentation_window_id(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: Deadline,
+    ) -> Result<Option<String>, AdapterError> {
+        Ok(None)
+    }
+
     fn get_element_bounds(
         &self,
         _handle: &NativeHandle,

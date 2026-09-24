@@ -28,6 +28,22 @@ fn accepted_stream_waits_for_a_delayed_control() {
     result.unwrap();
 }
 
+#[test]
+fn target_control_decodes_with_negative_display_coordinates() {
+    let instruction = instruction(
+        Point {
+            x: -1200.0,
+            y: -400.0,
+        },
+        true,
+    )
+    .with_window((agent_desktop_core::ProcessId::new(10), "w-42".into()));
+    let control = CursorOverlayControl::present("run-target".into(), instruction)
+        .with_agent_id(Some("worker".into()));
+    let payload = serde_json::to_vec(&control).unwrap();
+    assert_eq!(read_control(payload.as_slice()).unwrap(), control);
+}
+
 fn state(at: Option<Point>) -> OverlayState {
     OverlayState {
         at,
@@ -45,7 +61,7 @@ fn screen() -> agent_desktop_core::Rect {
 }
 
 fn instruction(destination: Point, click: bool) -> CursorOverlayInstruction {
-    let config = CursorOverlayConfig::enabled(None, 6).expect("valid config");
+    let config = agent_desktop_core::CursorOverlayConfig::enabled(None, 6).expect("valid config");
     CursorOverlayInstruction::new(destination, &config, click).expect("valid instruction")
 }
 
@@ -121,8 +137,8 @@ fn click_effect_returns_immediately_to_the_control_loop() {
     assert_eq!(frames[1].ripple, 1.0);
 }
 
-fn overlay_config() -> CursorOverlayConfig {
-    CursorOverlayConfig::enabled(None, 6).expect("valid config")
+fn overlay_config() -> agent_desktop_core::CursorOverlayConfig {
+    agent_desktop_core::CursorOverlayConfig::enabled(None, 6).expect("valid config")
 }
 
 fn drag_instruction(drag_from: Point, destination: Point) -> CursorOverlayInstruction {
@@ -271,4 +287,20 @@ fn travel_after_a_successful_drag_animates_from_the_drag_destination() {
         frames.last().map(|pose| &pose.point),
         Some(&new_destination)
     );
+}
+
+#[test]
+fn offscreen_destination_defers_layout_instead_of_rejecting_instruction() {
+    let destination = Point {
+        x: 4331.0,
+        y: 420.0,
+    };
+    let prepared = prepare_render(&destination, |_| {
+        Err(AdapterError::new(
+            ErrorCode::ActionFailed,
+            "no display contains destination",
+        ))
+    });
+
+    assert!(matches!(prepared, PreparedRender::Deferred));
 }

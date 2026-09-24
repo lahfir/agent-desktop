@@ -41,7 +41,7 @@ pub fn execute(
             button: MouseButton::Left,
             modifiers: args.modifiers,
         },
-        false,
+        None,
         &lease,
     );
     result?;

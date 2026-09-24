@@ -173,6 +173,18 @@ impl ObservationOps for MacOSAdapter {
         Err(AdapterError::not_supported("get_live_element"))
     }
 
+    fn get_presentation_window_id(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<Option<String>, AdapterError> {
+        let window = crate::system::window_bridge::window_id(
+            ax_element(handle)?,
+            crate::tree::locator_deadline::from_operation(deadline)?,
+        )?;
+        Ok(window.filter(|id| *id > 0).map(|id| format!("w-{id}")))
+    }
+
     fn get_element_bounds(
         &self,
         handle: &NativeHandle,

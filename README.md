@@ -217,7 +217,7 @@ The style command is optional and saves settings for the next presentation witho
 | `--max-words N` | Label word limit, 1–12 | 6 |
 | `--fill HEX` | Cursor body | `#FFFFFF` |
 | `--rim HEX` | Cursor outline | `#111318` |
-| `--accent HEX` | Ripple and element outline | `#4299FF` |
+| `--accent HEX` | Ripple, element outline, and target window outline | `#4299FF` |
 | `--size N` | Size multiplier, 0.5–4.0 | 1.0 |
 | `--no-ripple` | No ripple on click | ripple on |
 | `--no-highlight` | No element outline on click | outline on |
@@ -227,7 +227,8 @@ The style command is optional and saves settings for the next presentation witho
 - The cursor travels a human path in 90–320 ms. It never rotates or resizes.
 - The action waits up to 900 ms for cursor arrival confirmation. If the renderer does not confirm in time, a warning is reported and the action proceeds.
 - A click plays a ripple, then flashes an accent outline around the element for 0.9 s. Both draw below the cursor.
-- Idle for 6 s, it fades out. The next command brings it back.
+- It stays fully visible for 5 s after the last targeted action, then fades out over about 1 s. The next targeted action brings it back.
+- While it is shown, a thin accent outline traces the inside edge of the target window and fades with it. The outline is left out whenever another window overlaps the target.
 - `cursor-overlay disable` removes it now. You do not have to end the session.
 - Headed actions retain it. It never moves or intercepts the OS pointer.
 - Overhead is about 150–300 ms per action, all of it the visible travel.

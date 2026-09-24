@@ -17,6 +17,17 @@ pub(crate) struct ResolvedPoint {
     pub focused: bool,
     pub source_entry: Option<crate::RefEntry>,
     pub bounds_hash: Option<u64>,
+    /// Exact live window of a ref target, used only to bind the cursor cue.
+    pub presentation_window: Option<(crate::ProcessId, String)>,
+}
+
+impl ResolvedPoint {
+    pub fn cue(&self) -> crate::cursor_overlay::PointerCue {
+        crate::cursor_overlay::PointerCue {
+            point: self.point.clone(),
+            window: self.presentation_window.clone(),
+        }
+    }
 }
 
 pub(crate) fn require_cursor_policy(
@@ -51,11 +62,19 @@ pub(crate) fn resolve_point_from_ref_or_xy_with_context(
             y: bounds.y + bounds.height / 2.0,
         };
         actionability::require_receives_events(&handle, point.clone(), adapter, deadline)?;
+        let presentation_window = crate::cursor_overlay::presentation_window(
+            adapter,
+            context,
+            &handle,
+            entry.process.pid,
+            deadline,
+        );
         return Ok(ResolvedPoint {
             point,
             focused: false,
             source_entry: Some(entry),
             bounds_hash: bounds.bounds_hash(),
+            presentation_window,
         });
     }
     if let Some((x, y)) = args.xy {
@@ -64,6 +83,7 @@ pub(crate) fn resolve_point_from_ref_or_xy_with_context(
             focused: false,
             source_entry: None,
             bounds_hash: None,
+            presentation_window: None,
         });
     }
     Err(AppError::invalid_input(args.missing_input_message))

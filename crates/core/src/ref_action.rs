@@ -27,6 +27,7 @@ pub(crate) struct ActionabilityPreflight {
     presentation_point: Option<crate::Point>,
     presentation_bounds: Option<crate::Rect>,
     pointer_delivery: actionability::PointerDelivery,
+    presentation_window: Option<(crate::ProcessId, String)>,
 }
 
 impl<'a> ResolvedRefAction<'a> {
@@ -326,6 +327,7 @@ fn check_actionability_with_trace(
         presentation_point: report.presentation_point,
         presentation_bounds: report.presentation_bounds,
         pointer_delivery: report.pointer_delivery,
+        presentation_window: presentation::window(target),
     })
 }
 
@@ -388,9 +390,8 @@ pub(crate) fn into_adapter_error(err: AppError) -> AdapterError {
 }
 
 #[cfg(test)]
-#[path = "ref_action_tests.rs"]
-mod tests;
-
-#[cfg(test)]
 #[path = "ref_action_cursor_overlay_tests.rs"]
 mod cursor_overlay_tests;
+#[cfg(test)]
+#[path = "ref_action_tests.rs"]
+mod tests;

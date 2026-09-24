@@ -30,7 +30,7 @@ pub fn execute(
             button: MouseButton::Left,
             modifiers: Vec::new(),
         },
-        false,
+        None,
         &lease,
     );
     result?;

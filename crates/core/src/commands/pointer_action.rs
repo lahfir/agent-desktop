@@ -104,8 +104,16 @@ fn resolve_point_from_entry(
         x: bounds.x + bounds.width / 2.0,
         y: bounds.y + bounds.height / 2.0,
     };
+    let mut presentation_window = None;
     if verify_receives_events {
         crate::actionability::require_receives_events(&handle, point.clone(), adapter, deadline)?;
+        presentation_window = crate::cursor_overlay::presentation_window(
+            adapter,
+            context,
+            &handle,
+            entry.process.pid,
+            deadline,
+        );
     }
     if deadline.is_expired() {
         return Err(crate::AdapterError::timeout(
@@ -118,6 +126,7 @@ fn resolve_point_from_entry(
         focused: false,
         source_entry: Some(entry.clone()),
         bounds_hash: Some(observed_bounds_hash),
+        presentation_window,
     })
 }
 

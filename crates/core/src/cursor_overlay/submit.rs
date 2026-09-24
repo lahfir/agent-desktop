@@ -1,7 +1,7 @@
-use super::CursorPhase;
+use super::{CursorPhase, PointerCue};
 use crate::{
     AdapterError, CommandContext, DeliveryDisposition, DeliverySemantics, MouseEvent,
-    PlatformAdapter, Point, Rect,
+    MouseEventKind, PlatformAdapter, ProcessId, Rect,
 };
 
 const DISPATCH_RESERVE_MS: u64 = 100;
@@ -22,20 +22,13 @@ pub(crate) fn travel_scope(
 pub(crate) fn submit_travel(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
-    destination: Point,
+    cue: &PointerCue,
     lease: &crate::InteractionLease,
 ) {
     let Some(_scope) = travel_scope(lease) else {
         return;
     };
-    submit(
-        adapter,
-        context,
-        destination,
-        None,
-        false,
-        CursorPhase::Travel,
-    );
+    submit(adapter, context, cue, None, false, CursorPhase::Travel);
 }
 
 pub(crate) fn input_was_delivered(result: &Result<(), AdapterError>) -> bool {
@@ -56,53 +49,62 @@ pub(crate) fn confirms_delivery(disposition: DeliverySemantics) -> bool {
 pub(crate) fn submit(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
-    destination: Point,
+    cue: &PointerCue,
     target: Option<Rect>,
     click: bool,
     phase: CursorPhase,
 ) {
-    let instruction =
-        super::CursorOverlayInstruction::new(destination, context.cursor_overlay(), click)
-            .map(|instruction| instruction.with_target(target).with_phase(phase));
+    let instruction = cue
+        .instruction(context, click)
+        .map(|instruction| instruction.with_target(target).with_phase(phase));
     let _ = send(adapter, context, instruction);
 }
 
 pub(crate) fn submit_drag(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
-    drag_from: Point,
-    destination: Point,
+    from: &PointerCue,
+    to: &PointerCue,
     lease: &crate::InteractionLease,
 ) -> bool {
     let Some(_scope) = travel_scope(lease) else {
         return false;
     };
-    let instruction =
-        super::CursorOverlayInstruction::new(destination, context.cursor_overlay(), false).map(
-            |instruction| {
-                instruction
-                    .with_drag_from(Some(drag_from))
-                    .with_phase(CursorPhase::Drag)
-            },
-        );
-    send(adapter, context, instruction)
+    send(
+        adapter,
+        context,
+        drag_instruction(context, from, to, CursorPhase::Drag),
+    )
 }
 
 pub(crate) fn submit_drag_effect(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
-    drag_from: Point,
-    destination: Point,
+    from: &PointerCue,
+    to: &PointerCue,
 ) {
-    let instruction =
-        super::CursorOverlayInstruction::new(destination, context.cursor_overlay(), false).map(
-            |instruction| {
-                instruction
-                    .with_drag_from(Some(drag_from))
-                    .with_phase(CursorPhase::Effect)
-            },
-        );
-    let _ = send(adapter, context, instruction);
+    let _ = send(
+        adapter,
+        context,
+        drag_instruction(context, from, to, CursorPhase::Effect),
+    );
+}
+
+fn drag_instruction(
+    context: &CommandContext,
+    from: &PointerCue,
+    to: &PointerCue,
+    phase: CursorPhase,
+) -> Result<super::CursorOverlayInstruction, AdapterError> {
+    let landing = PointerCue {
+        point: to.point.clone(),
+        window: from.shared_window(to),
+    };
+    landing.instruction(context, false).map(|instruction| {
+        instruction
+            .with_drag_from(Some(from.point.clone()))
+            .with_phase(phase)
+    })
 }
 
 pub(crate) fn cancel_drag(adapter: &dyn PlatformAdapter, context: &CommandContext) {
@@ -119,7 +121,7 @@ pub(crate) fn cancel_drag(adapter: &dyn PlatformAdapter, context: &CommandContex
     let _ = update(adapter, &control);
 }
 
-fn send(
+pub(crate) fn send(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
     instruction: Result<super::CursorOverlayInstruction, AdapterError>,
@@ -161,31 +163,32 @@ fn enabled_session(context: &CommandContext) -> Option<&str> {
 
 fn update(adapter: &dyn PlatformAdapter, control: &super::CursorOverlayControl) -> bool {
     if let Err(error) = adapter.update_cursor_overlay(control) {
-        tracing::warn!(code = %error.code.as_str(), "agent cursor presentation was skipped");
+        tracing::warn!(code = %error.code.as_str(), message = %error.message, detail = ?error.platform_detail, "agent cursor presentation was skipped");
         return false;
     }
     true
 }
 
+/// Delivers `event` between a travel cue and, once delivered, an effect cue.
+///
+/// `window` is the exact live window of a ref-resolved target and binds both
+/// cues to it; pass None for coordinate-only input. Only click events ripple.
 pub(crate) fn dispatch_mouse_event_with_cursor(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
     event: MouseEvent,
-    click: bool,
+    window: Option<(ProcessId, String)>,
     lease: &crate::InteractionLease,
 ) -> Result<(), AdapterError> {
-    let point = event.point.clone();
-    crate::cursor_overlay::submit_travel(adapter, context, point.clone(), lease);
+    let cue = PointerCue {
+        point: event.point.clone(),
+        window,
+    };
+    let click = matches!(event.kind, MouseEventKind::Click { .. });
+    submit_travel(adapter, context, &cue, lease);
     let result = adapter.mouse_event(event, lease);
     if crate::cursor_overlay::input_was_delivered(&result) {
-        crate::cursor_overlay::submit(
-            adapter,
-            context,
-            point,
-            None,
-            click,
-            crate::CursorPhase::Effect,
-        );
+        submit(adapter, context, &cue, None, click, CursorPhase::Effect);
     }
     result
 }

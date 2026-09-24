@@ -34,7 +34,7 @@ pub fn execute(
             button: args.button,
             modifiers: args.modifiers,
         },
-        true,
+        None,
         &lease,
     );
     result?;

@@ -134,27 +134,18 @@ pub fn execute(
         drop_delay_ms: args.drop_delay_ms,
     };
     params.validate(deadline)?;
-    crate::cursor_overlay::submit_travel(adapter, context, from.point.clone(), &lease);
-    let drag_tracking = crate::cursor_overlay::submit_drag(
-        adapter,
-        context,
-        from.point.clone(),
-        to.point.clone(),
-        &lease,
-    );
+    let (from_cue, to_cue) = (from.cue(), to.cue());
+    crate::cursor_overlay::submit_travel(adapter, context, &from_cue, &lease);
+    let drag_tracking =
+        crate::cursor_overlay::submit_drag(adapter, context, &from_cue, &to_cue, &lease);
     let result = adapter.drag(params, &lease);
     if result.is_ok() && drag_tracking {
-        crate::cursor_overlay::submit_drag_effect(
-            adapter,
-            context,
-            from.point.clone(),
-            to.point.clone(),
-        );
+        crate::cursor_overlay::submit_drag_effect(adapter, context, &from_cue, &to_cue);
     } else if result.is_ok() {
         crate::cursor_overlay::submit(
             adapter,
             context,
-            to.point.clone(),
+            &to_cue,
             None,
             false,
             crate::CursorPhase::Effect,

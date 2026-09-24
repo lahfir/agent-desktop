@@ -17,7 +17,10 @@ const AgentDesktopCursorStyle *ADStyle(void);
 
 NSWindow *ADWindow(NSRect frame);
 void ADPump(NSApplication *app);
+void ADSetOpacity(NSWindow *pointer, NSWindow *bubble, double alpha);
 void ADFreezeLayer(CALayer *layer);
+CALayer *ADPointerLayer(void);
+void ADTintPointer(CALayer *pointer);
 NSWindow *ADRippleWindow(void);
 void ADRipplePlay(NSWindow *window);
 void ADHighlightShow(NSRect frame, double seconds);

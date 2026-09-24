@@ -15,6 +15,8 @@ pub struct CursorOverlayInstruction {
     target: Option<Rect>,
     #[serde(default)]
     phase: CursorPhase,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    window: Option<(crate::ProcessId, String)>,
 }
 
 impl CursorOverlayInstruction {
@@ -37,7 +39,19 @@ impl CursorOverlayInstruction {
             click,
             target: None,
             phase: CursorPhase::Travel,
+            window: None,
         })
+    }
+
+    /// Associates target cues with an exactly resolved process and source window.
+    /// Instructions without a window are explicit physical or broadcast cues.
+    pub fn with_window(mut self, window: (crate::ProcessId, String)) -> Self {
+        self.window = Some(window);
+        self
+    }
+
+    pub fn window(&self) -> Option<&(crate::ProcessId, String)> {
+        self.window.as_ref()
     }
 
     pub const fn with_phase(mut self, phase: CursorPhase) -> Self {

@@ -4,7 +4,7 @@ use agent_desktop_core::{
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -33,14 +33,17 @@ pub(crate) fn update(control: &CursorOverlayControl) -> Result<(), AdapterError>
     if send_until(&socket, control, deadline)? {
         return Ok(());
     }
-    if control.agent_id().is_none() {
-        retire_legacy(control, deadline);
-    }
     if control.is_transient() {
+        retire(older_generations(control), control.session_id(), deadline);
         return Ok(());
     }
     let lock_path = super::endpoint::lock_path()?;
-    let _lock = startup_lock(&lock_path, deadline)?;
+    let _lock = lock_and_retire(
+        &lock_path,
+        older_generations(control),
+        control.session_id(),
+        deadline,
+    )?;
     if send_until(&socket, control, deadline)? {
         return Ok(());
     }
@@ -164,12 +167,45 @@ fn terminate_child(child: &mut std::process::Child) -> bool {
     super::super::process::poll_reap(child, deadline)
 }
 
-fn retire_legacy(control: &CursorOverlayControl, deadline: Instant) {
-    let Ok(socket) = super::endpoint::legacy_path(control.session_id()) else {
-        return;
-    };
-    let disable = CursorOverlayControl::disable(control.session_id().to_owned());
-    let _ = send_until(&socket, &disable, deadline);
+/// Acquires the startup lock and only then retires older-generation renderers.
+///
+/// Every generation starts its renderer while holding this same lock and
+/// releases it once the renderer's socket is bound. Retiring after acquisition
+/// therefore also reaches a previous-generation renderer that was still
+/// starting while this caller waited; retiring before it would miss that
+/// renderer and leave it running beside the new one.
+fn lock_and_retire(
+    lock_path: &Path,
+    older: impl IntoIterator<Item = PathBuf>,
+    session_id: &str,
+    deadline: Instant,
+) -> Result<agent_desktop_core::FileLock, AdapterError> {
+    let lock = startup_lock(lock_path, deadline)?;
+    retire(older, session_id, deadline);
+    Ok(lock)
+}
+
+/// Sockets of older protocol generations on this route, so an upgraded CLI
+/// never leaves a stale cursor beside the new one or talks to a decoder that
+/// rejects it.
+fn older_generations(control: &CursorOverlayControl) -> impl Iterator<Item = PathBuf> {
+    let mut sockets = vec![super::endpoint::previous_generation_path(
+        control.session_id(),
+        control.agent_id(),
+    )];
+    if control.agent_id().is_none() {
+        sockets.push(super::endpoint::legacy_path(control.session_id()));
+    }
+    sockets.into_iter().flatten()
+}
+
+/// Sends Disable, the one control every generation decodes, to each socket.
+/// A missing or unresponsive socket just means there is nothing to stop.
+fn retire(sockets: impl IntoIterator<Item = PathBuf>, session_id: &str, deadline: Instant) {
+    let disable = CursorOverlayControl::disable(session_id.to_owned());
+    for socket in sockets {
+        let _ = send_until(&socket, &disable, deadline);
+    }
 }
 
 fn send_until(
@@ -246,7 +282,13 @@ fn send_until(
     })?;
     let mut acknowledgement = [0_u8; 1];
     match stream.read_exact(&mut acknowledgement) {
-        Ok(()) => Ok(true),
+        Ok(()) if acknowledgement == [1] => Ok(true),
+        Ok(()) => Err(AdapterError::internal(match acknowledgement[0] {
+            0 => "macOS cursor overlay could not decode the control",
+            2 => "macOS cursor overlay rejected the session or agent route",
+            3 => "macOS cursor overlay renderer rejected the control",
+            _ => "macOS cursor overlay returned an invalid acknowledgement",
+        })),
         Err(error)
             if control.instruction().is_some_and(|instruction| {
                 instruction.phase() == agent_desktop_core::CursorPhase::Travel

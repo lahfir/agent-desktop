@@ -47,6 +47,8 @@ pub(crate) mod notification_policy;
 pub mod permissions;
 pub(crate) mod point_resolve;
 pub(crate) mod pointer_action;
+#[cfg(test)]
+mod pointer_cue_tests;
 pub mod press;
 pub mod query;
 pub mod resize_window;
