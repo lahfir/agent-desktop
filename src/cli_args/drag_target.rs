@@ -8,6 +8,7 @@ pub(crate) struct DragTargetArgs {
     pub from: Option<String>,
     #[arg(
         long,
+        allow_hyphen_values = true,
         name = "from-xy",
         help = "Source coordinates as x,y; requires --headed"
     )]
@@ -16,6 +17,7 @@ pub(crate) struct DragTargetArgs {
     pub to: Option<String>,
     #[arg(
         long,
+        allow_hyphen_values = true,
         name = "to-xy",
         help = "Destination coordinates as x,y; requires --headed"
     )]

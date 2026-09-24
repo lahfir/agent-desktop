@@ -36,7 +36,7 @@ MOUSE
   mouse-click --xy x,y       Click at coordinates (--button, --count; requires --headed)
   mouse-down --xy x,y        Press mouse button at coordinates (requires --headed)
   mouse-up --xy x,y          Release mouse button at coordinates (requires --headed)
-  mouse-wheel --x X --y Y    Post wheel deltas at coordinates (--dx, --dy; requires --headed)
+  mouse-wheel --x X --y Y    Post wheel deltas at coordinates (--dx, --dy; --headed, or --background --window-id)
 
 APP & WINDOW
   launch <app>               Launch app and wait until window is visible

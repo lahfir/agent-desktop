@@ -1,4 +1,5 @@
 mod app_window;
+mod background_pointer;
 mod clipboard;
 mod cursor_overlay;
 mod interaction;
@@ -11,7 +12,7 @@ mod system;
 mod trace;
 
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 
 #[cfg(test)]
 mod cursor_overlay_lifecycle_tests;

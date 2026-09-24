@@ -96,7 +96,9 @@ pub(crate) enum Commands {
     MouseDown(MousePointArgs),
     #[command(about = "Release mouse button at coordinates (requires --headed)")]
     MouseUp(MousePointArgs),
-    #[command(about = "Scroll the mouse wheel at absolute coordinates (requires --headed)")]
+    #[command(
+        about = "Scroll the mouse wheel at absolute coordinates (requires --headed, or --background with --window-id)"
+    )]
     MouseWheel(MouseWheelArgs),
     #[command(
         about = "Launch application and return once its process is running; --activate waits for a window, --cdp verifies a DevTools endpoint"

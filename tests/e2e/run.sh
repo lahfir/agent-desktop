@@ -133,6 +133,9 @@ source "$here/scenarios/surfaces.sh"
 check_fixture_contention || { finish; exit 1; }
 # shellcheck source=tests/e2e/scenarios/trace_performance.sh
 source "$here/scenarios/trace_performance.sh"
+check_fixture_contention || { finish; exit 1; }
+# shellcheck source=tests/e2e/scenarios/background.sh
+source "$here/scenarios/background.sh"
 # shellcheck source=tests/e2e/scenarios/notifications.sh
 source "$here/scenarios/notifications.sh"
 

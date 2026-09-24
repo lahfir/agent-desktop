@@ -15,6 +15,7 @@ use crate::cli_args::{
     drag::DragCliArgs,
     mouse_wheel::MouseWheelArgs,
 };
+use crate::dispatch::background_pointer;
 use crate::dispatch::parse::{parse_modifiers, parse_mouse_button, parse_xy, parse_xy_opt};
 
 pub(super) fn press(
@@ -61,6 +62,10 @@ pub(super) fn hover(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    if args.background {
+        return background_pointer::hover(args, adapter, context);
+    }
+    background_pointer::reject_window_id_without_background(args.window_id.as_deref())?;
     hover_command::execute(
         hover_command::HoverArgs {
             ref_id: args.ref_id,
@@ -111,6 +116,10 @@ pub(super) fn mouse_move(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    if args.background {
+        return background_pointer::mouse_move(args, adapter, context);
+    }
+    background_pointer::reject_window_id_without_background(args.window_id.as_deref())?;
     let (x, y) = parse_xy(&args.xy)?;
     mouse_move_command::execute(mouse_move_command::MouseMoveArgs { x, y }, adapter, context)
 }
@@ -120,6 +129,10 @@ pub(super) fn mouse_click(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    if args.background {
+        return background_pointer::mouse_click(args, adapter, context);
+    }
+    background_pointer::reject_window_id_without_background(args.window_id.as_deref())?;
     let (x, y) = parse_xy(&args.xy)?;
     mouse_click_command::execute(
         mouse_click_command::MouseClickArgs {
@@ -175,6 +188,10 @@ pub(super) fn mouse_wheel(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    if args.background {
+        return background_pointer::mouse_wheel(args, adapter, context);
+    }
+    background_pointer::reject_window_id_without_background(args.window_id.as_deref())?;
     mouse_wheel_command::execute(
         mouse_wheel_command::MouseWheelArgs {
             x: args.x,

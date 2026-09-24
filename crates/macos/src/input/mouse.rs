@@ -238,7 +238,7 @@ mod imp {
         ensure_budget(deadline, *delivery)
     }
 
-    fn to_cg_button(button: &MouseButton) -> CGMouseButton {
+    pub(crate) fn to_cg_button(button: &MouseButton) -> CGMouseButton {
         match button {
             MouseButton::Left => CGMouseButton::Left,
             MouseButton::Right => CGMouseButton::Right,
@@ -246,7 +246,7 @@ mod imp {
         }
     }
 
-    fn down_type(button: &MouseButton) -> CGEventType {
+    pub(crate) fn down_type(button: &MouseButton) -> CGEventType {
         match button {
             MouseButton::Left => CGEventType::LeftMouseDown,
             MouseButton::Right => CGEventType::RightMouseDown,
@@ -254,7 +254,7 @@ mod imp {
         }
     }
 
-    fn up_type(button: &MouseButton) -> CGEventType {
+    pub(crate) fn up_type(button: &MouseButton) -> CGEventType {
         match button {
             MouseButton::Left => CGEventType::LeftMouseUp,
             MouseButton::Right => CGEventType::RightMouseUp,
@@ -324,15 +324,13 @@ pub(crate) use imp::synthesize_drag;
 
 #[cfg(target_os = "macos")]
 pub(crate) use imp::{
-    create_event_with_source, ensure_budget, event_flags, event_source, post_event_with_source,
-    sleep_bounded, validate_point,
+    create_event_with_source, down_type, ensure_budget, event_flags, event_source,
+    post_event_with_source, sleep_bounded, standalone_state_error, to_cg_button, up_type,
+    validate_point, wheel_lines_to_i32,
 };
 
 #[cfg(all(test, target_os = "macos", feature = "interactive-tests"))]
-pub(crate) use imp::{create_event, standalone_state_error, wheel_lines_to_i32};
-
-#[cfg(all(test, target_os = "macos", not(feature = "interactive-tests")))]
-pub(crate) use imp::{standalone_state_error, wheel_lines_to_i32};
+pub(crate) use imp::create_event;
 
 #[cfg(all(test, target_os = "macos"))]
 #[path = "mouse_tests.rs"]

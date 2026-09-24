@@ -131,6 +131,12 @@ pub(crate) struct ScrollArgs {
     )]
     #[serde(default = "default_ref_timeout_ms")]
     pub timeout_ms: u64,
+    #[arg(
+        long,
+        help = "Opt-in, best-effort line scroll-wheel events posted at the element's center to its window's process (macOS, private SkyLight SPI) instead of the semantic AX scroll, so views that advertise only ScrollTo work too; the real cursor stays put; focus preservation is best effort, see focus_change in the result; conflicts with --headed"
+    )]
+    #[serde(default)]
+    pub background: bool,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -172,7 +178,7 @@ pub(crate) struct KeyComboArgs {
 pub(crate) struct HoverArgs {
     #[arg(
         value_name = "REF",
-        help = "Element ref to hover over; requires --headed"
+        help = "Element ref to hover over; requires --headed unless --background"
     )]
     pub ref_id: Option<String>,
     #[arg(
@@ -181,7 +187,11 @@ pub(crate) struct HoverArgs {
         help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
     )]
     pub snapshot: Option<String>,
-    #[arg(long, help = "Absolute coordinates as x,y; requires --headed")]
+    #[arg(
+        long,
+        allow_hyphen_values = true,
+        help = "Absolute coordinates as x,y; requires --headed, or --background with --window-id"
+    )]
     pub xy: Option<String>,
     #[arg(
         long,
@@ -195,19 +205,53 @@ pub(crate) struct HoverArgs {
     )]
     #[serde(default = "default_ref_timeout_ms")]
     pub timeout_ms: u64,
+    #[arg(
+        long,
+        help = "Opt-in, best-effort synthetic input posted to the target window's process (macOS, private SkyLight SPI): the real cursor stays put; focus preservation is best effort, see focus_change in the result; conflicts with --headed"
+    )]
+    #[serde(default)]
+    pub background: bool,
+    #[arg(
+        long = "window-id",
+        value_name = "WINDOW_ID",
+        help = "Exact target window for --background --xy (from list-windows, e.g. w-9555)"
+    )]
+    #[serde(default)]
+    pub window_id: Option<String>,
 }
 
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MouseMoveArgs {
-    #[arg(long, help = "Absolute coordinates as x,y; requires --headed")]
+    #[arg(
+        long,
+        allow_hyphen_values = true,
+        help = "Absolute coordinates as x,y; requires --headed, or --background with --window-id"
+    )]
     pub xy: String,
+    #[arg(
+        long,
+        help = "Opt-in, best-effort synthetic input posted to the target window's process (macOS, private SkyLight SPI): the real cursor stays put; focus preservation is best effort, see focus_change in the result; conflicts with --headed"
+    )]
+    #[serde(default)]
+    pub background: bool,
+    #[arg(
+        long = "window-id",
+        value_name = "WINDOW_ID",
+        help = "Exact target window for --background --xy (from list-windows, e.g. w-9555)"
+    )]
+    #[serde(default)]
+    pub window_id: Option<String>,
 }
 
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MouseClickArgs {
-    #[arg(long, help = "Absolute coordinates as x,y; requires --headed")]
+    #[arg(
+        long,
+        allow_hyphen_values = true,
+        help = "Absolute coordinates as x,y; requires --headed, or --background with --window-id"
+    )]
     pub xy: String,
     #[arg(
         long,
@@ -226,12 +270,29 @@ pub(crate) struct MouseClickArgs {
     )]
     #[serde(default)]
     pub modifiers: Vec<String>,
+    #[arg(
+        long,
+        help = "Opt-in, best-effort synthetic input posted to the target window's process (macOS, private SkyLight SPI): the real cursor stays put; focus preservation is best effort, see focus_change in the result; conflicts with --headed"
+    )]
+    #[serde(default)]
+    pub background: bool,
+    #[arg(
+        long = "window-id",
+        value_name = "WINDOW_ID",
+        help = "Exact target window for --background --xy (from list-windows, e.g. w-9555)"
+    )]
+    #[serde(default)]
+    pub window_id: Option<String>,
 }
 
 #[derive(Parser, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MousePointArgs {
-    #[arg(long, help = "Absolute coordinates as x,y; requires --headed")]
+    #[arg(
+        long,
+        allow_hyphen_values = true,
+        help = "Absolute coordinates as x,y; requires --headed"
+    )]
     pub xy: String,
     #[arg(
         long,

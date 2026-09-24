@@ -63,3 +63,96 @@ impl SystemOps for FailingOverlayAdapter {
         ))
     }
 }
+
+/// Records background pointer deliveries and counts real cursor events so
+/// routing tests can prove which path a command took.
+pub(crate) struct BackgroundPointerAdapter {
+    pub(crate) background: Mutex<
+        Vec<(
+            agent_desktop_core::WindowInfo,
+            agent_desktop_core::MouseEvent,
+        )>,
+    >,
+    pub(crate) real_mouse_events: Mutex<u32>,
+}
+
+impl BackgroundPointerAdapter {
+    pub(crate) const WINDOW_ID: &'static str = "w-9555";
+
+    pub(crate) fn new() -> Self {
+        Self {
+            background: Mutex::new(Vec::new()),
+            real_mouse_events: Mutex::new(0),
+        }
+    }
+
+    fn window() -> agent_desktop_core::WindowInfo {
+        agent_desktop_core::WindowInfo {
+            id: Self::WINDOW_ID.into(),
+            title: "Code".into(),
+            app: "Code".into(),
+            pid: agent_desktop_core::ProcessId::new(4242),
+            process_instance: Some("instance".into()),
+            bounds: Some(agent_desktop_core::Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 800.0,
+                height: 600.0,
+            }),
+            state: agent_desktop_core::WindowState::default(),
+        }
+    }
+}
+
+impl ObservationOps for BackgroundPointerAdapter {
+    fn list_windows(
+        &self,
+        _filter: &agent_desktop_core::WindowFilter,
+        _deadline: agent_desktop_core::Deadline,
+    ) -> Result<Vec<agent_desktop_core::WindowInfo>, AdapterError> {
+        Ok(vec![Self::window()])
+    }
+}
+
+impl ActionOps for BackgroundPointerAdapter {}
+
+impl InputOps for BackgroundPointerAdapter {
+    fn mouse_event(
+        &self,
+        _event: agent_desktop_core::MouseEvent,
+        _lease: &agent_desktop_core::InteractionLease,
+    ) -> Result<(), AdapterError> {
+        *self.real_mouse_events.lock().unwrap() += 1;
+        Ok(())
+    }
+
+    fn background_mouse_event(
+        &self,
+        window: &agent_desktop_core::WindowInfo,
+        event: agent_desktop_core::MouseEvent,
+        _lease: &agent_desktop_core::InteractionLease,
+    ) -> Result<agent_desktop_core::BackgroundPointerReport, AdapterError> {
+        self.background
+            .lock()
+            .unwrap()
+            .push((window.clone(), event));
+        Ok(agent_desktop_core::BackgroundPointerReport::default())
+    }
+}
+
+impl SystemOps for BackgroundPointerAdapter {
+    fn acquire_interaction_lease(
+        &self,
+        deadline: agent_desktop_core::Deadline,
+    ) -> Result<agent_desktop_core::InteractionLease, AdapterError> {
+        agent_desktop_core::InteractionLease::guarded(deadline, ())
+    }
+
+    fn resolve_window_strict(
+        &self,
+        _window: &agent_desktop_core::WindowInfo,
+        _deadline: agent_desktop_core::Deadline,
+    ) -> Result<agent_desktop_core::WindowInfo, AdapterError> {
+        Ok(Self::window())
+    }
+}

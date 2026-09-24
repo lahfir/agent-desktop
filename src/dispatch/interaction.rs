@@ -163,6 +163,9 @@ pub(super) fn scroll(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    if args.background {
+        return crate::dispatch::background_pointer::scroll(args, adapter, context);
+    }
     scroll_command::execute(
         scroll_command::ScrollArgs {
             ref_id: args.ref_id,

@@ -51,7 +51,7 @@ pub(crate) fn synthesize_scroll_at(
     Err(AdapterError::not_supported("scroll"))
 }
 
-fn scroll_chunks(delta: (i32, i32)) -> Result<Vec<(i32, i32)>, AdapterError> {
+pub(crate) fn scroll_chunks(delta: (i32, i32)) -> Result<Vec<(i32, i32)>, AdapterError> {
     let (mut dy, mut dx) = delta;
     if dy == 0 && dx == 0 {
         return Err(AdapterError::new(

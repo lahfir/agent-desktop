@@ -9,7 +9,7 @@ Ref-based actions run in two modes, Playwright-style:
 - **Headless (default).** Semantic accessibility operations only. The action never silently steals focus, moves the cursor, synthesizes keyboard input, or uses the pasteboard. When the semantic path cannot perform the action it fails closed.
 - **`--headed`.** A global flag (`agent-desktop --headed click @s8f3k2p9:e5`) that authorizes the action's core-owned preconditions. Ref actions that need keyboard delivery focus the exact source window; pointer actions focus that window and require a verified target point before the adapter runs. On macOS, `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; `double-click`, `triple-click`, `hover`, and `drag` are physical-only. `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus`, and `scroll-to` stay semantic.
 
-`press` is explicit physical keyboard input. `hover`, `drag`, `mouse-move`, `mouse-click`, and `mouse-wheel` are explicit physical cursor input and require `--headed`. Raw coordinates carry no window identity, so they never focus an app. The held-input names (`key-down`, `key-up`, `mouse-down`, `mouse-up`) are reserved and return `ACTION_NOT_SUPPORTED` until a stateful daemon can own the hold lifetime.
+`press` is explicit physical keyboard input. `hover`, `drag`, `mouse-move`, `mouse-click`, and `mouse-wheel` are explicit physical cursor input and require `--headed`, except that `hover`, `mouse-move`, `mouse-click`, and `mouse-wheel` also accept the opt-in, best-effort `--background` mode (see [background-input.md](background-input.md)), which posts synthetic events to one exact window without moving the cursor. Raw coordinates carry no window identity, so they never focus an app. The held-input names (`key-down`, `key-up`, `mouse-down`, `mouse-up`) are reserved and return `ACTION_NOT_SUPPORTED` until a stateful daemon can own the hold lifetime.
 
 `--headed` is a global flag and also applies to every `batch` entry.
 
@@ -223,8 +223,11 @@ agent-desktop scroll @s8f3k2p9:e1 --direction right --amount 2
 | `--direction` | down | `up`, `down`, `left`, `right` |
 | `--amount` | 3 | Number of scroll units |
 | `--timeout-ms` | 5000 | Actionability wait budget in ms before failing with `TIMEOUT` |
+| `--background` | off | Opt-in, best-effort line scroll-wheel events (`--amount` lines) at the element's center, posted to its window's process instead of the AX scroll (macOS); conflicts with `--headed` |
 
 Headless mode uses AX scroll actions, scroll bars, and state-setting paths. Headed mode focuses the exact ref window, resolves the target point, and sends a physical wheel gesture first. If the selected mode has no safe mechanism, the command returns a structured error.
+
+`scroll <ref> --background` skips the AX scroll entirely and follows the [background input](background-input.md#scroll-wheel-mouse-wheel-scroll) rules, so it also reaches views that advertise only `ScrollTo`, such as a web area inside a scroll area (Outlook's reading pane). Without `--background` the ref must still advertise `Scroll`.
 
 ### scroll-to
 ```bash
@@ -289,6 +292,10 @@ This is an explicit cursor-moving command.
 
 With `--headed`, a ref-addressed hover must focus the target's exact window before moving the cursor and fails before delivery if focus cannot be confirmed. The response then includes `"focused": true`. Raw `--xy` hover never attempts focus because no target window identity exists.
 
+#### Background pointer (`--background`)
+
+`hover`, `mouse-move`, `mouse-click`, `mouse-wheel`, and `scroll` accept `--background` (macOS only), an explicit opt-in, best-effort mode that posts synthetic events to one exact window's process. The real cursor stays put; focus preservation is best effort. Targeting, results, deadlines, and limits are in [background-input.md](background-input.md).
+
 ### drag
 ```bash
 agent-desktop --headed drag --from @s8f3k2p9:e1 --to @s8f3k2p9:e5
@@ -335,6 +342,10 @@ agent-desktop --headed mouse-click --xy 500,300 --count 2
 | `--button` | left | `left`, `right`, `middle` |
 | `--count` | 1 | Number of clicks |
 | `--modifiers` | | Held modifiers: `shift`, `meta`, `ctrl`, `alt` (repeatable; `cmd`/`command` aliases are accepted); held during the click |
+| `--background` | off | Opt-in, best-effort synthetic input to the window named by `--window-id`; the cursor stays put, focus preservation is best effort; conflicts with `--headed` ([background-input.md](background-input.md)) |
+| `--window-id` | | Exact target window for `--background` (from `list-windows`); the point must lie inside it |
+
+`agent-desktop mouse-click --background --window-id w-9555 --xy 500,300` and `agent-desktop mouse-move --background --window-id w-9555 --xy 500,300` follow the [background input](background-input.md) rules.
 
 ### mouse-down / mouse-up
 
@@ -347,7 +358,7 @@ agent-desktop --headed mouse-wheel --x 500 --y 300 --dy -3
 agent-desktop --headed mouse-wheel --x 500 --y 300 --dx -2 --dy 0
 agent-desktop --headed mouse-wheel --x 500 --y 300 --modifiers shift
 ```
-Synthesizes a scroll-wheel event at absolute coordinates and requires `--headed`. This is distinct from `scroll <ref>`: `scroll` targets an element through AX scroll semantics, while `mouse-wheel` posts a raw wheel event at a screen point (for custom scroll surfaces or canvases with no AX scroll action). Held modifiers are applied to the event, so `--modifiers shift` produces the horizontal-scroll chord some apps expect.
+Synthesizes a scroll-wheel event at absolute coordinates and requires `--headed`, unless it runs in the opt-in, best-effort `--background` mode, which posts it to the `--window-id` window's process instead (`agent-desktop mouse-wheel --background --window-id w-9555 --x 500 --y 300 --dy -5`, see [background-input.md](background-input.md#scroll-wheel-mouse-wheel-scroll)). This is distinct from `scroll <ref>`: `scroll` targets an element through AX scroll semantics (or, with `--background`, wheel lines at its center), while `mouse-wheel` posts a raw wheel event at a screen point (for custom scroll surfaces or canvases with no AX scroll action). Held modifiers are applied to the event, so `--modifiers shift` produces the horizontal-scroll chord some apps expect.
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -356,6 +367,8 @@ Synthesizes a scroll-wheel event at absolute coordinates and requires `--headed`
 | `--dy` | -3 | Vertical wheel lines; positive is up, negative is down |
 | `--dx` | 0 | Horizontal wheel lines; positive is left, negative is right |
 | `--modifiers` | | Held modifiers: `shift`, `meta`, `ctrl`, `alt` (repeatable; `cmd`/`command` aliases are accepted) |
+| `--background` | off | Opt-in, best-effort synthetic wheel events to the window named by `--window-id`; the cursor stays put, focus preservation is best effort; conflicts with `--headed` |
+| `--window-id` | | Exact target window for `--background` (from `list-windows`); the point must lie inside it |
 
 ## Choosing the Right Command
 
