@@ -9,6 +9,29 @@ fn lease() -> crate::InteractionLease {
 }
 
 #[test]
+fn default_background_mouse_event_is_not_supported() {
+    let window = crate::WindowInfo {
+        id: "w-1".into(),
+        title: String::new(),
+        app: String::new(),
+        pid: crate::ProcessId::new(1),
+        process_instance: None,
+        bounds: None,
+        state: crate::WindowState::default(),
+    };
+    let event = crate::MouseEvent {
+        kind: crate::MouseEventKind::Move,
+        point: crate::Point { x: 0.0, y: 0.0 },
+        button: crate::MouseButton::Left,
+        modifiers: Vec::new(),
+    };
+    let err = DefaultOnly
+        .background_mouse_event(&window, event, &lease())
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::PlatformNotSupported);
+}
+
+#[test]
 fn default_clear_clipboard_is_not_supported() {
     let err = DefaultOnly.clear_clipboard(&lease()).unwrap_err();
     assert_eq!(err.code, ErrorCode::PlatformNotSupported);

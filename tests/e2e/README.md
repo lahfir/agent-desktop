@@ -68,6 +68,7 @@ returns a bare `@eN`.
 | `scenarios/reliability.sh` | Stale refs, waits, drill-down, sessions |
 | `scenarios/surfaces.sh` | Sheets, menus, drag, disclosure |
 | `scenarios/trace_performance.sh` | Trace artifacts, redaction, timings, cleanup |
+| `scenarios/background.sh` | `--background` click lands while another app stays frontmost and the cursor stays put |
 | `permission-contract.sh` | Deterministic AE5 mapping tests without mutating TCC |
 | `electron-live.sh` | Opt-in installed Electron/Chromium app measurement |
 

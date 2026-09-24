@@ -201,3 +201,42 @@ fn trace_show_passes_preflight_with_permissions_denied() {
     });
     assert!(preflight(&command, &report).is_ok());
 }
+
+#[test]
+fn background_pointer_commands_keep_accessibility_preflight_and_ref_validation() {
+    let report = PermissionReport {
+        accessibility: PermissionState::Denied {
+            suggestion: "grant accessibility".into(),
+        },
+        screen_recording: PermissionState::Granted,
+        automation: PermissionState::NotRequired,
+    };
+    let click = Commands::MouseClick(
+        <crate::cli_args::actions::MouseClickArgs as clap::Parser>::try_parse_from([
+            "mouse-click",
+            "--background",
+            "--window-id",
+            "w-9555",
+            "--xy",
+            "10,20",
+        ])
+        .unwrap(),
+    );
+    let bad_hover = Commands::Hover(
+        <crate::cli_args::actions::HoverArgs as clap::Parser>::try_parse_from([
+            "hover",
+            "bad-ref",
+            "--background",
+        ])
+        .unwrap(),
+    );
+
+    assert_eq!(
+        preflight(&click, &report).unwrap_err().code(),
+        "PERM_DENIED"
+    );
+    assert_eq!(
+        preflight(&bad_hover, &report).unwrap_err().code(),
+        "INVALID_ARGS"
+    );
+}

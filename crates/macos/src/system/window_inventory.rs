@@ -91,7 +91,7 @@ pub(crate) fn focused_window_until(deadline: Instant) -> Result<Option<WindowInf
 }
 
 #[cfg(target_os = "macos")]
-fn focused_application_pid(deadline: Instant) -> Result<Option<i32>, AdapterError> {
+pub(crate) fn focused_application_pid(deadline: Instant) -> Result<Option<i32>, AdapterError> {
     let system =
         crate::tree::AXElement(unsafe { accessibility_sys::AXUIElementCreateSystemWide() });
     crate::tree::surface_read::element(&system, "AXFocusedApplication", deadline)?

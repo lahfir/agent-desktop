@@ -136,6 +136,44 @@ fn mouse_click_args_batch_json_without_modifiers_key_still_deserializes() {
 }
 
 #[test]
+fn background_pointer_flags_parse_on_hover_and_mouse_commands() {
+    let hover = HoverArgs::try_parse_from(["hover", "@s1:e1", "--background"]).unwrap();
+    let click = MouseClickArgs::try_parse_from([
+        "mouse-click",
+        "--background",
+        "--window-id",
+        "w-9555",
+        "--xy",
+        "10,20",
+    ])
+    .unwrap();
+    let moved = MouseMoveArgs::try_parse_from([
+        "mouse-move",
+        "--background",
+        "--window-id",
+        "w-9555",
+        "--xy",
+        "10,20",
+    ])
+    .unwrap();
+
+    assert!(hover.background && hover.window_id.is_none());
+    assert!(click.background);
+    assert_eq!(click.window_id.as_deref(), Some("w-9555"));
+    assert!(moved.background);
+    assert_eq!(moved.window_id.as_deref(), Some("w-9555"));
+}
+
+#[test]
+fn background_pointer_flags_default_off_for_cli_and_batch() {
+    let cli = MouseClickArgs::try_parse_from(["mouse-click", "--xy", "10,20"]).unwrap();
+    let batch: HoverArgs = serde_json::from_value(serde_json::json!({ "ref_id": "@e1" })).unwrap();
+
+    assert!(!cli.background && cli.window_id.is_none());
+    assert!(!batch.background && batch.window_id.is_none());
+}
+
+#[test]
 fn mouse_point_args_cli_modifiers_repeatable_flag_parses() {
     let args =
         MousePointArgs::try_parse_from(["mouse-down", "--xy", "10,20", "--modifiers", "ctrl"])
@@ -154,4 +192,40 @@ fn mouse_point_args_batch_json_without_modifiers_key_still_deserializes() {
     let args: MousePointArgs =
         serde_json::from_value(serde_json::json!({ "xy": "10,20" })).unwrap();
     assert!(args.modifiers.is_empty());
+}
+
+/// Displays left of or above the primary display have negative global
+/// coordinates, so every coordinate flag must accept a value starting with `-`.
+#[test]
+fn coordinate_flags_accept_negative_coordinates() {
+    let click = MouseClickArgs::try_parse_from([
+        "mouse-click",
+        "--background",
+        "--window-id",
+        "w-6015",
+        "--xy",
+        "-1580.5,966.5",
+    ])
+    .unwrap();
+    assert_eq!(click.xy, "-1580.5,966.5");
+
+    let moved = MouseMoveArgs::try_parse_from(["mouse-move", "--xy", "-10,-20"]).unwrap();
+    assert_eq!(moved.xy, "-10,-20");
+
+    let hover = HoverArgs::try_parse_from(["hover", "--xy", "-3762.5,1940"]).unwrap();
+    assert_eq!(hover.xy.as_deref(), Some("-3762.5,1940"));
+
+    let down = MousePointArgs::try_parse_from(["mouse-down", "--xy", "-1,2"]).unwrap();
+    assert_eq!(down.xy, "-1,2");
+
+    let drag = crate::cli_args::drag::DragCliArgs::try_parse_from([
+        "drag",
+        "--from-xy",
+        "-5,6",
+        "--to-xy",
+        "-7,-8",
+    ])
+    .unwrap();
+    assert_eq!(drag.target.from_xy.as_deref(), Some("-5,6"));
+    assert_eq!(drag.target.to_xy.as_deref(), Some("-7,-8"));
 }

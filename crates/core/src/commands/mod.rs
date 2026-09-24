@@ -1,3 +1,4 @@
+pub mod background_pointer;
 pub mod batch;
 pub mod check;
 pub mod clear;

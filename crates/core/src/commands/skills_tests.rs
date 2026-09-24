@@ -32,6 +32,7 @@ fn get_full_inlines_references() {
     assert!(content.contains("--- references/workflows.md ---"));
     if cfg!(target_os = "macos") {
         assert!(content.contains("--- references/macos.md ---"));
+        assert!(content.contains("--- references/background-input.md ---"));
     }
     assert!(content.contains("@s8f3k2p9:e1"));
     assert!(content.contains("session start` does not activate later processes"));

@@ -9,7 +9,7 @@ Ref-based actions run in two modes, Playwright-style:
 - **Headless (default).** Semantic accessibility operations only. The action never silently steals focus, moves the cursor, synthesizes keyboard input, or uses the pasteboard. When the semantic path cannot perform the action it fails closed.
 - **`--headed`.** A global flag (`agent-desktop --headed click @s8f3k2p9:e5`) that authorizes the action's core-owned preconditions. Ref actions that need keyboard delivery focus the exact source window; pointer actions focus that window and require a verified target point before the adapter runs. On macOS, `click`, `right-click`, `type`, `clear`, and `scroll` are physical-first; `double-click`, `triple-click`, `hover`, and `drag` are physical-only. `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus`, and `scroll-to` stay semantic.
 
-`press` is explicit physical keyboard input. `hover`, `drag`, `mouse-move`, `mouse-click`, and `mouse-wheel` are explicit physical cursor input and require `--headed`. Raw coordinates carry no window identity, so they never focus an app. The held-input names (`key-down`, `key-up`, `mouse-down`, `mouse-up`) are reserved and return `ACTION_NOT_SUPPORTED` until a stateful daemon can own the hold lifetime.
+`press` is explicit physical keyboard input. `hover`, `drag`, `mouse-move`, `mouse-click`, and `mouse-wheel` are explicit physical cursor input and require `--headed`, except that `hover`, `mouse-move`, and `mouse-click` also accept the opt-in, best-effort `--background` mode (see [background-input.md](background-input.md)), which posts synthetic events to one exact window without moving the cursor. Raw coordinates carry no window identity, so they never focus an app. The held-input names (`key-down`, `key-up`, `mouse-down`, `mouse-up`) are reserved and return `ACTION_NOT_SUPPORTED` until a stateful daemon can own the hold lifetime.
 
 `--headed` is a global flag and also applies to every `batch` entry.
 
@@ -289,6 +289,10 @@ This is an explicit cursor-moving command.
 
 With `--headed`, a ref-addressed hover must focus the target's exact window before moving the cursor and fails before delivery if focus cannot be confirmed. The response then includes `"focused": true`. Raw `--xy` hover never attempts focus because no target window identity exists.
 
+#### Background pointer (`--background`)
+
+`hover`, `mouse-move`, and `mouse-click` accept `--background` (macOS only), an explicit opt-in, best-effort mode that posts synthetic events to one exact window's process. The real cursor stays put; focus preservation is best effort. Targeting, results, deadlines, and limits are in [background-input.md](background-input.md).
+
 ### drag
 ```bash
 agent-desktop --headed drag --from @s8f3k2p9:e1 --to @s8f3k2p9:e5
@@ -335,6 +339,10 @@ agent-desktop --headed mouse-click --xy 500,300 --count 2
 | `--button` | left | `left`, `right`, `middle` |
 | `--count` | 1 | Number of clicks |
 | `--modifiers` | | Held modifiers: `shift`, `meta`, `ctrl`, `alt` (repeatable; `cmd`/`command` aliases are accepted); held during the click |
+| `--background` | off | Opt-in, best-effort synthetic input to the window named by `--window-id`; the cursor stays put, focus preservation is best effort; conflicts with `--headed` ([background-input.md](background-input.md)) |
+| `--window-id` | | Exact target window for `--background` (from `list-windows`); the point must lie inside it |
+
+`agent-desktop mouse-click --background --window-id w-9555 --xy 500,300` and `agent-desktop mouse-move --background --window-id w-9555 --xy 500,300` follow the [background input](background-input.md) rules.
 
 ### mouse-down / mouse-up
 
