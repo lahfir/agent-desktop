@@ -47,8 +47,15 @@ impl ObservationRequest {
         if self.max_logical_depth > self.max_raw_depth {
             return Err(AdapterError::new(
                 ErrorCode::InvalidArgs,
-                "max_logical_depth cannot exceed max_raw_depth",
-            ));
+                format!(
+                    "max depth {} exceeds the supported maximum of {}",
+                    self.max_logical_depth, self.max_raw_depth
+                ),
+            )
+            .with_suggestion(format!(
+                "Use a max depth of {} or less, or drill into a subtree with snapshot --root <ref>",
+                self.max_raw_depth
+            )));
         }
         if self.observation_mode.skeleton && self.max_logical_depth > 3 {
             return Err(AdapterError::new(

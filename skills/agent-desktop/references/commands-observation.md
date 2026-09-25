@@ -26,7 +26,7 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 | `--app` | (required) | Application name |
 | `--window-id` | | Specific window ID from `list-windows` |
 | `-i` / `--interactive-only` | false | Only include interactive elements (buttons, fields, etc.) |
-| `--max-depth` | 10 | Maximum tree traversal depth |
+| `--max-depth` | 10 | Maximum tree traversal depth, 1-50; deeper subtrees are reached with `--root` |
 | `--include-bounds` | false | Include `{x, y, width, height}` for each element |
 | `--compact` | false | Omit empty structural nodes |
 | `--surface` | window | Target surface: `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert`. Windows additionally serves the shell kinds `taskbar`, `system-tray`, `system-tray-overflow`, `start-menu`, `action-center` |
