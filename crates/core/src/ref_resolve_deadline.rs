@@ -8,7 +8,13 @@ use crate::{
 };
 
 pub(crate) const POLL_INTERVAL: Duration = Duration::from_millis(100);
-const RESOLVE_ATTEMPT: Duration = Duration::from_millis(750);
+/// One resolve attempt may run this long before the poll loop re-issues it.
+///
+/// A full-tree search costs what a full snapshot costs (a complete search of
+/// Task Manager measured 2.6 s against this budget), so a shorter
+/// slice cuts every attempt off mid-search and the verdict never settles.
+/// Stays under the 5 s default outer budget so a re-attempt still fits.
+const RESOLVE_ATTEMPT: Duration = Duration::from_millis(4_000);
 
 pub(crate) fn resolve_within_deadline(
     adapter: &dyn PlatformAdapter,

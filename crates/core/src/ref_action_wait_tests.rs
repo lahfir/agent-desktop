@@ -308,6 +308,72 @@ fn policy_denied_disabled_target_fails_fast_without_exhausting_wait_budget() {
     );
 }
 
+struct SettledStaleAdapter;
+
+impl ObservationOps for SettledStaleAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Err(
+            AdapterError::stale_ref_because("Stored ref does not match any live element")
+                .with_details(serde_json::json!({
+                    "kind": "resolve_no_candidate",
+                    "complete": true,
+                    "retryable": true,
+                })),
+        )
+    }
+
+    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
+}
+
+impl ActionOps for SettledStaleAdapter {
+    fn execute_action(
+        &self,
+        _handle: &NativeHandle,
+        _request: ActionRequest,
+        _lease: &crate::InteractionLease,
+    ) -> Result<crate::action_result::ActionResult, AdapterError> {
+        Ok(crate::action_result::ActionResult::delivered_unverified(
+            "click",
+        ))
+    }
+}
+
+impl InputOps for SettledStaleAdapter {}
+
+impl SystemOps for SettledStaleAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
+
+/// A ref that stays unresolvable through a complete search must surface the
+/// settled `STALE_REF` when the budget runs out, not a `TIMEOUT` claiming the
+/// application may be busy: the resolver already proved the target is gone,
+/// and the polling loop must not discard that diagnosis.
+#[test]
+fn exhausted_budget_returns_the_settled_stale_ref_not_timeout() {
+    let adapter = SettledStaleAdapter;
+    let err = execute_with_auto_wait(
+        RefActionWaitCtx {
+            adapter: &adapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
+        request_with_timeout(300),
+        crate::ref_action::dispatch_resolved,
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::StaleRef);
+    assert_eq!(err.disposition, crate::DeliverySemantics::not_delivered());
+    let details = err.details.expect("settled details");
+    assert_eq!(details["kind"], "resolve_no_candidate");
+    assert!(details.get("elapsed_ms").is_some());
+}
+
 #[path = "ref_action_wait_lease_tests.rs"]
 mod lease_tests;
 
