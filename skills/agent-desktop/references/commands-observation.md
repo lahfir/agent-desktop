@@ -123,7 +123,10 @@ agent-desktop snapshot --root @e3 --snapshot <snapshot_id> -i
 macOS serves `window`, `focused`, `menu`, `menubar`, `sheet`, `popover` and
 `alert`, while Windows serves `window`, `focused`, `sheet`, `menu`, and the
 shell kinds `taskbar`, `system-tray`, `system-tray-overflow`, `start-menu`
-and `action-center`. A surface the adapter does not serve returns
+and `action-center`. `status` spells multi-word kinds with underscores
+(`action_center`); `--surface` accepts that spelling and the hyphenated one
+alike, so a token read from `status` can be passed back unchanged. A surface
+the adapter does not serve returns
 `PLATFORM_NOT_SUPPORTED` with the supported list in `details`, so the failure
 is honest — but it is cheaper to read `status` first than to discover it from
 an error.
