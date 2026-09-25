@@ -89,7 +89,7 @@ fn batch_and_cli_produce_identical_envelopes_for_the_same_open() {
         serde_json::to_string(&cli_data).unwrap(),
         "batch and CLI must emit the same bytes for the same request"
     );
-    assert_eq!(cli_data["surface"], "action_center");
+    assert_eq!(cli_data["surface"], "action-center");
     assert_eq!(cli_data["window"]["id"], "w-77");
 
     let opens = adapter.opens.lock().unwrap();

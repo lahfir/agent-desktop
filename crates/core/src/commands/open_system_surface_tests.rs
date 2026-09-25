@@ -100,7 +100,7 @@ fn data_carries_the_snake_case_kind_and_the_full_window_identity() {
     )
     .unwrap();
 
-    assert_eq!(value["surface"], "action_center");
+    assert_eq!(value["surface"], "action-center");
     assert_eq!(value["window"]["id"], "w-4242");
     assert_eq!(value["window"]["title"], "Action center");
     assert_eq!(value["window"]["app_name"], "ShellExperienceHost.exe");

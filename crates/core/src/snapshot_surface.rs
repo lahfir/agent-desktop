@@ -40,16 +40,16 @@ impl SnapshotSurface {
             Self::Alert => "alert",
             Self::Desktop => "desktop",
             Self::Taskbar => "taskbar",
-            Self::SystemTray => "system_tray",
-            Self::QuickSettings => "quick_settings",
-            Self::NotificationCenter => "notification_center",
+            Self::SystemTray => "system-tray",
+            Self::QuickSettings => "quick-settings",
+            Self::NotificationCenter => "notification-center",
             Self::Toolbar => "toolbar",
             Self::Dock => "dock",
             Self::Spotlight => "spotlight",
-            Self::MenuBarExtras => "menu_bar_extras",
-            Self::SystemTrayOverflow => "system_tray_overflow",
-            Self::StartMenu => "start_menu",
-            Self::ActionCenter => "action_center",
+            Self::MenuBarExtras => "menu-bar-extras",
+            Self::SystemTrayOverflow => "system-tray-overflow",
+            Self::StartMenu => "start-menu",
+            Self::ActionCenter => "action-center",
         }
     }
 }

@@ -218,8 +218,8 @@ fn open_system_surface_parses_the_shared_surface_vocabulary() {
     ));
 }
 
-/// `status` reports surfaces by the core token (`action_center`), so every
-/// token it can report must be accepted back by `--surface`.
+/// Every surface token `status` can report must be accepted back by
+/// `--surface` unchanged.
 #[test]
 fn every_status_surface_token_parses_as_a_surface_argument() {
     use clap::ValueEnum;
