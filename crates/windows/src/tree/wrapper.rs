@@ -8,20 +8,32 @@ use super::property_outcome::{PropertyOutcome, PropertyValue};
 /// The predicate consumes only evidence this walk has already read - control
 /// type, name, value, `AutomationId`, and actions - so it costs nothing extra
 /// per node. A node is a transparent wrapper only when its control type is
-/// `Group` (50026) or `Custom` (50025) **and** its name, value and
-/// `AutomationId` are all empty **and** it advertises no action. This mirrors
-/// macOS's rule that a named or actionable generic element consumes depth
-/// (`crates/macos/src/tree/query/node_evidence.rs:6-38`).
+/// `Group` (50026), `Custom` (50025), or `Pane` (50033) **and** its name,
+/// value and `AutomationId` are all empty **and** it advertises no action.
+/// This mirrors macOS's rule that a named or actionable generic element
+/// consumes depth (`crates/macos/src/tree/query/node_evidence.rs:6-38`).
+/// `Pane` belongs here because Chromium builds its pass-through chain from
+/// unnamed panes (six of them sit above Obsidian's document); native
+/// stacks are full of the same anonymous panes, so the call-site
+/// Chromium-provenance gate is what keeps this from deepening those trees
+/// silently.
 ///
 /// Gate note: this function is **ungated** - it decides emptiness only. The
 /// Chromium-provenance gate (that a skip only fires under detected
 /// Chromium/WebView2 provenance) lives at the call site, because the same
 /// predicate would otherwise skip the anonymous `Group`/`Pane` containers
 /// native stacks are full of (the silent-deepening guard).
+///
+/// A bare `ScrollTo` does not defeat the skip: Chromium exposes `ScrollItem`
+/// on nearly every element, so each pass-through group above the controls
+/// reports `ScrollTo` without being genuinely actionable (the whole Obsidian
+/// chain measured this way - twelve unnamed groups, eleven of them
+/// `ScrollTo`-only). Any other advertised action still consumes depth.
 pub(crate) fn is_web_wrapper(properties: &ElementProperties) -> bool {
     let control_type = non_zero_number(properties.get(TreeProperty::ControlType));
-    let is_group_or_custom = control_type == Some(50026) || control_type == Some(50025);
-    if !is_group_or_custom {
+    let is_wrapper_shape =
+        control_type == Some(50026) || control_type == Some(50025) || control_type == Some(50033);
+    if !is_wrapper_shape {
         return false;
     }
     if non_empty_text(properties.get(TreeProperty::Name)).is_some() {
@@ -61,7 +73,11 @@ fn non_zero_number(outcome: PropertyOutcome) -> Option<i32> {
 fn advertises_action(properties: &ElementProperties) -> bool {
     super::actions::resolve_actions(properties)
         .known()
-        .is_some_and(|actions| !actions.is_empty())
+        .is_some_and(|actions| {
+            actions
+                .iter()
+                .any(|action| action != agent_desktop_core::capability::SCROLL_TO)
+        })
 }
 
 #[cfg(test)]
@@ -126,10 +142,43 @@ mod tests {
     }
 
     #[test]
-    fn a_non_group_control_type_is_never_a_wrapper() {
+    fn a_group_with_only_scroll_to_is_a_wrapper_shape() {
+        let mut reads = group();
+        reads.push((
+            TreeProperty::ScrollItemAvailable,
+            PropertyOutcome::Known(PropertyValue::Flag(true)),
+        ));
+        assert!(is_web_wrapper(&props(&reads)));
+    }
+
+    #[test]
+    fn a_group_with_scroll_to_and_click_consumes_depth() {
+        let mut reads = group();
+        reads.push((
+            TreeProperty::ScrollItemAvailable,
+            PropertyOutcome::Known(PropertyValue::Flag(true)),
+        ));
+        reads.push((
+            TreeProperty::InvokeAvailable,
+            PropertyOutcome::Known(PropertyValue::Flag(true)),
+        ));
+        assert!(!is_web_wrapper(&props(&reads)));
+    }
+
+    #[test]
+    fn an_empty_pane_without_identity_is_a_wrapper_shape() {
         let reads = vec![(
             TreeProperty::ControlType,
             PropertyOutcome::Known(PropertyValue::Number(50033)),
+        )];
+        assert!(is_web_wrapper(&props(&reads)));
+    }
+
+    #[test]
+    fn a_button_control_type_is_never_a_wrapper() {
+        let reads = vec![(
+            TreeProperty::ControlType,
+            PropertyOutcome::Known(PropertyValue::Number(50000)),
         )];
         assert!(!is_web_wrapper(&props(&reads)));
     }
