@@ -103,15 +103,29 @@ impl<N> PathLanding<N> {
 /// Enumerates one element's children, honouring the sibling cap as a hard
 /// bound on pathological lists and the deadline as a bound on time.
 ///
-/// The cap is the one place this enumeration's completeness is not literal: a
-/// cap-hit keeps the truncated list and still reports it whole. That is
-/// deliberate. The bound exists to make the loop total against a sibling chain
-/// that never terminates - the ancestor cycle guard cannot see such a chain,
-/// because it revisits no element on any root-to-node path - not to clamp a
-/// large but finite list. Measured breadth is nowhere near it: the widest node
-/// in the probe corpus sits in a virtualized Explorer file list whose entire
-/// tree over `%WINDIR%\System32` is 196 nodes (A1-1), and a WinForms `ListBox`
-/// exposes no items at all to a COM client (A17-2).
+/// `take` stops the loop after that many siblings: `None` enumerates the
+/// whole list (the broad search, which must see every sibling to settle an
+/// absence), while `descend_path` passes the wanted index plus one, so
+/// reaching the wanted index costs index-plus-one cross-process calls
+/// however long the list runs. A take-hit reports whole exactly like a
+/// cap-hit, for the same reason: no verdict the caller draws from the
+/// returned prefix changes - an index the prefix reaches names the same
+/// child the whole list would name - and an unfinished verdict would
+/// withhold the entire search's answer over siblings the broad search still
+/// walks in full on its own pass. The one shape this does not cover is a
+/// ref deeper than the search's own depth cap whose path declines: the
+/// broad search cannot reach past its cap to re-cover a take-truncated
+/// remainder down there, so that remainder is unseen by every tier.
+///
+/// The cap is the other place this enumeration's completeness is not
+/// literal: a cap-hit keeps the truncated list and still reports it whole.
+/// That is deliberate. The bound exists to make the loop total against a
+/// sibling chain that never terminates - the ancestor cycle guard cannot see
+/// such a chain, because it revisits no element on any root-to-node path -
+/// not to clamp a large but finite list. Measured breadth is nowhere near
+/// it: the widest node in the probe corpus sits in a virtualized Explorer
+/// file list whose entire tree over `%WINDIR%\System32` is 196 nodes (A1-1),
+/// and a WinForms `ListBox` exposes no items at all to a COM client (A17-2).
 ///
 /// Reporting the truncation unfinished would cost more honesty than it buys,
 /// for two reasons. The bound is shared with the walk that issues refs in the
@@ -128,7 +142,11 @@ pub(crate) fn read_children<S: TreeSource>(
     element: &S::Node,
     budget: &WalkBudget,
     policy: &DescentPolicy,
+    take: Option<usize>,
 ) -> Result<ChildList<S::Node>, AdapterError> {
+    let limit = take
+        .map(|take| take.min(budget.max_siblings))
+        .unwrap_or(budget.max_siblings);
     let mut elements = Vec::new();
     let mut current = match source.first_child(element) {
         Ok(first) => first,
@@ -141,7 +159,7 @@ pub(crate) fn read_children<S: TreeSource>(
         Err(failure) => return classified(failure, elements, policy, policy.descend_context),
     };
     loop {
-        if elements.len() >= budget.max_siblings {
+        if elements.len() >= limit {
             break;
         }
         if let Err(expired) = ensure_budget(budget.deadline) {
@@ -153,9 +171,11 @@ pub(crate) fn read_children<S: TreeSource>(
                 ExpiryPolicy::Surface => Err(expired),
             };
         }
-        let next = source.next_sibling(&current);
-        elements.push(current);
-        match next {
+        elements.push(current.clone());
+        if elements.len() >= limit {
+            break;
+        }
+        match source.next_sibling(&current) {
             Ok(sibling) => current = sibling,
             Err(failure) if failure.is_exhaustion() => break,
             Err(failure) => return classified(failure, elements, policy, policy.sibling_context),
@@ -169,11 +189,15 @@ pub(crate) fn read_children<S: TreeSource>(
 
 /// Walks the stored child-index path from a root, O(depth) child reads.
 ///
-/// A path step that lands nowhere yields no element; what that absence means
-/// belongs to the caller, not here. The index is taken against the raw
-/// enumeration, the same space the walk that issued the ref recorded its
-/// stored index in, so a walk that omitted a sibling from its own output still
-/// leaves the stored index pointing at the child it named.
+/// Each level enumerates only to the wanted index plus one and stops: a path
+/// step needs the one child it names, never the thousand siblings after it
+/// (a ref to a subkey near the top of an expanded registry hive would
+/// otherwise read all of the hive's thousands of subkeys first). A path step that lands nowhere yields no element;
+/// what that absence means belongs to the caller, not here. The index is
+/// taken against the raw enumeration, the same space the walk that issued
+/// the ref recorded its stored index in, so a walk that omitted a sibling
+/// from its own output still leaves the stored index pointing at the child
+/// it named.
 pub(crate) fn descend_path<S: TreeSource>(
     source: &S,
     root: &S::Node,
@@ -184,7 +208,13 @@ pub(crate) fn descend_path<S: TreeSource>(
     let mut current = root.clone();
     let mut unread_region = false;
     for &index in path {
-        let read = read_children(source, &current, budget, policy)?;
+        let read = read_children(
+            source,
+            &current,
+            budget,
+            policy,
+            Some(index.saturating_add(1)),
+        )?;
         unread_region |= !read.complete;
         let Some(child) = read.elements.get(index) else {
             return Ok(PathLanding {
