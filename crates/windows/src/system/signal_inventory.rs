@@ -2,7 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use agent_desktop_core::{AdapterError, AppInfo, Deadline, ErrorCode, ProcessId, WindowInfo};
+use agent_desktop_core::{
+    AdapterError, AppInfo, AppPresentation, Deadline, ErrorCode, ProcessId, WindowInfo,
+};
 
 use super::app_ops;
 use super::listing_retry::{LISTING_RACE_ATTEMPTS, retry_transient_window_race};
@@ -211,7 +213,7 @@ fn assembly_phase(
                 pid: current_pid,
                 bundle_id: None,
                 process_instance: Some(token),
-                presentation: None,
+                presentation: Some(AppPresentation::Foreground),
             });
         }
     }
