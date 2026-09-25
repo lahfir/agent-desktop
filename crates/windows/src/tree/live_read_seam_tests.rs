@@ -17,6 +17,7 @@ use crate::tree::automation::{UiaFailure, uia_failure_error};
 use crate::tree::element::UIAElement;
 use crate::tree::fixture::{HostedFixture, ensure_test_apartment};
 use crate::tree::properties::{ElementProperties, read_live};
+use crate::tree::property_ids::TreeProperty;
 use crate::tree::walker_fake::deadline;
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode};
 use std::cell::Cell;
@@ -67,11 +68,17 @@ fn a_process_that_dies_during_the_read_settles_stale_not_ok() {
         }
     };
 
-    let error =
-        match read_live_element_core(element, deadline(), corroborate, read_live, live_label) {
-            Err(error) => error,
-            Ok(_) => panic!("a token that goes dead mid-call must not read Ok"),
-        };
+    let error = match read_live_element_core(
+        element,
+        deadline(),
+        false,
+        corroborate,
+        read_live,
+        live_label,
+    ) {
+        Err(error) => error,
+        Ok(_) => panic!("a token that goes dead mid-call must not read Ok"),
+    };
     assert_eq!(error.code, ErrorCode::StaleRef);
     assert_eq!(
         calls.get(),
@@ -106,6 +113,7 @@ fn a_vanished_resolved_target_settles_stale_not_retryable_unresponsive() {
     let error = match read_live_element_core(
         element,
         deadline(),
+        false,
         corroborate_verified_process,
         vanished_read,
         live_label,
@@ -155,6 +163,7 @@ fn a_vanished_target_wrapped_through_the_real_property_read_error_still_settles_
     let error = match read_live_element_core(
         element,
         deadline(),
+        false,
         corroborate_verified_process,
         vanished_read,
         live_label,
@@ -192,6 +201,7 @@ fn a_bundle_whose_essential_slots_are_unknown_fails_retryable_never_partial() {
     let error = match read_live_element_core(
         element,
         deadline(),
+        false,
         corroborate_verified_process,
         unread,
         live_label,
@@ -242,6 +252,7 @@ fn a_spent_deadline_skips_the_label_read_without_changing_the_outcome() {
     let unhurried = read_live_element_core(
         element,
         deadline(),
+        false,
         corroborate_verified_process,
         read_live,
         |element| counted(&unhurried_labels, element),
@@ -256,6 +267,7 @@ fn a_spent_deadline_skips_the_label_read_without_changing_the_outcome() {
     let spent = read_live_element_core(
         element,
         spent_budget,
+        false,
         corroborate_verified_process,
         read_past_the_budget,
         |element| counted(&spent_labels, element),
@@ -275,5 +287,68 @@ fn a_spent_deadline_skips_the_label_read_without_changing_the_outcome() {
     assert_eq!(
         spent.evidence.role, unhurried.evidence.role,
         "skipping the label must not change what the read concludes"
+    );
+}
+
+/// A minimized owner reports its subtree offscreen even though the provider
+/// keeps clearing `IsOffscreen` on the descendants (the A14-8 divergence):
+/// the stamp overwrites the flag, the projected state, and the state token
+/// together, which is what flips both `is visible` and the preflight
+/// visibility gate.
+#[test]
+fn a_minimized_owner_reports_its_subtree_offscreen_in_the_live_read() {
+    ensure_test_apartment();
+    let fixture = HostedFixture::spawn().expect("a fixture host starts");
+    let handle = verified_handle(&fixture).expect("a verified handle");
+    let element = handle
+        .downcast_ref::<UIAElement>()
+        .expect("a UIAElement payload");
+
+    let read = read_live_element_core(
+        element,
+        deadline(),
+        true,
+        corroborate_verified_process,
+        read_live,
+        live_label,
+    )
+    .expect("a live read succeeds");
+
+    assert_eq!(
+        read.properties.get(TreeProperty::IsOffscreen).flag(),
+        Some(true)
+    );
+    let state = super::live_state(&read).expect("the state projects");
+    assert_eq!(state.offscreen, Some(true));
+    assert!(
+        state.states.iter().any(|state| state == "offscreen"),
+        "the state token must travel with the flag"
+    );
+}
+
+/// A restored owner leaves the provider's own `IsOffscreen` answer alone.
+#[test]
+fn a_restored_owner_keeps_the_provider_offscreen_answer() {
+    ensure_test_apartment();
+    let fixture = HostedFixture::spawn().expect("a fixture host starts");
+    let handle = verified_handle(&fixture).expect("a verified handle");
+    let element = handle
+        .downcast_ref::<UIAElement>()
+        .expect("a UIAElement payload");
+    let (raw, _) = read_live(element);
+
+    let read = read_live_element_core(
+        element,
+        deadline(),
+        false,
+        corroborate_verified_process,
+        read_live,
+        live_label,
+    )
+    .expect("a live read succeeds");
+
+    assert_eq!(
+        read.properties.get(TreeProperty::IsOffscreen).flag(),
+        raw.get(TreeProperty::IsOffscreen).flag()
     );
 }

@@ -74,9 +74,12 @@ mod imp {
         deadline: Deadline,
     ) -> Result<LiveRead, AdapterError> {
         let element = uia_element(handle)?;
+        let owning_window_minimized =
+            crate::tree::minimized::owning_window_minimized(element, deadline).unwrap_or(false);
         read_live_element_core(
             element,
             deadline,
+            owning_window_minimized,
             corroborate_verified_process,
             |element| read_live_bounded(element, deadline),
             |element| read_label(element, false),
@@ -110,6 +113,7 @@ mod imp {
     pub(crate) fn read_live_element_core(
         element: &UIAElement,
         deadline: Deadline,
+        owning_window_minimized: bool,
         corroborate: impl Fn(&UIAElement) -> Result<(), AdapterError>,
         read: impl Fn(&UIAElement) -> (ElementProperties, Vec<AdapterError>),
         read_label: impl Fn(&UIAElement) -> LabelOutcome,
@@ -119,9 +123,12 @@ mod imp {
         if deadline.is_expired() {
             return Err(deadline.timeout_error());
         }
-        let (properties, errors) = read(element);
+        let (mut properties, errors) = read(element);
         if target_read_reports_vanished(&errors) {
             return Err(stale_reader_error());
+        }
+        if owning_window_minimized {
+            crate::tree::minimized::stamp_minimized_offscreen(&mut properties);
         }
         let label = if deadline.is_expired() {
             LabelOutcome::Failed

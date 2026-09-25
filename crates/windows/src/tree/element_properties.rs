@@ -128,6 +128,20 @@ impl ElementProperties {
             .unwrap_or(PropertyOutcome::Unknown)
     }
 
+    /// Replaces one property's outcome in place, pushing it when the read
+    /// set never carried it. `get` answers the first matching entry, so an
+    /// override must replace rather than append.
+    pub(crate) fn set(&mut self, property: TreeProperty, outcome: PropertyOutcome) {
+        match self
+            .entries
+            .iter()
+            .position(|(candidate, _)| *candidate == property)
+        {
+            Some(index) => self.entries[index] = (property, outcome),
+            None => self.entries.push((property, outcome)),
+        }
+    }
+
     /// Reads a boolean **through its gate**, which is the only safe way to
     /// read one.
     ///
