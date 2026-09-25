@@ -1,9 +1,19 @@
 /// Compares text exactly and numeric controls with an absolute readback tolerance.
+///
+/// Line endings compare normalised: RichEdit-family controls report a
+/// trailing carriage return and CRLF breaks for a value written with plain
+/// line feeds (WordPad was seen to refuse its own successful write over a
+/// single trailing `\r`), so `\r\n` and lone `\r` count as `\n` on both
+/// sides, and one trailing newline is the control's own terminator rather
+/// than user content.
 pub fn value_matches(role: &str, expected: &str, observed: Option<&str>) -> bool {
     let Some(observed) = observed else {
         return false;
     };
     if expected == observed {
+        return true;
+    }
+    if normalize_text(expected) == normalize_text(observed) {
         return true;
     }
     if !matches!(role, "slider" | "incrementor" | "scrollbar" | "handle") {
@@ -21,6 +31,14 @@ pub fn value_matches(role: &str, expected: &str, observed: Option<&str>) -> bool
         }
         _ => false,
     }
+}
+
+fn normalize_text(value: &str) -> std::borrow::Cow<'_, str> {
+    if !value.contains('\r') && !value.ends_with('\n') {
+        return std::borrow::Cow::Borrowed(value);
+    }
+    let unified = value.replace("\r\n", "\n").replace('\r', "\n");
+    std::borrow::Cow::Owned(unified.strip_suffix('\n').unwrap_or(&unified).to_string())
 }
 
 #[cfg(test)]
@@ -47,5 +65,28 @@ mod tests {
             assert_eq!(value_matches(role, expected, Some(observed)), matches);
         }
         assert!(!value_matches("slider", "1", None));
+    }
+
+    #[test]
+    fn rich_edit_line_endings_match_plain_line_feeds() {
+        for (role, expected, observed, matches) in [
+            ("textfield", "hello 123", "hello 123\r", true),
+            ("textfield", "a\nb", "a\r\nb", true),
+            ("textfield", "a\nb", "a\r\nb\r", true),
+            ("textfield", "hi 👋", "hi 👋\r", true),
+            ("textfield", "héllo ✓", "héllo ✓\r", true),
+            ("textfield", "hello 123", "hello 123 ", false),
+            ("textfield", "a\nb", "a\nc", false),
+            ("textfield", "ab", "xy\r", false),
+            ("textfield", "a\nb", "a\nb\n\n", false),
+            ("textfield", "", "\r", true),
+        ] {
+            assert_eq!(
+                value_matches(role, expected, Some(observed)),
+                matches,
+                "expected={expected:?} observed={observed:?}"
+            );
+        }
+        assert!(!value_matches("textfield", "a", None));
     }
 }
