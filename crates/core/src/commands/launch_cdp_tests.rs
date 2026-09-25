@@ -78,6 +78,48 @@ fn cdp_launch_rejects_an_already_running_instance() {
     assert_eq!(adapter.list_apps_calls.load(Ordering::SeqCst), 1);
 }
 
+/// A launch target given as a path must still find the running instance: the
+/// whole path never equals the app's name, so without the stem the refusal
+/// was skipped and the platform launch met the app's own processes instead.
+#[test]
+fn cdp_launch_rejects_a_running_instance_named_by_its_path() {
+    let adapter = CdpAdapter {
+        running: vec![AppInfo {
+            name: "Obsidian.exe".into(),
+            pid: ProcessId::new(7),
+            bundle_id: None,
+            process_instance: Some("7:1".into()),
+            presentation: Some(AppPresentation::Foreground),
+        }],
+        ..empty_cdp_adapter(false)
+    };
+    let options = LaunchOptions {
+        cdp_port: Some(0),
+        ..Default::default()
+    };
+
+    let error = adapter_error(
+        execute(
+            LaunchArgs {
+                app: "/opt/Obsidian/Obsidian.exe".into(),
+                options,
+            },
+            &adapter,
+        )
+        .unwrap_err(),
+    );
+
+    assert_eq!(error.code, ErrorCode::ActionFailed);
+    assert_eq!(
+        error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("kind")),
+        Some(&serde_json::json!("cdp_requires_fresh_launch"))
+    );
+    assert_eq!(adapter.launch_app_calls.load(Ordering::SeqCst), 0);
+}
+
 /// `list_apps` also returns ps-derived helper processes: no bundle ID, no
 /// presentation, because the adapter can never attach a launch to one. A
 /// helper sharing the requested app's name must not block the launch.

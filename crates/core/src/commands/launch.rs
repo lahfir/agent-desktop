@@ -128,9 +128,11 @@ fn reject_if_already_running(
     deadline: crate::Deadline,
 ) -> Result<(), AppError> {
     let running = adapter.list_apps(deadline)?;
+    let stem = launch_path_stem(id);
     let pids: Vec<_> = running
         .iter()
-        .filter(|app| app.presentation.is_some() && app.matches_identifier(id))
+        .filter(|app| app.presentation.is_some())
+        .filter(|app| app.matches_identifier(id) || stem.is_some_and(|s| app.matches_identifier(s)))
         .map(|app| app.pid)
         .collect();
     if pids.is_empty() {
@@ -149,6 +151,17 @@ fn reject_if_already_running(
         )
         .with_disposition(DeliverySemantics::not_delivered()),
     ))
+}
+
+/// The app a path-shaped launch target names: `C:\Apps\Obsidian.exe` is the
+/// running `Obsidian`, which the whole path never matches by name. Only a
+/// target with a path separator is reduced, so a bundle id such as
+/// `com.example.App` keeps its dots.
+fn launch_path_stem(id: &str) -> Option<&str> {
+    if !id.contains(['/', '\\']) {
+        return None;
+    }
+    std::path::Path::new(id).file_stem()?.to_str()
 }
 
 fn resolve_cdp_port(requested: u16) -> Result<u16, AppError> {
