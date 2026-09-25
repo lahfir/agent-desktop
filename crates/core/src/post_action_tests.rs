@@ -343,3 +343,15 @@ mod focus_tests;
 
 #[path = "post_action_budget_tests.rs"]
 mod budget_tests;
+
+/// A rich edit reads an emptied field back as its own terminator (`"\r"`), so
+/// a clear that landed must verify rather than fail on that one character.
+#[test]
+fn clear_accepts_a_rich_edit_terminator_as_empty() {
+    let adapter = adapter(element(Some("old"), &[]), element(Some("\r"), &[]));
+    let result = execute(&adapter, Action::Clear).unwrap();
+    assert_eq!(
+        result.disposition(),
+        DeliverySemantics::delivered_verified()
+    );
+}

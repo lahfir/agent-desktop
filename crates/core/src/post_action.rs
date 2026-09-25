@@ -133,7 +133,10 @@ fn matches_postcondition(
             .value
             .as_deref()
             .map(|value| crate::value_matches(&state.role, expected, Some(value))),
-        Action::Clear => state.value.as_deref().map(str::is_empty),
+        Action::Clear => state
+            .value
+            .as_deref()
+            .map(|value| crate::value_matches(&state.role, "", Some(value))),
         Action::TypeText(_) => expected_text
             .zip(state.value.as_deref())
             .map(|(expected, value)| expected == value),
