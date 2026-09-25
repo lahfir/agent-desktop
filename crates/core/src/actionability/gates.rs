@@ -132,6 +132,9 @@ pub(super) fn action_supported(
             ErrorCode::PolicyDenied,
         );
     }
+    if matches!(request.action, Action::Select(_)) && combo_select_applies(evidence) {
+        return pass("supported_action");
+    }
     if capability::contains_any(
         &evidence.available_actions,
         capability::for_action(&request.action),
@@ -185,6 +188,19 @@ pub(super) fn editable(evidence: &ActionabilityEvidence, action: &Action) -> Act
         format!("role {} is not editable", evidence.state.role),
         ErrorCode::ActionNotSupported,
     )
+}
+
+/// Whether `select` may run its expand-then-select-option flow against a
+/// combo box that advertises no direct `Select`/`Click`: the container opens
+/// through `ExpandCollapse` and the option carries the selection itself
+/// (Character Map's Win32 font combo box has exactly this shape). Role-gated, so an
+/// expandable that is not a selection container still refuses up front.
+fn combo_select_applies(evidence: &ActionabilityEvidence) -> bool {
+    evidence.state.role == "combobox"
+        && capability::contains_any(
+            &evidence.available_actions,
+            capability::EXPANDED_APPLICABILITY,
+        )
 }
 
 #[cfg(test)]

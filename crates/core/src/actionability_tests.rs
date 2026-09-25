@@ -335,3 +335,59 @@ fn command_aliases_match_platform_capabilities() {
     );
     assert!(check(&scrollable, &ActionRequest::headless(Action::ScrollTo)).is_ok());
 }
+
+fn select_evidence(role: &str, actions: Vec<String>) -> evidence::ActionabilityEvidence {
+    evidence::ActionabilityEvidence {
+        state: crate::ElementState {
+            role: role.into(),
+            states: Vec::new(),
+            value: None,
+            enabled: Some(true),
+            hidden: Some(false),
+            offscreen: Some(false),
+        },
+        states_complete: true,
+        bounds: Some(Rect {
+            x: 1.0,
+            y: 1.0,
+            width: 20.0,
+            height: 20.0,
+        }),
+        available_actions: actions,
+    }
+}
+
+fn select_request() -> ActionRequest {
+    ActionRequest::headless(Action::Select("Times New Roman".into()))
+}
+
+#[test]
+fn select_runs_expand_flow_on_expandable_combo_without_direct_select() {
+    let evidence = select_evidence(
+        "combobox",
+        vec![capability::EXPAND.into(), capability::SET_VALUE.into()],
+    );
+
+    assert_eq!(
+        gates::action_supported(&evidence, &select_request()).status,
+        ActionabilityStatus::Pass
+    );
+}
+
+#[test]
+fn select_still_refuses_expandable_non_combo() {
+    let evidence = select_evidence("disclosure", vec![capability::EXPAND.into()]);
+    let refused = gates::action_supported(&evidence, &select_request());
+
+    assert_eq!(refused.status, ActionabilityStatus::Fail);
+    assert_eq!(refused.terminal_code, Some(ErrorCode::ActionNotSupported));
+}
+
+#[test]
+fn select_still_refuses_combo_without_expand() {
+    let evidence = select_evidence("combobox", vec![capability::SET_VALUE.into()]);
+    let refused = gates::action_supported(&evidence, &select_request());
+
+    assert_eq!(refused.status, ActionabilityStatus::Fail);
+    assert_eq!(refused.terminal_code, Some(ErrorCode::ActionNotSupported));
+}
