@@ -212,7 +212,7 @@ impl ElementProperties {
     /// every value `Unknown` and would void the ref downstream in
     /// `refs_validate.rs`.
     pub fn locator_evidence(&self, vocabulary: ResolvedVocabulary) -> LocatorEvidence {
-        let value = self.get(TreeProperty::Value).text();
+        let value = self.value_without_rich_edit_terminator();
         let bounds = self.get(TreeProperty::BoundingRectangle).bounds();
         LocatorEvidence {
             role: vocabulary.role,
@@ -227,6 +227,27 @@ impl ElementProperties {
                 descriptors: super::descriptor::descriptors(self),
             },
         }
+    }
+
+    /// A RichEdit control ends its text with a paragraph mark (`\r`) that is
+    /// not user content: an emptied field reads back as `"\r"` and every
+    /// written value gains one. Only that single trailing mark is dropped,
+    /// and only for RichEdit classes, matched case-insensitively (Character
+    /// Map's is `RICHEDIT50W`), so other controls report verbatim.
+    fn value_without_rich_edit_terminator(&self) -> LocatorField<String> {
+        match self.get(TreeProperty::Value).text() {
+            LocatorField::Known(value) if self.is_rich_edit() && value.ends_with('\r') => {
+                LocatorField::Known(value[..value.len() - 1].to_string())
+            }
+            other => other,
+        }
+    }
+
+    fn is_rich_edit(&self) -> bool {
+        matches!(
+            self.get(TreeProperty::ClassName),
+            PropertyOutcome::Known(PropertyValue::Text(class)) if class.to_ascii_lowercase().starts_with("richedit")
+        )
     }
 
     fn identifier_evidence(&self) -> IdentifierEvidence {
