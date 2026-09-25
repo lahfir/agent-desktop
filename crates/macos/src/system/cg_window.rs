@@ -136,12 +136,18 @@ pub(super) fn records_from_dictionaries(
         if pid <= 0 {
             continue;
         }
-        let app_name = required_string_field(&dictionary, "kCGWindowOwnerName")?;
-        if app_name.is_empty() {
-            continue;
-        }
         let window_number = required_int_field(&dictionary, "kCGWindowNumber")?;
         if !scope.matches(pid, window_number) {
+            continue;
+        }
+        if dictionary
+            .find(CFString::new("kCGWindowOwnerName"))
+            .is_none()
+        {
+            continue;
+        }
+        let app_name = required_string_field(&dictionary, "kCGWindowOwnerName")?;
+        if app_name.is_empty() {
             continue;
         }
         let bounds = rect_field(&dictionary, "kCGWindowBounds")

@@ -1,6 +1,62 @@
 use super::*;
 
 #[test]
+fn missing_optional_owner_name_does_not_block_scoped_windows() {
+    use core_foundation::{base::TCFType, number::CFNumber};
+
+    let unnamed = CFDictionary::from_CFType_pairs(&[
+        (
+            CFString::new("kCGWindowLayer"),
+            CFNumber::from(0).as_CFType(),
+        ),
+        (
+            CFString::new("kCGWindowOwnerPID"),
+            CFNumber::from(418).as_CFType(),
+        ),
+        (
+            CFString::new("kCGWindowNumber"),
+            CFNumber::from(8).as_CFType(),
+        ),
+    ]);
+    let bounds = CFDictionary::from_CFType_pairs(&[
+        (CFString::new("X"), CFNumber::from(0).as_CFType()),
+        (CFString::new("Y"), CFNumber::from(0).as_CFType()),
+        (CFString::new("Width"), CFNumber::from(100).as_CFType()),
+        (CFString::new("Height"), CFNumber::from(100).as_CFType()),
+    ]);
+    let named = CFDictionary::from_CFType_pairs(&[
+        (
+            CFString::new("kCGWindowLayer"),
+            CFNumber::from(0).as_CFType(),
+        ),
+        (
+            CFString::new("kCGWindowOwnerPID"),
+            CFNumber::from(10).as_CFType(),
+        ),
+        (
+            CFString::new("kCGWindowNumber"),
+            CFNumber::from(7).as_CFType(),
+        ),
+        (
+            CFString::new("kCGWindowOwnerName"),
+            CFString::new("Target").as_CFType(),
+        ),
+        (CFString::new("kCGWindowBounds"), bounds.as_CFType()),
+    ]);
+
+    let records =
+        records_from_dictionaries(vec![unnamed.clone(), named], WindowRecordScope::Pid(10))
+            .unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].app_name, "Target");
+    assert!(
+        records_from_dictionaries(vec![unnamed], WindowRecordScope::Pid(418))
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
 fn expired_cg_window_deadline_is_rejected_before_native_reads() {
     let error = window_records_until(Instant::now(), WindowRecordScope::Pid(1)).unwrap_err();
 
