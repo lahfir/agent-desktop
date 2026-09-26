@@ -88,7 +88,7 @@ fn supported_headless_editor_operations_accept_zero_geometry() {
 }
 
 #[test]
-fn direct_semantic_actions_accept_windowless_targets_without_bounds() {
+fn targets_without_bounds_still_need_geometry_headless() {
     for (role, action, capability) in [
         ("menuitem", Action::Click, capability::CLICK),
         ("menuitem", Action::RightClick, capability::RIGHT_CLICK),
@@ -101,7 +101,10 @@ fn direct_semantic_actions_accept_windowless_targets_without_bounds() {
         let (target, mut adapter) = target(role, &[capability]);
         adapter.0.bounds = None;
         adapter.0.state.offscreen = None;
-        assert!(evaluate(&target, &adapter, ActionRequest::headless(action)).is_ok());
+        assert!(
+            evaluate(&target, &adapter, ActionRequest::headless(action)).is_err(),
+            "without bounds the owning window cannot be ruled out, so {role} must not skip the check"
+        );
     }
 }
 

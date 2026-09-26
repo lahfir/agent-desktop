@@ -59,8 +59,10 @@ impl ActionabilityRequirements {
     /// semantic delivery (AXPress/AXShowMenu, or an advertised editable-text
     /// capability) does not use a pointer, so closed-menu items and editors
     /// without usable bounds stay actionable. The visibility gate applies this
-    /// only to targets with no known owning window (`offscreen` unknown): a
-    /// zero-size control inside a known window still needs bounds. Explicit
+    /// only to targets that report bounds but no owning window (`offscreen`
+    /// unknown), the shape macOS closed-menu items have: a zero-size control
+    /// inside a known window, or a target with no bounds at all, still needs
+    /// bounds. Explicit
     /// hidden/offscreen state still gates them; headed, focus-fallback, and
     /// physical paths keep the geometry requirement.
     pub(crate) fn requires_geometry(

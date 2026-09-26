@@ -31,7 +31,7 @@ pub(super) fn visibility(
         None => {}
         Some(false) => {}
     }
-    if !requires_geometry && evidence.state.offscreen.is_none() {
+    if !requires_geometry && evidence.state.offscreen.is_none() && evidence.bounds.is_some() {
         return pass("visible");
     }
     let Some(bounds) = evidence.bounds else {
