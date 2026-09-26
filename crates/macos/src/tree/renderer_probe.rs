@@ -24,11 +24,6 @@ pub(crate) fn activation_required(
     )
 }
 
-/// Electron's `AXManualAccessibility` getter compares for exactly the complete
-/// accessibility mode, while its setter enables that mode plus platform and
-/// screen-reader flags, so a false manual readback is not evidence. Manual
-/// renderers need activation only when a complete walk proved their web
-/// surface absent.
 fn activation_needed(
     web_surface: bool,
     absence_proven: bool,

@@ -75,9 +75,6 @@ fn enable_attribute(
     Ok(())
 }
 
-/// A disabled enhanced-mode readback contradicts an accepted write. A disabled
-/// manual readback does not: Electron applies the manual write but its getter
-/// may still report false, so the observed tree is left as the evidence.
 fn activation_delivered(
     application: &crate::tree::AXElement,
     attribute: &str,
