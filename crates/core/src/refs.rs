@@ -310,3 +310,7 @@ mod tests;
 #[cfg(test)]
 #[path = "refs_serde_tests.rs"]
 mod serde_tests;
+
+#[cfg(test)]
+#[path = "refs_size_tests.rs"]
+mod size_tests;
