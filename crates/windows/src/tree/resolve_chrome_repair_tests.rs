@@ -123,12 +123,8 @@ fn a_path_that_already_counts_the_chrome_is_not_shifted_into_a_neighbour() {
     );
 }
 
-/// A path recorded before the chrome appeared, whose stored index points past
-/// where the chrome now sits, lands on content as stored - the wrong content.
-/// The shifted reading must still find the stored element, rather than leave
-/// the ref to a broad search that can spend the whole deadline.
 #[test]
-fn a_path_recorded_before_the_chrome_with_a_high_index_still_lands_past_it() {
+fn a_content_index_is_never_shifted_into_another_container() {
     const A: i32 = 13;
     const B: i32 = 14;
     const C: i32 = 15;
@@ -149,8 +145,36 @@ fn a_path_recorded_before_the_chrome_with_a_high_index_still_lands_past_it() {
     let repaired = repair_past_leading_chrome(&tree, &0, &entry, &budget(10));
 
     assert_eq!(
-        repaired,
-        Some(WANTED),
-        "index 3 counted content only when recorded, so D (content index 3) is the parent"
+        repaired, None,
+        "index 3 lands on content, so no level may shift it into D's same-named child"
+    );
+}
+
+#[test]
+fn an_ambiguous_deeper_level_declines_even_after_an_earlier_shift() {
+    const P: i32 = 63;
+    const Q: i32 = 64;
+    const R: i32 = 65;
+    const S: i32 = 66;
+    const IMPOSTOR: i32 = 70;
+    let tree = grown_outline("HKEY_CURRENT_USER")
+        .with_children(COMPUTER, &[60, 61, 62, P, Q, R, S])
+        .with_children(P, &[IMPOSTOR]);
+    let tree = chrome(tree, 60, SCROLL_BAR);
+    let tree = chrome(tree, 61, SCROLL_BAR);
+    let tree = chrome(tree, 62, THUMB);
+    let tree = [(P, "P"), (Q, "Q"), (R, "R"), (S, "S")]
+        .into_iter()
+        .fold(tree, |tree, (node, name)| tree_item(tree, node, name));
+    let tree = tree_item(tree, IMPOSTOR, "HKEY_CLASSES_ROOT");
+    let mut entry = classes_root_entry();
+    entry.scope.path = vec![0, 0, 3, 0].into();
+
+    let repaired = repair_past_leading_chrome(&tree, &0, &entry, &budget(10));
+
+    assert_eq!(
+        repaired, None,
+        "Computer's index 3 lands on content beside chrome, so it is ambiguous and the \
+         earlier shift must not carry the repair into P's same-named child"
     );
 }
