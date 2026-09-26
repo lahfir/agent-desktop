@@ -12,15 +12,22 @@ pub enum SnapshotSurface {
     Alert,
     Desktop,
     Taskbar,
+    #[serde(alias = "system-tray")]
     SystemTray,
+    #[serde(alias = "quick-settings")]
     QuickSettings,
+    #[serde(alias = "notification-center")]
     NotificationCenter,
     Toolbar,
     Dock,
     Spotlight,
+    #[serde(alias = "menu-bar-extras")]
     MenuBarExtras,
+    #[serde(alias = "system-tray-overflow")]
     SystemTrayOverflow,
+    #[serde(alias = "start-menu")]
     StartMenu,
+    #[serde(alias = "action-center")]
     ActionCenter,
 }
 
