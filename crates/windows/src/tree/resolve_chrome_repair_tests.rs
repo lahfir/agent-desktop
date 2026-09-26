@@ -123,12 +123,6 @@ fn a_path_that_already_counts_the_chrome_is_not_shifted_into_a_neighbour() {
     );
 }
 
-/// A stored index that lands on content cannot tell whether it was recorded
-/// before or after the chrome appeared, so it is never shifted: the shifted
-/// reading may enter a different container, and here that container really
-/// does hold a child answering to the stored identity. The repair must
-/// decline and leave the ref to the broad search rather than hand back a
-/// verified handle to it.
 #[test]
 fn a_content_index_is_never_shifted_into_another_container() {
     const A: i32 = 13;
@@ -156,11 +150,6 @@ fn a_content_index_is_never_shifted_into_another_container() {
     );
 }
 
-/// One level shifting past chrome proves nothing about a deeper level: here
-/// the outline's shift is unambiguous, but Computer also grew chrome and its
-/// stored index lands on content, which may have been recorded before or
-/// after that chrome. Walking it as stored reaches a different container
-/// with a same-named child, so the repair must decline the whole path.
 #[test]
 fn an_ambiguous_deeper_level_declines_even_after_an_earlier_shift() {
     const P: i32 = 63;
