@@ -122,3 +122,35 @@ fn a_path_that_already_counts_the_chrome_is_not_shifted_into_a_neighbour() {
          the neighbour's same-named child, which must never answer for the ref"
     );
 }
+
+/// A path recorded before the chrome appeared, whose stored index points past
+/// where the chrome now sits, lands on content as stored - the wrong content.
+/// The shifted reading must still find the stored element, rather than leave
+/// the ref to a broad search that can spend the whole deadline.
+#[test]
+fn a_path_recorded_before_the_chrome_with_a_high_index_still_lands_past_it() {
+    const A: i32 = 13;
+    const B: i32 = 14;
+    const C: i32 = 15;
+    const D: i32 = 16;
+    const WRONG: i32 = 50;
+    const WANTED: i32 = 51;
+    let tree = grown_outline("HKEY_CURRENT_USER")
+        .with_children(OUTLINE, &[10, 11, 12, A, B, C, D])
+        .with_children(A, &[WRONG])
+        .with_children(D, &[WANTED]);
+    let tree = [(A, "A"), (B, "B"), (C, "C"), (D, "D"), (WRONG, "Unrelated")]
+        .into_iter()
+        .fold(tree, |tree, (node, name)| tree_item(tree, node, name));
+    let tree = tree_item(tree, WANTED, "HKEY_CLASSES_ROOT");
+    let mut entry = classes_root_entry();
+    entry.scope.path = vec![0, 3, 0].into();
+
+    let repaired = repair_past_leading_chrome(&tree, &0, &entry, &budget(10));
+
+    assert_eq!(
+        repaired,
+        Some(WANTED),
+        "index 3 counted content only when recorded, so D (content index 3) is the parent"
+    );
+}

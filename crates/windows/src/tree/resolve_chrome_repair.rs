@@ -18,35 +18,36 @@ use super::resolve_search::{
 };
 use super::walker::{TreeSource, WalkBudget};
 
-/// Roles a Win32 container inserts ahead of its content once the content
-/// outgrows the view.
 const LEADING_CHROME_ROLES: [&str; 2] = ["scrollbar", "handle"];
 
-/// The most leading chrome one container carries: two scroll bars and the
-/// size grip.
 const MAX_LEADING_CHROME: usize = 3;
 
-/// The widest sibling list the uniqueness check reads. A wider one declines,
-/// leaving the verdict to the broad search.
 const SIBLING_CHECK_CAP: usize = 64;
 
-/// Re-walks the stored path, counting a level's index from the first child
-/// after that level's leading chrome only where the stored index now lands
-/// *inside* that chrome, and answers the landing only when some level shifted
-/// and the landing is the one sibling that answers to the stored identity.
+const MAX_CANDIDATE_PATHS: usize = 4;
+
+/// Re-walks the stored path allowing for leading chrome that appeared after
+/// the ref was recorded, and answers only a landing the shift produced that
+/// is the single candidate answering to the stored identity.
 ///
-/// A level whose stored index lands on content is walked as stored: a path
-/// recorded while the scroll bars already existed counts them in its index,
-/// and shifting it again would descend into a different parent whose child
-/// could share the stored identity.
+/// Leading chrome is the two scroll bars and the size grip (at most three
+/// children, roles `scrollbar` and `handle`). At a level that carries it the
+/// stored index is ambiguous: recorded before the chrome appeared it counts
+/// content only, recorded after it counts the chrome too. A stored index that
+/// lands inside the chrome can only be the former, so it is shifted; any
+/// other index is tried both as stored and shifted. Every candidate landing
+/// is checked against the stored identity among its own siblings (a list
+/// wider than 64 is not read and declines), and the repair answers only when
+/// exactly one candidate matches and it was shifted. Two matches - a path
+/// that already counted the chrome, whose shift reaches a neighbouring
+/// parent with a same-named child - decline, as does a match only on the
+/// unshifted path the plain tier already refused. More than four candidate
+/// paths, or a read that faults on any of them, also declines, leaving the
+/// attempt to the broad search.
 ///
 /// The stored bounds are deliberately not consulted. A container that grew
 /// scroll bars also re-laid out and usually scrolled, so the stored rectangle
-/// names a position that no longer exists; what the bounds hash guards
-/// against on the plain path tier - a duplicate sibling that moved into the
-/// stored index - is ruled out here by requiring the identity match to be
-/// unique among the landing's siblings. Anything short of that, an unread
-/// sibling included, declines and leaves the attempt to the broad search.
+/// names a position that no longer exists.
 pub(crate) fn repair_past_leading_chrome<S: TreeSource>(
     source: &S,
     root: &S::Node,
@@ -56,32 +57,45 @@ pub(crate) fn repair_past_leading_chrome<S: TreeSource>(
     if !can_use_path_fast_path(entry) {
         return None;
     }
-    let mut parent = None;
-    let mut current = root.clone();
-    let mut shifted = false;
+    let mut frontier: Vec<(Option<S::Node>, S::Node, bool)> = vec![(None, root.clone(), false)];
     for &index in entry.scope.path.iter() {
-        let take = index.saturating_add(MAX_LEADING_CHROME + 1);
-        let children =
-            descent::read_children(source, &current, budget, &SEARCH_DESCENT, Some(take)).ok()?;
-        let chrome = children
-            .elements
-            .iter()
-            .take(MAX_LEADING_CHROME)
-            .take_while(|child| is_leading_chrome(source, child))
-            .count();
-        let lands_in_chrome = index < chrome;
-        shifted |= lands_in_chrome;
-        let wanted = if lands_in_chrome {
-            index + chrome
-        } else {
-            index
-        };
-        let next = children.elements.get(wanted)?.clone();
-        parent = Some(std::mem::replace(&mut current, next));
+        let mut next = Vec::new();
+        for (_, node, shifted) in &frontier {
+            let take = index.saturating_add(MAX_LEADING_CHROME + 1);
+            let Ok(children) =
+                descent::read_children(source, node, budget, &SEARCH_DESCENT, Some(take))
+            else {
+                return None;
+            };
+            let chrome = children
+                .elements
+                .iter()
+                .take(MAX_LEADING_CHROME)
+                .take_while(|child| is_leading_chrome(source, child))
+                .count();
+            if index >= chrome {
+                if let Some(child) = children.elements.get(index) {
+                    next.push((Some(node.clone()), child.clone(), *shifted));
+                }
+            }
+            if chrome > 0 {
+                if let Some(child) = children.elements.get(index + chrome) {
+                    next.push((Some(node.clone()), child.clone(), true));
+                }
+            }
+        }
+        if next.is_empty() || next.len() > MAX_CANDIDATE_PATHS {
+            return None;
+        }
+        frontier = next;
     }
-    let parent = parent?;
-    (shifted && is_unique_identity_match(source, &parent, &current, entry, budget))
-        .then_some(current)
+    let mut matched = frontier.into_iter().filter(|(parent, node, _)| {
+        parent
+            .as_ref()
+            .is_some_and(|parent| is_unique_identity_match(source, parent, node, entry, budget))
+    });
+    let (_, only, shifted) = matched.next()?;
+    (matched.next().is_none() && shifted).then_some(only)
 }
 
 fn is_leading_chrome<S: TreeSource>(source: &S, node: &S::Node) -> bool {
