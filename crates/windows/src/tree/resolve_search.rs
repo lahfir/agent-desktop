@@ -350,7 +350,7 @@ pub(crate) fn enumerate_children(
     budget: &WalkBudget,
     unread_region: &mut bool,
 ) -> Result<Vec<UIAElement>, AdapterError> {
-    let read = descent::read_children(source, element, budget, &SEARCH_DESCENT)?;
+    let read = descent::read_children(source, element, budget, &SEARCH_DESCENT, None)?;
     *unread_region |= !read.complete;
     Ok(read.elements)
 }

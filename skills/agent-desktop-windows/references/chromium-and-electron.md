@@ -36,6 +36,20 @@ Consequences:
   not remove the need to settle: with the flag, first contact became a race
   landing anywhere from a fraction of settled to nearly all of it (A1-5).
 
+## A Thin Tree With Boundary Groups Is a Depth Effect, Not Settling
+
+Chromium nests its controls under a long chain of unnamed pass-through
+groups, so a settled tree can still show zero buttons, textfields, or links
+at the default `--max-depth 10`: measured on Obsidian, the default snapshot
+returned 15 refs (groups and documents, no controls) while `--max-depth 50`
+found the same 8 buttons a raw platform walk finds. The depth-10 boundary
+groups carry `children_count` and refs, so drilling is possible.
+
+When a settled snapshot has refs but no operable controls and its boundary
+nodes carry `children_count`, do not wait longer or raise `--timeout-ms` —
+that only covers the first-contact settle above. Raise `--max-depth` or
+drill into a boundary ref with `snapshot --root <ref>`.
+
 ## Covered Windows Hold First-Contact Counts Indefinitely
 
 A Chromium window completely covered by other windows can hold its

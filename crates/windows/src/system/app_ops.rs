@@ -1,4 +1,4 @@
-use agent_desktop_core::{AdapterError, AppInfo, Deadline, ProcessId};
+use agent_desktop_core::{AdapterError, AppInfo, AppPresentation, Deadline, ProcessId};
 
 use super::permissions::ensure_budget;
 use super::process_identity;
@@ -131,6 +131,9 @@ fn owning_processes(_deadline: Deadline) -> Result<Vec<EnumeratedWindow>, Adapte
 /// so a mid-listing generation change also fails the inventory. `bundle_id`
 /// has no Windows analogue and is recorded, not faked.
 ///
+/// Every listed app is `foreground`: the filter keeps only visible, uncloaked,
+/// non-tool top-level windows, which is the set the taskbar shows.
+///
 /// Bounds every native call under `deadline`, refusing before any
 /// enumeration when the budget is already spent and checking it again
 /// between the per-window process-handle reads the assembly loop performs.
@@ -173,7 +176,7 @@ pub(crate) fn list_apps_live(deadline: Deadline) -> Result<Vec<AppInfo>, Adapter
             pid,
             bundle_id: None,
             process_instance: token,
-            presentation: None,
+            presentation: Some(AppPresentation::Foreground),
         });
     }
     apps.sort_by(|left, right| left.name.cmp(&right.name));
@@ -272,5 +275,22 @@ mod tests {
         assert!(!is_protected_process("my-lsass-helper.exe"));
         assert!(!is_protected_process("lsass"));
         assert!(!is_protected_process("lsass.exe.bak"));
+    }
+
+    /// A listed app owns a taskbar window, so it is reported as a registered
+    /// foreground app; an omitted presentation reads as a helper process and
+    /// made `launch --cdp` miss the running instance it must refuse.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_listed_window_owning_app_is_foreground() {
+        crate::tree::fixture::bootstrap();
+        let fixture = crate::tree::fixture::HostedFixture::spawn().expect("fixture");
+        let pid = agent_desktop_core::ProcessId::new(fixture.process_id());
+        let apps = list_apps_live(Deadline::standard().expect("deadline")).expect("inventory");
+        let listed = apps
+            .iter()
+            .find(|app| app.pid == pid)
+            .expect("the fixture's window makes it a listed app");
+        assert_eq!(listed.presentation, Some(AppPresentation::Foreground));
     }
 }

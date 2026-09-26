@@ -5,10 +5,13 @@ pub mod chromium;
 pub mod descriptor;
 pub(crate) mod hit_test;
 pub(crate) mod live_read;
+pub(crate) mod minimized;
 pub mod name_evidence;
 pub(crate) mod observe;
 pub(crate) mod resolve;
 pub(crate) mod resolve_anchor;
+#[cfg(target_os = "windows")]
+pub(crate) mod resolve_chrome_repair;
 pub(crate) mod resolve_match;
 pub(crate) mod resolve_pacing;
 pub(crate) mod resolve_search;

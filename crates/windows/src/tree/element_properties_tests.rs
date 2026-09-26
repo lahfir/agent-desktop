@@ -56,3 +56,41 @@ fn is_true_reads_a_nonzero_known_number_on_an_ungated_available_property() {
          withholds_content already accepts a nonzero VT_I4 IsPassword"
     );
 }
+
+fn value_read(class: &str, value: &str) -> LocatorField<String> {
+    ElementProperties::from_reads(vec![
+        (
+            TreeProperty::ClassName,
+            PropertyOutcome::Known(PropertyValue::Text(class.into())),
+        ),
+        (
+            TreeProperty::Value,
+            PropertyOutcome::Known(PropertyValue::Text(value.into())),
+        ),
+    ])
+    .locator_evidence(ResolvedVocabulary::unknown())
+    .value
+}
+
+/// Character Map's emptied RichEdit read back `"\r"`, so `get` reported a
+/// cleared field as non-empty. Only the one final mark of a RichEdit goes;
+/// a plain edit's value and a RichEdit's inner breaks stay verbatim.
+#[test]
+fn a_rich_edit_value_drops_only_its_final_paragraph_mark() {
+    assert_eq!(
+        value_read("RICHEDIT50W", "\r"),
+        LocatorField::Known(String::new())
+    );
+    assert_eq!(
+        value_read("RichEdit50W", "a\rb\r"),
+        LocatorField::Known("a\rb".into())
+    );
+    assert_eq!(
+        value_read("Edit", "hi\r"),
+        LocatorField::Known("hi\r".into())
+    );
+    assert_eq!(
+        value_read("RichEdit20W", "hi"),
+        LocatorField::Known("hi".into())
+    );
+}

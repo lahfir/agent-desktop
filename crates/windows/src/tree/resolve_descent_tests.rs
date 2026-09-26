@@ -119,7 +119,7 @@ fn expired_budget() -> WalkBudget {
 fn a_live_deadline_enumerates_the_whole_sibling_list_under_both_policies() {
     let tree = StubTree::with_children(3);
     for policy in [&SEARCH_DESCENT, &ANCHOR_DESCENT] {
-        let read = read_children(&tree, &0, &live_budget(), policy)
+        let read = read_children(&tree, &0, &live_budget(), policy, None)
             .expect("an unfaulting enumeration succeeds");
         assert_eq!(read.elements, vec![1, 2, 3]);
         assert!(read.complete);
@@ -133,7 +133,7 @@ fn a_live_deadline_enumerates_the_whole_sibling_list_under_both_policies() {
 #[test]
 fn an_expired_deadline_leaves_the_search_enumeration_unfinished() {
     let tree = StubTree::with_children(10);
-    let read = read_children(&tree, &0, &expired_budget(), &SEARCH_DESCENT)
+    let read = read_children(&tree, &0, &expired_budget(), &SEARCH_DESCENT, None)
         .expect("the search keeps its partial list rather than surfacing");
     assert!(
         !read.complete,
@@ -152,7 +152,7 @@ fn an_expired_deadline_leaves_the_search_enumeration_unfinished() {
 #[test]
 fn an_expired_deadline_surfaces_a_timeout_for_the_anchor_never_a_settled_miss() {
     let tree = StubTree::with_children(10);
-    let error = match read_children(&tree, &0, &expired_budget(), &ANCHOR_DESCENT) {
+    let error = match read_children(&tree, &0, &expired_budget(), &ANCHOR_DESCENT, None) {
         Err(error) => error,
         Ok(read) => panic!(
             "an expired anchor enumeration must surface, it yielded {} children",
@@ -193,7 +193,7 @@ fn a_vanished_node_leaves_the_search_unfinished_but_settles_the_anchor() {
     );
     let tree = StubTree::with_children(3).failing_on_siblings(vanished);
 
-    let searched = read_children(&tree, &0, &live_budget(), &SEARCH_DESCENT)
+    let searched = read_children(&tree, &0, &live_budget(), &SEARCH_DESCENT, None)
         .expect("a vanished sibling never surfaces for the search");
     assert_eq!(searched.elements, vec![1]);
     assert!(
@@ -201,7 +201,7 @@ fn a_vanished_node_leaves_the_search_unfinished_but_settles_the_anchor() {
         "a node vanishing mid-descent leaves the search retryable, never a settled absence"
     );
 
-    let anchored = read_children(&tree, &0, &live_budget(), &ANCHOR_DESCENT)
+    let anchored = read_children(&tree, &0, &live_budget(), &ANCHOR_DESCENT, None)
         .expect("a vanished sibling never surfaces for the anchor");
     assert_eq!(anchored.elements, vec![1]);
     assert!(
@@ -223,11 +223,11 @@ fn a_transport_failure_leaves_the_search_unfinished_and_surfaces_for_the_anchor(
     );
     let tree = StubTree::with_children(3).failing_on_siblings(transport);
 
-    let searched = read_children(&tree, &0, &live_budget(), &SEARCH_DESCENT)
+    let searched = read_children(&tree, &0, &live_budget(), &SEARCH_DESCENT, None)
         .expect("a transport failure never surfaces for the search");
     assert!(!searched.complete);
 
-    let error = match read_children(&tree, &0, &live_budget(), &ANCHOR_DESCENT) {
+    let error = match read_children(&tree, &0, &live_budget(), &ANCHOR_DESCENT, None) {
         Err(error) => error,
         Ok(_) => panic!("a transport failure must surface for the anchor, not settle"),
     };
@@ -248,7 +248,7 @@ fn a_settled_absence_ends_both_enumerations_whole() {
     let tree = StubTree::with_children(3).failing_to_descend(absent);
 
     for policy in [&SEARCH_DESCENT, &ANCHOR_DESCENT] {
-        let read = read_children(&tree, &0, &live_budget(), policy)
+        let read = read_children(&tree, &0, &live_budget(), policy, None)
             .expect("a settled absence never surfaces");
         assert!(read.elements.is_empty());
         assert!(
@@ -271,7 +271,7 @@ fn a_terminal_failure_surfaces_for_both() {
     let tree = StubTree::with_children(3).failing_to_descend(terminal);
 
     for policy in [&SEARCH_DESCENT, &ANCHOR_DESCENT] {
-        let error = match read_children(&tree, &0, &live_budget(), policy) {
+        let error = match read_children(&tree, &0, &live_budget(), policy, None) {
             Err(error) => error,
             Ok(_) => panic!("a terminal failure must surface, never yield a child list"),
         };
@@ -290,7 +290,7 @@ fn the_sibling_cap_truncates_and_reports_the_truncated_list_as_whole() {
     let tree = StubTree::with_children(12);
     let capped = live_budget().with_max_siblings(4);
     for policy in [&SEARCH_DESCENT, &ANCHOR_DESCENT] {
-        let read = read_children(&tree, &0, &capped, policy)
+        let read = read_children(&tree, &0, &capped, policy, None)
             .expect("a cap-hit never surfaces as an error");
         assert_eq!(
             read.elements,
@@ -382,18 +382,18 @@ fn each_policy_keeps_its_own_axis_wording() {
     let descend = StubTree::with_children(3).failing_to_descend(terminal);
     let siblings = StubTree::with_children(3).failing_on_siblings(terminal);
 
-    let descend_error = read_children(&descend, &0, &live_budget(), &SEARCH_DESCENT)
+    let descend_error = read_children(&descend, &0, &live_budget(), &SEARCH_DESCENT, None)
         .expect_err("a terminal descent surfaces");
-    let sibling_error = read_children(&siblings, &0, &live_budget(), &SEARCH_DESCENT)
+    let sibling_error = read_children(&siblings, &0, &live_budget(), &SEARCH_DESCENT, None)
         .expect_err("a terminal sibling walk surfaces");
     assert_ne!(
         descend_error.message, sibling_error.message,
         "the search reports its two enumeration axes distinctly"
     );
 
-    let anchor_descend = read_children(&descend, &0, &live_budget(), &ANCHOR_DESCENT)
+    let anchor_descend = read_children(&descend, &0, &live_budget(), &ANCHOR_DESCENT, None)
         .expect_err("a terminal descent surfaces");
-    let anchor_sibling = read_children(&siblings, &0, &live_budget(), &ANCHOR_DESCENT)
+    let anchor_sibling = read_children(&siblings, &0, &live_budget(), &ANCHOR_DESCENT, None)
         .expect_err("a terminal sibling walk surfaces");
     assert_eq!(anchor_descend.message, anchor_sibling.message);
 }

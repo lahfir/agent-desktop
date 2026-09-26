@@ -217,3 +217,19 @@ fn open_system_surface_parses_the_shared_surface_vocabulary() {
         crate::cli_args::Surface::ActionCenter
     ));
 }
+
+/// Every surface token `status` can report must be accepted back by
+/// `--surface` unchanged.
+#[test]
+fn every_status_surface_token_parses_as_a_surface_argument() {
+    use clap::ValueEnum;
+    for surface in crate::cli_args::Surface::value_variants() {
+        let token = surface.to_core().as_str();
+        let cli = Cli::try_parse_from(["agent-desktop", "open-system-surface", "--surface", token])
+            .unwrap_or_else(|error| panic!("status token {token} must parse: {error}"));
+        let Commands::OpenSystemSurface(args) = cli.command.expect("command") else {
+            panic!("expected open-system-surface command");
+        };
+        assert_eq!(&args.surface, surface, "token {token}");
+    }
+}

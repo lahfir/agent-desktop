@@ -128,6 +128,20 @@ impl ElementProperties {
             .unwrap_or(PropertyOutcome::Unknown)
     }
 
+    /// Replaces one property's outcome in place, pushing it when the read
+    /// set never carried it. `get` answers the first matching entry, so an
+    /// override must replace rather than append.
+    pub(crate) fn set(&mut self, property: TreeProperty, outcome: PropertyOutcome) {
+        match self
+            .entries
+            .iter()
+            .position(|(candidate, _)| *candidate == property)
+        {
+            Some(index) => self.entries[index] = (property, outcome),
+            None => self.entries.push((property, outcome)),
+        }
+    }
+
     /// Reads a boolean **through its gate**, which is the only safe way to
     /// read one.
     ///
@@ -197,8 +211,15 @@ impl ElementProperties {
     /// `IdentifierEvidence::typed`, because `IdentifierEvidence::new` stamps
     /// every value `Unknown` and would void the ref downstream in
     /// `refs_validate.rs`.
+    ///
+    /// The value is the one place this projects rather than copies: a RichEdit
+    /// control ends its text with a paragraph mark (`\r`) that is not user
+    /// content, so an emptied field would read back as `"\r"` and every
+    /// written value would gain one. That single trailing mark is dropped for
+    /// RichEdit classes, matched case-insensitively (Character Map's is
+    /// `RICHEDIT50W`); every other control reports its value verbatim.
     pub fn locator_evidence(&self, vocabulary: ResolvedVocabulary) -> LocatorEvidence {
-        let value = self.get(TreeProperty::Value).text();
+        let value = self.value_without_rich_edit_terminator();
         let bounds = self.get(TreeProperty::BoundingRectangle).bounds();
         LocatorEvidence {
             role: vocabulary.role,
@@ -213,6 +234,22 @@ impl ElementProperties {
                 descriptors: super::descriptor::descriptors(self),
             },
         }
+    }
+
+    fn value_without_rich_edit_terminator(&self) -> LocatorField<String> {
+        match self.get(TreeProperty::Value).text() {
+            LocatorField::Known(value) if self.is_rich_edit() && value.ends_with('\r') => {
+                LocatorField::Known(value[..value.len() - 1].to_string())
+            }
+            other => other,
+        }
+    }
+
+    fn is_rich_edit(&self) -> bool {
+        matches!(
+            self.get(TreeProperty::ClassName),
+            PropertyOutcome::Known(PropertyValue::Text(class)) if class.to_ascii_lowercase().starts_with("richedit")
+        )
     }
 
     fn identifier_evidence(&self) -> IdentifierEvidence {

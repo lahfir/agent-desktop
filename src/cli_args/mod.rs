@@ -42,15 +42,29 @@ pub(crate) enum Surface {
     Alert,
     Desktop,
     Taskbar,
+    #[value(alias = "system_tray")]
+    #[serde(alias = "system_tray")]
     SystemTray,
+    #[value(alias = "quick_settings")]
+    #[serde(alias = "quick_settings")]
     QuickSettings,
+    #[value(alias = "notification_center")]
+    #[serde(alias = "notification_center")]
     NotificationCenter,
     Toolbar,
     Dock,
     Spotlight,
+    #[value(alias = "menu_bar_extras")]
+    #[serde(alias = "menu_bar_extras")]
     MenuBarExtras,
+    #[value(alias = "system_tray_overflow")]
+    #[serde(alias = "system_tray_overflow")]
     SystemTrayOverflow,
+    #[value(alias = "start_menu")]
+    #[serde(alias = "start_menu")]
     StartMenu,
+    #[value(alias = "action_center")]
+    #[serde(alias = "action_center")]
     ActionCenter,
 }
 

@@ -5,13 +5,13 @@ use super::resolve_pacing::{FIRST_RETRY_PAUSE, next_retry_pause, sleep_before_re
 
 #[cfg(target_os = "windows")]
 use super::element::UIAElement;
+#[cfg(target_os = "windows")]
+use super::resolve_chrome_repair::repair_past_leading_chrome;
 #[cfg(all(test, target_os = "windows"))]
 use super::resolve_match::CandidateOutcome;
-#[cfg(target_os = "windows")]
-use super::resolve_match::ambiguous_target_error;
-#[cfg(target_os = "windows")]
-use super::resolve_match::owning_process_exited_error;
 use super::resolve_match::stale_ref_error;
+#[cfg(target_os = "windows")]
+use super::resolve_match::{ambiguous_target_error, owning_process_exited_error};
 #[cfg(target_os = "windows")]
 use super::resolve_search::descent::PathLanding;
 #[cfg(target_os = "windows")]
@@ -91,6 +91,7 @@ fn resolve_attempt(entry: &RefEntry, deadline: Deadline) -> Result<NativeHandle,
         .element
         .as_ref()
         .and_then(|candidate| accept_path_landing(&source, candidate, entry))
+        .or_else(|| repair_past_leading_chrome(&source, &prepared, entry, &budget))
     {
         return Ok(into_verified_handle(accepted, entry));
     }

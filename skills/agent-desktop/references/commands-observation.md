@@ -26,7 +26,7 @@ agent-desktop snapshot --root @e12 --snapshot <snapshot_id> -i
 | `--app` | (required) | Application name |
 | `--window-id` | | Specific window ID from `list-windows` |
 | `-i` / `--interactive-only` | false | Only include interactive elements (buttons, fields, etc.) |
-| `--max-depth` | 10 | Maximum tree traversal depth |
+| `--max-depth` | 10 | Maximum tree traversal depth, 1-50; deeper subtrees are reached with `--root` |
 | `--include-bounds` | false | Include `{x, y, width, height}` for each element |
 | `--compact` | false | Omit empty structural nodes |
 | `--surface` | window | Target surface: `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, `alert`. Windows additionally serves the shell kinds `taskbar`, `system-tray`, `system-tray-overflow`, `start-menu`, `action-center` |
@@ -123,7 +123,10 @@ agent-desktop snapshot --root @e3 --snapshot <snapshot_id> -i
 macOS serves `window`, `focused`, `menu`, `menubar`, `sheet`, `popover` and
 `alert`, while Windows serves `window`, `focused`, `sheet`, `menu`, and the
 shell kinds `taskbar`, `system-tray`, `system-tray-overflow`, `start-menu`
-and `action-center`. A surface the adapter does not serve returns
+and `action-center`. A token read from `status` can be passed to
+`--surface` unchanged; `--surface` also accepts the underscore spelling
+(`action_center`) that older releases reported. A surface
+the adapter does not serve returns
 `PLATFORM_NOT_SUPPORTED` with the supported list in `details`, so the failure
 is honest — but it is cheaper to read `status` first than to discover it from
 an error.
