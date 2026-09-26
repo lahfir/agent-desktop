@@ -58,9 +58,11 @@ impl ActionabilityRequirements {
     /// Whether visibility must be proven from pointer bounds. Strictly headless
     /// semantic delivery (AXPress/AXShowMenu, or an advertised editable-text
     /// capability) does not use a pointer, so closed-menu items and editors
-    /// without usable bounds stay actionable. Explicit hidden/offscreen state
-    /// still gates them; headed, focus-fallback, and physical paths keep the
-    /// geometry requirement.
+    /// without usable bounds stay actionable. The visibility gate applies this
+    /// only to targets with no known owning window (`offscreen` unknown): a
+    /// zero-size control inside a known window still needs bounds. Explicit
+    /// hidden/offscreen state still gates them; headed, focus-fallback, and
+    /// physical paths keep the geometry requirement.
     pub(crate) fn requires_geometry(
         &self,
         request: &crate::ActionRequest,

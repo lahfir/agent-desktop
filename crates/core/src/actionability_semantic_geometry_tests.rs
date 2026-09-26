@@ -44,7 +44,7 @@ fn target(role: &str, actions: &[&str]) -> (RefEntry, GeometryAdapter) {
             value: None,
             enabled: Some(true),
             hidden: Some(false),
-            offscreen: Some(false),
+            offscreen: None,
         },
         states_complete: true,
         bounds: Some(bounds),
@@ -266,4 +266,19 @@ fn zero_geometry_does_not_relax_live_identity() {
     )
     .unwrap_err();
     assert_eq!(err.code, ErrorCode::StaleRef);
+}
+
+#[test]
+fn in_window_zero_geometry_still_requires_bounds_headless() {
+    let (target, mut adapter) = target("button", &[capability::CLICK]);
+    adapter.0.state.offscreen = Some(false);
+
+    let error = evaluate(&target, &adapter, ActionRequest::headless(Action::Click))
+        .expect_err("a zero-size control inside a known window is not a closed-menu item");
+
+    assert!(
+        error.message.contains("bounds are zero-sized"),
+        "{}",
+        error.message
+    );
 }

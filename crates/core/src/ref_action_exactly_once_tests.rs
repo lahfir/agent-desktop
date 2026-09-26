@@ -95,7 +95,7 @@ impl ObservationOps for DispatchGuardAdapter {
                 value: None,
                 enabled: Some(true),
                 hidden: Some(self.mode == "hidden_after_scroll"),
-                offscreen: Some(self.mode == "offscreen_slow"),
+                offscreen: (self.mode != "zero_geometry").then_some(self.mode == "offscreen_slow"),
             },
             states_complete: true,
             bounds: Some(live_bounds),
