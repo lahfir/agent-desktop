@@ -29,16 +29,17 @@ const SIBLING_CHECK_CAP: usize = 64;
 /// and the landing is the one sibling that answers to the stored identity.
 ///
 /// Leading chrome is the two scroll bars and the size grip (at most three
-/// children, roles `scrollbar` and `handle`). A level is shifted past it only
-/// when the stored index lands *inside* the chrome, the one reading that
-/// cannot be ambiguous: a content ref recorded after the chrome appeared
-/// counts it and never lands there. A stored index that lands on content is
-/// walked as stored even though it may have been recorded before the chrome
-/// appeared, because shifting it could enter a different container whose
-/// child shares the stored identity, and a wrong verified target is worse
-/// than leaving that ref to the broad search. The identity check reads the
-/// landing's own siblings (a list wider than 64 declines), and any read fault
-/// declines.
+/// children, roles `scrollbar` and `handle`). A level that carries it is
+/// shifted past it only when the stored index lands *inside* the chrome, the
+/// one reading that cannot be ambiguous: a content ref recorded after the
+/// chrome appeared counts it and never lands there. A level that carries
+/// chrome but whose stored index lands on content cannot say whether it was
+/// recorded before or after the chrome appeared, so the whole repair
+/// declines rather than guess - either guess can enter a different container
+/// whose child shares the stored identity, and a wrong verified target is
+/// worse than leaving that ref to the broad search. Levels without chrome are
+/// walked as stored. The identity check reads the landing's own siblings (a
+/// list wider than 64 declines), and any read fault declines.
 ///
 /// The stored bounds are deliberately not consulted. A container that grew
 /// scroll bars also re-laid out and usually scrolled, so the stored rectangle
@@ -65,14 +66,11 @@ pub(crate) fn repair_past_leading_chrome<S: TreeSource>(
             .take(MAX_LEADING_CHROME)
             .take_while(|child| is_leading_chrome(source, child))
             .count();
-        let lands_in_chrome = index < chrome;
-        shifted |= lands_in_chrome;
-        let wanted = if lands_in_chrome {
-            index + chrome
-        } else {
-            index
-        };
-        let next = children.elements.get(wanted)?.clone();
+        if chrome > 0 && index >= chrome {
+            return None;
+        }
+        shifted |= chrome > 0;
+        let next = children.elements.get(index + chrome)?.clone();
         parent = Some(std::mem::replace(&mut current, next));
     }
     let parent = parent?;

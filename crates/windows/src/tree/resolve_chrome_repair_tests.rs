@@ -155,3 +155,37 @@ fn a_content_index_is_never_shifted_into_another_container() {
         "index 3 lands on content, so no level may shift it into D's same-named child"
     );
 }
+
+/// One level shifting past chrome proves nothing about a deeper level: here
+/// the outline's shift is unambiguous, but Computer also grew chrome and its
+/// stored index lands on content, which may have been recorded before or
+/// after that chrome. Walking it as stored reaches a different container
+/// with a same-named child, so the repair must decline the whole path.
+#[test]
+fn an_ambiguous_deeper_level_declines_even_after_an_earlier_shift() {
+    const P: i32 = 63;
+    const Q: i32 = 64;
+    const R: i32 = 65;
+    const S: i32 = 66;
+    const IMPOSTOR: i32 = 70;
+    let tree = grown_outline("HKEY_CURRENT_USER")
+        .with_children(COMPUTER, &[60, 61, 62, P, Q, R, S])
+        .with_children(P, &[IMPOSTOR]);
+    let tree = chrome(tree, 60, SCROLL_BAR);
+    let tree = chrome(tree, 61, SCROLL_BAR);
+    let tree = chrome(tree, 62, THUMB);
+    let tree = [(P, "P"), (Q, "Q"), (R, "R"), (S, "S")]
+        .into_iter()
+        .fold(tree, |tree, (node, name)| tree_item(tree, node, name));
+    let tree = tree_item(tree, IMPOSTOR, "HKEY_CLASSES_ROOT");
+    let mut entry = classes_root_entry();
+    entry.scope.path = vec![0, 0, 3, 0].into();
+
+    let repaired = repair_past_leading_chrome(&tree, &0, &entry, &budget(10));
+
+    assert_eq!(
+        repaired, None,
+        "Computer's index 3 lands on content beside chrome, so it is ambiguous and the \
+         earlier shift must not carry the repair into P's same-named child"
+    );
+}
