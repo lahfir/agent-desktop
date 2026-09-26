@@ -1,0 +1,9 @@
+{
+  "probe": "self-test-fixture",
+  "notification": {
+    "actions": [
+      "Show details",
+      "Archive this message"
+    ]
+  }
+}

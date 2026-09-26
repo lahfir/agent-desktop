@@ -1,0 +1,273 @@
+{
+    "probe":  "23-signals-menus",
+    "question":  "per-stack menu-open detection: classic GUITHREADINFO menu-mode flags, UIA Menu/MenuBar/MenuItem reachability, #32768 popup presence, and whether that popup passes the shipped agent-facing window filter (window_ops.rs passes_filter)",
+    "stacks":  {
+                   "win32_classic":  {
+                                         "measurable":  true,
+                                         "branch":  "notepad_classic_win32_staged",
+                                         "staging":  "PostMessage WM_SYSCOMMAND/SC_KEYMENU + WM_CONTEXTMENU, no real input synthesis needed",
+                                         "idle":  {
+                                                      "classic_flags":  {
+                                                                            "any_thread_menu_mode":  false,
+                                                                            "threads_read":  1,
+                                                                            "threads_total":  7
+                                                                        },
+                                                      "class_32768":  {
+                                                                          "present":  false,
+                                                                          "count":  0,
+                                                                          "any_visible":  false,
+                                                                          "any_cloaked":  false,
+                                                                          "any_tool_window":  false,
+                                                                          "any_nonzero_rect":  false,
+                                                                          "any_passes_agent_facing_filter":  false
+                                                                      },
+                                                      "uia_menu_family":  {
+                                                                              "present":  true,
+                                                                              "root_child":  false,
+                                                                              "under_app_window":  true,
+                                                                              "root_children_for_pid":  1
+                                                                          },
+                                                      "any_source_fired":  true
+                                                  },
+                                         "menu_bar_dropdown":  {
+                                                                   "classic_flags":  {
+                                                                                         "any_thread_menu_mode":  true,
+                                                                                         "threads_read":  1,
+                                                                                         "threads_total":  7
+                                                                                     },
+                                                                   "class_32768":  {
+                                                                                       "present":  true,
+                                                                                       "count":  1,
+                                                                                       "any_visible":  true,
+                                                                                       "any_cloaked":  false,
+                                                                                       "any_tool_window":  true,
+                                                                                       "any_nonzero_rect":  true,
+                                                                                       "any_passes_agent_facing_filter":  false
+                                                                                   },
+                                                                   "uia_menu_family":  {
+                                                                                           "present":  true,
+                                                                                           "root_child":  false,
+                                                                                           "under_app_window":  true,
+                                                                                           "root_children_for_pid":  1
+                                                                                       },
+                                                                   "any_source_fired":  true
+                                                               },
+                                         "context_menu":  {
+                                                              "classic_flags":  {
+                                                                                    "any_thread_menu_mode":  true,
+                                                                                    "threads_read":  1,
+                                                                                    "threads_total":  7
+                                                                                },
+                                                              "class_32768":  {
+                                                                                  "present":  true,
+                                                                                  "count":  1,
+                                                                                  "any_visible":  true,
+                                                                                  "any_cloaked":  false,
+                                                                                  "any_tool_window":  true,
+                                                                                  "any_nonzero_rect":  true,
+                                                                                  "any_passes_agent_facing_filter":  false
+                                                                              },
+                                                              "uia_menu_family":  {
+                                                                                      "present":  true,
+                                                                                      "root_child":  true,
+                                                                                      "under_app_window":  true,
+                                                                                      "root_children_for_pid":  2
+                                                                                  },
+                                                              "any_source_fired":  true
+                                                          },
+                                         "system_menu":  {
+                                                             "classic_flags":  {
+                                                                                   "any_thread_menu_mode":  true,
+                                                                                   "threads_read":  1,
+                                                                                   "threads_total":  7
+                                                                               },
+                                                             "class_32768":  {
+                                                                                 "present":  true,
+                                                                                 "count":  1,
+                                                                                 "any_visible":  true,
+                                                                                 "any_cloaked":  false,
+                                                                                 "any_tool_window":  true,
+                                                                                 "any_nonzero_rect":  true,
+                                                                                 "any_passes_agent_facing_filter":  false
+                                                                             },
+                                                             "uia_menu_family":  {
+                                                                                     "present":  true,
+                                                                                     "root_child":  false,
+                                                                                     "under_app_window":  true,
+                                                                                     "root_children_for_pid":  1
+                                                                                 },
+                                                             "any_source_fired":  true
+                                                         }
+                                     },
+                   "wpf":  {
+                               "measurable":  true,
+                               "branch":  "wpf_scratch_menu_host_staged",
+                               "staging":  "MenuItem.IsSubmenuOpen / ContextMenu.IsOpen set programmatically by the fixture on its own DispatcherTimer schedule; state confirmed via an independent state file the probe polls",
+                               "idle":  {
+                                            "classic_flags":  {
+                                                                  "any_thread_menu_mode":  false,
+                                                                  "threads_read":  4,
+                                                                  "threads_total":  23
+                                                              },
+                                            "class_32768":  {
+                                                                "present":  false,
+                                                                "count":  0,
+                                                                "any_visible":  false,
+                                                                "any_cloaked":  false,
+                                                                "any_tool_window":  false,
+                                                                "any_nonzero_rect":  false,
+                                                                "any_passes_agent_facing_filter":  false
+                                                            },
+                                            "uia_menu_family":  {
+                                                                    "present":  true,
+                                                                    "root_child":  false,
+                                                                    "under_app_window":  true,
+                                                                    "root_children_for_pid":  2
+                                                                },
+                                            "any_source_fired":  true,
+                                            "fixture_confirmed":  true
+                                        },
+                               "menu_bar_dropdown":  {
+                                                         "classic_flags":  {
+                                                                               "any_thread_menu_mode":  false,
+                                                                               "threads_read":  5,
+                                                                               "threads_total":  24
+                                                                           },
+                                                         "class_32768":  {
+                                                                             "present":  false,
+                                                                             "count":  0,
+                                                                             "any_visible":  false,
+                                                                             "any_cloaked":  false,
+                                                                             "any_tool_window":  false,
+                                                                             "any_nonzero_rect":  false,
+                                                                             "any_passes_agent_facing_filter":  false
+                                                                         },
+                                                         "uia_menu_family":  {
+                                                                                 "present":  true,
+                                                                                 "root_child":  false,
+                                                                                 "under_app_window":  true,
+                                                                                 "root_children_for_pid":  3
+                                                                             },
+                                                         "any_source_fired":  true,
+                                                         "fixture_confirmed":  true
+                                                     },
+                               "context_menu":  {
+                                                    "classic_flags":  {
+                                                                          "any_thread_menu_mode":  false,
+                                                                          "threads_read":  5,
+                                                                          "threads_total":  24
+                                                                      },
+                                                    "class_32768":  {
+                                                                        "present":  false,
+                                                                        "count":  0,
+                                                                        "any_visible":  false,
+                                                                        "any_cloaked":  false,
+                                                                        "any_tool_window":  false,
+                                                                        "any_nonzero_rect":  false,
+                                                                        "any_passes_agent_facing_filter":  false
+                                                                    },
+                                                    "uia_menu_family":  {
+                                                                            "present":  true,
+                                                                            "root_child":  false,
+                                                                            "under_app_window":  true,
+                                                                            "root_children_for_pid":  3
+                                                                        },
+                                                    "any_source_fired":  true,
+                                                    "fixture_confirmed":  true
+                                                }
+                           },
+                   "chromium_electron":  {
+                                             "measurable":  false,
+                                             "branch":  "no_menu_surface_reached_by_generic_staging_this_app_version",
+                                             "activation":  {
+                                                                "activate_once_reported":  true,
+                                                                "foreground_confirmed":  true
+                                                            },
+                                             "attempts":  [
+                                                              {
+                                                                  "method":  "alt_tap",
+                                                                  "result":  {
+                                                                                 "classic_flags":  {
+                                                                                                       "any_thread_menu_mode":  false,
+                                                                                                       "threads_read":  18,
+                                                                                                       "threads_total":  55
+                                                                                                   },
+                                                                                 "class_32768":  {
+                                                                                                     "present":  false,
+                                                                                                     "count":  0,
+                                                                                                     "any_visible":  false,
+                                                                                                     "any_cloaked":  false,
+                                                                                                     "any_tool_window":  false,
+                                                                                                     "any_nonzero_rect":  false,
+                                                                                                     "any_passes_agent_facing_filter":  false
+                                                                                                 },
+                                                                                 "uia_menu_family":  {
+                                                                                                         "present":  false,
+                                                                                                         "root_child":  false,
+                                                                                                         "under_app_window":  false,
+                                                                                                         "root_children_for_pid":  1
+                                                                                                     },
+                                                                                 "any_source_fired":  false
+                                                                             }
+                                                              },
+                                                              {
+                                                                  "method":  "alt_f_accelerator",
+                                                                  "result":  {
+                                                                                 "classic_flags":  {
+                                                                                                       "any_thread_menu_mode":  false,
+                                                                                                       "threads_read":  21,
+                                                                                                       "threads_total":  56
+                                                                                                   },
+                                                                                 "class_32768":  {
+                                                                                                     "present":  false,
+                                                                                                     "count":  0,
+                                                                                                     "any_visible":  false,
+                                                                                                     "any_cloaked":  false,
+                                                                                                     "any_tool_window":  false,
+                                                                                                     "any_nonzero_rect":  false,
+                                                                                                     "any_passes_agent_facing_filter":  false
+                                                                                                 },
+                                                                                 "uia_menu_family":  {
+                                                                                                         "present":  false,
+                                                                                                         "root_child":  false,
+                                                                                                         "under_app_window":  false,
+                                                                                                         "root_children_for_pid":  1
+                                                                                                     },
+                                                                                 "any_source_fired":  false
+                                                                             }
+                                                              },
+                                                              {
+                                                                  "method":  "right_click_window_center",
+                                                                  "result":  {
+                                                                                 "classic_flags":  {
+                                                                                                       "any_thread_menu_mode":  false,
+                                                                                                       "threads_read":  21,
+                                                                                                       "threads_total":  56
+                                                                                                   },
+                                                                                 "class_32768":  {
+                                                                                                     "present":  false,
+                                                                                                     "count":  0,
+                                                                                                     "any_visible":  false,
+                                                                                                     "any_cloaked":  false,
+                                                                                                     "any_tool_window":  false,
+                                                                                                     "any_nonzero_rect":  false,
+                                                                                                     "any_passes_agent_facing_filter":  false
+                                                                                                 },
+                                                                                 "uia_menu_family":  {
+                                                                                                         "present":  false,
+                                                                                                         "root_child":  false,
+                                                                                                         "under_app_window":  false,
+                                                                                                         "root_children_for_pid":  1
+                                                                                                     },
+                                                                                 "any_source_fired":  false
+                                                                             }
+                                                              }
+                                                          ]
+                                         },
+                   "winui_uwp":  {
+                                     "measurable":  false,
+                                     "branch":  "no_modern_shell_host_available_this_session",
+                                     "cites":  "A10-7"
+                                 }
+               }
+}

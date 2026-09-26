@@ -1,0 +1,47 @@
+{
+    "tray_resolve_and_enumerate":  {
+                                       "raw":  "direct=1;directValid=1;pager=1;pagerChild=1;pagerChildValid=1;pagerChildVisible=1;enumeratedChildren=7",
+                                       "fields":  {
+                                                      "direct":  "1",
+                                                      "directValid":  "1",
+                                                      "pager":  "1",
+                                                      "pagerChild":  "1",
+                                                      "pagerChildValid":  "1",
+                                                      "pagerChildVisible":  "1",
+                                                      "enumeratedChildren":  "7"
+                                                  }
+                                   },
+    "nameless_leaf_split":  {
+                                "app_10736":  {
+                                                  "ref_count":  19,
+                                                  "complete":  true,
+                                                  "leaves":  7,
+                                                  "named_leaves":  4,
+                                                  "nameless_leaves":  3,
+                                                  "nameless_positive_area":  1,
+                                                  "nameless_zero_extent":  2,
+                                                  "nameless_without_bounds":  0
+                                              },
+                                "app_1372":  {
+                                                 "ref_count":  78,
+                                                 "complete":  true,
+                                                 "leaves":  132,
+                                                 "named_leaves":  103,
+                                                 "nameless_leaves":  29,
+                                                 "nameless_positive_area":  14,
+                                                 "nameless_zero_extent":  15,
+                                                 "nameless_without_bounds":  0
+                                             },
+                                "app_3652":  {
+                                                 "ref_count":  5,
+                                                 "complete":  true,
+                                                 "leaves":  4,
+                                                 "named_leaves":  4,
+                                                 "nameless_leaves":  0,
+                                                 "nameless_positive_area":  0,
+                                                 "nameless_zero_extent":  0,
+                                                 "nameless_without_bounds":  0
+                                             }
+                            },
+    "classifiable_population_found":  true
+}

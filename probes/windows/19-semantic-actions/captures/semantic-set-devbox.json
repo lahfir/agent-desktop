@@ -1,0 +1,748 @@
+{
+    "winforms":  {
+                     "ExpandCollapse":  {
+                                            "automation_id_digest":  "fe622ad1c908a3ce",
+                                            "call":  {
+                                                         "before":  {
+                                                                        "ok":  true,
+                                                                        "state":  "Collapsed"
+                                                                    },
+                                                         "collapse":  {
+                                                                          "ktd2_arm":  "clean_ok",
+                                                                          "ok":  true
+                                                                      },
+                                                         "expand":  {
+                                                                        "ktd2_arm":  "clean_ok",
+                                                                        "ok":  true
+                                                                    },
+                                                         "mid":  {
+                                                                     "ok":  true,
+                                                                     "state":  "Expanded"
+                                                                 }
+                                                     },
+                                            "foreground_at_call":  true,
+                                            "label":  "ExpandCollapse",
+                                            "shape_before":  {
+                                                                 "automation_id_digest":  "fe622ad1c908a3ce",
+                                                                 "automation_id_len":  9,
+                                                                 "bounds":  "544,203,200,21",
+                                                                 "control_type":  50003,
+                                                                 "expand_available":  true,
+                                                                 "invoke_available":  false,
+                                                                 "is_enabled":  true,
+                                                                 "is_password":  false,
+                                                                 "legacy_available":  true,
+                                                                 "range_available":  false,
+                                                                 "scroll_available":  false,
+                                                                 "selection_item_available":  false,
+                                                                 "toggle_available":  false,
+                                                                 "value_available":  true
+                                                             },
+                                            "status_sink":  {
+                                                                "name":  {
+                                                                             "contains_marker":  false,
+                                                                             "digest":  "236a632b63b477a2",
+                                                                             "len":  8
+                                                                         },
+                                                                "ok":  true
+                                                            },
+                                            "verify":  {
+                                                           "ok":  true,
+                                                           "state":  "Collapsed"
+                                                       }
+                                        },
+                     "Invoke":  {
+                                    "automation_id_digest":  "2e3e3486c586212d",
+                                    "call":  {
+                                                 "ktd2_arm":  "clean_ok",
+                                                 "ok":  true
+                                             },
+                                    "foreground_at_call":  false,
+                                    "label":  "Invoke",
+                                    "shape_before":  {
+                                                         "automation_id_digest":  "2e3e3486c586212d",
+                                                         "automation_id_len":  9,
+                                                         "bounds":  "760,203,104,26",
+                                                         "control_type":  50000,
+                                                         "expand_available":  false,
+                                                         "invoke_available":  true,
+                                                         "is_enabled":  true,
+                                                         "is_password":  false,
+                                                         "legacy_available":  true,
+                                                         "range_available":  false,
+                                                         "scroll_available":  false,
+                                                         "selection_item_available":  false,
+                                                         "toggle_available":  false,
+                                                         "value_available":  false
+                                                     },
+                                    "status_sink":  {
+                                                        "name":  {
+                                                                     "contains_marker":  false,
+                                                                     "digest":  "99d21d71524f132a",
+                                                                     "len":  8
+                                                                 },
+                                                        "ok":  true
+                                                    },
+                                    "verify":  {
+                                                   "note":  "no state re-read for Invoke; status_sink recorded"
+                                               }
+                                },
+                     "RangeValue":  {
+                                        "automation_id_digest":  "2ae302add2aae5e2",
+                                        "call":  {
+                                                     "ok":  false,
+                                                     "pattern":  {
+                                                                     "code":  0,
+                                                                     "result_hex":  null
+                                                                 }
+                                                 },
+                                        "foreground_at_call":  true,
+                                        "label":  "RangeValue.SetValue",
+                                        "shape_before":  {
+                                                             "automation_id_digest":  "2ae302add2aae5e2",
+                                                             "automation_id_len":  8,
+                                                             "bounds":  "544,279,220,45",
+                                                             "control_type":  50015,
+                                                             "expand_available":  false,
+                                                             "invoke_available":  false,
+                                                             "is_enabled":  true,
+                                                             "is_password":  false,
+                                                             "legacy_available":  true,
+                                                             "range_available":  false,
+                                                             "scroll_available":  false,
+                                                             "selection_item_available":  false,
+                                                             "toggle_available":  false,
+                                                             "value_available":  true
+                                                         },
+                                        "status_sink":  {
+                                                            "name":  {
+                                                                         "contains_marker":  false,
+                                                                         "digest":  "236a632b63b477a2",
+                                                                         "len":  8
+                                                                     },
+                                                            "ok":  true
+                                                        },
+                                        "verify":  {
+                                                       "exact":  false,
+                                                       "read":  {
+                                                                    "ok":  false,
+                                                                    "pattern":  {
+                                                                                    "code":  0,
+                                                                                    "result_hex":  null
+                                                                                }
+                                                                },
+                                                       "rounded_or_clamped":  null
+                                                   }
+                                    },
+                     "SelectionItem":  {
+                                           "automation_id_digest":  "e9afef15f2c2f5ed",
+                                           "error":  {
+                                                         "refind_failed":  {
+                                                                               "automation_id_digest":  "e9afef15f2c2f5ed",
+                                                                               "automation_id_len":  8
+                                                                           }
+                                                     },
+                                           "label":  "SelectionItem.Select"
+                                       },
+                     "SetValue_matrix":  [
+                                             {
+                                                 "automation_id_digest":  "8153e352565945e4",
+                                                 "call":  {
+                                                              "ktd2_arm":  "clean_ok",
+                                                              "ok":  true,
+                                                              "payload":  {
+                                                                              "contains_marker":  false,
+                                                                              "digest":  "2f4b4866ad2cf9fa",
+                                                                              "len":  15
+                                                                          }
+                                                          },
+                                                 "foreground_at_call":  true,
+                                                 "label":  "SetValue/ascii",
+                                                 "shape_before":  {
+                                                                      "automation_id_digest":  "8153e352565945e4",
+                                                                      "automation_id_len":  8,
+                                                                      "bounds":  "544,141,200,20",
+                                                                      "control_type":  50004,
+                                                                      "expand_available":  false,
+                                                                      "invoke_available":  false,
+                                                                      "is_enabled":  true,
+                                                                      "is_password":  false,
+                                                                      "legacy_available":  true,
+                                                                      "range_available":  false,
+                                                                      "scroll_available":  false,
+                                                                      "selection_item_available":  false,
+                                                                      "toggle_available":  false,
+                                                                      "value_available":  true
+                                                                  },
+                                                 "status_sink":  {
+                                                                     "name":  {
+                                                                                  "contains_marker":  false,
+                                                                                  "digest":  "236a632b63b477a2",
+                                                                                  "len":  8
+                                                                              },
+                                                                     "ok":  true
+                                                                 },
+                                                 "verify":  {
+                                                                "exact_match_by_digest":  true,
+                                                                "payload":  {
+                                                                                "contains_marker":  false,
+                                                                                "digest":  "2f4b4866ad2cf9fa",
+                                                                                "len":  15
+                                                                            },
+                                                                "read":  {
+                                                                             "ok":  true,
+                                                                             "readonly":  false,
+                                                                             "value":  {
+                                                                                           "contains_marker":  false,
+                                                                                           "digest":  "2f4b4866ad2cf9fa",
+                                                                                           "len":  15
+                                                                                       }
+                                                                         }
+                                                            }
+                                             },
+                                             {
+                                                 "automation_id_digest":  "8153e352565945e4",
+                                                 "call":  {
+                                                              "ktd2_arm":  "clean_ok",
+                                                              "ok":  true,
+                                                              "payload":  {
+                                                                              "contains_marker":  false,
+                                                                              "digest":  "16921e1cd55f4017",
+                                                                              "len":  18
+                                                                          }
+                                                          },
+                                                 "foreground_at_call":  true,
+                                                 "label":  "SetValue/cjk",
+                                                 "shape_before":  {
+                                                                      "automation_id_digest":  "8153e352565945e4",
+                                                                      "automation_id_len":  8,
+                                                                      "bounds":  "544,141,200,20",
+                                                                      "control_type":  50004,
+                                                                      "expand_available":  false,
+                                                                      "invoke_available":  false,
+                                                                      "is_enabled":  true,
+                                                                      "is_password":  false,
+                                                                      "legacy_available":  true,
+                                                                      "range_available":  false,
+                                                                      "scroll_available":  false,
+                                                                      "selection_item_available":  false,
+                                                                      "toggle_available":  false,
+                                                                      "value_available":  true
+                                                                  },
+                                                 "status_sink":  {
+                                                                     "name":  {
+                                                                                  "contains_marker":  false,
+                                                                                  "digest":  "236a632b63b477a2",
+                                                                                  "len":  8
+                                                                              },
+                                                                     "ok":  true
+                                                                 },
+                                                 "verify":  {
+                                                                "exact_match_by_digest":  true,
+                                                                "payload":  {
+                                                                                "contains_marker":  false,
+                                                                                "digest":  "16921e1cd55f4017",
+                                                                                "len":  18
+                                                                            },
+                                                                "read":  {
+                                                                             "ok":  true,
+                                                                             "readonly":  false,
+                                                                             "value":  {
+                                                                                           "contains_marker":  false,
+                                                                                           "digest":  "16921e1cd55f4017",
+                                                                                           "len":  18
+                                                                                       }
+                                                                         }
+                                                            }
+                                             },
+                                             {
+                                                 "automation_id_digest":  "8153e352565945e4",
+                                                 "call":  {
+                                                              "ktd2_arm":  "clean_ok",
+                                                              "ok":  true,
+                                                              "payload":  {
+                                                                              "contains_marker":  false,
+                                                                              "digest":  "a68db3cf6a16e141",
+                                                                              "len":  6
+                                                                          }
+                                                          },
+                                                 "foreground_at_call":  true,
+                                                 "label":  "SetValue/astral",
+                                                 "shape_before":  {
+                                                                      "automation_id_digest":  "8153e352565945e4",
+                                                                      "automation_id_len":  8,
+                                                                      "bounds":  "544,141,200,20",
+                                                                      "control_type":  50004,
+                                                                      "expand_available":  false,
+                                                                      "invoke_available":  false,
+                                                                      "is_enabled":  true,
+                                                                      "is_password":  false,
+                                                                      "legacy_available":  true,
+                                                                      "range_available":  false,
+                                                                      "scroll_available":  false,
+                                                                      "selection_item_available":  false,
+                                                                      "toggle_available":  false,
+                                                                      "value_available":  true
+                                                                  },
+                                                 "status_sink":  {
+                                                                     "name":  {
+                                                                                  "contains_marker":  false,
+                                                                                  "digest":  "236a632b63b477a2",
+                                                                                  "len":  8
+                                                                              },
+                                                                     "ok":  true
+                                                                 },
+                                                 "verify":  {
+                                                                "exact_match_by_digest":  true,
+                                                                "payload":  {
+                                                                                "contains_marker":  false,
+                                                                                "digest":  "a68db3cf6a16e141",
+                                                                                "len":  6
+                                                                            },
+                                                                "read":  {
+                                                                             "ok":  true,
+                                                                             "readonly":  false,
+                                                                             "value":  {
+                                                                                           "contains_marker":  false,
+                                                                                           "digest":  "a68db3cf6a16e141",
+                                                                                           "len":  6
+                                                                                       }
+                                                                         }
+                                                            }
+                                             }
+                                         ],
+                     "Toggle":  {
+                                    "automation_id_digest":  "acaff94433510c93",
+                                    "call":  {
+                                                 "before":  {
+                                                                "ok":  true,
+                                                                "state":  "Off"
+                                                            },
+                                                 "call":  {
+                                                              "ktd2_arm":  "clean_ok",
+                                                              "ok":  true
+                                                          }
+                                             },
+                                    "foreground_at_call":  true,
+                                    "label":  "Toggle",
+                                    "shape_before":  {
+                                                         "automation_id_digest":  "acaff94433510c93",
+                                                         "automation_id_len":  9,
+                                                         "bounds":  "544,87,160,24",
+                                                         "control_type":  50002,
+                                                         "expand_available":  false,
+                                                         "invoke_available":  true,
+                                                         "is_enabled":  true,
+                                                         "is_password":  false,
+                                                         "legacy_available":  true,
+                                                         "range_available":  false,
+                                                         "scroll_available":  false,
+                                                         "selection_item_available":  false,
+                                                         "toggle_available":  true,
+                                                         "value_available":  false
+                                                     },
+                                    "status_sink":  {
+                                                        "name":  {
+                                                                     "contains_marker":  false,
+                                                                     "digest":  "236a632b63b477a2",
+                                                                     "len":  8
+                                                                 },
+                                                        "ok":  true
+                                                    },
+                                    "verify":  {
+                                                   "ok":  true,
+                                                   "state":  "On"
+                                               }
+                                },
+                     "branch":  "WinForms_COM_VIABLE",
+                     "client":  "uia3-com-product-CUIAutomation8",
+                     "stack":  "winforms"
+                 },
+    "wpf":  {
+                "ExpandCollapse":  {
+                                       "automation_id_digest":  "fe622ad1c908a3ce",
+                                       "call":  {
+                                                    "before":  {
+                                                                   "ok":  true,
+                                                                   "state":  "Collapsed"
+                                                               },
+                                                    "collapse":  {
+                                                                     "ktd2_arm":  "clean_ok",
+                                                                     "ok":  true
+                                                                 },
+                                                    "expand":  {
+                                                                   "ktd2_arm":  "clean_ok",
+                                                                   "ok":  true
+                                                               },
+                                                    "mid":  {
+                                                                "ok":  true,
+                                                                "state":  "Expanded"
+                                                            }
+                                                },
+                                       "foreground_at_call":  true,
+                                       "label":  "ExpandCollapse",
+                                       "shape_before":  {
+                                                            "automation_id_digest":  "fe622ad1c908a3ce",
+                                                            "automation_id_len":  9,
+                                                            "bounds":  "60,174,423,24",
+                                                            "control_type":  50003,
+                                                            "expand_available":  true,
+                                                            "invoke_available":  false,
+                                                            "is_enabled":  true,
+                                                            "is_password":  false,
+                                                            "legacy_available":  true,
+                                                            "range_available":  false,
+                                                            "scroll_available":  false,
+                                                            "selection_item_available":  false,
+                                                            "toggle_available":  false,
+                                                            "value_available":  false
+                                                        },
+                                       "status_sink":  {
+                                                           "name":  {
+                                                                        "contains_marker":  false,
+                                                                        "digest":  "99d21d71524f132a",
+                                                                        "len":  8
+                                                                    },
+                                                           "ok":  true
+                                                       },
+                                       "verify":  {
+                                                      "ok":  true,
+                                                      "state":  "Collapsed"
+                                                  }
+                                   },
+                "Invoke":  {
+                               "automation_id_digest":  "2e3e3486c586212d",
+                               "call":  {
+                                            "ktd2_arm":  "clean_ok",
+                                            "ok":  true
+                                        },
+                               "foreground_at_call":  false,
+                               "label":  "Invoke",
+                               "shape_before":  {
+                                                    "automation_id_digest":  "2e3e3486c586212d",
+                                                    "automation_id_len":  9,
+                                                    "bounds":  "60,206,110,26",
+                                                    "control_type":  50000,
+                                                    "expand_available":  false,
+                                                    "invoke_available":  true,
+                                                    "is_enabled":  true,
+                                                    "is_password":  false,
+                                                    "legacy_available":  true,
+                                                    "range_available":  false,
+                                                    "scroll_available":  false,
+                                                    "selection_item_available":  false,
+                                                    "toggle_available":  false,
+                                                    "value_available":  false
+                                                },
+                               "status_sink":  {
+                                                   "name":  {
+                                                                "contains_marker":  false,
+                                                                "digest":  "99d21d71524f132a",
+                                                                "len":  8
+                                                            },
+                                                   "ok":  true
+                                               },
+                               "verify":  {
+                                              "note":  "no state re-read for Invoke; status_sink recorded"
+                                          }
+                           },
+                "RangeValue":  {
+                                   "automation_id_digest":  "2ae302add2aae5e2",
+                                   "call":  {
+                                                "ktd2_arm":  "clean_ok",
+                                                "ok":  true,
+                                                "requested":  77.0
+                                            },
+                                   "foreground_at_call":  true,
+                                   "label":  "RangeValue.SetValue",
+                                   "shape_before":  {
+                                                        "automation_id_digest":  "2ae302add2aae5e2",
+                                                        "automation_id_len":  8,
+                                                        "bounds":  "60,572,220,18",
+                                                        "control_type":  50015,
+                                                        "expand_available":  false,
+                                                        "invoke_available":  false,
+                                                        "is_enabled":  true,
+                                                        "is_password":  false,
+                                                        "legacy_available":  true,
+                                                        "range_available":  true,
+                                                        "scroll_available":  false,
+                                                        "selection_item_available":  false,
+                                                        "toggle_available":  false,
+                                                        "value_available":  false
+                                                    },
+                                   "status_sink":  {
+                                                       "name":  {
+                                                                    "contains_marker":  false,
+                                                                    "digest":  "32c134a7c24e0f41",
+                                                                    "len":  16
+                                                                },
+                                                       "ok":  true
+                                                   },
+                                   "verify":  {
+                                                  "exact":  true,
+                                                  "read":  {
+                                                               "max":  100.0,
+                                                               "min":  0.0,
+                                                               "ok":  true,
+                                                               "readonly":  false,
+                                                               "value":  77.0
+                                                           },
+                                                  "rounded_or_clamped":  77.0
+                                              }
+                               },
+                "SelectionItem":  {
+                                      "automation_id_digest":  "e9afef15f2c2f5ed",
+                                      "call":  {
+                                                   "ktd2_arm":  "clean_ok",
+                                                   "ok":  true
+                                               },
+                                      "foreground_at_call":  true,
+                                      "label":  "SelectionItem.Select",
+                                      "shape_before":  {
+                                                           "automation_id_digest":  "e9afef15f2c2f5ed",
+                                                           "automation_id_len":  8,
+                                                           "bounds":  "0,0,0,0",
+                                                           "control_type":  50007,
+                                                           "expand_available":  false,
+                                                           "invoke_available":  false,
+                                                           "is_enabled":  true,
+                                                           "is_password":  false,
+                                                           "legacy_available":  true,
+                                                           "range_available":  false,
+                                                           "scroll_available":  false,
+                                                           "selection_item_available":  true,
+                                                           "toggle_available":  false,
+                                                           "value_available":  false
+                                                       },
+                                      "status_sink":  {
+                                                          "name":  {
+                                                                       "contains_marker":  false,
+                                                                       "digest":  "32c134a7c24e0f41",
+                                                                       "len":  16
+                                                                   },
+                                                          "ok":  true
+                                                      },
+                                      "verify":  {
+                                                     "ok":  false,
+                                                     "pattern":  {
+                                                                     "code":  0,
+                                                                     "result_hex":  null
+                                                                 }
+                                                 }
+                                  },
+                "SetValue_matrix":  [
+                                        {
+                                            "automation_id_digest":  "8153e352565945e4",
+                                            "call":  {
+                                                         "ktd2_arm":  "clean_ok",
+                                                         "ok":  true,
+                                                         "payload":  {
+                                                                         "contains_marker":  false,
+                                                                         "digest":  "2f4b4866ad2cf9fa",
+                                                                         "len":  15
+                                                                     }
+                                                     },
+                                            "foreground_at_call":  true,
+                                            "label":  "SetValue/ascii",
+                                            "shape_before":  {
+                                                                 "automation_id_digest":  "8153e352565945e4",
+                                                                 "automation_id_len":  8,
+                                                                 "bounds":  "60,110,423,24",
+                                                                 "control_type":  50004,
+                                                                 "expand_available":  false,
+                                                                 "invoke_available":  false,
+                                                                 "is_enabled":  true,
+                                                                 "is_password":  false,
+                                                                 "legacy_available":  true,
+                                                                 "range_available":  false,
+                                                                 "scroll_available":  true,
+                                                                 "selection_item_available":  false,
+                                                                 "toggle_available":  false,
+                                                                 "value_available":  true
+                                                             },
+                                            "status_sink":  {
+                                                                "name":  {
+                                                                             "contains_marker":  false,
+                                                                             "digest":  "99d21d71524f132a",
+                                                                             "len":  8
+                                                                         },
+                                                                "ok":  true
+                                                            },
+                                            "verify":  {
+                                                           "exact_match_by_digest":  true,
+                                                           "payload":  {
+                                                                           "contains_marker":  false,
+                                                                           "digest":  "2f4b4866ad2cf9fa",
+                                                                           "len":  15
+                                                                       },
+                                                           "read":  {
+                                                                        "ok":  true,
+                                                                        "readonly":  false,
+                                                                        "value":  {
+                                                                                      "contains_marker":  false,
+                                                                                      "digest":  "2f4b4866ad2cf9fa",
+                                                                                      "len":  15
+                                                                                  }
+                                                                    }
+                                                       }
+                                        },
+                                        {
+                                            "automation_id_digest":  "8153e352565945e4",
+                                            "call":  {
+                                                         "ktd2_arm":  "clean_ok",
+                                                         "ok":  true,
+                                                         "payload":  {
+                                                                         "contains_marker":  false,
+                                                                         "digest":  "16921e1cd55f4017",
+                                                                         "len":  18
+                                                                     }
+                                                     },
+                                            "foreground_at_call":  true,
+                                            "label":  "SetValue/cjk",
+                                            "shape_before":  {
+                                                                 "automation_id_digest":  "8153e352565945e4",
+                                                                 "automation_id_len":  8,
+                                                                 "bounds":  "60,110,423,24",
+                                                                 "control_type":  50004,
+                                                                 "expand_available":  false,
+                                                                 "invoke_available":  false,
+                                                                 "is_enabled":  true,
+                                                                 "is_password":  false,
+                                                                 "legacy_available":  true,
+                                                                 "range_available":  false,
+                                                                 "scroll_available":  true,
+                                                                 "selection_item_available":  false,
+                                                                 "toggle_available":  false,
+                                                                 "value_available":  true
+                                                             },
+                                            "status_sink":  {
+                                                                "name":  {
+                                                                             "contains_marker":  false,
+                                                                             "digest":  "99d21d71524f132a",
+                                                                             "len":  8
+                                                                         },
+                                                                "ok":  true
+                                                            },
+                                            "verify":  {
+                                                           "exact_match_by_digest":  true,
+                                                           "payload":  {
+                                                                           "contains_marker":  false,
+                                                                           "digest":  "16921e1cd55f4017",
+                                                                           "len":  18
+                                                                       },
+                                                           "read":  {
+                                                                        "ok":  true,
+                                                                        "readonly":  false,
+                                                                        "value":  {
+                                                                                      "contains_marker":  false,
+                                                                                      "digest":  "16921e1cd55f4017",
+                                                                                      "len":  18
+                                                                                  }
+                                                                    }
+                                                       }
+                                        },
+                                        {
+                                            "automation_id_digest":  "8153e352565945e4",
+                                            "call":  {
+                                                         "ktd2_arm":  "clean_ok",
+                                                         "ok":  true,
+                                                         "payload":  {
+                                                                         "contains_marker":  false,
+                                                                         "digest":  "a68db3cf6a16e141",
+                                                                         "len":  6
+                                                                     }
+                                                     },
+                                            "foreground_at_call":  true,
+                                            "label":  "SetValue/astral",
+                                            "shape_before":  {
+                                                                 "automation_id_digest":  "8153e352565945e4",
+                                                                 "automation_id_len":  8,
+                                                                 "bounds":  "60,110,423,24",
+                                                                 "control_type":  50004,
+                                                                 "expand_available":  false,
+                                                                 "invoke_available":  false,
+                                                                 "is_enabled":  true,
+                                                                 "is_password":  false,
+                                                                 "legacy_available":  true,
+                                                                 "range_available":  false,
+                                                                 "scroll_available":  true,
+                                                                 "selection_item_available":  false,
+                                                                 "toggle_available":  false,
+                                                                 "value_available":  true
+                                                             },
+                                            "status_sink":  {
+                                                                "name":  {
+                                                                             "contains_marker":  false,
+                                                                             "digest":  "99d21d71524f132a",
+                                                                             "len":  8
+                                                                         },
+                                                                "ok":  true
+                                                            },
+                                            "verify":  {
+                                                           "exact_match_by_digest":  true,
+                                                           "payload":  {
+                                                                           "contains_marker":  false,
+                                                                           "digest":  "a68db3cf6a16e141",
+                                                                           "len":  6
+                                                                       },
+                                                           "read":  {
+                                                                        "ok":  true,
+                                                                        "readonly":  false,
+                                                                        "value":  {
+                                                                                      "contains_marker":  false,
+                                                                                      "digest":  "a68db3cf6a16e141",
+                                                                                      "len":  6
+                                                                                  }
+                                                                    }
+                                                       }
+                                        }
+                                    ],
+                "Toggle":  {
+                               "automation_id_digest":  "acaff94433510c93",
+                               "call":  {
+                                            "before":  {
+                                                           "ok":  true,
+                                                           "state":  "Off"
+                                                       },
+                                            "call":  {
+                                                         "ktd2_arm":  "clean_ok",
+                                                         "ok":  true
+                                                     }
+                                        },
+                               "foreground_at_call":  true,
+                               "label":  "Toggle",
+                               "shape_before":  {
+                                                    "automation_id_digest":  "acaff94433510c93",
+                                                    "automation_id_len":  9,
+                                                    "bounds":  "60,87,96,15",
+                                                    "control_type":  50002,
+                                                    "expand_available":  false,
+                                                    "invoke_available":  false,
+                                                    "is_enabled":  true,
+                                                    "is_password":  false,
+                                                    "legacy_available":  true,
+                                                    "range_available":  false,
+                                                    "scroll_available":  false,
+                                                    "selection_item_available":  false,
+                                                    "toggle_available":  true,
+                                                    "value_available":  false
+                                                },
+                               "status_sink":  {
+                                                   "name":  {
+                                                                "contains_marker":  false,
+                                                                "digest":  "99d21d71524f132a",
+                                                                "len":  8
+                                                            },
+                                                   "ok":  true
+                                               },
+                               "verify":  {
+                                              "ok":  true,
+                                              "state":  "On"
+                                          }
+                           },
+                "branch":  "WPF_COM_VIABLE",
+                "client":  "uia3-com-product-CUIAutomation8",
+                "stack":  "wpf"
+            }
+}

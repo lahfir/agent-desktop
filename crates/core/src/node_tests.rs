@@ -184,3 +184,92 @@ fn accessibility_node_hint_none_omitted_from_json() {
         "hint must be absent when None, json={json}"
     );
 }
+
+fn descriptor_node() -> AccessibilityNode {
+    AccessibilityNode {
+        ref_id: None,
+        role: "button".into(),
+        identity: Default::default(),
+        presentation: Default::default(),
+        children_count: None,
+        subtree_truncated: false,
+        children: vec![],
+    }
+}
+
+/// The four descriptor fields are absent by default: a node that supplies none
+/// must serialize byte-identically to the schema before they existed. This is
+/// what keeps the macOS golden fixtures the regression proof that core changed
+/// shape without changing output.
+#[test]
+fn descriptor_fields_absent_serialize_to_the_legacy_shape() {
+    let node = descriptor_node();
+    let json = serde_json::to_string(&node).unwrap();
+
+    for key in ["subrole", "role_description", "placeholder", "dom_classes"] {
+        assert!(
+            !json.contains(key),
+            "descriptor field {key} must be absent when unset, json={json}"
+        );
+    }
+    assert!(json.contains("\"role\":\"button\""));
+}
+
+/// Each present field serializes under its documented name; an empty
+/// `dom_classes` list is omitted, not emitted as `[]`.
+#[test]
+fn descriptor_fields_present_serialize_under_documented_names() {
+    let mut node = descriptor_node();
+    node.presentation.descriptors = crate::NodeDescriptor {
+        subrole: Some("button-icon".into()),
+        role_description: Some("Push button".into()),
+        placeholder: Some("Enter name".into()),
+        dom_classes: vec!["btn".into(), "primary".into()],
+    };
+    let json = serde_json::to_string(&node).unwrap();
+
+    assert!(json.contains("\"subrole\":\"button-icon\""));
+    assert!(json.contains("\"role_description\":\"Push button\""));
+    assert!(json.contains("\"placeholder\":\"Enter name\""));
+    assert!(json.contains("\"dom_classes\":[\"btn\",\"primary\"]"));
+}
+
+/// Empty `dom_classes` is omitted rather than serialized as an empty array,
+/// so a node with only a subrole stays quiet about the list it does not have.
+#[test]
+fn empty_dom_classes_is_omitted() {
+    let mut node = descriptor_node();
+    node.presentation.descriptors = crate::NodeDescriptor {
+        subrole: Some("split".into()),
+        ..Default::default()
+    };
+    let json = serde_json::to_string(&node).unwrap();
+
+    assert!(json.contains("\"subrole\":\"split\""));
+    assert!(
+        !json.contains("dom_classes"),
+        "empty dom_classes must be omitted, json={json}"
+    );
+    assert!(!json.contains("\"role_description\":"));
+    assert!(!json.contains("\"placeholder\":"));
+}
+
+/// A node with the fields present round-trips through deserialization with all
+/// fields intact — pinned both ways, so a future serde mis-threading shows up
+/// in the schema test rather than later.
+#[test]
+fn descriptor_fields_roundtrip_both_ways() {
+    let original = crate::NodeDescriptor {
+        subrole: Some("treeitem-alt".into()),
+        role_description: Some("List item".into()),
+        placeholder: None,
+        dom_classes: vec!["leaf".into()],
+    };
+    let json = serde_json::to_string(&original).unwrap();
+    let back: crate::NodeDescriptor = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(back.subrole, original.subrole);
+    assert_eq!(back.role_description, original.role_description);
+    assert_eq!(back.placeholder, original.placeholder);
+    assert_eq!(back.dom_classes, original.dom_classes);
+}

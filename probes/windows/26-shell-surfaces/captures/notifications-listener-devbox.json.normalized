@@ -1,0 +1,33 @@
+{
+    "probe":  "26-shell-surfaces/02-notifications",
+    "question":  "does WinRT UserNotificationListener activate from an unpackaged PS5.1 process on this box, what does GetAccessStatus report without calling RequestAccessAsync, and does the machine consent store agree",
+    "cites":  [
+                  "KTD2"
+              ],
+    "label":  "devbox",
+    "listener":  {
+                     "measurable":  true,
+                     "winrt_type_load_attempted":  true,
+                     "activation_reported":  true,
+                     "activation_exception_class":  null,
+                     "get_access_status":  "Denied",
+                     "request_access_async_called":  false,
+                     "consent_store_locations":  [
+                                                     {
+                                                         "location":  "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\userNotificationListener",
+                                                         "exists":  true,
+                                                         "grant_value":  "Deny"
+                                                     },
+                                                     {
+                                                         "location":  "Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\userNotificationListener\\NonPackaged",
+                                                         "exists":  false,
+                                                         "grant_value":  "\u003cabsent\u003e"
+                                                     },
+                                                     {
+                                                         "location":  "Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications",
+                                                         "exists":  true,
+                                                         "grant_value":  "\u003cunreadable\u003e"
+                                                     }
+                                                 ]
+                 }
+}

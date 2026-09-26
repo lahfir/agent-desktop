@@ -94,6 +94,36 @@ fn shared_window_selector_prefers_the_only_visible_window() {
 }
 
 #[test]
+fn shared_window_selector_prefers_the_visible_focused_window_over_an_accessible_hidden_one() {
+    let mut visible_focused = window(Some("generation-a"));
+    visible_focused.id = "w-visible-focused".into();
+    visible_focused.state.visible = Some(true);
+    visible_focused.state.is_focused = true;
+    visible_focused.state.accessible = false;
+
+    let mut hidden_accessible = window(Some("generation-a"));
+    hidden_accessible.id = "w-hidden-accessible".into();
+    hidden_accessible.state.visible = Some(false);
+    hidden_accessible.state.is_focused = false;
+    hidden_accessible.state.accessible = true;
+
+    let mut irrelevant = window(Some("generation-a"));
+    irrelevant.id = "w-irrelevant".into();
+    irrelevant.state.visible = Some(false);
+    irrelevant.state.is_focused = false;
+    irrelevant.state.accessible = false;
+
+    let selected = select_window(
+        vec![hidden_accessible, irrelevant, visible_focused],
+        crate::AdapterError::new(ErrorCode::WindowNotFound, "none"),
+        "multiple",
+    )
+    .unwrap();
+
+    assert_eq!(selected.id, "w-visible-focused");
+}
+
+#[test]
 fn shared_window_selector_prefers_an_accessible_window() {
     let accessible = window(Some("generation-a"));
     let mut inaccessible = accessible.clone();

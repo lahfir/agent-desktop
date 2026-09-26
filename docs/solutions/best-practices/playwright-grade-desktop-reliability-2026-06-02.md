@@ -77,11 +77,15 @@ committed C header.
 ### 6. Verify at three layers
 
 Use deterministic core tests for identity, policy, retry, and delivery rules;
-C/C++ header compilation and layout tests for FFI; and a permissioned release
-binary against the SwiftUI fixture for native observation and harmless
-interaction. Real-app ignored tests protect platform seams such as window
-identity and accessible-name agreement. Headed and headless fixture scenarios
-must assert both the observed effect and the reported delivery mechanism.
+C/C++ header compilation and layout tests for FFI; and the platform's own
+permissioned fixture or dogfood gate for native observation and harmless
+interaction — on macOS a release binary against the SwiftUI fixture, on Windows
+an in-repo fixture window plus a repo-controlled dogfood capture. Real-app
+ignored tests protect platform seams such as window identity and
+accessible-name agreement. Headed and headless fixture scenarios must assert
+both the observed effect and the reported delivery mechanism. What each
+platform owes its gate is set out in
+[Make permissioned fixture and real-app checks the adapter gate](real-app-tests-are-the-platform-adapter-gate.md).
 
 ## Why This Matters
 
@@ -102,6 +106,5 @@ best-effort click.
 ## Related
 
 - [Keep progressive snapshots namespace-scoped and ref-safe](../logic-errors/progressive-snapshot-review-contract-2026-04-16.md)
-- [Document pointer actions from their own reliability pipeline](../documentation-gaps/hover-drag-skip-the-actionability-battery.md)
-- [Real-app tests are the platform-adapter gate](real-app-tests-are-the-platform-adapter-gate.md)
+- [Make permissioned fixture and real-app checks the adapter gate](real-app-tests-are-the-platform-adapter-gate.md)
 - [Keep raw caller arguments out of trace-reachable error messages](../conventions/keep-raw-arguments-out-of-trace-reachable-error-messages.md)

@@ -1,0 +1,137 @@
+{
+    "probe":  "24-fixture-e2e-08-chromium-content",
+    "question":  "against a Chromium/Electron target with real content actually staged: (a) what is the aggregate STALE_REF rate for refs allocated in that content, with a threshold-negative-control proving the threshold discriminates content from a shell; (b) can a positive-area content leaf be clicked through the semantic tier, verified by independent re-observation; (c) with the vault-configured session this run stages, is either shipped menu-detector source staged by an Alt-tap or a content-area right-click, and does a host-wide search find another Chromium/Electron shell",
+    "measurable":  true,
+    "branch":  "chromium_target_measured",
+    "negative_control":  {
+                             "measurable":  true,
+                             "label":  "no_document_open",
+                             "snapshot_id":  "s2oavueex92n94",
+                             "ref_count":  113,
+                             "complete":  true,
+                             "shape":  {
+                                           "document_root_found":  true,
+                                           "document_root_depth":  9,
+                                           "threshold_depth_absolute":  12,
+                                           "nodes_at_or_past_threshold_depth":  85,
+                                           "max_depth":  18
+                                       },
+                             "threshold_nodes":  150,
+                             "threshold_depth":  12,
+                             "meets_threshold":  false,
+                             "branch":  "below_threshold"
+                         },
+    "negative_control_discriminates":  true,
+    "note_opened_confirmed":  true,
+    "content_precondition":  {
+                                 "measurable":  true,
+                                 "label":  "document_open",
+                                 "snapshot_id":  "s3lilz22wiccnf",
+                                 "ref_count":  262,
+                                 "complete":  true,
+                                 "shape":  {
+                                               "document_root_found":  true,
+                                               "document_root_depth":  9,
+                                               "threshold_depth_absolute":  12,
+                                               "nodes_at_or_past_threshold_depth":  234,
+                                               "max_depth":  23
+                                           },
+                                 "threshold_nodes":  150,
+                                 "threshold_depth":  12,
+                                 "meets_threshold":  true,
+                                 "branch":  "content_tree_meets_threshold"
+                             },
+    "stale_ref_rate":  {
+                           "measurable":  true,
+                           "n":  8,
+                           "ok_count":  2,
+                           "stale_count":  6,
+                           "other_count":  0,
+                           "stale_rate":  0.75,
+                           "attempts":  [
+                                            {
+                                                "index":  0,
+                                                "status":  "ok",
+                                                "error_code":  null
+                                            },
+                                            {
+                                                "index":  1,
+                                                "status":  "ok",
+                                                "error_code":  null
+                                            },
+                                            {
+                                                "index":  2,
+                                                "status":  "stale_ref",
+                                                "error_code":  "STALE_REF"
+                                            },
+                                            {
+                                                "index":  3,
+                                                "status":  "stale_ref",
+                                                "error_code":  "STALE_REF"
+                                            },
+                                            {
+                                                "index":  4,
+                                                "status":  "stale_ref",
+                                                "error_code":  "STALE_REF"
+                                            },
+                                            {
+                                                "index":  5,
+                                                "status":  "stale_ref",
+                                                "error_code":  "STALE_REF"
+                                            },
+                                            {
+                                                "index":  6,
+                                                "status":  "stale_ref",
+                                                "error_code":  "STALE_REF"
+                                            },
+                                            {
+                                                "index":  7,
+                                                "status":  "stale_ref",
+                                                "error_code":  "STALE_REF"
+                                            }
+                                        ]
+                       },
+    "semantic_action":  {
+                            "measurable":  true,
+                            "target_ref_role":  "checkbox",
+                            "click_ok":  false,
+                            "click_error_code":  "TIMEOUT",
+                            "reobserved_checked":  null,
+                            "branch":  "click_did_not_deliver"
+                        },
+    "menu_attempt":  {
+                         "measurable":  true,
+                         "idle_all_false":  true,
+                         "idle":  {
+                                      "classic_any_thread_menu_mode":  false,
+                                      "uia_menu_family_reachable":  false
+                                  },
+                         "after_alt_tap":  {
+                                               "classic_any_thread_menu_mode":  false,
+                                               "uia_menu_family_reachable":  false
+                                           },
+                         "after_right_click":  {
+                                                   "classic_any_thread_menu_mode":  false,
+                                                   "uia_menu_family_reachable":  false
+                                               },
+                         "branch":  "no_menu_surface_staged_by_either_method",
+                         "cites":  [
+                                       "A23-3",
+                                       "A24-6"
+                                   ],
+                         "host_wide_search":  {
+                                                  "searched":  [
+                                                                   "edge",
+                                                                   "chrome",
+                                                                   "chrome_x86",
+                                                                   "brave",
+                                                                   "teams",
+                                                                   "vscode",
+                                                                   "slack"
+                                                               ],
+                                                  "found":  [
+
+                                                            ]
+                                              }
+                     }
+}

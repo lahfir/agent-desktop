@@ -1,0 +1,18 @@
+{
+    "probe":  "14-ci-capability",
+    "label":  "ci",
+    "scope":  "app/provider",
+    "stack":  "n/a",
+    "runnerImageOs":  "win25-vs2026",
+    "runnerImageVersion":  "20260714.173.1",
+    "osCaption":  "Microsoft Windows Server 2025 Datacenter",
+    "osVersion":  "10.0.26100",
+    "osBuildNumber":  "26100",
+    "osInstallationType":  "Server",
+    "sessionName":  null,
+    "sessionId":  2,
+    "userInteractive":  true,
+    "windowStation":  "WinSta0",
+    "desktop":  "Default",
+    "queryUserSessions":  "SESSIONNAME               USERNAME                 ID  STATE   TYPE        DEVICE \r\n services                                            0  Disc                        \r\n\u003econsole                   <user>               2  Active                      \r\n 31c5ce94259d4006a9e4                            65536  Listen                      \r\n rdp-tcp                                         65537  Listen"
+}

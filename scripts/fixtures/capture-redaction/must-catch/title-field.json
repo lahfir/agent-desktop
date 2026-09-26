@@ -1,0 +1,8 @@
+{
+  "probe": "self-test-fixture",
+  "data": {
+    "window": {
+      "title": "My Real Window Title - Notepad"
+    }
+  }
+}

@@ -9,6 +9,7 @@ severity: high
 applies_when:
   - "Changing which nodes receive refs"
   - "Changing compact, bounds, skeleton, or drill-down allocation behavior"
+  - "Changing the shape of the FFI raw tree"
   - "Adding source or scope evidence to RefEntry"
 tags: [refs, snapshot, drill-down, recursion, config-struct]
 ---
@@ -34,11 +35,35 @@ The allocator owns these semantics together:
 - ref eligibility: interactive roles or primary advertised actions, never a
   bare focus affordance;
 - identity, geometry, capability, source, and scope evidence in `RefEntry`;
-- bounds omission, compact collapse, and interactive-only pruning;
+- bounds omission, compact collapse, and interactive-only pruning for every
+  observation that allocates refs;
 - named skeleton anchors that are legitimate drill-down targets.
 
 Full snapshots use an empty root scope. Drill-down passes the root ref and its
 path prefix, then updates only that root's descendants in the stored map.
+
+### The one sanctioned second recursion
+
+`transform_tree`, in the same file, is a second recursive walk, and it is the
+one case the Prevention rule below admits: its output contract genuinely
+differs, and its rustdoc says so. It applies bounds omission, compact collapse,
+and interactive-only pruning to a raw adapter tree and never allocates a ref,
+because the FFI `ad_get_tree` path (`crates/ffi/src/tree/get.rs`) exposes raw
+trees with no ref pipeline — there is no `ref_id` for it to consult and no map
+for it to write. Its pruning decision is therefore role-based where the
+allocator's is ref-based.
+
+That splits maintenance in two, and which half a change falls in is the thing to
+settle first:
+
+- **Eligibility changes in one place.** Both walks decide through the same
+  predicates — `is_ref_able` / `is_ref_able_role_actions` for what is
+  addressable, `is_collapsible` for what is a semantically empty wrapper.
+  Change those and both paths follow.
+- **Presentation semantics change in two.** The filtering walks themselves are
+  separate. A new allocation dimension, or a change to when a filtered child is
+  kept, has to land in `allocate_refs_at_path` *and* in `transform_tree`, or the
+  raw FFI tree and the reffed tree stop agreeing on the shape of the same UI.
 
 ## Why This Matters
 

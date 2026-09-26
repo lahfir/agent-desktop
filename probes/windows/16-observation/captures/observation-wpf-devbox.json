@@ -1,0 +1,282 @@
+{
+    "measurements":  {
+                         "aria_properties":  {
+                                                 "aria_properties":  {
+                                                                         "carries_class_token":  0,
+                                                                         "distinct_shapes":  [
+                                                                                                 {
+                                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                                 }
+                                                                                             ],
+                                                                         "non_empty_count":  0
+                                                                     },
+                                                 "aria_role":  {
+                                                                   "author_defined_token_passed_verbatim":  0,
+                                                                   "distinct_shapes":  [
+                                                                                           {
+                                                                                               "variant_type":  "VARENUM(8)"
+                                                                                           }
+                                                                                       ],
+                                                                   "non_empty_count":  0
+                                                               },
+                                                 "elements":  83
+                                             },
+                         "child_process":  {
+                                               "attached":  true,
+                                               "descendants":  83,
+                                               "handle_int":  26477206,
+                                               "hosted":  false,
+                                               "root_class":  {
+                                                                  "length":  6,
+                                                                  "non_empty":  true,
+                                                                  "variant_type":  "VARENUM(8)"
+                                                              },
+                                               "root_resolved":  true
+                                           },
+                         "depth_to_content":  {
+                                                  "logical_nodes":  81,
+                                                  "logical_over_raw":  0.98,
+                                                  "raw_nodes":  83
+                                              },
+                         "extra_cost":  {
+                                            "base":  {
+                                                         "max_us":  330265,
+                                                         "median_us":  262805,
+                                                         "min_us":  236747,
+                                                         "repeats":  7,
+                                                         "spread_ratio":  1.4,
+                                                         "warmup_discarded":  1
+                                                     },
+                                            "combined":  {
+                                                             "max_us":  318862,
+                                                             "median_us":  274642,
+                                                             "min_us":  254574,
+                                                             "repeats":  7,
+                                                             "spread_ratio":  1.25,
+                                                             "warmup_discarded":  1
+                                                         },
+                                            "extra":  {
+                                                          "max_us":  205259,
+                                                          "median_us":  175354,
+                                                          "min_us":  142242,
+                                                          "repeats":  7,
+                                                          "spread_ratio":  1.44,
+                                                          "warmup_discarded":  1
+                                                      },
+                                            "overhead_ratio":  {
+                                                                   "base":  236747,
+                                                                   "combined":  254574,
+                                                                   "ratio":  1.08
+                                                               }
+                                        },
+                         "localized_control_type":  {
+                                                        "rows":  [
+                                                                     {
+                                                                         "control_type":  50000,
+                                                                         "count":  6,
+                                                                         "distinct_localized":  [
+                                                                                                    "button"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50002,
+                                                                         "count":  1,
+                                                                         "distinct_localized":  [
+                                                                                                    "check box"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50003,
+                                                                         "count":  1,
+                                                                         "distinct_localized":  [
+                                                                                                    "combo box"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50004,
+                                                                         "count":  5,
+                                                                         "distinct_localized":  [
+                                                                                                    "edit"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50007,
+                                                                         "count":  5,
+                                                                         "distinct_localized":  [
+                                                                                                    "list item"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50008,
+                                                                         "count":  1,
+                                                                         "distinct_localized":  [
+                                                                                                    "list view"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50010,
+                                                                         "count":  1,
+                                                                         "distinct_localized":  [
+                                                                                                    "menu bar"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50011,
+                                                                         "count":  1,
+                                                                         "distinct_localized":  [
+                                                                                                    "menu item"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50014,
+                                                                         "count":  10,
+                                                                         "distinct_localized":  [
+                                                                                                    "scroll bar"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50018,
+                                                                         "count":  1,
+                                                                         "distinct_localized":  [
+                                                                                                    "tab"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50019,
+                                                                         "count":  3,
+                                                                         "distinct_localized":  [
+                                                                                                    "tab item"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50020,
+                                                                         "count":  20,
+                                                                         "distinct_localized":  [
+                                                                                                    "text"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50025,
+                                                                         "count":  6,
+                                                                         "distinct_localized":  [
+                                                                                                    "custom"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50027,
+                                                                         "count":  8,
+                                                                         "distinct_localized":  [
+                                                                                                    "thumb"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50028,
+                                                                         "count":  1,
+                                                                         "distinct_localized":  [
+                                                                                                    "datagrid"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50029,
+                                                                         "count":  2,
+                                                                         "distinct_localized":  [
+                                                                                                    "dataitem"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50033,
+                                                                         "count":  5,
+                                                                         "distinct_localized":  [
+                                                                                                    "pane"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50034,
+                                                                         "count":  1,
+                                                                         "distinct_localized":  [
+                                                                                                    "header"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50035,
+                                                                         "count":  4,
+                                                                         "distinct_localized":  [
+                                                                                                    "header item"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     },
+                                                                     {
+                                                                         "control_type":  50037,
+                                                                         "count":  1,
+                                                                         "distinct_localized":  [
+                                                                                                    "title bar"
+                                                                                                ],
+                                                                         "failed_reads":  0
+                                                                     }
+                                                                 ]
+                                                    },
+                         "pattern_arms":  {
+                                              "any_element_with_griditem":  4,
+                                              "any_element_with_tableitem":  4,
+                                              "button_with_toggle":  1,
+                                              "control_types_carrying_grid_or_tableitem":  [
+                                                                                               50025
+                                                                                           ],
+                                              "non_dataitem_carrying_grid_or_tableitem":  4,
+                                              "total_elements":  83
+                                          },
+                         "settle":  {
+                                        "final":  83,
+                                        "first_contact":  83,
+                                        "grew_after_first_contact":  false,
+                                        "max":  83,
+                                        "min":  83,
+                                        "series":  [
+                                                       83,
+                                                       83,
+                                                       83,
+                                                       83,
+                                                       83,
+                                                       83,
+                                                       83,
+                                                       83,
+                                                       83,
+                                                       83,
+                                                       83,
+                                                       83
+                                                   ],
+                                        "settled":  false,
+                                        "stable_for":  11,
+                                        "understatement_ratio":  1.0,
+                                        "walks":  12
+                                    },
+                         "wrapper_census":  {
+                                                "depth_note":  "depth arithmetic is a walk-tree measurement; see settle scan for raw depth to web content",
+                                                "empty_name_and_value":  2,
+                                                "group_or_custom_nodes":  6,
+                                                "named_groups":  4,
+                                                "total_elements":  83
+                                            }
+                     },
+    "probe":  "16-observation",
+    "stack":  "uia3-com",
+    "uiautomation_version":  "0.25.0"
+}

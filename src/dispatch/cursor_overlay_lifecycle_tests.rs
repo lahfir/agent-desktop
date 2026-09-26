@@ -2,9 +2,8 @@ use super::dispatch;
 use crate::cli::Commands;
 use crate::cli_args::actions::PressArgs;
 use crate::cli_args::system::ClipboardSetArgs;
-use crate::dispatch::test_support::HomeGuard;
+use crate::dispatch::test_support::{HomeGuard, started_overlay_session};
 
-use agent_desktop_core::session::{ArtifactsMode, SessionTraceMode, StartSessionOptions};
 use agent_desktop_core::{
     ActionOps, ActionRequest, ActionResult, AdapterError, ClipboardContent, CursorOverlayControl,
     Deadline, InputOps, InteractionLease, KeyCombo, NativeHandle, ObservationOps, PermissionReport,
@@ -142,25 +141,6 @@ impl SystemOps for FailingOverlayAdapter {
         self.controls.lock().unwrap().push(control.clone());
         Err(AdapterError::internal("renderer unavailable"))
     }
-}
-
-fn started_session() -> agent_desktop_core::session::SessionManifest {
-    agent_desktop_core::session::start_session(StartSessionOptions {
-        trace: SessionTraceMode::Off,
-        artifacts: ArtifactsMode::Events,
-        name: None,
-    })
-    .unwrap()
-}
-
-fn started_overlay_session() -> agent_desktop_core::session::SessionManifest {
-    let manifest = started_session();
-    agent_desktop_core::session::set_cursor_overlay(
-        &manifest.id,
-        agent_desktop_core::CursorOverlayConfig::enabled(None, 6).unwrap(),
-    )
-    .unwrap();
-    manifest
 }
 
 fn headed_context(manifest: &agent_desktop_core::session::SessionManifest) -> CommandContext {

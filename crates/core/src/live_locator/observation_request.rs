@@ -13,9 +13,26 @@ pub struct ObservationRequest {
     pub max_raw_depth: u8,
     pub max_logical_depth: u8,
     pub surface: SnapshotSurface,
-    pub skeleton: bool,
     evidence_plan: EvidencePlan,
     pub budget: ObservationBudget,
+    pub observation_mode: ObservationMode,
+}
+
+/// The observation-mode sub-struct: shallow-traversal and renderer-
+/// accessibility handling for a web-wrapped target. The Windows adapter reads
+/// `force_renderer_accessibility` to decide whether a still-thin post-settle
+/// tree demands the `--force-renderer-accessibility` guidance or a bare tree
+/// back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ObservationMode {
+    /// Shallow overview traversal: `max_logical_depth` is clamped to 3 and
+    /// truncated containers are annotated with `children_count` rather than
+    /// descended into.
+    pub skeleton: bool,
+    /// The caller will pass Chromium's `--force-renderer-accessibility`
+    /// (via the `--force-electron-a11y` CLI flag), so the adapter should not
+    /// guess at guidance; it returns the tree it observed.
+    pub force_renderer_accessibility: bool,
 }
 
 impl ObservationRequest {
@@ -30,10 +47,17 @@ impl ObservationRequest {
         if self.max_logical_depth > self.max_raw_depth {
             return Err(AdapterError::new(
                 ErrorCode::InvalidArgs,
-                "max_logical_depth cannot exceed max_raw_depth",
-            ));
+                format!(
+                    "max depth {} exceeds the supported maximum of {}",
+                    self.max_logical_depth, self.max_raw_depth
+                ),
+            )
+            .with_suggestion(format!(
+                "Use a max depth of {} or less, or drill into a subtree with snapshot --root <ref>",
+                self.max_raw_depth
+            )));
         }
-        if self.skeleton && self.max_logical_depth > 3 {
+        if self.observation_mode.skeleton && self.max_logical_depth > 3 {
             return Err(AdapterError::new(
                 ErrorCode::InvalidArgs,
                 "skeleton observations support a maximum logical depth of 3",
@@ -53,9 +77,12 @@ impl ObservationRequest {
                 options.max_depth
             },
             surface: options.surface,
-            skeleton: options.skeleton,
             evidence_plan: EvidencePlan::uniform(EvidenceRequirements::snapshot()),
             budget: ObservationBudget::default(),
+            observation_mode: ObservationMode {
+                skeleton: options.skeleton,
+                force_renderer_accessibility: options.force_renderer_accessibility,
+            },
         }
     }
 
@@ -69,9 +96,9 @@ impl ObservationRequest {
             max_raw_depth: request.max_raw_depth,
             max_logical_depth: request.max_raw_depth,
             surface: SnapshotSurface::Window,
-            skeleton: false,
             evidence_plan: EvidencePlan::uniform(EvidenceRequirements::locator(query, request)),
             budget: ObservationBudget::default(),
+            observation_mode: ObservationMode::default(),
         }
     }
 
@@ -109,17 +136,24 @@ impl ObservationRequest {
                 0
             },
             surface: root.surface(),
-            skeleton: false,
             evidence_plan: EvidencePlan::rooted(
                 EvidenceRequirements::snapshot(),
                 EvidenceRequirements::query(query),
             ),
             budget: ObservationBudget::default(),
+            observation_mode: ObservationMode::default(),
         }
     }
 
     pub fn evidence_for_raw_depth(self, raw_depth: u8) -> EvidenceRequirements {
         self.evidence_plan.for_raw_depth(raw_depth)
+    }
+
+    /// Sets the observation-mode sub-struct the adapter reads for
+    /// renderer-accessibility handling on web-wrapped targets.
+    pub fn with_observation_mode(mut self, mode: ObservationMode) -> Self {
+        self.observation_mode = mode;
+        self
     }
 
     pub fn descendant_evidence(self) -> EvidenceRequirements {

@@ -1,0 +1,43 @@
+{
+    "probe":  "24-fixture-e2e-09-cell-role-stock-dgv",
+    "question":  "does the stock WinForms DataGridView (dgvRows) resolve on this box under --host-providers, reconfirming or contradicting A24-9\u0027s dgvRows_element_not_found leg - and if it still does not resolve, what does an independent ControlType-based search and a bounded tree dump show about why",
+    "cites":  [
+                  "A24-9",
+                  "A16-10"
+              ],
+    "overall":  {
+                    "measurable":  false,
+                    "branch":  "stock_dgv_still_not_measurable",
+                    "conclusion":  "A24-9\u0027s dgvRows_element_not_found leg reproduces on this box even with an independent ControlType search and a bounded tree dump; the cell role arm\u0027s real-application grounding rests on A16-10\u0027s 2.4 WPF DataGrid reading alone, not on a reconfirmed WinForms DataGridView reading"
+                },
+    "stock_dgv":  {
+                      "measurable":  false,
+                      "branch":  "dgvRows_element_not_found",
+                      "fixture_mode":  "host-providers: fixture custom collapse-to-Pane provider is switched off, dgvRows exposes its real WinForms UIA automation peer",
+                      "search_by_automation_id":  {
+                                                      "found":  false,
+                                                      "attempts":  26
+                                                  },
+                      "search_by_control_type":  {
+                                                     "found":  false,
+                                                     "attempts":  26
+                                                 },
+                      "control_type_dump":  {
+                                                "nodes_visited":  64,
+                                                "truncated":  false,
+                                                "max_depth_reached":  3,
+                                                "data_grid_seen":  false,
+                                                "control_type_counts":  {
+                                                                            "Window":  1,
+                                                                            "Pane":  39,
+                                                                            "Text":  9,
+                                                                            "ComboBox":  1,
+                                                                            "Table":  1,
+                                                                            "Button":  1,
+                                                                            "Custom":  4,
+                                                                            "Header":  2,
+                                                                            "Edit":  6
+                                                                        }
+                                            }
+                  }
+}

@@ -12,6 +12,10 @@ pub use agent_desktop_ffi::{
 };
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
+
+#[cfg(target_os = "windows")]
+pub mod win32_fixture;
+
 use std::sync::{
     Mutex,
     atomic::{AtomicU64, Ordering},
@@ -20,10 +24,13 @@ use std::sync::{
 static HOME_LOCK: Mutex<()> = Mutex::new(());
 static HOME_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Clears AGENT_DESKTOP_HOME rather than pinning it: the two layout branches
+/// produce different paths, and a pinned var breaks test layout assumptions.
 struct IsolatedHome {
     _lock: std::sync::MutexGuard<'static, ()>,
     path: std::path::PathBuf,
     previous: Option<std::ffi::OsString>,
+    previous_state_root: Option<std::ffi::OsString>,
 }
 
 impl IsolatedHome {
@@ -38,11 +45,14 @@ impl IsolatedHome {
         ));
         std::fs::create_dir_all(&path).expect("create isolated FFI test HOME");
         let previous = std::env::var_os("HOME");
+        let previous_state_root = std::env::var_os("AGENT_DESKTOP_HOME");
         unsafe { std::env::set_var("HOME", &path) };
+        unsafe { std::env::remove_var("AGENT_DESKTOP_HOME") };
         Self {
             _lock: lock,
             path,
             previous,
+            previous_state_root,
         }
     }
 }
@@ -52,6 +62,10 @@ impl Drop for IsolatedHome {
         match self.previous.as_ref() {
             Some(previous) => unsafe { std::env::set_var("HOME", previous) },
             None => unsafe { std::env::remove_var("HOME") },
+        }
+        match self.previous_state_root.as_ref() {
+            Some(previous) => unsafe { std::env::set_var("AGENT_DESKTOP_HOME", previous) },
+            None => unsafe { std::env::remove_var("AGENT_DESKTOP_HOME") },
         }
         let _ = std::fs::remove_dir_all(&self.path);
     }
@@ -240,6 +254,31 @@ pub fn default_exact_ref_entry() -> AdExactRefEntry {
     entry.version = 1;
     entry.size = std::mem::size_of::<AdExactRefEntry>() as u32;
     entry
+}
+
+/// Depth-first search over a decoded envelope (or any JSON subtree of one)
+/// for the first value satisfying `matches`. Walks every object field and
+/// every array element rather than a fixed key such as `children`, so it
+/// finds a match wherever the schema puts it. `searched` counts every value
+/// visited, for a caller's own diagnostic message on a failed search.
+pub fn find_ref_in_tree(
+    value: &serde_json::Value,
+    searched: &mut usize,
+    matches: &impl Fn(&serde_json::Value) -> Option<String>,
+) -> Option<String> {
+    *searched += 1;
+    if let Some(found) = matches(value) {
+        return Some(found);
+    }
+    match value {
+        serde_json::Value::Object(map) => map
+            .values()
+            .find_map(|child| find_ref_in_tree(child, searched, matches)),
+        serde_json::Value::Array(items) => items
+            .iter()
+            .find_map(|child| find_ref_in_tree(child, searched, matches)),
+        _ => None,
+    }
 }
 
 pub fn default_action() -> AdAction {

@@ -1,0 +1,22 @@
+{
+    "label":  "devbox",
+    "taskbar_resolved":  true,
+    "tray_notify_resolved":  true,
+    "toolbar_resolved":  false,
+    "toolbar_found_by_enum":  true,
+    "taskbar_descendant_count":  0,
+    "taskbar_child_count":  0,
+    "taskbar_control_type_id":  50033,
+    "taskbar_is_offscreen":  false,
+    "taskbar_provider_description_length":  null,
+    "taskbar_provider_names_uiautomationcore":  null,
+    "taskbar_provider_names_a_pid_marker":  null,
+    "toolbar_descendant_count":  0,
+    "toolbar_child_count":  0,
+    "toolbar_control_type_id":  50033,
+    "toolbar_is_offscreen":  false,
+    "toolbar_provider_description_length":  null,
+    "toolbar_provider_names_uiautomationcore":  null,
+    "toolbar_provider_names_a_pid_marker":  null,
+    "toolbar_button_count":  0
+}

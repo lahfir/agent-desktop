@@ -1,0 +1,19 @@
+[package]
+name = "shell-execute-ex-scratch"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Standalone ShellExecuteExW binding validation.
+# NOT a workspace member. Win32_UI_Shell must never enter crates/windows/Cargo.toml.
+# windows-sys 0.61 also gates ShellExecuteExW / SHELLEXECUTEINFOW on Win32_System_Registry.
+[workspace]
+
+[dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_UI_Shell",
+  "Win32_System_Registry",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_System_Threading",
+] }

@@ -1,0 +1,32 @@
+{
+    "label":  "devbox",
+    "rig":  {
+                "session_name":  "Console",
+                "session_id":  1,
+                "is_remote_session":  false,
+                "screen_count":  1,
+                "virtual_screen":  "1639x732",
+                "primary_dpi_x":  96,
+                "primary_dpi_y":  96,
+                "is_elevated":  true,
+                "integrity_sid":  "S-1-16-12288",
+                "enable_lua":  1,
+                "os_build":  17763,
+                "appx_package_count":  28,
+                "chromium_window_class_hosts":  1
+            },
+    "shell_surface":  {
+                          "taskbar_hwnd_nonzero":  true,
+                          "tray_notify_resolves":  true,
+                          "syspager_resolves":  true,
+                          "toolbar_under_tray_notify_resolves":  false,
+                          "toolbar_under_syspager_resolves":  false,
+                          "shipped_system_tray_chain_resolves":  false,
+                          "both_are_class_chain_walks":  true,
+                          "note":  "both taskbar and system-tray kinds resolve by Win32 class chain and neither descends a UIA tree; the shipped system-tray chain is Shell_TrayWnd \u003e TrayNotifyWnd \u003e ToolbarWindow32"
+                      },
+    "toggle_census":  {
+                          "measured_out_of_band":  true,
+                          "note":  "toggle presentation census was taken with the UIA3 COM shim; see the area 27 rows for the counts"
+                      }
+}

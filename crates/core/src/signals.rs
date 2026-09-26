@@ -2,6 +2,7 @@
 use crate::snapshot_surface::SnapshotSurface;
 use crate::{AppInfo, EventKind, ProcessId, SignalBaseline, SurfaceSignal, UiEvent, WindowInfo};
 use std::collections::HashSet;
+use std::hash::Hash;
 
 /// Pure baseline-diff over two independently captured [`SignalBaseline`]
 /// snapshots. Never touches the adapter — every code path here is exercised
@@ -185,6 +186,44 @@ fn diff_surfaces(baseline: &SignalBaseline, current: &SignalBaseline, events: &m
         if !current_ids.contains(&surface_identity(surface)) {
             events.push(surface_event(surface, false));
         }
+    }
+}
+
+/// Grows `seen` with any entry from `current` not already present, keyed by
+/// the same identity `diff_signals` uses. Nothing already in `seen` is ever
+/// removed: this is the running union a disappearance-class wait diffs
+/// against, so an entity that both appeared and disappeared within one wait
+/// is still detected even though it never appears in the wait's original
+/// fixed baseline.
+/// Grows `seen` with any entry from `current` not already present, keyed by
+/// `identity`. The shared body behind [`merge_signal_baseline`]'s three
+/// fields, which differ only in their entity type and identity function.
+fn grow_with_new<'a, T: Clone, K: Eq + Hash>(
+    seen: &'a [T],
+    current: &'a [T],
+    identity: impl Fn(&'a T) -> Option<K>,
+) -> Vec<T> {
+    let seen_ids: HashSet<K> = seen.iter().filter_map(&identity).collect();
+    let mut grown = seen.to_vec();
+    for item in current {
+        if identity(item).is_some_and(|id| !seen_ids.contains(&id)) {
+            grown.push(item.clone());
+        }
+    }
+    grown
+}
+
+pub(crate) fn merge_signal_baseline(
+    seen: &SignalBaseline,
+    current: &SignalBaseline,
+) -> SignalBaseline {
+    SignalBaseline {
+        windows: grow_with_new(&seen.windows, &current.windows, window_identity),
+        apps: grow_with_new(&seen.apps, &current.apps, app_identity),
+        surfaces: grow_with_new(&seen.surfaces, &current.surfaces, |surface| {
+            Some(surface_identity(surface))
+        }),
+        completeness: current.completeness,
     }
 }
 

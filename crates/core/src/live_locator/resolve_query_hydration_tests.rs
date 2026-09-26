@@ -4,7 +4,7 @@ use super::{
     ObservationRoot, ObservedTree, resolve_query,
 };
 use crate::{
-    AdapterError, ErrorCode,
+    AdapterError, DeliverySemantics, ErrorCode,
     adapter::{ActionOps, InputOps, ObservationOps, SystemOps},
     locator::LocatorQuery,
 };
@@ -29,7 +29,11 @@ impl ObservationOps for HydrationRetryAdapter {
             ObservationRoot::Element { .. } => {
                 let attempt = self.hydration_observations.fetch_add(1, Ordering::SeqCst);
                 if attempt == 0 {
-                    return Err(AdapterError::stale_ref("hydration retry")
+                    return Err(AdapterError::new(ErrorCode::StaleRef, "hydration retry")
+                        .with_suggestion(
+                            "Run 'snapshot' to refresh, then retry with the updated ref.",
+                        )
+                        .with_disposition(DeliverySemantics::not_delivered())
                         .with_details(serde_json::json!({ "retryable": true })));
                 }
                 Ok(button_tree())

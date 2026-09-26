@@ -1,0 +1,61 @@
+{
+    "generated":  "2026-08-03T20:12:55.1526136-06:00",
+    "binary":  "agent-desktop.exe",
+    "targets":  [
+                    {
+                        "name":  "notepad",
+                        "ui_stack":  "win32",
+                        "result":  "ran",
+                        "snapshot_ok":  true,
+                        "ref_count":  17,
+                        "complete":  true,
+                        "find_result":  "ok=True",
+                        "ref_reads":  "get=True is=True",
+                        "reason":  ""
+                    },
+                    {
+                        "name":  "explorer",
+                        "ui_stack":  "shell (DirectUI)",
+                        "result":  "ran",
+                        "snapshot_ok":  true,
+                        "ref_count":  75,
+                        "complete":  true,
+                        "find_result":  "",
+                        "ref_reads":  "get=True",
+                        "reason":  ""
+                    },
+                    {
+                        "name":  "winforms",
+                        "ui_stack":  "winforms",
+                        "result":  "ran",
+                        "snapshot_ok":  true,
+                        "ref_count":  27,
+                        "complete":  true,
+                        "find_result":  "ok=True matches=1",
+                        "ref_reads":  "get=True is=True re-resolve-after-swap=resolved-correct",
+                        "reason":  ""
+                    },
+                    {
+                        "name":  "wpf",
+                        "ui_stack":  "wpf",
+                        "result":  "ran",
+                        "snapshot_ok":  true,
+                        "ref_count":  10,
+                        "complete":  true,
+                        "find_result":  "",
+                        "ref_reads":  "",
+                        "reason":  ""
+                    },
+                    {
+                        "name":  "obsidian",
+                        "ui_stack":  "chromium/electron",
+                        "result":  "ran",
+                        "snapshot_ok":  true,
+                        "ref_count":  15,
+                        "complete":  true,
+                        "find_result":  "",
+                        "ref_reads":  "refs_sampled=6 stale=4 resolved=2",
+                        "reason":  ""
+                    }
+                ]
+}

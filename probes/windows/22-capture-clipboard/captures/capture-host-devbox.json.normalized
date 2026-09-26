@@ -1,0 +1,13 @@
+{
+    "probe":  "22-capture-clipboard",
+    "question":  "host build/session/station/desktop and GraphicsCaptureSession.IsSupported",
+    "build":  17763,
+    "session_id_present":  true,
+    "window_station":  "WinSta0",
+    "desktop":  "Default",
+    "user_interactive":  true,
+    "wgc_is_supported":  true,
+    "wgc_support_source":  "GraphicsCaptureSession.IsSupported",
+    "wgc_error_kind":  null,
+    "environment_dependency":  "host-specific; build 17763 expected unsupported"
+}

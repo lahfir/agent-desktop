@@ -1,0 +1,52 @@
+{
+    "probe":  "25-packaging-01-archive-and-download-tools",
+    "question":  "are tar.exe and curl.exe present in System32 and first in practice on PATH relative to a Git-for-Windows install, do their versions speak the gzip-tar dialect postinstall drives, and does a create-list-extract round trip of a gzip tarball holding one stand-in agent-desktop.exe succeed through the in-box tool",
+    "measurable":  true,
+    "branch":  "archive_tools_exercised",
+    "label":  "devbox",
+    "system32_tar_present":  true,
+    "system32_curl_present":  true,
+    "tools":  {
+                  "tar":  {
+                              "tool":  "tar",
+                              "system32_present":  true,
+                              "family":  "bsdtar",
+                              "version":  "3.5.2",
+                              "banner_first_line":  "bsdtar 3.5.2 - libarchive 3.5.2 zlib/1.2.5.f-ipp",
+                              "path_copies_found":  1,
+                              "resolves_to_system32":  true
+                          },
+                  "curl":  {
+                               "tool":  "curl",
+                               "system32_present":  true,
+                               "family":  "curl",
+                               "version":  "8.9.1",
+                               "banner_first_line":  "curl 8.9.1 (Windows) libcurl/8.9.1 Schannel zlib/1.3 WinIDN",
+                               "path_copies_found":  1,
+                               "resolves_to_system32":  true
+                           }
+              },
+    "path_order":  {
+                       "system32_dir_on_path":  true,
+                       "system32_position_1based":  3,
+                       "git_family_dirs_on_path":  1,
+                       "first_git_position_1based":  11,
+                       "git_precedes_system32":  false
+                   },
+    "roundtrip":  {
+                      "attempted":  true,
+                      "create_exit_code":  0,
+                      "listing_entry_count":  1,
+                      "single_entry_is_stand_in_exe":  true,
+                      "extract_exit_code":  0,
+                      "extracted_file_count":  1,
+                      "extracted_bytes_match_source":  true,
+                      "extracted_sha256_matches_source":  true,
+                      "roundtrip_ok":  true
+                  },
+    "stand_in_bytes":  65536,
+    "summary":  {
+                    "both_system32_tools_present":  true,
+                    "gzip_roundtrip_succeeded":  true
+                }
+}

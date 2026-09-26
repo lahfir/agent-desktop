@@ -1,0 +1,79 @@
+{
+    "probe":  "26-shell-surfaces/02-notifications",
+    "question":  "what does the Action Center XAML tree look like on this build to the UIA3 COM client, expressed as counts, framework AutomationId tags and pattern sets with no Name text recorded",
+    "cites":  [
+                  "KTD2"
+              ],
+    "label":  "devbox",
+    "client_stack":  "uia3-com",
+    "shape":  {
+                  "measurable":  true,
+                  "branch":  "shape_read_from_raised_surface",
+                  "stack":  "uia3-com",
+                  "toast_staging":  {
+                                        "attempted":  true,
+                                        "accepted":  true,
+                                        "exception_class":  null,
+                                        "note":  "staging only creates an entry to measure; RequestAccessAsync is never called"
+                                    },
+                  "main_list_view_present":  true,
+                  "clear_all_button_present":  true,
+                  "node_count_total":  16,
+                  "rescan_all_ids_unchanged":  true,
+                  "control_type_counts_under_main_list_view":  {
+                                                                   "Group":  1,
+                                                                   "Text":  3,
+                                                                   "Button":  2,
+                                                                   "ListItem":  1
+                                                               },
+                  "list_view_header_item_count_controltype_headeritem":  0,
+                  "list_view_item_entry_count_controltype_listitem":  1,
+                  "representative_entry":  {
+                                               "node_index":  12,
+                                               "control_type":  "ListItem",
+                                               "automation_id_tag":  "-",
+                                               "invoke_pattern_available":  true,
+                                               "direct_children":  [
+                                                                       {
+                                                                           "automation_id_tag":  "Title",
+                                                                           "framework_stable_tag_recorded":  true,
+                                                                           "control_type":  "Text",
+                                                                           "pattern_set":  [
+                                                                                               "LegacyIAccessible",
+                                                                                               "ScrollItem",
+                                                                                               "Text"
+                                                                                           ]
+                                                                       },
+                                                                       {
+                                                                           "automation_id_tag":  "Attribution",
+                                                                           "framework_stable_tag_recorded":  true,
+                                                                           "control_type":  "Text",
+                                                                           "pattern_set":  [
+                                                                                               "LegacyIAccessible",
+                                                                                               "ScrollItem",
+                                                                                               "Text"
+                                                                                           ]
+                                                                       },
+                                                                       {
+                                                                           "automation_id_tag":  "DismissButton",
+                                                                           "framework_stable_tag_recorded":  true,
+                                                                           "control_type":  "Button",
+                                                                           "pattern_set":  [
+                                                                                               "Invoke",
+                                                                                               "LegacyIAccessible",
+                                                                                               "ScrollItem"
+                                                                                           ]
+                                                                       }
+                                                                   ]
+                                           },
+                  "entry_children_shape_measurable":  true,
+                  "framework_automation_id_tags_seen":  [
+                                                            "MainListView",
+                                                            "ClearAllButton",
+                                                            "Title",
+                                                            "DismissButton",
+                                                            "Attribution"
+                                                        ]
+              },
+    "shape_error":  null
+}

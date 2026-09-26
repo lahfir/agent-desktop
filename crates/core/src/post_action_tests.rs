@@ -343,3 +343,13 @@ mod focus_tests;
 
 #[path = "post_action_budget_tests.rs"]
 mod budget_tests;
+
+/// A newline left in a field is content, so a clear that leaves one is not
+/// verified; a RichEdit's own terminator is removed where the value is read.
+#[test]
+fn clear_that_leaves_a_newline_is_not_verified() {
+    let adapter = adapter(element(Some("old"), &[]), element(Some("\n"), &[]));
+    let error = execute(&adapter, Action::Clear).unwrap_err();
+    assert_eq!(error.code, ErrorCode::ActionFailed);
+    assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
+}
