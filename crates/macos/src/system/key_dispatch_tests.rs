@@ -86,3 +86,13 @@ fn focus_authorized_press_keeps_menu_shortcuts_for_modified_keys() {
     assert!(uses_menu_shortcut(&key("n", vec![Modifier::Meta]), headed));
     assert!(!uses_menu_shortcut(&key("n", Vec::new()), headed));
 }
+
+#[test]
+fn a_missing_focused_element_names_both_recovery_routes() {
+    let error = super::no_focused_element_error();
+    let suggestion = error
+        .suggestion
+        .expect("the error carries a recovery suggestion");
+    assert!(suggestion.contains("--headed"), "{suggestion}");
+    assert!(suggestion.contains("--surface menubar"), "{suggestion}");
+}

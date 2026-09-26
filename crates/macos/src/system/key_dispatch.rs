@@ -97,18 +97,10 @@ fn try_simple_key_action(
     crate::actions::ax_helpers::try_ax_action_or_err(&focused, action, deadline)
 }
 
-/// Performing a menu item runs its action against whichever window the app
-/// considers focused. An inactive app has none, so apps such as VS Code answer
-/// by opening and activating a new window. Only callers that authorized focus
-/// changes, whose target window core has already focused, take this route;
-/// headless callers get the keystroke itself.
 fn uses_menu_shortcut(combo: &KeyCombo, policy: InteractionPolicy) -> bool {
     policy.allow_focus_steal && !combo.modifiers.is_empty()
 }
 
-/// Only keys whose meaning is the focused element's default or cancel action
-/// have a semantic equivalent. Printable keys, space included, must arrive as
-/// keystrokes: performing `AXPress` on a focused text input drops the character.
 fn simple_key_action(combo: &KeyCombo) -> Option<&'static str> {
     if !combo.modifiers.is_empty() {
         return None;
@@ -120,6 +112,18 @@ fn simple_key_action(combo: &KeyCombo) -> Option<&'static str> {
     }
 }
 
+fn no_focused_element_error() -> AdapterError {
+    AdapterError::new(
+        ErrorCode::ActionFailed,
+        "Application has no verified focused element for keyboard delivery",
+    )
+    .with_details(serde_json::json!({ "physical_delivery_started": false }))
+    .with_suggestion(
+        "Retry with --headed so the app can take focus, or run the menu command without \
+         keys: find the item with 'snapshot --app <app> --surface menubar' and click its ref.",
+    )
+}
+
 fn require_focused_element(app: &AXElement, deadline: Deadline) -> Result<AXElement, AdapterError> {
     let local_deadline = local_deadline(deadline, Duration::from_millis(500))?;
     loop {
@@ -128,11 +132,7 @@ fn require_focused_element(app: &AXElement, deadline: Deadline) -> Result<AXElem
         }
         ensure_budget(deadline)?;
         if Instant::now() >= local_deadline {
-            return Err(AdapterError::new(
-                ErrorCode::ActionFailed,
-                "Application has no verified focused element for keyboard delivery",
-            )
-            .with_details(serde_json::json!({ "physical_delivery_started": false })));
+            return Err(no_focused_element_error());
         }
         let pause = deadline.remaining_slice(Duration::from_millis(5))?;
         std::thread::sleep(pause.min(Duration::from_millis(5)));
