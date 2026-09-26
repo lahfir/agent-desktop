@@ -213,3 +213,19 @@ fn allocation_config(include_bounds: bool) -> RefAllocConfig<'static> {
         },
     }
 }
+
+#[test]
+fn transform_tree_interactive_only_prunes_leaves_with_only_ubiquitous_affordances() {
+    let mut noise = node("statictext", Some("row"));
+    noise.presentation.available_actions = vec!["RightClick".into(), "ScrollTo".into()];
+    let mut clickable = node("statictext", Some("link-like"));
+    clickable.presentation.available_actions =
+        vec!["Click".into(), "RightClick".into(), "ScrollTo".into()];
+    let mut root = node("window", Some("w"));
+    root.children = vec![noise, clickable];
+
+    let out = transform_tree(root, true, true, false);
+
+    assert_eq!(out.children.len(), 1);
+    assert_eq!(out.children[0].identity.name.as_deref(), Some("link-like"));
+}
