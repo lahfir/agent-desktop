@@ -1,6 +1,6 @@
 use super::*;
 use crate::refs_test_support::HomeGuard;
-fn entry(role: &str, name: Option<&str>) -> RefEntry {
+pub(super) fn entry(role: &str, name: Option<&str>) -> RefEntry {
     RefEntry {
         process: crate::RefProcess {
             pid: crate::ProcessId::new(1),
@@ -207,37 +207,6 @@ fn drill_replaces_full_snapshot_and_nested_descendants_only() {
             "obsolete ref {removed} survived"
         );
     }
-}
-
-#[test]
-fn test_serialize_with_size_check_rejects_oversized() {
-    let mut map = RefMap::new();
-    let big_name = "x".repeat(2048);
-    for _ in 0..600 {
-        map.allocate(entry("button", Some(&big_name)));
-    }
-
-    let result = map.serialize_with_size_check();
-    assert!(result.is_err(), "oversized refmap should be rejected");
-    let err = result.unwrap_err();
-    let msg = err.to_string();
-    assert!(
-        msg.contains("1MB"),
-        "error should mention the 1MB limit, got: {msg}"
-    );
-}
-
-#[test]
-fn test_serialize_with_size_check_accepts_normal() {
-    let mut map = RefMap::new();
-    for _ in 0..50 {
-        map.allocate(entry("button", Some("OK")));
-    }
-
-    let result = map.serialize_with_size_check();
-    let value: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
-    assert_eq!(value["inner"]["@e1"]["role"], "button");
-    assert_eq!(value["inner"]["@e1"]["name"], "OK");
 }
 
 #[test]

@@ -90,7 +90,7 @@ fn activation_delivered(
         "AXUIElementSetAttributeValue",
         error,
     )?;
-    if delivered && readback == Some(false) {
+    if delivered && readback == Some(false) && attribute == renderer_probe::ENHANCED {
         return Err(AdapterError::new(
             ErrorCode::ActionFailed,
             "Renderer accessibility activation was not reflected in the attribute value",
@@ -162,6 +162,20 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.code, ErrorCode::ActionFailed);
         assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
+    }
+
+    #[test]
+    fn accepted_manual_write_with_disabled_readback_is_not_an_error() {
+        let application = crate::tree::AXElement(std::ptr::null_mut());
+        assert!(
+            activation_delivered(
+                &application,
+                renderer_probe::MANUAL,
+                accessibility_sys::kAXErrorSuccess,
+                Some(false),
+            )
+            .unwrap()
+        );
     }
 
     #[test]

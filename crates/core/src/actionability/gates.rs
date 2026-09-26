@@ -5,7 +5,10 @@ use super::{
 };
 use crate::{ErrorCode, Rect, action::Action, action_request::ActionRequest, capability};
 
-pub(super) fn visibility(evidence: &ActionabilityEvidence) -> ActionabilityCheck {
+pub(super) fn visibility(
+    evidence: &ActionabilityEvidence,
+    requires_geometry: bool,
+) -> ActionabilityCheck {
     match evidence.state.hidden {
         Some(true) => return fail("visible", "live hidden state is true"),
         None if !evidence.states_complete => {
@@ -27,6 +30,9 @@ pub(super) fn visibility(evidence: &ActionabilityEvidence) -> ActionabilityCheck
         }
         None => {}
         Some(false) => {}
+    }
+    if !requires_geometry && evidence.state.offscreen.is_none() && evidence.bounds.is_some() {
+        return pass("visible");
     }
     let Some(bounds) = evidence.bounds else {
         return unknown("visible", "bounds unavailable");
