@@ -56,11 +56,6 @@ pub(crate) fn ref_entry_from_node(
     }
 }
 
-/// Affordances that do not make an element addressable on their own.
-/// Focusability is not a primary action, and web runtimes (Chromium/Electron)
-/// advertise context-menu (`RightClick`) and scroll-into-view (`ScrollTo`) on
-/// nearly every node, so counting them would ref-allocate every inert
-/// container and text run and overflow the refmap size limit on web apps.
 const UBIQUITOUS_AFFORDANCES: [&str; 3] = [
     crate::capability::SET_FOCUS,
     crate::capability::RIGHT_CLICK,
@@ -68,8 +63,12 @@ const UBIQUITOUS_AFFORDANCES: [&str; 3] = [
 ];
 
 /// An element receives a ref when it is addressable for an action: either its
-/// role is interactive, or it advertises an available action other than the
-/// [`UBIQUITOUS_AFFORDANCES`] regardless of role. Container roles like
+/// role is interactive, or it advertises an available action other than
+/// `SetFocus`, `RightClick` or `ScrollTo`, regardless of role. Focusability is
+/// not a primary action, and web runtimes (Chromium/Electron) advertise
+/// context-menu and scroll-into-view on nearly every node, so counting them
+/// would ref-allocate every inert container and text run and overflow the
+/// refmap size limit on web apps. Container roles like
 /// `scrollarea` (Scroll) and `disclosure` (Expand/Collapse) are not
 /// "interactive" by role but are genuinely actionable, and `scroll` /
 /// `expand` / `collapse` need a ref to target them — so action-bearing
