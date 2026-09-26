@@ -344,14 +344,12 @@ mod focus_tests;
 #[path = "post_action_budget_tests.rs"]
 mod budget_tests;
 
-/// A rich edit reads an emptied field back as its own terminator (`"\r"`), so
-/// a clear that landed must verify rather than fail on that one character.
+/// A newline left in a field is content, so a clear that leaves one is not
+/// verified; a RichEdit's own terminator is removed where the value is read.
 #[test]
-fn clear_accepts_a_rich_edit_terminator_as_empty() {
-    let adapter = adapter(element(Some("old"), &[]), element(Some("\r"), &[]));
-    let result = execute(&adapter, Action::Clear).unwrap();
-    assert_eq!(
-        result.disposition(),
-        DeliverySemantics::delivered_verified()
-    );
+fn clear_that_leaves_a_newline_is_not_verified() {
+    let adapter = adapter(element(Some("old"), &[]), element(Some("\n"), &[]));
+    let error = execute(&adapter, Action::Clear).unwrap_err();
+    assert_eq!(error.code, ErrorCode::ActionFailed);
+    assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
 }
