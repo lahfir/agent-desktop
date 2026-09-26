@@ -123,12 +123,14 @@ fn a_path_that_already_counts_the_chrome_is_not_shifted_into_a_neighbour() {
     );
 }
 
-/// A path recorded before the chrome appeared, whose stored index points past
-/// where the chrome now sits, lands on content as stored - the wrong content.
-/// The shifted reading must still find the stored element, rather than leave
-/// the ref to a broad search that can spend the whole deadline.
+/// A stored index that lands on content cannot tell whether it was recorded
+/// before or after the chrome appeared, so it is never shifted: the shifted
+/// reading may enter a different container, and here that container really
+/// does hold a child answering to the stored identity. The repair must
+/// decline and leave the ref to the broad search rather than hand back a
+/// verified handle to it.
 #[test]
-fn a_path_recorded_before_the_chrome_with_a_high_index_still_lands_past_it() {
+fn a_content_index_is_never_shifted_into_another_container() {
     const A: i32 = 13;
     const B: i32 = 14;
     const C: i32 = 15;
@@ -149,8 +151,7 @@ fn a_path_recorded_before_the_chrome_with_a_high_index_still_lands_past_it() {
     let repaired = repair_past_leading_chrome(&tree, &0, &entry, &budget(10));
 
     assert_eq!(
-        repaired,
-        Some(WANTED),
-        "index 3 counted content only when recorded, so D (content index 3) is the parent"
+        repaired, None,
+        "index 3 lands on content, so no level may shift it into D's same-named child"
     );
 }
