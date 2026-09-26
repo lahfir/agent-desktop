@@ -211,6 +211,13 @@ impl ElementProperties {
     /// `IdentifierEvidence::typed`, because `IdentifierEvidence::new` stamps
     /// every value `Unknown` and would void the ref downstream in
     /// `refs_validate.rs`.
+    ///
+    /// The value is the one place this projects rather than copies: a RichEdit
+    /// control ends its text with a paragraph mark (`\r`) that is not user
+    /// content, so an emptied field would read back as `"\r"` and every
+    /// written value would gain one. That single trailing mark is dropped for
+    /// RichEdit classes, matched case-insensitively (Character Map's is
+    /// `RICHEDIT50W`); every other control reports its value verbatim.
     pub fn locator_evidence(&self, vocabulary: ResolvedVocabulary) -> LocatorEvidence {
         let value = self.value_without_rich_edit_terminator();
         let bounds = self.get(TreeProperty::BoundingRectangle).bounds();
@@ -229,11 +236,6 @@ impl ElementProperties {
         }
     }
 
-    /// A RichEdit control ends its text with a paragraph mark (`\r`) that is
-    /// not user content: an emptied field reads back as `"\r"` and every
-    /// written value gains one. Only that single trailing mark is dropped,
-    /// and only for RichEdit classes, matched case-insensitively (Character
-    /// Map's is `RICHEDIT50W`), so other controls report verbatim.
     fn value_without_rich_edit_terminator(&self) -> LocatorField<String> {
         match self.get(TreeProperty::Value).text() {
             LocatorField::Known(value) if self.is_rich_edit() && value.ends_with('\r') => {

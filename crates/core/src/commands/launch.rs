@@ -153,10 +153,6 @@ fn reject_if_already_running(
     ))
 }
 
-/// The app a path-shaped launch target names: `C:\Apps\Obsidian.exe` is the
-/// running `Obsidian`, which the whole path never matches by name. Only a
-/// target with a path separator is reduced, so a bundle id such as
-/// `com.example.App` keeps its dots.
 fn launch_path_stem(id: &str) -> Option<&str> {
     if !id.contains(['/', '\\']) {
         return None;
