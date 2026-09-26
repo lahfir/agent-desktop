@@ -30,10 +30,15 @@ const MAX_LEADING_CHROME: usize = 3;
 /// leaving the verdict to the broad search.
 const SIBLING_CHECK_CAP: usize = 64;
 
-/// Re-walks the stored path counting each level's index from the first child
-/// after that level's leading chrome, and answers the landing only when the
-/// chrome actually shifted some level and the landing is the one sibling that
-/// answers to the stored identity.
+/// Re-walks the stored path, counting a level's index from the first child
+/// after that level's leading chrome only where the stored index now lands
+/// *inside* that chrome, and answers the landing only when some level shifted
+/// and the landing is the one sibling that answers to the stored identity.
+///
+/// A level whose stored index lands on content is walked as stored: a path
+/// recorded while the scroll bars already existed counts them in its index,
+/// and shifting it again would descend into a different parent whose child
+/// could share the stored identity.
 ///
 /// The stored bounds are deliberately not consulted. A container that grew
 /// scroll bars also re-laid out and usually scrolled, so the stored rectangle
@@ -64,8 +69,14 @@ pub(crate) fn repair_past_leading_chrome<S: TreeSource>(
             .take(MAX_LEADING_CHROME)
             .take_while(|child| is_leading_chrome(source, child))
             .count();
-        shifted |= chrome > 0;
-        let next = children.elements.get(index + chrome)?.clone();
+        let lands_in_chrome = index < chrome;
+        shifted |= lands_in_chrome;
+        let wanted = if lands_in_chrome {
+            index + chrome
+        } else {
+            index
+        };
+        let next = children.elements.get(wanted)?.clone();
         parent = Some(std::mem::replace(&mut current, next));
     }
     let parent = parent?;

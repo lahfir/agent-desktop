@@ -96,3 +96,29 @@ fn a_duplicate_sibling_identity_declines_the_repaired_landing() {
          identity must leave the tie-break to the broad search"
     );
 }
+
+/// A path recorded while the scroll bars already existed counts them, so its
+/// index lands on content and must not be shifted a second time into a
+/// neighbouring parent that holds a child with the same identity.
+#[test]
+fn a_path_that_already_counts_the_chrome_is_not_shifted_into_a_neighbour() {
+    const OTHER: i32 = 21;
+    const IMPOSTOR: i32 = 40;
+    let tree = grown_outline("HKEY_CURRENT_USER")
+        .with_children(OUTLINE, &[10, 11, 12, COMPUTER, 13, 14, OTHER])
+        .with_children(OTHER, &[IMPOSTOR]);
+    let tree = tree_item(tree, 13, "Spacer A");
+    let tree = tree_item(tree, 14, "Spacer B");
+    let tree = tree_item(tree, OTHER, "Other");
+    let tree = tree_item(tree, IMPOSTOR, "HKEY_CLASSES_ROOT");
+    let mut entry = classes_root_entry();
+    entry.scope.path = vec![0, 3, 0].into();
+
+    let repaired = repair_past_leading_chrome(&tree, &0, &entry, &budget(10));
+
+    assert_eq!(
+        repaired, None,
+        "index 3 already lands on Computer past the chrome; adding the chrome again reaches \
+         the neighbour's same-named child, which must never answer for the ref"
+    );
+}
