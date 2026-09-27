@@ -375,6 +375,21 @@ fn global_timeout(attempts: u64, last_error: Option<&AdapterError>) -> AdapterEr
             "last_kind": last_error
                 .and_then(|error| error.details.as_ref())
                 .and_then(|details| details.get("kind")),
+            "last_operation": last_error
+                .and_then(|error| error.details.as_ref())
+                .and_then(|details| details.get("operation")),
+            "last_status": last_error
+                .and_then(|error| error.details.as_ref())
+                .and_then(|details| details.get("status")),
+            "last_failure_field": last_error
+                .and_then(|error| error.details.as_ref())
+                .and_then(|details| details.get("failure_field")),
+            "last_failure_index": last_error
+                .and_then(|error| error.details.as_ref())
+                .and_then(|details| details.get("failure_index")),
+            "last_failure_pid": last_error
+                .and_then(|error| error.details.as_ref())
+                .and_then(|details| details.get("failure_pid")),
             "complete": false,
             "retryable": true,
         }))
