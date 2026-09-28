@@ -149,6 +149,7 @@ fn args(combo: &str, force: bool) -> PressArgs {
     PressArgs {
         combo: combo.to_owned(),
         app: None,
+        window_id: None,
         force,
     }
 }

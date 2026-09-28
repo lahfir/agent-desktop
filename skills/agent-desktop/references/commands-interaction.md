@@ -73,7 +73,7 @@ agent-desktop click @s8f3k2p9:e5 --wait-for-gone "progressindicator" --wait-time
 
 **Supported commands:** `snapshot`, `press`, and all 18 ref-resolving actions (`click`, `type`, `set-value`, `scroll`, `hover`, `drag`, …). Other commands (`find`, `launch`, …) return `INVALID_ARGS`. Workaround: `snapshot --app Foo -w "button:Login"`.
 
-**Post-action waits** for ref actions poll the **acted-on ref's own window** (`entry.source_window_id`, scoped to `entry.source_app`). For `press`, `--app` scopes the observation to that app; without it, observation uses the frontmost app. The action result is preserved under `after_action` in the returned envelope.
+**Post-action waits** for ref actions poll the **acted-on ref's own window** (`entry.source_window_id`, scoped to `entry.source_app`). For `press`, `--app` scopes the observation to that app and `--window-id` to that window; without either, observation uses the frontmost app. The action result is preserved under `after_action` in the returned envelope.
 
 **Success shape:** a match returns the full snapshot envelope (`app`, `window`, `ref_count`, `snapshot_id`, `tree`) plus `elapsed_ms` and `matched_selector`. The one exception is `--wait-for-gone` when the target **app or window has itself closed**: there is no tree left to capture, so the success payload is the compact `{ "matched_selector", "gone": true, "target_absent": true, "elapsed_ms" }`. On timeout the `wait_timeout` error `details` carry `last_error` (when a poll errored) and the `snapshot_id` of the last tree built.
 
@@ -243,11 +243,13 @@ agent-desktop press cmd+shift+z
 agent-desktop press shift+tab
 agent-desktop press f5
 agent-desktop press cmd+a --app "TextEdit"
+agent-desktop --headed press cmd+k --window-id w-4521
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--app` | Target application; key delivery is PID-targeted without focusing the app, and `--headed` additionally focuses its exact window first |
+| `--window-id` | Target the application instance that owns this window (id from `list-windows`). Use it when several running instances share one name — two Electron dev builds, two copies of an app — where `--app` alone is `AMBIGUOUS_TARGET`. Combine with `--app` to scope the window lookup |
 
 With `--app`, `press` sends the keystroke to the app's process; only `return` and `escape` use the focused element's advertised `AXConfirm` or `AXCancel` instead. Printable keys, including `space`, always arrive as keystrokes, and delivery requires the app to report a focused element. Under `--headed`, a modified combo that matches a menu item's shortcut performs that item with `AXPress`. Headless `press` never performs menu items: an inactive app runs a menu action without a focused window, and some apps, such as VS Code, open and activate a new window in response. To run a menu command without keyboard delivery, find it with `--surface menubar` and `click` its ref. `data.steps` reports which route delivered the key: `CGEventPostToPid`, `AXConfirm`, `AXCancel`, or `AXPress menu item`.
 

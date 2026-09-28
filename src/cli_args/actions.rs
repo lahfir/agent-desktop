@@ -147,6 +147,13 @@ pub(crate) struct PressArgs {
     )]
     pub app: Option<String>,
     #[arg(
+        long = "window-id",
+        help = "Target the application instance that owns this window (from list-windows); \
+                use it when several instances share one name"
+    )]
+    #[serde(default)]
+    pub window_id: Option<String>,
+    #[arg(
         long,
         help = "Send the combo even if the adapter flags it as a dangerous shortcut"
     )]

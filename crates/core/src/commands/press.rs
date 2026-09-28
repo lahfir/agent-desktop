@@ -10,6 +10,7 @@ use serde_json::Value;
 pub struct PressArgs {
     pub combo: String,
     pub app: Option<String>,
+    pub window_id: Option<String>,
     pub force: bool,
 }
 
@@ -23,8 +24,7 @@ pub fn execute(
     ensure_combo_allowed(&combo, &args.combo, args.force, adapter)?;
     let deadline = crate::Deadline::standard()?;
 
-    let result = if let Some(app_name) = &args.app {
-        let expected = crate::commands::helpers::resolve_app(Some(app_name), adapter, deadline)?;
+    let result = if let Some(expected) = target_app(&args, adapter, deadline)? {
         let lease = adapter.acquire_interaction_lease(deadline)?;
         let live = crate::commands::helpers::revalidate_app_for_mutation(
             adapter,
@@ -48,12 +48,38 @@ pub fn execute(
     super::helpers::apply_scoped_post_action_wait(
         serde_json::to_value(result)?,
         args.app,
-        None,
+        args.window_id,
         adapter,
         context,
     )
 }
 
+/// `--window-id` names one running instance even when several share an
+/// application name; `--app` alone must match a single instance.
+fn target_app(
+    args: &PressArgs,
+    adapter: &dyn PlatformAdapter,
+    deadline: crate::Deadline,
+) -> Result<Option<crate::AppInfo>, AppError> {
+    if let Some(window_id) = &args.window_id {
+        let window = crate::snapshot::resolve_window(
+            adapter,
+            args.app.as_deref(),
+            Some(window_id),
+            deadline,
+        )?;
+        return crate::app_lookup::resolve_app_owning(&window, adapter, deadline).map(Some);
+    }
+    args.app
+        .as_deref()
+        .map(|app| crate::commands::helpers::resolve_app(Some(app), adapter, deadline))
+        .transpose()
+}
+
 #[cfg(test)]
 #[path = "press_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "press_window_tests.rs"]
+mod window_tests;

@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use crate::{
-    AdapterError, AppError, AppInfo, Deadline, ErrorCode, ProcessIdentity,
+    AdapterError, AppError, AppInfo, Deadline, ErrorCode, ProcessIdentity, WindowInfo,
     adapter::{PlatformAdapter, WindowFilter},
 };
 
@@ -38,6 +38,16 @@ pub(crate) fn resolve_app(
             .into());
         }
     };
+    resolve_app_owning(window, adapter, deadline)
+}
+
+/// The application that owns `window`, narrowed to the window's exact process
+/// instance, so a second running copy of the same application is never chosen.
+pub(crate) fn resolve_app_owning(
+    window: &WindowInfo,
+    adapter: &dyn PlatformAdapter,
+    deadline: Deadline,
+) -> Result<AppInfo, AppError> {
     let instance = window
         .process_instance
         .as_deref()
@@ -45,7 +55,7 @@ pub(crate) fn resolve_app(
         .ok_or_else(|| {
             AdapterError::new(
                 ErrorCode::ActionNotSupported,
-                "Focused window has no process-instance identity",
+                "Window has no process-instance identity",
             )
         })?;
     let same_pid = adapter

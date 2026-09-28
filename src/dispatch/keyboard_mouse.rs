@@ -26,6 +26,7 @@ pub(super) fn press(
         press_command::PressArgs {
             combo: args.combo,
             app: args.app,
+            window_id: args.window_id,
             force: args.force,
         },
         adapter,

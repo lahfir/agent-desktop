@@ -180,6 +180,7 @@ fn mutating_keyboard_and_clipboard_commands_re_show_cursor_overlay() {
         Commands::Press(PressArgs {
             combo: "a".into(),
             app: None,
+            window_id: None,
             force: false,
         }),
         &adapter,
@@ -264,6 +265,7 @@ fn cursor_overlay_show_fires_even_when_the_mutating_command_errors() {
         Commands::Press(PressArgs {
             combo: "cmd+q".into(),
             app: None,
+            window_id: None,
             force: false,
         }),
         &adapter,
