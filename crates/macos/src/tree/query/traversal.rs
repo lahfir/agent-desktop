@@ -1,5 +1,5 @@
 use super::{arena::TraversalArena, child_read::ChildRead, node_read::read_node};
-use crate::tree::AXElement;
+use crate::tree::{AXElement, web_surface::WebSurface};
 use agent_desktop_core::{
     AdapterError, ErrorCode, ObservationRequest, ObservationSource, ObservedSubtree, ObservedTree,
 };
@@ -33,11 +33,11 @@ impl LocatorTraversal {
         mut self,
         root: AXElement,
         source: ObservationSource,
-    ) -> Result<(ObservedTree, bool, agent_desktop_core::LocatorStats), AdapterError> {
+    ) -> Result<(ObservedTree, WebSurface, agent_desktop_core::LocatorStats), AdapterError> {
         self.arena.add_handles(1);
         let root = self.visit(root, 0, 0)?;
         let complete = self.arena.structurally_complete;
-        let renderer_ready = self.arena.stats.activation.ready;
+        let web_surface = self.arena.web_surface;
         let stats = self.arena.finish()?;
         let root = root.ok_or_else(|| {
             let code = if stats.reads.health.deadline_exhausted > 0 {
@@ -56,7 +56,7 @@ impl LocatorTraversal {
             }))
         })?;
         let tree = ObservedTree::from_roots(vec![root], source, stats.clone(), complete)?;
-        Ok((tree, renderer_ready, stats))
+        Ok((tree, web_surface, stats))
     }
 
     fn visit(
@@ -110,6 +110,10 @@ impl LocatorTraversal {
             .is_some_and(|role| role == "webarea");
         if renderer_surface_observed {
             self.arena.stats.activation.ready = true;
+            self.arena.web_surface = self
+                .arena
+                .web_surface
+                .with_web_area(read.child_read.total_count);
         }
         if read.invalid_element {
             self.arena.ancestors.remove(&pointer);

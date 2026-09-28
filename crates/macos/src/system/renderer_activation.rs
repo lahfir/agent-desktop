@@ -75,6 +75,10 @@ fn enable_attribute(
     Ok(())
 }
 
+/// A set the application accepted but reads back as false is a failed
+/// activation, except for `AXManualAccessibility`: Electron answers false for
+/// it even after enabling accessibility, so there the accepted set counts as
+/// delivered and the next observation of the web content decides.
 fn activation_delivered(
     application: &crate::tree::AXElement,
     attribute: &str,
@@ -90,7 +94,7 @@ fn activation_delivered(
         "AXUIElementSetAttributeValue",
         error,
     )?;
-    if delivered && readback == Some(false) {
+    if delivered && readback == Some(false) && attribute != renderer_probe::MANUAL {
         return Err(AdapterError::new(
             ErrorCode::ActionFailed,
             "Renderer accessibility activation was not reflected in the attribute value",
@@ -139,6 +143,28 @@ mod tests {
             )
             .unwrap()
         );
+    }
+
+    #[test]
+    fn an_accepted_manual_activation_counts_even_when_it_reads_back_false() {
+        let application = crate::tree::AXElement(std::ptr::null_mut());
+        assert!(
+            activation_delivered(
+                &application,
+                renderer_probe::MANUAL,
+                accessibility_sys::kAXErrorSuccess,
+                Some(false),
+            )
+            .unwrap()
+        );
+        let enhanced = activation_delivered(
+            &application,
+            renderer_probe::ENHANCED,
+            accessibility_sys::kAXErrorSuccess,
+            Some(false),
+        )
+        .unwrap_err();
+        assert_eq!(enhanced.code, ErrorCode::ActionFailed);
     }
 
     #[test]

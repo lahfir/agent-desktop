@@ -52,17 +52,17 @@ pub(crate) fn observe_tree(
     let request = (*request).validate()?;
     let deadline = crate::tree::locator_deadline::from_operation(request.deadline)?;
     let resolved = resolve_root(root, &request, deadline)?;
-    let (tree, renderer_ready, stats) =
+    let (tree, web_surface, stats) =
         traversal::LocatorTraversal::new(&request, resolved.context, deadline)
             .build(resolved.element, resolved.source)?;
     tracing::debug!(?stats, "tree: native observation completed");
     let looked_deep_enough = observation_reached_tree_end(&stats, &request);
-    if renderer_ready || (resolved.activation_eligible && tree.is_complete()) {
+    if web_surface.observed() || (resolved.activation_eligible && tree.is_complete()) {
         if let Some(instance) = resolved.process_instance.as_deref() {
             if crate::tree::renderer_probe::activation_required(
                 resolved.pid,
                 instance,
-                renderer_ready,
+                web_surface,
                 tree.is_complete() && looked_deep_enough,
                 deadline,
             )? {

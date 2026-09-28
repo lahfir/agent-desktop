@@ -1,3 +1,4 @@
+use super::web_surface::WebSurface;
 use agent_desktop_core::{AdapterError, ErrorCode};
 
 pub(crate) const MANUAL: &str = "AXManualAccessibility";
@@ -6,7 +7,7 @@ pub(crate) const ENHANCED: &str = "AXEnhancedUserInterface";
 pub(crate) fn activation_required(
     pid: i32,
     process_instance: &str,
-    web_surface: bool,
+    web_surface: WebSurface,
     absence_proven: bool,
     deadline: std::time::Instant,
 ) -> Result<bool, AdapterError> {
@@ -24,8 +25,13 @@ pub(crate) fn activation_required(
     )
 }
 
+/// `AXManualAccessibility` is Electron's attribute, and Electron reads it back
+/// as false even while the renderer's tree is fully built unless the app itself
+/// switched accessibility on through its API. Web content that is already
+/// populated is the evidence that counts for it; the flag decides only for an
+/// empty web area.
 fn activation_needed(
-    web_surface: bool,
+    web_surface: WebSurface,
     absence_proven: bool,
     supported: impl FnMut(&str) -> Result<bool, AdapterError>,
     mut enabled: impl FnMut(&str) -> Result<Option<bool>, AdapterError>,
@@ -33,11 +39,15 @@ fn activation_needed(
     let Some(attribute) = choose_attribute(supported)? else {
         return Ok(false);
     };
-    if !web_surface && attribute == MANUAL {
-        return Ok(absence_proven);
+    if attribute == MANUAL {
+        match web_surface {
+            WebSurface::Absent => return Ok(absence_proven),
+            WebSurface::Populated => return Ok(false),
+            WebSurface::Empty => {}
+        }
     }
     let enabled = enabled(attribute)?;
-    if !web_surface {
+    if !web_surface.observed() {
         return Ok(enabled == Some(false));
     }
     Ok(enabled.map_or(attribute == ENHANCED, |enabled| !enabled))
@@ -125,7 +135,7 @@ mod tests {
         ] {
             assert_eq!(
                 activation_needed(
-                    false,
+                    WebSurface::Absent,
                     false,
                     |attribute| Ok(attribute == mode),
                     |_| {
@@ -143,7 +153,7 @@ mod tests {
     fn readable_web_tree_still_requires_enhanced_mode_when_disabled() {
         for (enabled, expected) in [(Some(false), true), (Some(true), false), (None, true)] {
             let required = activation_needed(
-                true,
+                WebSurface::Populated,
                 true,
                 |attribute| Ok(attribute == ENHANCED),
                 |attribute| {
@@ -161,7 +171,7 @@ mod tests {
         for (enabled, expected) in [(Some(false), true), (Some(true), false), (None, false)] {
             assert_eq!(
                 activation_needed(
-                    false,
+                    WebSurface::Absent,
                     true,
                     |attribute| Ok(attribute == ENHANCED),
                     |_| Ok(enabled),
@@ -176,7 +186,7 @@ mod tests {
     fn legacy_renderer_without_a_web_surface_keeps_activation_retry() {
         assert!(
             activation_needed(
-                false,
+                WebSurface::Absent,
                 true,
                 |attribute| Ok(attribute == MANUAL),
                 |_| panic!("a missing renderer must continue waiting for its tree"),
@@ -189,7 +199,7 @@ mod tests {
     fn readable_legacy_renderer_does_not_require_a_readable_manual_flag() {
         assert!(
             !activation_needed(
-                true,
+                WebSurface::Populated,
                 true,
                 |attribute| Ok(attribute == MANUAL),
                 |_| Ok(None),
@@ -199,10 +209,39 @@ mod tests {
     }
 
     #[test]
+    fn populated_manual_renderer_needs_no_activation_whatever_its_flag_reads() {
+        assert!(
+            !activation_needed(
+                WebSurface::Populated,
+                true,
+                |attribute| Ok(attribute == MANUAL),
+                |_| Ok(Some(false)),
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn empty_manual_web_area_still_activates_while_its_flag_is_off() {
+        for (enabled, expected) in [(Some(false), true), (Some(true), false)] {
+            assert_eq!(
+                activation_needed(
+                    WebSurface::Empty,
+                    true,
+                    |attribute| Ok(attribute == MANUAL),
+                    |_| Ok(enabled),
+                )
+                .unwrap(),
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn unsupported_renderer_does_not_read_an_activation_value() {
         assert!(
             !activation_needed(
-                true,
+                WebSurface::Populated,
                 true,
                 |_| Ok(false),
                 |_| panic!("unsupported attributes must not be read"),
@@ -219,7 +258,7 @@ mod tests {
             ErrorCode::StaleRef,
         ] {
             let error = activation_needed(
-                true,
+                WebSurface::Populated,
                 true,
                 |attribute| Ok(attribute == ENHANCED),
                 |_| Err(AdapterError::new(code.clone(), "read failed")),

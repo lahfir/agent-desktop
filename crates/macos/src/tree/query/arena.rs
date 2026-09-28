@@ -5,6 +5,7 @@ pub(crate) struct TraversalArena {
     pub(crate) stats: LocatorStats,
     pub(crate) ancestors: FxHashSet<usize>,
     pub(crate) structurally_complete: bool,
+    pub(crate) web_surface: crate::tree::web_surface::WebSurface,
     owned_handles: u64,
 }
 
@@ -14,6 +15,7 @@ impl TraversalArena {
             stats: LocatorStats::default(),
             ancestors: FxHashSet::default(),
             structurally_complete: true,
+            web_surface: crate::tree::web_surface::WebSurface::Absent,
             owned_handles: 0,
         }
     }
