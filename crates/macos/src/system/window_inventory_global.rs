@@ -134,11 +134,14 @@ pub(super) fn assemble_global_windows<S: OwnerSnapshotView>(
         Some(pid) => Some(read_frontmost(pid).map_err(frontmost_read_error)?),
         None => None,
     };
+    let focus_reported = focus_state
+        .as_ref()
+        .is_some_and(|state| state.focused.is_some());
     let focused_window = match matching_focus_windows(&records, frontmost_pid, focus_state.as_ref())
     {
         FocusJoin::TitleAmbiguous => None,
         FocusJoin::Windows(windows) => {
-            if frontmost_window_owner.is_some() && windows.len() != 1 {
+            if frontmost_window_owner.is_some() && focus_reported && windows.len() != 1 {
                 return Err(focus_join_error(frontmost_pid, windows.len()));
             }
             windows.first().copied()

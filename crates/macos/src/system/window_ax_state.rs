@@ -120,25 +120,24 @@ fn focused_identity(
         return Ok(None);
     };
     let role = crate::tree::surface_read::string(&focused, "AXRole", deadline)?;
-    let window = if role.as_deref() == Some("AXWindow") {
-        focused
-    } else if role.as_deref().is_some_and(is_transient_surface_role) {
-        let Some(window) = crate::tree::surface_read::element(&focused, "AXWindow", deadline)?
-        else {
-            return Ok(None);
-        };
-        if crate::tree::surface_read::string(&window, "AXRole", deadline)?.as_deref()
-            != Some("AXWindow")
-        {
+    let window = match focused_role_kind(role.as_deref()) {
+        FocusedRoleKind::Window => focused,
+        FocusedRoleKind::TransientSurface => {
+            let Some(window) = crate::tree::surface_read::element(&focused, "AXWindow", deadline)?
+            else {
+                return Ok(None);
+            };
+            if crate::tree::surface_read::string(&window, "AXRole", deadline)?.as_deref()
+                != Some("AXWindow")
+            {
+                return Ok(None);
+            }
+            window
+        }
+        FocusedRoleKind::NotAWindow => {
+            tracing::debug!(pid, ?role, "focused accessibility object is not a window");
             return Ok(None);
         }
-        window
-    } else {
-        return Err(AdapterError::new(
-            ErrorCode::AppUnresponsive,
-            "Focused accessibility object was not a window",
-        )
-        .with_details(serde_json::json!({ "pid": pid, "complete": false, "role": role })));
     };
     let title = crate::tree::surface_read::string(&window, "AXTitle", deadline)?;
     let number = match crate::system::window_resolve::ax_window_id_with_deadline(&window, deadline)
@@ -154,9 +153,30 @@ fn is_transient_surface_role(role: &str) -> bool {
     matches!(role, "AXSheet" | "AXDialog" | "AXAlert" | "AXPopover")
 }
 
+#[derive(Debug, PartialEq)]
+enum FocusedRoleKind {
+    Window,
+    TransientSurface,
+    NotAWindow,
+}
+
+/// What an application's `AXFocusedWindow` actually is. Finder answers with
+/// its desktop, an `AXScrollArea`, whenever the desktop has focus: that is a
+/// steady state of a responsive application with no focused window, not a
+/// transient one to retry, so it reports no focused window instead of failing.
+fn focused_role_kind(role: Option<&str>) -> FocusedRoleKind {
+    match role {
+        Some("AXWindow") => FocusedRoleKind::Window,
+        Some(role) if is_transient_surface_role(role) => FocusedRoleKind::TransientSurface,
+        _ => FocusedRoleKind::NotAWindow,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{is_transient_surface_role, label_accessibility};
+    use super::{
+        FocusedRoleKind, focused_role_kind, is_transient_surface_role, label_accessibility,
+    };
     use agent_desktop_core::{ProcessId, WindowInfo, WindowState};
     use rustc_hash::FxHashSet;
 
@@ -166,6 +186,20 @@ mod tests {
             assert!(is_transient_surface_role(role));
         }
         assert!(!is_transient_surface_role("AXButton"));
+    }
+
+    #[test]
+    fn a_focused_desktop_is_no_focused_window_rather_than_an_error() {
+        assert_eq!(focused_role_kind(Some("AXWindow")), FocusedRoleKind::Window);
+        assert_eq!(
+            focused_role_kind(Some("AXSheet")),
+            FocusedRoleKind::TransientSurface
+        );
+        assert_eq!(
+            focused_role_kind(Some("AXScrollArea")),
+            FocusedRoleKind::NotAWindow
+        );
+        assert_eq!(focused_role_kind(None), FocusedRoleKind::NotAWindow);
     }
 
     #[test]

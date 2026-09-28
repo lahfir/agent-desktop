@@ -2,6 +2,9 @@ use super::*;
 use agent_desktop_core::Rect;
 use rustc_hash::FxHashMap;
 
+#[path = "window_inventory_global_focus_tests.rs"]
+mod focus;
+
 #[derive(Clone)]
 struct Owners {
     launches: FxHashMap<i32, Option<f64>>,
