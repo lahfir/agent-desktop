@@ -208,6 +208,68 @@ fn element_wait_propagates_live_read_errors_after_dropping_handle() {
     assert_eq!(adapter.drops.load(Ordering::SeqCst), 1);
 }
 
+struct DeadlineTimeoutPredicateAdapter {
+    polls: Arc<AtomicU32>,
+}
+
+impl ObservationOps for DeadlineTimeoutPredicateAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    fn get_live_state(
+        &self,
+        _handle: &NativeHandle,
+        deadline: crate::Deadline,
+    ) -> Result<Option<ElementState>, AdapterError> {
+        self.polls.fetch_add(1, Ordering::SeqCst);
+        Err(deadline.timeout_error())
+    }
+}
+
+impl ActionOps for DeadlineTimeoutPredicateAdapter {}
+impl InputOps for DeadlineTimeoutPredicateAdapter {}
+impl SystemOps for DeadlineTimeoutPredicateAdapter {}
+
+#[test]
+fn element_wait_wraps_bare_live_read_timeout_in_the_documented_wait_timeout() {
+    let _guard = HomeGuard::new();
+    let snapshot_id = snapshot_with_one_ref();
+    let adapter = DeadlineTimeoutPredicateAdapter {
+        polls: Arc::new(AtomicU32::new(0)),
+    };
+
+    let err = wait_for_element_test(
+        "@e1".into(),
+        Some(snapshot_id),
+        wait_predicate::ElementPredicate::Enabled,
+        120,
+        &adapter,
+        &crate::context::CommandContext::default(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), "TIMEOUT");
+    assert!(adapter.polls.load(Ordering::SeqCst) > 1);
+
+    let AppError::Adapter(adapter_err) = err else {
+        panic!("expected adapter error");
+    };
+    let details = adapter_err
+        .details
+        .expect("wait timeout should carry details");
+    assert_eq!(details["kind"], "wait_timeout");
+    assert_eq!(details["ref"], "@e1");
+    assert_eq!(details["predicate"], "enabled");
+    assert_eq!(details["timeout_ms"], 120);
+    assert_eq!(details["last_observed"]["error"], "TIMEOUT");
+    assert_eq!(details["last_observed"]["details"]["kind"], "deadline");
+}
+
 #[test]
 fn zero_timeout_returns_timeout_before_any_resolution_attempt() {
     let _guard = HomeGuard::new();
