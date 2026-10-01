@@ -257,7 +257,7 @@ fn retained_edge_certainty(prefix_certain: &mut bool, retained: bool) -> bool {
 /// not only the root.
 fn boundary_label_elements(request: ObservationRequest, raw_depth: u8) -> usize {
     let hydrates_selected_root = raw_depth == 0 && request.hydrates_root_name_from_children();
-    if hydrates_selected_root || request.skeleton {
+    if hydrates_selected_root || request.observation_mode.skeleton {
         crate::tree::child_labels::MAX_LABEL_ELEMENTS
     } else {
         0

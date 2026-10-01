@@ -114,6 +114,16 @@ fn load_ref_uses_qualified_identity_and_never_crosses_sessions() {
     );
 }
 
+/// Saves under contention, retrying only while the store's write lock reports
+/// its own `lock_timeout`.
+///
+/// The lock's budget is a product decision - a caller waiting on a busy store
+/// is told to try again rather than blocked indefinitely - and `TIMEOUT`
+/// carries `retry: safe` precisely so a caller can. Eight writers racing one
+/// lock legitimately exhaust that budget, so a test requiring every writer to
+/// win on its first attempt asserts something the contract never promised.
+/// Matching on the `kind` keeps that tolerance narrow: a timeout from anywhere
+/// else in the save path is still a failure.
 fn save_snapshot_after_contention(store: &RefStore, name: &str) -> String {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
@@ -159,129 +169,6 @@ fn concurrent_writers_preserve_all_snapshots() {
     }
     let latest = store.latest_snapshot_id().unwrap().unwrap();
     assert!(ids.iter().any(|id| id == &latest));
-}
-
-#[test]
-fn sessions_are_isolated_from_default_store() {
-    let _guard = HomeGuard::new();
-    let default_store = RefStore::new().unwrap();
-    let session_a = RefStore::for_session(Some("agent-a")).unwrap();
-    let session_b = RefStore::for_session(Some("agent-b")).unwrap();
-
-    let default_id = default_store
-        .save_new_snapshot(&map_with("Default"))
-        .unwrap();
-    let session_id = session_a.save_new_snapshot(&map_with("Session A")).unwrap();
-
-    assert_eq!(default_store.load(None).unwrap().len(), 1);
-    assert_eq!(
-        ref_name(&default_store.load(Some(&default_id)).unwrap()),
-        Some("Default")
-    );
-    assert_eq!(
-        ref_name(&session_a.load(Some(&session_id)).unwrap()),
-        Some("Session A")
-    );
-    assert!(session_b.load(None).is_err());
-    assert_ne!(
-        default_store.latest_snapshot_id().unwrap(),
-        session_a.latest_snapshot_id().unwrap()
-    );
-}
-
-#[test]
-fn explicit_snapshot_id_remains_in_its_session_namespace() {
-    let _guard = HomeGuard::new();
-    let default_store = RefStore::new().unwrap();
-    let session_a = RefStore::for_session(Some("agent-a")).unwrap();
-    let session_b = RefStore::for_session(Some("agent-b")).unwrap();
-
-    let snapshot_id = session_a.save_new_snapshot(&map_with("Session A")).unwrap();
-
-    assert!(default_store.load(Some(&snapshot_id)).is_err());
-    assert!(session_b.load(Some(&snapshot_id)).is_err());
-    assert_eq!(
-        ref_name(&session_a.load(Some(&snapshot_id)).unwrap()),
-        Some("Session A")
-    );
-    assert!(default_store.load(None).is_err());
-    assert!(session_b.load(None).is_err());
-}
-
-#[test]
-fn update_existing_snapshot_cannot_cross_session_namespaces() {
-    let _guard = HomeGuard::new();
-    let default_store = RefStore::new().unwrap();
-    let session_a = RefStore::for_session(Some("agent-a")).unwrap();
-
-    let snapshot_id = session_a.save_new_snapshot(&map_with("Session A")).unwrap();
-    let err = default_store
-        .update_existing_snapshot(&snapshot_id, "@e1", &entry("Session A"), |_| Ok(()))
-        .unwrap_err();
-
-    assert_eq!(err.code(), "SNAPSHOT_NOT_FOUND");
-    assert_eq!(
-        ref_name(&session_a.load(Some(&snapshot_id)).unwrap()),
-        Some("Session A")
-    );
-    assert!(default_store.latest_snapshot_id().unwrap().is_none());
-    assert_eq!(
-        session_a.latest_snapshot_id().unwrap().as_deref(),
-        Some(snapshot_id.as_str())
-    );
-}
-
-#[test]
-fn duplicate_explicit_snapshot_ids_remain_session_scoped() {
-    let _guard = HomeGuard::new();
-    let default_store = RefStore::new().unwrap();
-    let session_a = RefStore::for_session(Some("agent-a")).unwrap();
-    let session_b = RefStore::for_session(Some("agent-b")).unwrap();
-
-    session_a
-        .save_snapshot("sdup1", &map_with("Session A"))
-        .unwrap();
-    session_b
-        .save_snapshot("sdup1", &map_with("Session B"))
-        .unwrap();
-
-    let err = default_store.load(Some("sdup1")).unwrap_err();
-
-    assert_eq!(err.code(), "SNAPSHOT_NOT_FOUND");
-    assert_eq!(
-        ref_name(&session_a.load(Some("sdup1")).unwrap()),
-        Some("Session A")
-    );
-    assert_eq!(
-        ref_name(&session_b.load(Some("sdup1")).unwrap()),
-        Some("Session B")
-    );
-}
-
-#[test]
-fn default_store_does_not_discover_session_snapshots() {
-    let _guard = HomeGuard::new();
-    let default_store = RefStore::new().unwrap();
-    let session_a = RefStore::for_session(Some("agent-a")).unwrap();
-
-    session_a
-        .save_snapshot("sdup2", &map_with("Session A"))
-        .unwrap();
-    let invalid_base = default_store.base_dir.join("sessions").join("bad.session");
-    let invalid_path = RefStore::snapshot_path_for_base(&invalid_base, "sdup2");
-    std::fs::create_dir_all(invalid_path.parent().unwrap()).unwrap();
-    std::fs::write(
-        invalid_path,
-        map_with("Invalid").serialize_with_size_check().unwrap(),
-    )
-    .unwrap();
-
-    let err = default_store.load(Some("sdup2")).unwrap_err();
-    assert_eq!(err.code(), "SNAPSHOT_NOT_FOUND");
-    assert_eq!(
-        ref_name(&session_a.load(Some("sdup2")).unwrap()),
-        Some("Session A")
-    );
 }
 
 #[cfg(unix)]
@@ -398,3 +285,6 @@ fn stale_tmp_files_are_swept_and_fresh_ones_kept() {
 
 #[path = "refs_store_pruning_tests.rs"]
 mod pruning_tests;
+
+#[path = "refs_store_session_tests.rs"]
+mod session_tests;

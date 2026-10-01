@@ -1,0 +1,148 @@
+{
+    "notepad":  {
+                    "branch":  "functional_on_notepad_document",
+                    "legacy_call":  {
+                                        "default_action":  {
+                                                               "contains_marker":  false,
+                                                               "digest":  "cbf29ce484222325",
+                                                               "len":  0
+                                                           },
+                                        "ktd2_arm":  "clean_ok",
+                                        "ok":  true
+                                    },
+                    "shape":  {
+                                  "automation_id_digest":  "07f88f07b4ba038b",
+                                  "automation_id_len":  2,
+                                  "bounds":  "484,151,752,443",
+                                  "control_type":  50030,
+                                  "expand_available":  false,
+                                  "invoke_available":  false,
+                                  "is_enabled":  true,
+                                  "is_password":  false,
+                                  "legacy_available":  true,
+                                  "range_available":  false,
+                                  "scroll_available":  true,
+                                  "selection_item_available":  false,
+                                  "toggle_available":  false,
+                                  "value_available":  true
+                              },
+                    "target":  "Document"
+                },
+    "scratch":  {
+                    "branch":  "functional_rung_ships",
+                    "rows":  [
+                                 {
+                                     "automation_id_digest":  "e38ab3980fb679e2",
+                                     "foreground_at_call":  false,
+                                     "functional_effect":  true,
+                                     "invoke_attempt":  {
+                                                            "ktd2_arm":  "sentinel_or_non_hresult_absent",
+                                                            "ok":  false,
+                                                            "pattern":  {
+                                                                            "code":  0,
+                                                                            "result_hex":  null
+                                                                        }
+                                                        },
+                                     "invoke_available":  false,
+                                     "legacy_call":  {
+                                                         "default_action":  {
+                                                                                "contains_marker":  false,
+                                                                                "digest":  "8642948ac334e994",
+                                                                                "len":  5
+                                                                            },
+                                                         "ktd2_arm":  "clean_ok",
+                                                         "ok":  true
+                                                     },
+                                     "legacy_only_surface":  true,
+                                     "shape":  {
+                                                   "automation_id_digest":  "e38ab3980fb679e2",
+                                                   "automation_id_len":  13,
+                                                   "bounds":  "872,619,120,26",
+                                                   "control_type":  50033,
+                                                   "expand_available":  false,
+                                                   "invoke_available":  false,
+                                                   "is_enabled":  true,
+                                                   "is_password":  false,
+                                                   "legacy_available":  true,
+                                                   "range_available":  false,
+                                                   "scroll_available":  false,
+                                                   "selection_item_available":  false,
+                                                   "toggle_available":  false,
+                                                   "value_available":  false
+                                               },
+                                     "status_after":  {
+                                                          "name":  {
+                                                                       "contains_marker":  false,
+                                                                       "digest":  "e02b1b509b291307",
+                                                                       "len":  8
+                                                                   },
+                                                          "ok":  true
+                                                      },
+                                     "status_before":  {
+                                                           "name":  {
+                                                                        "contains_marker":  false,
+                                                                        "digest":  "72fa35d996300fde",
+                                                                        "len":  12
+                                                                    },
+                                                           "ok":  true
+                                                       }
+                                 },
+                                 {
+                                     "automation_id_digest":  "2e3e3486c586212d",
+                                     "foreground_at_call":  false,
+                                     "functional_effect":  true,
+                                     "invoke_attempt":  {
+                                                            "ktd2_arm":  "sentinel_or_non_hresult_absent",
+                                                            "ok":  false,
+                                                            "pattern":  {
+                                                                            "code":  0,
+                                                                            "result_hex":  null
+                                                                        }
+                                                        },
+                                     "invoke_available":  false,
+                                     "legacy_call":  {
+                                                         "default_action":  {
+                                                                                "contains_marker":  false,
+                                                                                "digest":  "8642948ac334e994",
+                                                                                "len":  5
+                                                                            },
+                                                         "ktd2_arm":  "clean_ok",
+                                                         "ok":  true
+                                                     },
+                                     "legacy_only_surface":  true,
+                                     "shape":  {
+                                                   "automation_id_digest":  "2e3e3486c586212d",
+                                                   "automation_id_len":  9,
+                                                   "bounds":  "760,583,104,26",
+                                                   "control_type":  50033,
+                                                   "expand_available":  false,
+                                                   "invoke_available":  false,
+                                                   "is_enabled":  true,
+                                                   "is_password":  false,
+                                                   "legacy_available":  true,
+                                                   "range_available":  false,
+                                                   "scroll_available":  false,
+                                                   "selection_item_available":  false,
+                                                   "toggle_available":  false,
+                                                   "value_available":  false
+                                               },
+                                     "status_after":  {
+                                                          "name":  {
+                                                                       "contains_marker":  false,
+                                                                       "digest":  "99d21d71524f132a",
+                                                                       "len":  8
+                                                                   },
+                                                          "ok":  true
+                                                      },
+                                     "status_before":  {
+                                                           "name":  {
+                                                                        "contains_marker":  false,
+                                                                        "digest":  "e02b1b509b291307",
+                                                                        "len":  8
+                                                                    },
+                                                           "ok":  true
+                                                       }
+                                 }
+                             ]
+                }
+}

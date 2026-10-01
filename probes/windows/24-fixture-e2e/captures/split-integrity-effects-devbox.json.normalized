@@ -1,0 +1,26 @@
+{
+    "probe":  "24-fixture-e2e/07-split-integrity-effects",
+    "question":  "the Medium-integrity mid-walk owning-process identity read rate and the never-identifiable-window population, both bounded at Medium rather than assumed from a High-integrity floor",
+    "staging":  {
+                    "measurable":  true,
+                    "live_process_integrity_sid":  "S-1-16-8192",
+                    "confirmed_non_high":  true,
+                    "judged_by":  "live_token_readback_never_launcher_exit_code"
+                },
+    "race_rate_and_never_identifiable":  {
+                                             "measurable":  true,
+                                             "integrity_confirmed":  true,
+                                             "race_iterations":  30,
+                                             "windows_examined_total":  4470,
+                                             "race_hits_total":  30,
+                                             "iterations_with_race":  30,
+                                             "never_identifiable_iterations":  15,
+                                             "distinct_windows_seen":  149,
+                                             "persistent_failures":  1,
+                                             "intermittent_failures":  0,
+                                             "note":  "read via raw EnumWindows/OpenProcess/OpenProcessToken(TokenUser) from inside the staged Medium process itself, never through the product; the restricted-token/standard-user-logon gap is accepted per docs/phases.md Deferred to Follow-Up Work"
+                                         },
+    "verdict":  {
+                    "staged":  true
+                }
+}

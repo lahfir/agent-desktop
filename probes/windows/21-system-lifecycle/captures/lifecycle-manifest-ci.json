@@ -1,0 +1,59 @@
+{
+    "probe":  "21-system-lifecycle",
+    "question":  "windows-sys surface compile; Win32 error table; banned-call scan; ShellExecuteExW standalone",
+    "surface_compile":  {
+                            "ok":  true,
+                            "feature_set":  "crates_windows_current",
+                            "create_process_w_requires_win32_security":  true,
+                            "error":  null,
+                            "stdout_shape_present":  true
+                        },
+    "win32_error_classification":  {
+                                       "decision":  "HRESULT_FROM_WIN32_into_existing_one_record_per_code_table",
+                                       "rationale":  "GetLastError codes wrap to FACILITY_WIN32 (0x8007xxxx); E_ACCESSDENIED/E_INVALIDARG already live in that shape in hresult.rs; keep one record per code, never a parallel ad-hoc match",
+                                       "samples":  [
+                                                       {
+                                                           "name":  "ERROR_FILE_NOT_FOUND",
+                                                           "win32":  2,
+                                                           "hresult":  "0x80070002",
+                                                           "unique_facility_win32":  true
+                                                       },
+                                                       {
+                                                           "name":  "ERROR_ACCESS_DENIED",
+                                                           "win32":  5,
+                                                           "hresult":  "0x80070005",
+                                                           "unique_facility_win32":  true
+                                                       },
+                                                       {
+                                                           "name":  "ERROR_ELEVATION_REQUIRED",
+                                                           "win32":  740,
+                                                           "hresult":  "0x800702E4",
+                                                           "unique_facility_win32":  true
+                                                       },
+                                                       {
+                                                           "name":  "ERROR_BAD_EXE_FORMAT",
+                                                           "win32":  193,
+                                                           "hresult":  "0x800700C1",
+                                                           "unique_facility_win32":  true
+                                                       }
+                                                   ],
+                                       "parallel_table_rejected":  true
+                                   },
+    "banned_call_scan":  {
+                             "existing_hit_test_scan_covers_lifecycle":  false,
+                             "reason":  "hit_test_scan_tests and write-path bans target UIA get_pattern/get_children/UIAutomation::new; CreateProcessW/TerminateProcess/SetWindowPos/SetForegroundWindow are Win32 and not in those needles",
+                             "new_lifecycle_files_need_registration":  true,
+                             "needle_style":  "concat_split_required",
+                             "note":  "when U2-U7 add system/launch.rs close.rs process_state.rs window_op.rs key_dispatch.rs, extend any new lifecycle-specific scan with concat!-split needles; do not assume hit_test_scan_tests auto-covers them"
+                         },
+    "shell_execute_ex":  {
+                             "measurable":  true,
+                             "binding_and_launch_ok":  true,
+                             "win32_ui_shell_in_crates_windows":  false,
+                             "also_requires_win32_system_registry":  true,
+                             "ownership":  "section_2_14_owns_by_name_aumid",
+                             "expand_2_9":  false,
+                             "error":  null,
+                             "branch":  "positive_binding_validated_no_2_9_expansion"
+                         }
+}

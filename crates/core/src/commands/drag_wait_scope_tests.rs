@@ -58,19 +58,7 @@ impl CrossAppWaitAdapter {
     }
 
     fn dropped_confirmation() -> AccessibilityNode {
-        AccessibilityNode {
-            ref_id: None,
-            role: "button".into(),
-            identity: crate::NodeIdentity {
-                retained_object: None,
-                name: Some("Dropped".into()),
-                ..Default::default()
-            },
-            presentation: Default::default(),
-            children_count: None,
-            subtree_truncated: false,
-            children: vec![],
-        }
+        crate::adapter::minimal_accessibility_node("button", "Dropped")
     }
 
     fn window_node(window: &WindowInfo) -> AccessibilityNode {
@@ -78,19 +66,9 @@ impl CrossAppWaitAdapter {
             .then(Self::dropped_confirmation)
             .into_iter()
             .collect();
-        AccessibilityNode {
-            ref_id: None,
-            role: "window".into(),
-            identity: crate::NodeIdentity {
-                retained_object: None,
-                name: Some(window.title.clone()),
-                ..Default::default()
-            },
-            presentation: Default::default(),
-            children_count: None,
-            subtree_truncated: false,
-            children,
-        }
+        let mut node = crate::adapter::minimal_accessibility_node("window", &window.title);
+        node.children = children;
+        node
     }
 }
 

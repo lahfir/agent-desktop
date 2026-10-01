@@ -42,15 +42,29 @@ pub(crate) enum Surface {
     Alert,
     Desktop,
     Taskbar,
+    #[value(alias = "system_tray")]
+    #[serde(alias = "system_tray")]
     SystemTray,
+    #[value(alias = "quick_settings")]
+    #[serde(alias = "quick_settings")]
     QuickSettings,
+    #[value(alias = "notification_center")]
+    #[serde(alias = "notification_center")]
     NotificationCenter,
     Toolbar,
     Dock,
     Spotlight,
+    #[value(alias = "menu_bar_extras")]
+    #[serde(alias = "menu_bar_extras")]
     MenuBarExtras,
+    #[value(alias = "system_tray_overflow")]
+    #[serde(alias = "system_tray_overflow")]
     SystemTrayOverflow,
+    #[value(alias = "start_menu")]
+    #[serde(alias = "start_menu")]
     StartMenu,
+    #[value(alias = "action_center")]
+    #[serde(alias = "action_center")]
     ActionCenter,
 }
 
@@ -206,6 +220,13 @@ pub(crate) struct FindArgs {
     )]
     #[serde(default)]
     pub states: Vec<String>,
+    #[arg(
+        long = "timeout-ms",
+        value_name = "MS",
+        help = "Traversal deadline in milliseconds (default 5000; raise for a large tree such as a shell file dialog)"
+    )]
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
     #[command(flatten)]
     #[serde(flatten)]
     pub selection: FindSelectionArgs,
@@ -243,7 +264,7 @@ pub(crate) struct GetArgs {
     #[arg(
         long,
         default_value = "text",
-        help = "Property: text, value, title, bounds, role, states"
+        help = "Property: text (what a person reads: content for text-bearing roles, otherwise the name), value, title, bounds, role, states"
     )]
     #[serde(default = "default_get_property")]
     pub property: String,

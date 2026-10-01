@@ -84,6 +84,14 @@ pub fn build(
 /// Resolves the window that identifies the process to observe. An app-level
 /// surface is not owned by a single window, so several open windows must not be
 /// reported as ambiguous when one is requested.
+///
+/// Kinds naming OS chrome rather than a window's own sub-surface are routed to
+/// the adapter's `resolve_shell_surface` seam ahead of the application path,
+/// because no application owns them and the window inventory cannot identify
+/// them. An adapter that answers with the trait default falls through to the
+/// application path, so an adapter's shape never changes by upgrading; every
+/// other answer - a missing surface, a build refusal, a timeout - is returned
+/// as the adapter supplied it.
 pub(crate) fn resolve_window_for_surface(
     adapter: &dyn PlatformAdapter,
     app_name: Option<&str>,
@@ -94,6 +102,15 @@ pub(crate) fn resolve_window_for_surface(
     if window_id.is_some() || matches!(surface, crate::SnapshotSurface::Window) {
         return resolve_window(adapter, app_name, window_id, deadline);
     }
+    if is_shell_surface(surface) {
+        match adapter.resolve_shell_surface(surface, deadline) {
+            Ok(window) => return Ok(window),
+            Err(error) if !error.is_default_not_supported("resolve_shell_surface") => {
+                return Err(error.into());
+            }
+            Err(_) => {}
+        }
+    }
     crate::window_lookup::select_surface_owner(
         windows_for_app(adapter, app_name, deadline)?,
         crate::AdapterError::new(
@@ -103,6 +120,22 @@ pub(crate) fn resolve_window_for_surface(
                 surface.as_str()
             ),
         ),
+    )
+}
+
+/// Whether the surface names OS chrome rather than a window's own sub-surface:
+/// the kinds an adapter may resolve directly, with no owning application and
+/// no window in the inventory. Derived from the [`SnapshotSurface`] variant
+/// alone - never from a platform check - so the seam stays platform-neutral.
+fn is_shell_surface(surface: crate::SnapshotSurface) -> bool {
+    matches!(
+        surface,
+        crate::SnapshotSurface::StartMenu
+            | crate::SnapshotSurface::Taskbar
+            | crate::SnapshotSurface::SystemTray
+            | crate::SnapshotSurface::SystemTrayOverflow
+            | crate::SnapshotSurface::ActionCenter
+            | crate::SnapshotSurface::QuickSettings
     )
 }
 
@@ -142,6 +175,15 @@ pub(crate) fn resolve_window(
             )
         })
     } else if let Some(app) = app_name {
+        if windows.is_empty() {
+            if let Err(AppError::Adapter(error)) =
+                crate::app_lookup::resolve_app(Some(app), adapter, deadline)
+            {
+                if error.code == crate::ErrorCode::AppNotFound {
+                    return Err(AppError::Adapter(error));
+                }
+            }
+        }
         crate::window_lookup::select_window(
             windows,
             crate::AdapterError::new(
@@ -170,25 +212,45 @@ pub fn run(
     run_with_context(
         adapter,
         opts,
-        app_name,
-        window_id,
+        &SnapshotTarget {
+            app_name,
+            window_id,
+        },
         &CommandContext::default(),
+        DEFAULT_SNAPSHOT_TIMEOUT_MS,
     )
 }
 
+/// Which window a full snapshot targets: the focused window when both fields
+/// are `None`, a named app's focused window, or an exact window id.
+pub struct SnapshotTarget<'a> {
+    pub app_name: Option<&'a str>,
+    pub window_id: Option<&'a str>,
+}
+
+/// The default snapshot observation deadline.
+///
+/// A16-11 measured a cold Chromium settle at 10-25 s against the previous
+/// hardcoded 3 s, so callers can raise it explicitly via `--timeout-ms`; the
+/// default stays 3 s for the ecosystems that settle fast.
+pub const DEFAULT_SNAPSHOT_TIMEOUT_MS: u64 = 3_000;
+
+/// Runs a full snapshot for `target` and persists its refmap under
+/// `context`'s session, using `timeout_ms` as the observation deadline
+/// (`DEFAULT_SNAPSHOT_TIMEOUT_MS` for callers with no reason to raise it).
 pub fn run_with_context(
     adapter: &dyn PlatformAdapter,
     opts: &TreeOptions,
-    app_name: Option<&str>,
-    window_id: Option<&str>,
+    target: &SnapshotTarget,
     context: &CommandContext,
+    timeout_ms: u64,
 ) -> Result<SnapshotResult, AppError> {
     let mut result = build(
         adapter,
         opts,
-        app_name,
-        window_id,
-        crate::Deadline::after(3_000)?,
+        target.app_name,
+        target.window_id,
+        crate::Deadline::after(timeout_ms)?,
     )?;
     let store = RefStore::for_session(context.session_id())?;
     let snapshot_id = store.save_new_snapshot(&result.refmap)?;

@@ -1,0 +1,37 @@
+{
+    "stack":  "uia3-com-product-CUIAutomation8",
+    "winforms":  {
+                     "btnDisabled_enabled":  false,
+                     "btnDisabled_present":  true,
+                     "btnZeroSize_note":  "A5-2: Win32 zero-size absent from walk",
+                     "btnZeroSize_present":  false
+                 },
+    "wpf_disabled":  {
+                         "is_enabled":  false,
+                         "present_in_walk":  true,
+                         "shape":  {
+                                       "automation_id_digest":  "cbf34d5c5dae7e27",
+                                       "automation_id_len":  11,
+                                       "bounds":  "296,174,90,26",
+                                       "control_type":  50000,
+                                       "has_area":  true,
+                                       "is_offscreen":  false,
+                                       "native_hwnd_nonzero":  false,
+                                       "scroll_item_available":  false
+                                   }
+                     },
+    "wpf_zero_size":  {
+                          "branch":  "wpf_exposes_zero_size_u5_live_case",
+                          "present_in_walk":  true,
+                          "shape":  {
+                                        "automation_id_digest":  "deb4b52719fa7c08",
+                                        "automation_id_len":  11,
+                                        "bounds":  "0,0,0,0",
+                                        "control_type":  50000,
+                                        "has_area":  false,
+                                        "is_offscreen":  false,
+                                        "native_hwnd_nonzero":  false,
+                                        "scroll_item_available":  false
+                                    }
+                      }
+}

@@ -150,6 +150,15 @@ fn snapshot_surface_serializes_to_snake_case_and_roundtrips() {
         (SnapshotSurface::StartMenu, "\"start_menu\""),
         (SnapshotSurface::ActionCenter, "\"action_center\""),
     ];
+    for (variant, _) in cases {
+        let token = serde_json::to_string(variant.as_str()).unwrap();
+        let parsed: SnapshotSurface = serde_json::from_str(&token)
+            .unwrap_or_else(|error| panic!("emitted token {token} must deserialize: {error}"));
+        assert_eq!(
+            parsed, variant,
+            "the token as_str emits must name {variant:?}"
+        );
+    }
     for (variant, expected_json) in cases {
         let serialized = serde_json::to_string(&variant).unwrap();
         assert_eq!(

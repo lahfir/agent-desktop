@@ -1,0 +1,394 @@
+{
+    "probe":  "05-interactions",
+    "question":  "does every 2.0(3) interaction actually take effect through a UIA pattern, verified by independent re-read rather than by the call return",
+    "stack":  "managed-System.Windows.Automation",
+    "scope":  "app/provider",
+    "verificationDiscipline":  "no row trusts the pattern call return. Element state is re-read after re-finding the element by AutomationId, and where the fixture exposes an independent sink control (lblStatus, lblScrollPos) that separate element is read as well.",
+    "fixtureArtifactNote":  "winforms-default rows report pattern-unavailable because the fixture installs a server-side IRawElementProviderSimple that suppresses the client-side proxies and WinForms\u0027 own providers. That is a property of this fixture, not of WinForms or of Windows. winforms-host-providers rows show what WinForms itself exposes to a managed client.",
+    "managedVsComNote":  "several winforms-host-providers rows report pattern-unavailable for patterns the UIA3 COM census in captures/08-uia3-com/census.json records on the same providers (Invoke and Toggle on chkToggle, Value on txtValue, SelectionItem on the ListItems, Scroll on pnlScroll). Under KTD1 the COM row is the product-relevant one because the Rust adapter wraps a UIA3 COM client; these rows are filed as managed-client divergence, not as absent affordances. ExpandCollapse on cboChoice is the one WinForms pattern both stacks agree on, which is why it is the only non-WPF ok row here.",
+    "wheelCounterpartNote":  "the SendInput wheel arm is deliberately not in this file. It runs in 06-input-synthesis against the WinForms pnlScroll and its lblScrollPos sink, because that is the control this probe could NOT drive by pattern - the pair of the two captures is the pattern-vs-physical comparison 2.6 needs.",
+    "rows":  [
+                 {
+                     "interaction":  "invoke",
+                     "target":  "wpf",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "btnAction",
+                     "pattern":  "Invoke",
+                     "controlType":  "Button",
+                     "patternAcquired":  true,
+                     "supportedPatterns":  [
+                                               "Invoke",
+                                               "SynchronizedInput"
+                                           ],
+                     "sinkElement":  "lblStatus (a different element than the one invoked)",
+                     "sinkBefore":  "status:ready",
+                     "sinkAfter":  "action:1",
+                     "changed":  true,
+                     "verdict":  "ok"
+                 },
+                 {
+                     "interaction":  "invoke",
+                     "target":  "winforms-host-providers",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "btnAction",
+                     "pattern":  "Invoke",
+                     "controlType":  "Pane",
+                     "patternAcquired":  false,
+                     "supportedPatterns":  [
+
+                                           ],
+                     "verdict":  "pattern-unavailable",
+                     "detail":  "no InvokePattern on this element in this fixture mode; recorded as a verdict row"
+                 },
+                 {
+                     "interaction":  "invoke",
+                     "target":  "winforms-default",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "btnAction",
+                     "pattern":  "Invoke",
+                     "controlType":  "Pane",
+                     "patternAcquired":  false,
+                     "supportedPatterns":  [
+
+                                           ],
+                     "verdict":  "pattern-unavailable",
+                     "detail":  "no InvokePattern on this element in this fixture mode; recorded as a verdict row"
+                 },
+                 {
+                     "interaction":  "toggle",
+                     "target":  "wpf",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "chkToggle",
+                     "pattern":  "Toggle",
+                     "controlType":  "CheckBox",
+                     "patternAcquired":  true,
+                     "preState":  "Off",
+                     "postState":  "On",
+                     "reReadMethod":  "the element is re-found by AutomationId and its TogglePattern re-acquired, so the post-state is not read off the same pattern object the call returned",
+                     "sinkBefore":  "action:1",
+                     "sinkAfter":  "action:1",
+                     "sinkChanged":  false,
+                     "sinkNote":  "the WPF fixture updates lblStatus from a Click handler. TogglePattern.Toggle flips ToggleState without raising Click, so the sink is expected to stay silent here while the element state changes - which is exactly why the element is re-read instead of the sink being trusted as the only observable.",
+                     "changed":  true,
+                     "verdict":  "ok"
+                 },
+                 {
+                     "interaction":  "toggle",
+                     "target":  "winforms-host-providers",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "chkToggle",
+                     "pattern":  "Toggle",
+                     "controlType":  "Pane",
+                     "patternAcquired":  false,
+                     "supportedPatterns":  [
+
+                                           ],
+                     "verdict":  "pattern-unavailable",
+                     "detail":  "no TogglePattern on this element in this fixture mode; recorded as a verdict row"
+                 },
+                 {
+                     "interaction":  "toggle",
+                     "target":  "winforms-default",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "chkToggle",
+                     "pattern":  "Toggle",
+                     "controlType":  "Pane",
+                     "patternAcquired":  false,
+                     "supportedPatterns":  [
+
+                                           ],
+                     "verdict":  "pattern-unavailable",
+                     "detail":  "no TogglePattern on this element in this fixture mode; recorded as a verdict row"
+                 },
+                 {
+                     "interaction":  "set-value/ascii",
+                     "target":  "wpf",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "txtValue",
+                     "pattern":  "Value",
+                     "controlType":  "Edit",
+                     "patternAcquired":  true,
+                     "payloadKind":  "ascii",
+                     "payloadOrigin":  "built with [char]::ConvertFromUtf32 so payload integrity does not depend on this file\u0027s encoding (R12)",
+                     "preValueShape":  {
+                                           "utf16Units":  10,
+                                           "codepoints":  10,
+                                           "surrogatePairs":  0,
+                                           "replacementChars":  0,
+                                           "sha256Utf16":  "730365c1825e69a9171fd18ccdefab7962df67a8fcb7b64e4e3c8dd8bdf8ec6b"
+                                       },
+                     "expectedShape":  {
+                                           "utf16Units":  20,
+                                           "codepoints":  20,
+                                           "surrogatePairs":  0,
+                                           "replacementChars":  0,
+                                           "sha256Utf16":  "030def08bed320dbbc368c2ea990e349c43af499a9e25a5c6727d280e9e816e0"
+                                       },
+                     "observedShape":  {
+                                           "utf16Units":  20,
+                                           "codepoints":  20,
+                                           "surrogatePairs":  0,
+                                           "replacementChars":  0,
+                                           "sha256Utf16":  "030def08bed320dbbc368c2ea990e349c43af499a9e25a5c6727d280e9e816e0"
+                                       },
+                     "exactRoundTrip":  true,
+                     "reReadMethod":  "element re-found by AutomationId and ValuePattern re-acquired before reading",
+                     "payloadHandling":  "only length, codepoint counts and a SHA-256 of the UTF-16 bytes are recorded; no payload text reaches the capture",
+                     "verdict":  "ok"
+                 },
+                 {
+                     "interaction":  "set-value/cjk",
+                     "target":  "wpf",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "txtValue",
+                     "pattern":  "Value",
+                     "controlType":  "Edit",
+                     "patternAcquired":  true,
+                     "payloadKind":  "cjk",
+                     "payloadOrigin":  "built with [char]::ConvertFromUtf32 so payload integrity does not depend on this file\u0027s encoding (R12)",
+                     "preValueShape":  {
+                                           "utf16Units":  20,
+                                           "codepoints":  20,
+                                           "surrogatePairs":  0,
+                                           "replacementChars":  0,
+                                           "sha256Utf16":  "030def08bed320dbbc368c2ea990e349c43af499a9e25a5c6727d280e9e816e0"
+                                       },
+                     "expectedShape":  {
+                                           "utf16Units":  3,
+                                           "codepoints":  3,
+                                           "surrogatePairs":  0,
+                                           "replacementChars":  0,
+                                           "sha256Utf16":  "6181046d83c65ba9b401f6f67eec1316201493cb8c6c7faad5fb68009b3c7c33"
+                                       },
+                     "observedShape":  {
+                                           "utf16Units":  3,
+                                           "codepoints":  3,
+                                           "surrogatePairs":  0,
+                                           "replacementChars":  0,
+                                           "sha256Utf16":  "6181046d83c65ba9b401f6f67eec1316201493cb8c6c7faad5fb68009b3c7c33"
+                                       },
+                     "exactRoundTrip":  true,
+                     "reReadMethod":  "element re-found by AutomationId and ValuePattern re-acquired before reading",
+                     "payloadHandling":  "only length, codepoint counts and a SHA-256 of the UTF-16 bytes are recorded; no payload text reaches the capture",
+                     "verdict":  "ok"
+                 },
+                 {
+                     "interaction":  "set-value/astral-plane",
+                     "target":  "wpf",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "txtValue",
+                     "pattern":  "Value",
+                     "controlType":  "Edit",
+                     "patternAcquired":  true,
+                     "payloadKind":  "astral-plane",
+                     "payloadOrigin":  "built with [char]::ConvertFromUtf32 so payload integrity does not depend on this file\u0027s encoding (R12)",
+                     "preValueShape":  {
+                                           "utf16Units":  3,
+                                           "codepoints":  3,
+                                           "surrogatePairs":  0,
+                                           "replacementChars":  0,
+                                           "sha256Utf16":  "6181046d83c65ba9b401f6f67eec1316201493cb8c6c7faad5fb68009b3c7c33"
+                                       },
+                     "expectedShape":  {
+                                           "utf16Units":  4,
+                                           "codepoints":  3,
+                                           "surrogatePairs":  1,
+                                           "replacementChars":  0,
+                                           "sha256Utf16":  "67c86e7a35b2aa45d8169108221af0cce098b6f81ea3da0c3df836caca0c743b"
+                                       },
+                     "observedShape":  {
+                                           "utf16Units":  4,
+                                           "codepoints":  3,
+                                           "surrogatePairs":  1,
+                                           "replacementChars":  0,
+                                           "sha256Utf16":  "67c86e7a35b2aa45d8169108221af0cce098b6f81ea3da0c3df836caca0c743b"
+                                       },
+                     "exactRoundTrip":  true,
+                     "reReadMethod":  "element re-found by AutomationId and ValuePattern re-acquired before reading",
+                     "payloadHandling":  "only length, codepoint counts and a SHA-256 of the UTF-16 bytes are recorded; no payload text reaches the capture",
+                     "verdict":  "ok"
+                 },
+                 {
+                     "interaction":  "set-value/mixed",
+                     "target":  "wpf",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "txtValue",
+                     "pattern":  "Value",
+                     "controlType":  "Edit",
+                     "patternAcquired":  true,
+                     "payloadKind":  "mixed",
+                     "payloadOrigin":  "built with [char]::ConvertFromUtf32 so payload integrity does not depend on this file\u0027s encoding (R12)",
+                     "preValueShape":  {
+                                           "utf16Units":  4,
+                                           "codepoints":  3,
+                                           "surrogatePairs":  1,
+                                           "replacementChars":  0,
+                                           "sha256Utf16":  "67c86e7a35b2aa45d8169108221af0cce098b6f81ea3da0c3df836caca0c743b"
+                                       },
+                     "expectedShape":  {
+                                           "utf16Units":  29,
+                                           "codepoints":  28,
+                                           "surrogatePairs":  1,
+                                           "replacementChars":  0,
+                                           "sha256Utf16":  "5783f6f2168ecd35d4775d850bf880d7dca2b3d8a3a811f6893d4c82a089f441"
+                                       },
+                     "observedShape":  {
+                                           "utf16Units":  29,
+                                           "codepoints":  28,
+                                           "surrogatePairs":  1,
+                                           "replacementChars":  0,
+                                           "sha256Utf16":  "5783f6f2168ecd35d4775d850bf880d7dca2b3d8a3a811f6893d4c82a089f441"
+                                       },
+                     "exactRoundTrip":  true,
+                     "reReadMethod":  "element re-found by AutomationId and ValuePattern re-acquired before reading",
+                     "payloadHandling":  "only length, codepoint counts and a SHA-256 of the UTF-16 bytes are recorded; no payload text reaches the capture",
+                     "verdict":  "ok"
+                 },
+                 {
+                     "interaction":  "set-value",
+                     "target":  "winforms-host-providers",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "txtValue",
+                     "pattern":  "Value",
+                     "controlType":  "Pane",
+                     "patternAcquired":  false,
+                     "supportedPatterns":  [
+
+                                           ],
+                     "verdict":  "pattern-unavailable",
+                     "detail":  "no ValuePattern on this element in this fixture mode; recorded as a verdict row"
+                 },
+                 {
+                     "interaction":  "expand-collapse",
+                     "target":  "wpf",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "cboChoice",
+                     "pattern":  "ExpandCollapse",
+                     "controlType":  "ComboBox",
+                     "patternAcquired":  true,
+                     "preState":  "Collapsed",
+                     "stateAfterExpand":  "Expanded",
+                     "stateAfterCollapse":  "Collapsed",
+                     "reReadMethod":  "state re-read after each half of the round trip from a freshly found element",
+                     "roundTripped":  true,
+                     "verdict":  "ok"
+                 },
+                 {
+                     "interaction":  "expand-collapse",
+                     "target":  "winforms-host-providers",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "cboChoice",
+                     "pattern":  "ExpandCollapse",
+                     "controlType":  "ComboBox",
+                     "patternAcquired":  true,
+                     "preState":  "Collapsed",
+                     "stateAfterExpand":  "Expanded",
+                     "stateAfterCollapse":  "Collapsed",
+                     "reReadMethod":  "state re-read after each half of the round trip from a freshly found element",
+                     "roundTripped":  true,
+                     "verdict":  "ok"
+                 },
+                 {
+                     "interaction":  "expand-collapse",
+                     "target":  "winforms-default",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "cboChoice",
+                     "pattern":  "ExpandCollapse",
+                     "controlType":  "Pane",
+                     "patternAcquired":  false,
+                     "supportedPatterns":  [
+
+                                           ],
+                     "verdict":  "pattern-unavailable",
+                     "detail":  "no ExpandCollapsePattern on this element in this fixture mode; recorded as a verdict row"
+                 },
+                 {
+                     "interaction":  "select",
+                     "target":  "wpf",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "lstItems/item[2]",
+                     "pattern":  "SelectionItem",
+                     "controlType":  "ListItem",
+                     "patternAcquired":  true,
+                     "selectionCountBefore":  0,
+                     "selectionCountAfter":  1,
+                     "isSelectedAfter":  true,
+                     "sinkBefore":  "action:1",
+                     "sinkAfter":  "list-sel:Item-Charlie",
+                     "reReadMethod":  "container SelectionPattern re-acquired from a freshly found list, plus the item IsSelected re-read, plus the independent lblStatus sink",
+                     "verdict":  "ok"
+                 },
+                 {
+                     "interaction":  "select",
+                     "target":  "winforms-host-providers",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "lstItems/item[2]",
+                     "pattern":  "SelectionItem",
+                     "controlType":  "\u003celement-not-found\u003e",
+                     "patternAcquired":  false,
+                     "supportedPatterns":  [
+
+                                           ],
+                     "verdict":  "pattern-unavailable",
+                     "detail":  "no ListItem with SelectionItemPattern reachable under lstItems in this fixture mode; recorded as a verdict row"
+                 },
+                 {
+                     "interaction":  "select",
+                     "target":  "winforms-default",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "lstItems/item[2]",
+                     "pattern":  "SelectionItem",
+                     "controlType":  "\u003celement-not-found\u003e",
+                     "patternAcquired":  false,
+                     "supportedPatterns":  [
+
+                                           ],
+                     "verdict":  "pattern-unavailable",
+                     "detail":  "no ListItem with SelectionItemPattern reachable under lstItems in this fixture mode; recorded as a verdict row"
+                 },
+                 {
+                     "interaction":  "scroll-via-pattern",
+                     "target":  "winforms-host-providers",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "pnlScroll",
+                     "pattern":  "Scroll",
+                     "controlType":  "Pane",
+                     "patternAcquired":  false,
+                     "supportedPatterns":  [
+
+                                           ],
+                     "verdict":  "pattern-unavailable",
+                     "detail":  "the UIA3 COM census (captures/08-uia3-com/census.json) records Scroll on this exact provider in BOTH fixture modes; the managed client cannot acquire it. Divergence row, not a platform verdict."
+                 },
+                 {
+                     "interaction":  "scroll-via-pattern",
+                     "target":  "winforms-default",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "pnlScroll",
+                     "pattern":  "Scroll",
+                     "controlType":  "Pane",
+                     "patternAcquired":  false,
+                     "supportedPatterns":  [
+
+                                           ],
+                     "verdict":  "pattern-unavailable",
+                     "detail":  "the UIA3 COM census (captures/08-uia3-com/census.json) records Scroll on this exact provider in BOTH fixture modes; the managed client cannot acquire it. Divergence row, not a platform verdict."
+                 },
+                 {
+                     "interaction":  "scroll-via-pattern",
+                     "target":  "wpf",
+                     "stack":  "managed-System.Windows.Automation",
+                     "automationId":  "lstItems",
+                     "pattern":  "Scroll",
+                     "controlType":  "List",
+                     "patternAcquired":  true,
+                     "makeScrollableMethod":  "the window is shrunk with SetWindowPos(SWP_NOACTIVATE) until the ListBox viewport is smaller than its five items; the client-height step that achieved it is recorded",
+                     "shrinkStepUsed":  240,
+                     "verticallyScrollable":  true,
+                     "verticalPercentBefore":  0,
+                     "verticalPercentAfter":  80,
+                     "reReadMethod":  "percent re-read from a freshly acquired ScrollPattern on a freshly found element",
+                     "verdict":  "ok"
+                 }
+             ]
+}

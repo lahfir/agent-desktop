@@ -7,40 +7,13 @@ pub(super) fn entry() -> RefEntry {
         width: 20.0,
         height: 20.0,
     };
-    RefEntry {
-        process: crate::RefProcess {
-            pid: crate::ProcessId::new(1),
-            process_instance: Some("test-instance".into()),
-        },
-        identity: crate::RefEntryIdentity {
-            retained_object: None,
-            role: "button".into(),
-            name: Some("OK".into()),
-            value: None,
-            description: None,
-            native_id: None,
-        },
-        geometry: crate::RefGeometry {
-            bounds: Some(bounds),
-            bounds_hash: bounds.bounds_hash(),
-        },
-        capabilities: crate::RefCapabilities {
-            states: vec![],
-            available_actions: vec!["Clear".into(), "Click".into()],
-        },
-        source: crate::RefSource {
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
-            source_window_bounds_hash: None,
-            source_surface: crate::adapter::SnapshotSurface::Window,
-        },
-        scope: crate::RefScope {
-            root_ref: None,
-            path_is_absolute: false,
-            path: smallvec::SmallVec::new(),
-        },
-    }
+    let mut entry = crate::adapter::minimal_ref_entry("button", Some("OK"));
+    entry.geometry = crate::RefGeometry {
+        bounds: Some(bounds),
+        bounds_hash: bounds.bounds_hash(),
+    };
+    entry.capabilities.available_actions = vec!["Clear".into(), "Click".into()];
+    entry
 }
 
 pub(super) fn text_entry() -> RefEntry {

@@ -28,6 +28,8 @@ pub(super) fn snapshot(
             skeleton: args.tree.skeleton,
             root_ref: args.root,
             snapshot_id: args.snapshot,
+            timeout_ms: args.timeout_ms,
+            force_electron_a11y: args.force_electron_a11y,
         },
         adapter,
         context,
@@ -51,6 +53,7 @@ pub(super) fn find(
             root: args.root,
             snapshot: args.snapshot,
             surface: args.surface.to_core(),
+            timeout_ms: args.timeout_ms,
             filter: find_command::FindFilterArgs {
                 role: args.filter.role,
                 name: args.filter.name,

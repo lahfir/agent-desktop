@@ -99,6 +99,7 @@ unsafe fn get_core_tree(
         compact: options.compact,
         surface,
         skeleton: false,
+        force_renderer_accessibility: false,
     };
     let adapter = crate::adapter::acquire_adapter!(adapter);
     let deadline = crate::operation::operation_deadline!();

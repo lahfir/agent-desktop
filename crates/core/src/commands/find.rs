@@ -45,6 +45,7 @@ pub struct FindArgs {
     pub filter: FindFilterArgs,
     pub states: Vec<StatePredicate>,
     pub selection: FindSelectionArgs,
+    pub timeout_ms: Option<u64>,
 }
 
 pub fn execute(
@@ -58,7 +59,26 @@ pub fn execute(
     let query = locator_query_from_args(&args)?;
     query.validate_states().map_err(AppError::Adapter)?;
 
-    live::execute(&args, &query, adapter, context)
+    live::execute(&args, &query, adapter, context).map_err(name_the_traversal_remedy)
+}
+
+/// A traversal that ran out of budget on a large tree is not evidence the
+/// target is unresponsive, which is what the shared timeout suggestion says.
+/// The caller has two real levers here - a bigger budget, or a narrower
+/// search - so this names them instead of sending them to inspect a healthy
+/// app. Applied at this boundary rather than in the shared constructor,
+/// which every other command reaches and whose wording is asserted on
+/// elsewhere.
+fn name_the_traversal_remedy(error: AppError) -> AppError {
+    let AppError::Adapter(adapter_error) = error else {
+        return error;
+    };
+    if adapter_error.code != crate::ErrorCode::Timeout {
+        return AppError::Adapter(adapter_error);
+    }
+    AppError::Adapter(adapter_error.with_suggestion(
+        "The search ran out of budget before it could answer. Raise --timeout-ms, or narrow the search with --root, --surface, or a more specific role and name.",
+    ))
 }
 
 pub fn parse_state_flag(raw: &str) -> Result<StatePredicate, AppError> {
