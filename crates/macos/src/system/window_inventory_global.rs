@@ -370,18 +370,26 @@ fn retryable_global_error(error: &AdapterError) -> bool {
 }
 
 fn global_timeout(attempts: u64, last_error: Option<&AdapterError>) -> AdapterError {
+    let last = |key: &str| last_error.and_then(|error| error.details.as_ref()?.get(key).cloned());
     AdapterError::timeout("Global application window inventory did not stabilize before deadline")
         .with_details(serde_json::json!({
             "kind": "global_window_inventory_unstable",
             "attempts": attempts,
             "last_code": last_error.map(|error| error.code.as_str()),
-            "last_kind": last_error
-                .and_then(|error| error.details.as_ref())
-                .and_then(|details| details.get("kind")),
+            "last_kind": last("kind"),
+            "last_operation": last("operation"),
+            "last_status": last("status"),
+            "last_failure_field": last("failure_field"),
+            "last_failure_index": last("failure_index"),
+            "last_failure_pid": last("failure_pid"),
             "complete": false,
             "retryable": true,
         }))
 }
+
+#[cfg(test)]
+#[path = "window_inventory_global_timeout_tests.rs"]
+mod timeout_tests;
 
 #[cfg(test)]
 #[path = "window_inventory_global_tests.rs"]
