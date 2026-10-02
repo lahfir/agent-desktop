@@ -219,7 +219,12 @@ is alpha and may change shape.
 
 ## Checks
 
+`WAIT` in `run.mjs` pauses 250 ms before the screen is read again. A failed operation stops the run at once as `action_failed`, keeping the error code and delivery state, and is never repeated. The CLI exits 0 only when the run stops at `done`; every other stop exits 1.
+
+Text falls back from a direct value write to a paste only when the write reports that nothing was delivered and a retry is safe. A failed clipboard write is reported as the stop reason. After a paste the field is read back; if it does not hold the requested text the run stops with `TEXT_VERIFICATION_FAILED` and does not type again.
+
 ```sh
 node scripts/jev/act.test.mjs
 node scripts/jev/run.test.mjs
+node scripts/jev/run.integration.test.mjs
 ```
