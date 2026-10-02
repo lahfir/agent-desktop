@@ -205,6 +205,7 @@ const main = async (argv) => {
   const app = flag("app");
   const text = flag("text");
   const root = flag("root");
+  const windowId = flag("window-id");
   const execute = argv.includes("--execute");
   const bin = flag("bin") ?? (existsSync(join(REPO, "target/release/agent-desktop"))
     ? join(REPO, "target/release/agent-desktop")
@@ -214,24 +215,26 @@ const main = async (argv) => {
     .join(" ");
 
   if (!app || !intent) {
-    console.error('usage: act.mjs --app <name> [--text "…"] [--root @ref] [--execute] "<intent>"');
+    console.error('usage: act.mjs --app <name> [--window-id <id>] [--text "…"] [--root @ref] [--execute] "<intent>"');
     process.exit(2);
   }
   if (!process.env.TYPESAFE_API_KEY) fail("TYPESAFE_API_KEY unset");
 
-  const base = ["snapshot", "--app", app, "-i", "--compact", "--include-bounds"];
+  const scope = windowId ? ["--app", app, "--window-id", windowId] : ["--app", app];
+  const base = ["snapshot", ...scope, "-i", "--compact", "--include-bounds"];
   let snap = run(bin, root ? [...base, "--root", root] : base);
   if (!snap.ok) fail(`snapshot failed: ${snap.error?.code}`, { detail: snap.error?.message });
 
   const overlay = overlayRole(snap.data.tree);
   if (overlay && !root) {
-    const surfaceSnap = run(bin, ["snapshot", "--app", app, "--surface", overlay, "-i", "--compact", "--include-bounds"]);
+    const surfaceSnap = run(bin, ["snapshot", ...scope, "--surface", overlay, "-i", "--compact", "--include-bounds"]);
     if (surfaceSnap.ok) snap = surfaceSnap;
   }
 
   const surface = {
     app: snap.data.app ?? app,
     window: snap.data.window?.title ?? null,
+    window_id: snap.data.window?.id ?? windowId,
     overlay,
   };
   let candidates = offerable(collect(snap.data.tree));

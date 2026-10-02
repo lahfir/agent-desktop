@@ -22,7 +22,9 @@ appendFileSync(process.env.JEV_TEST_LOG, JSON.stringify({command,args})+'\\n');
 const error = (code, retry='unsafe', delivery='delivery_uncertain') =>
   ({ok:false,error:{code,message:'試験の失敗',disposition:{retry,delivery}}});
 let result = {ok:true,data:{disposition:{delivery:'delivered_verified',retry:'unsafe'}}};
-if (command === 'snapshot') result = {ok:true,data:{window:{title:'試験'},tree:{
+const clicked = () => require('node:fs').readFileSync(process.env.JEV_TEST_LOG,'utf8').includes('"command":"click"');
+if (command === 'snapshot' && mode === 'window_closed' && clicked()) result = error('WINDOW_NOT_FOUND','safe','not_delivered');
+else if (command === 'snapshot') result = {ok:true,data:{window:{title:'試験'},tree:{
   role:'window',children:[
     {ref_id:'@s1:e1',role:'button',name:'試験ボタン',available_actions:['Click']},
     {ref_id:'@s1:e2',role:'textfield',name:'試験欄',value:'',available_actions:['SetValue']}
@@ -45,7 +47,7 @@ globalThis.fetch=async (_url,options)=>{
   calls++;
   const body=JSON.parse(options.body), mode=process.env.JEV_TEST_MODE;
   const operation=mode==='wait'?(calls<=3?'WAIT':'DONE'):mode==='done'?'DONE':
-    mode==='blocked'?'BLOCKED':mode==='click_error'?'CLICK':mode==='paste_correct'&&calls>1?'DONE':'TYPE_TEXT';
+    mode==='blocked'?'BLOCKED':mode==='click_error'||mode==='window_closed'?'CLICK':mode==='paste_correct'&&calls>1?'DONE':'TYPE_TEXT';
   const answers={};
   for (const [id,question] of Object.entries(body.questions)) {
     const ids=Object.keys(question.criteria);
@@ -56,10 +58,10 @@ globalThis.fetch=async (_url,options)=>{
 };
 `);
 
-const run = (mode) => {
+const run = (mode, extra = []) => {
   writeFileSync(log, "");
   const result = spawnSync(process.execPath, ["--import", pathToFileURL(preload).href, entry,
-    "--app", "試験アプリ", "--text", "試験", "試験を完了する"], {
+    "--app", "試験アプリ", ...extra, "--text", "試験", "試験を完了する"], {
     cwd: directory,
     encoding: "utf8",
     timeout: 10000,
@@ -104,6 +106,27 @@ try {
   assert.equal(wrongText.status, 1);
   assert.equal(wrongText.stop.error.code, "TEXT_VERIFICATION_FAILED");
   assert.equal(wrongText.commands.filter(command => command.command === "press").length, 1);
+
+  const windowed = run("done", ["--window-id", "w-42"]);
+  assert.equal(windowed.status, 0);
+  const snapshots = windowed.commands.filter(command => command.command === "snapshot");
+  assert.ok(snapshots.length > 0);
+  for (const { args } of snapshots) assert.deepEqual(args.slice(args.indexOf("--window-id"), args.indexOf("--window-id") + 2), ["--window-id", "w-42"]);
+  assert.equal(windowed.stop.screen.window_id, "w-42");
+  assert.equal(run("done").commands.some(command => command.args.includes("--window-id")), false);
+
+  const windowPaste = run("paste_correct", ["--window-id", "w-42"]);
+  assert.equal(windowPaste.status, 0);
+  const press = windowPaste.commands.find(command => command.command === "press");
+  assert.deepEqual(press.args.slice(press.args.indexOf("--window-id"), press.args.indexOf("--window-id") + 2), ["--window-id", "w-42"]);
+
+  const closed = run("window_closed", ["--window-id", "w-42"]);
+  assert.equal(closed.status, 1);
+  assert.equal(closed.stop.stop, "window_closed");
+  assert.equal(closed.events.filter(event => event.turn).length, 1);
+  assert.equal(closed.events.find(event => event.turn).turn.ok, true);
+  const afterClick = closed.commands.slice(closed.commands.findIndex(command => command.command === "click") + 1);
+  assert.equal(afterClick.filter(command => command.command === "snapshot").length, 1);
 
   assert.equal(run("blocked").status, 1);
   assert.equal(run("done").status, 0);

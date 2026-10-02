@@ -58,7 +58,7 @@ export const rateRisk = (goal, screen, operation, node, values) =>
 export const run = async function* (
   goal,
   app,
-  { root = null, text = null, cursor = false, values = true } = {},
+  { root = null, windowId = null, text = null, cursor = false, values = true } = {},
 ) {
   if (!process.env.TYPESAFE_API_KEY) throw new Error("TYPESAFE_API_KEY unset");
   const supply = textSupply(text);
@@ -67,7 +67,7 @@ export const run = async function* (
   const state = { steps: 0, calls: 0, history: [], operation: null, root };
   try {
     for (;;) {
-      const { nodes, screen } = observe(app, state.root);
+      const { nodes, screen } = observe(app, state.root, windowId);
       const before = fingerprint(nodes);
       const space = actionSpace(nodes, { drillable: !state.root, typable: supply.available(), values });
       if (!space.elements.length) {
@@ -133,7 +133,7 @@ export const run = async function* (
           return;
         }
       }
-      const outcome = await execute(app, state.operation, node, value, clipboard);
+      const outcome = await execute(app, state.operation, node, value, clipboard, windowId);
       state.steps += 1;
       const turn = {
         step: state.steps,
@@ -156,7 +156,17 @@ export const run = async function* (
         return;
       }
       if ("root" in outcome) state.root = outcome.root;
-      turn.changed = "root" in outcome || fingerprint(observe(app, state.root).nodes) !== before;
+      let after;
+      try {
+        after = "root" in outcome ? null : observe(app, state.root, windowId);
+      } catch (error) {
+        if (!windowId || error.code !== "WINDOW_NOT_FOUND") throw error;
+        turn.changed = true;
+        yield { turn, screen };
+        yield { stop: "window_closed", screen, history: state.history };
+        return;
+      }
+      turn.changed = "root" in outcome || fingerprint(after.nodes) !== before;
       yield { turn, screen };
       const settled = shouldStop(state);
       if (settled) {
@@ -177,6 +187,7 @@ const main = async (argv) => {
   };
   const app = flag("app");
   const root = flag("root");
+  const windowId = flag("window-id");
   const text = argv.flatMap((a, i) => (argv[i - 1] === "--text" ? [a] : []));
   const cursor = argv.includes("--cursor");
   const values = !argv.includes("--no-values");
@@ -185,11 +196,11 @@ const main = async (argv) => {
     .join(" ");
   if (!app || !goal) {
     console.error(
-      'usage: run.mjs --app <name> [--cursor] [--no-values] [--root @ref] [--text "value"]... "<goal>"',
+      'usage: run.mjs --app <name> [--window-id <id>] [--cursor] [--no-values] [--root @ref] [--text "value"]... "<goal>"',
     );
     process.exit(2);
   }
-  for await (const event of run(goal, app, { root, text, cursor, values })) {
+  for await (const event of run(goal, app, { root, windowId, text, cursor, values })) {
     console.log(JSON.stringify(event));
     if (event.stop && event.stop !== "done") process.exitCode = 1;
   }

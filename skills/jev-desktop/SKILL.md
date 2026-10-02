@@ -87,7 +87,9 @@ A screen with more actionable elements than a choice can carry says so, in the
 request and in the turn it reports, and the policy is told to look inside a
 region rather than call the goal impossible.
 
-`--root @ref` starts inside a region when you already know which one.
+`--root @ref` starts inside a region when you already know which one. `--window-id <id>`
+reads one window when the app has several open and none is focused, such as a Settings window next to
+the main one while another app is in front. Every stop reports the window it read in `screen.window_id`.
 
 ## One step at a time
 
@@ -121,6 +123,7 @@ node scripts/jev/act.mjs --app TextEdit --execute \
 | Flag | Meaning |
 | --- | --- |
 | `--app <name>` | Required. |
+| `--window-id <id>` | Read one window of the app, by the id `agent-desktop list-windows --app <name>` reports. Needed only when the app has more than one visible window and none of them is focused, which otherwise fails with `AMBIGUOUS_TARGET`. The run stays on that window: a window the run opens elsewhere is not read, and if the window closes after an action, `run.mjs` reports that turn and stops with `window_closed`. `run.mjs` takes it too. |
 | `--execute` | Run the command when `decision` is `act`. Without it, nothing runs. |
 | `--text "…"` | Text the intent needs. Jev returns choices, never strings. |
 | `--root @ref` | Resolve inside one container instead of the whole window. |
