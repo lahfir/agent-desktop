@@ -273,6 +273,7 @@ agent-desktop --headed batch '[
 Use the actual window title for the current app language. To check a window that may already be open, use `wait --window "Musical Typing" --app "GarageBand" --timeout 5000`. A failed wait does not make the preceding press safe to repeat.
 
 **Key names:** `return`, `escape`, `tab`, `space`, `delete`, `up`, `down`, `left`, `right`, `f1`-`f12`
+**Punctuation (macOS):** `,` `.` `/` `;` `'` `[` `]` `\` `-` `=` `` ` ``, or by name: `comma`, `period`, `slash`, `semicolon`, `quote`, `leftbracket`, `rightbracket`, `backslash`, `minus`, `equal`, `grave`. Each symbol is sent with the key that types it in the active keyboard layout, so `press cmd+,` opens an app's Settings on ANSI and JIS keyboards alike.
 **Modifiers:** `cmd`, `ctrl`, `alt`, `shift` — combine with `+`
 
 Dangerous shortcuts (e.g. `cmd+q`, `ctrl+cmd+q`, `cmd+alt+esc`, `cmd+shift+delete`) are refused with `POLICY_DENIED`. Normalization covers modifier order and key-name aliases (`escape`/`esc`, `backspace`/`delete`). The block is the **platform adapter's** decision, not core's — the calling agent stays in control: pass `--force` to send a flagged `press` combo anyway (`agent-desktop press cmd+q --force`). The reserved held-key names reject even when `--force` is present.

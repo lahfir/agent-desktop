@@ -164,6 +164,9 @@ fn read_menu_item_modifiers(
 }
 
 fn single_uppercase_character(key: &str) -> Option<String> {
+    if let Some(symbol) = crate::input::keyboard_map::punctuation(key) {
+        return Some(symbol.to_string());
+    }
     (key.chars().count() == 1).then(|| key.to_uppercase())
 }
 
