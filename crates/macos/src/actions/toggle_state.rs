@@ -37,12 +37,7 @@ pub(crate) fn toggle(
         ));
     }
     let before = read_value(el, deadline)?;
-    let ctx = ChainContext {
-        dynamic_value: None,
-        verified_point: None,
-        deadline,
-    };
-    let mut steps = execute_chain(el, &chain_defs::SEMANTIC_CLICK_CHAIN, &ctx, policy)?;
+    let mut steps = semantic_click(el, policy, deadline)?;
     let verified = if let Some(before) = before {
         wait_for_value_change(el, &before, deadline).map_err(after_delivery)?;
         true
@@ -73,30 +68,121 @@ pub(crate) fn check_uncheck(
         )
         .with_suggestion("Only works on checkboxes, switches, and radio buttons."));
     }
-    if checked_state(el, deadline)? == Some(want_checked) {
-        return Ok(vec![already_in_state_step()]);
-    }
-    prepare(el, deadline)?;
-    if ax_helpers::is_attr_settable(el, "AXValue", deadline)? && {
-        prepare(el, deadline)?;
-        ax_helpers::set_ax_bool_or_err(el, "AXValue", want_checked, deadline)?
-    } {
-        wait_for_checked_state(el, want_checked, deadline).map_err(after_delivery)?;
-        return Ok(vec![
-            ActionStep::succeeded("AXValue")
-                .with_mechanism(StepMechanism::SemanticApi)
-                .with_verified(true),
-        ]);
-    }
+    let press_after_ignored_write = want_checked
+        || agent_desktop_core::Role::from_token(role.as_deref().unwrap_or_default())
+            != agent_desktop_core::Role::RadioButton;
+    run_check(
+        &mut LiveCheckTarget {
+            el,
+            policy,
+            deadline,
+        },
+        want_checked,
+        press_after_ignored_write,
+    )
+}
+
+fn semantic_click(
+    el: &AXElement,
+    policy: InteractionPolicy,
+    deadline: Deadline,
+) -> Result<Vec<ActionStep>, AdapterError> {
     let ctx = ChainContext {
         dynamic_value: None,
         verified_point: None,
         deadline,
     };
-    let mut steps = execute_chain(el, &chain_defs::SEMANTIC_CLICK_CHAIN, &ctx, policy)?;
-    wait_for_checked_state(el, want_checked, deadline).map_err(after_delivery)?;
+    execute_chain(el, &chain_defs::SEMANTIC_CLICK_CHAIN, &ctx, policy)
+}
+
+trait CheckTarget {
+    fn checked(&mut self) -> Result<Option<bool>, AdapterError>;
+    fn value_settable(&mut self) -> Result<bool, AdapterError>;
+    fn write_value(&mut self, want_checked: bool) -> Result<bool, AdapterError>;
+    fn settle(&mut self, want_checked: bool) -> Result<Option<bool>, AdapterError>;
+    fn click(&mut self) -> Result<Vec<ActionStep>, AdapterError>;
+}
+
+struct LiveCheckTarget<'a> {
+    el: &'a AXElement,
+    policy: InteractionPolicy,
+    deadline: Deadline,
+}
+
+impl CheckTarget for LiveCheckTarget<'_> {
+    fn checked(&mut self) -> Result<Option<bool>, AdapterError> {
+        checked_state(self.el, self.deadline)
+    }
+
+    fn value_settable(&mut self) -> Result<bool, AdapterError> {
+        prepare(self.el, self.deadline)?;
+        ax_helpers::is_attr_settable(self.el, "AXValue", self.deadline)
+    }
+
+    fn write_value(&mut self, want_checked: bool) -> Result<bool, AdapterError> {
+        prepare(self.el, self.deadline)?;
+        ax_helpers::set_ax_bool_or_err(self.el, "AXValue", want_checked, self.deadline)
+    }
+
+    fn settle(&mut self, want_checked: bool) -> Result<Option<bool>, AdapterError> {
+        settle_checked_state(self.el, want_checked, self.deadline)
+    }
+
+    fn click(&mut self) -> Result<Vec<ActionStep>, AdapterError> {
+        semantic_click(self.el, self.policy, self.deadline)
+    }
+}
+
+fn run_check(
+    target: &mut impl CheckTarget,
+    want_checked: bool,
+    press_after_ignored_write: bool,
+) -> Result<Vec<ActionStep>, AdapterError> {
+    if target.checked()? == Some(want_checked) {
+        return Ok(vec![already_in_state_step()]);
+    }
+    let mut steps = Vec::new();
+    let mut wrote = false;
+    if target.value_settable()? && target.write_value(want_checked)? {
+        wrote = true;
+        if target.settle(want_checked).map_err(after_delivery)? == Some(want_checked) {
+            return Ok(vec![value_write_step()]);
+        }
+        match target.checked().map_err(after_delivery)? {
+            Some(state) if state == want_checked => return Ok(vec![value_write_step()]),
+            Some(_) if press_after_ignored_write => steps
+                .push(ActionStep::attempted("AXValue").with_mechanism(StepMechanism::SemanticApi)),
+            _ => return Err(after_delivery(state_not_reached())),
+        }
+    }
+    let clicked = target
+        .click()
+        .map_err(|error| if wrote { after_delivery(error) } else { error })?;
+    steps.extend(clicked);
+    if target.settle(want_checked).map_err(after_delivery)? != Some(want_checked) {
+        return Err(after_delivery(state_not_reached()));
+    }
     mark_last_verified(&mut steps, true);
     Ok(steps)
+}
+
+fn value_write_step() -> ActionStep {
+    ActionStep::succeeded("AXValue")
+        .with_mechanism(StepMechanism::SemanticApi)
+        .with_verified(true)
+}
+
+fn state_not_reached() -> AdapterError {
+    AdapterError::new(
+        ErrorCode::ActionFailed,
+        "check/uncheck did not reach the requested state",
+    )
+    .with_details(serde_json::json!({
+        "verification": "requested_checked_state_not_observed"
+    }))
+    .with_suggestion(
+        "Refresh the snapshot and inspect the checked state before deciding whether to retry.",
+    )
 }
 
 fn already_in_state_step() -> ActionStep {
@@ -117,27 +203,16 @@ fn checked_state(el: &AXElement, deadline: Deadline) -> Result<Option<bool>, Ada
     Ok(read_value(el, deadline)?.and_then(|value| parse_checked_value(&value)))
 }
 
-fn wait_for_checked_state(
+fn settle_checked_state(
     el: &AXElement,
     want_checked: bool,
     action_deadline: Deadline,
-) -> Result<(), AdapterError> {
+) -> Result<Option<bool>, AdapterError> {
     let deadline = verification_deadline(action_deadline)?;
     loop {
-        if checked_state(el, action_deadline)? == Some(want_checked) {
-            return Ok(());
-        }
-        if std::time::Instant::now() >= deadline {
-            return Err(AdapterError::new(
-                ErrorCode::ActionFailed,
-                "check/uncheck did not reach the requested state",
-            )
-            .with_details(serde_json::json!({
-                "verification": "requested_checked_state_not_observed"
-            }))
-            .with_suggestion(
-                "Refresh the snapshot and inspect the checked state before deciding whether to retry.",
-            ));
+        let state = checked_state(el, action_deadline)?;
+        if state == Some(want_checked) || std::time::Instant::now() >= deadline {
+            return Ok(state);
         }
         sleep_poll(deadline, action_deadline)?;
     }
@@ -292,3 +367,7 @@ mod tests {
         assert_eq!(step.verified(), Some(true));
     }
 }
+
+#[cfg(test)]
+#[path = "toggle_state_check_tests.rs"]
+mod check_tests;
