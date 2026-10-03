@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { collect, offerable, overlayRole } from "./screen.mjs";
 import { ARGV } from "./policy.mjs";
@@ -53,21 +54,25 @@ export const stopCursor = () => cli("cursor-overlay", "disable");
  * which is what makes it worth drilling into. A sheet or menu owns the screen
  * while it is up, so it is read instead of the window behind it.
  */
-export const observe = (app, root) => {
-  const base = ["snapshot", "--app", app, "-i", "--compact", "--include-bounds"];
+export const observe = (app, root, windowId = null) => {
+  const scope = windowId ? ["--app", app, "--window-id", windowId] : ["--app", app];
+  const base = ["snapshot", ...scope, "-i", "--compact", "--include-bounds"];
+  const unreadable = (what, error) => Object.assign(new Error(`${what} could not be read: ${error?.code}`),
+    { code: error?.code ?? null });
   let snap = root ? cli(...base, "--root", root) : cli(...base, "--skeleton");
-  if (!snap.ok && root) throw new Error(`that region could not be read: ${snap.error?.code}`);
-  if (!snap.ok) snap = cli(...base, "--max-depth", "4");
-  if (!snap.ok) throw new Error(`the screen could not be read: ${snap.error?.code}`);
+  if (!snap.ok && root) throw unreadable("that region", snap.error);
+  if (!snap.ok && snap.error?.code !== "WINDOW_NOT_FOUND") snap = cli(...base, "--max-depth", "4");
+  if (!snap.ok) throw unreadable("the screen", snap.error);
   const surface = root ? null : overlayRole(snap.data.tree);
   if (surface) {
-    const scoped = cli("snapshot", "--app", app, "--surface", surface, "-i", "--compact", "--include-bounds");
+    const scoped = cli("snapshot", ...scope, "--surface", surface, "-i", "--compact", "--include-bounds");
     if (scoped.ok) snap = scoped;
   }
   const nodes = offerable(collect(snap.data.tree));
   return {
     nodes,
-    screen: { app, window: snap.data.window?.title ?? null, surface: surface ?? "window", root },
+    screen: { app, window: snap.data.window?.title ?? null, window_id: snap.data.window?.id ?? windowId,
+      surface: surface ?? "window", root },
   };
 };
 
@@ -99,27 +104,48 @@ export const clipboardGuard = () => {
  * Text goes in through whichever route the application accepts. A direct value
  * write is one verified call, and the applications that refuse it report that
  * refusal, so the paste path runs only when it is needed. A paste arrives whole
- * where one key press per character loses characters and capitals.
+ * where one key press per character loses characters and capitals. The paste
+ * is tried only when the write says nothing landed and a retry is safe, and the
+ * field is read back afterwards, because a paste reports the key press, not the
+ * text the field ended up holding.
  */
-export const enterText = (app, node, text, clipboard) => {
+export const enterText = (app, node, text, clipboard, windowId = null) => {
   const written = cli("set-value", node.ref_id, text);
   if (written.ok) return { route: "set-value", result: written };
+  if (written.error?.disposition?.retry !== "safe") return { route: "set-value", result: written };
   const focused = cli("focus", node.ref_id);
-  if (!focused.ok) return { route: "set-value", result: written };
+  if (!focused.ok) return { route: "paste", result: focused };
   clipboard.borrow();
-  cli("clipboard-set", text);
-  return { route: "paste", result: cli("press", "cmd+v", "--app", app) };
+  const copied = cli("clipboard-set", text);
+  if (!copied.ok) return { route: "paste", result: copied };
+  const pasted = cli("press", "cmd+v", "--app", app, ...(windowId ? ["--window-id", windowId] : []));
+  if (!pasted.ok) return { route: "paste", result: pasted };
+  const observed = cli("get", node.ref_id, "--property", "value");
+  if (!observed.ok || observed.data?.value !== text) {
+    return { route: "paste", result: { ok: false, error: {
+      code: "TEXT_VERIFICATION_FAILED",
+      message: "after the paste the field does not hold the requested text",
+      disposition: { delivery: "delivered_unverified", retry: "unsafe" },
+    } } };
+  }
+  return { route: "paste", result: { ...pasted, data: {
+    ...pasted.data, disposition: { delivery: "delivered_verified", retry: "unsafe" },
+  } } };
 };
 
-export const execute = (app, operation, node, text, clipboard) => {
-  if (operation === "WAIT") return { ok: true, delivery: "waited" };
+export const execute = async (app, operation, node, text, clipboard, windowId = null) => {
+  if (operation === "WAIT") {
+    await sleep(250);
+    return { ok: true, delivery: "waited" };
+  }
   if (operation === "DRILL") return { ok: true, delivery: "looked", root: node.ref_id };
   if (operation === "WIDEN") return { ok: true, delivery: "looked", root: null };
   if (operation === "TYPE_TEXT") {
-    const { route, result } = enterText(app, node, text, clipboard);
-    return { ok: result.ok, delivery: result.data?.disposition?.delivery ?? result.error?.code ?? null, route };
+    const { route, result } = enterText(app, node, text, clipboard, windowId);
+    return { ok: result.ok, delivery: result.data?.disposition?.delivery ?? result.error?.disposition?.delivery ?? null,
+      error: result.error ?? null, route };
   }
   const result = cli(...ARGV[operation](node.ref_id));
-  return { ok: result.ok, delivery: result.data?.disposition?.delivery ?? result.error?.code ?? null };
+  return { ok: result.ok, delivery: result.data?.disposition?.delivery ?? result.error?.disposition?.delivery ?? null,
+    error: result.error ?? null };
 };
-

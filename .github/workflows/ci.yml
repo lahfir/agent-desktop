@@ -196,6 +196,7 @@ jobs:
         run: |
           node scripts/jev/run.test.mjs
           node scripts/jev/act.test.mjs
+          node scripts/jev/run.integration.test.mjs
 
       - name: NPM package contents
         run: |
