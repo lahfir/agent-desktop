@@ -112,6 +112,23 @@ impl Deadline {
         }
     }
 
+    /// Moves the expiry back by time spent on work that is not charged to this
+    /// operation. An inherited deadline still bounds the result.
+    pub(crate) fn extended_by(self, pause: Duration) -> Self {
+        let extended = Self {
+            expires_at: self
+                .expires_at
+                .checked_add(pause)
+                .unwrap_or(self.expires_at),
+            ..self
+        };
+        INHERITED_DEADLINE.with(|inherited| {
+            inherited
+                .get()
+                .map_or(extended, |parent| extended.min_expiry(parent))
+        })
+    }
+
     pub fn is_expired(self) -> bool {
         self.remaining().is_zero()
     }
