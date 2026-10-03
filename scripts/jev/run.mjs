@@ -133,7 +133,7 @@ export const run = async function* (
           return;
         }
       }
-      const outcome = execute(app, state.operation, node, value, clipboard);
+      const outcome = await execute(app, state.operation, node, value, clipboard);
       state.steps += 1;
       const turn = {
         step: state.steps,
@@ -144,11 +144,17 @@ export const run = async function* (
         confidence,
         ok: outcome.ok,
         delivery: outcome.delivery,
+        error: outcome.error ?? null,
         route: outcome.route ?? null,
         truncated: space.truncated,
         changed: null,
       };
       state.history.push(turn);
+      if (!outcome.ok) {
+        yield { turn, screen };
+        yield { stop: "action_failed", screen, error: outcome.error, history: state.history };
+        return;
+      }
       if ("root" in outcome) state.root = outcome.root;
       turn.changed = "root" in outcome || fingerprint(observe(app, state.root).nodes) !== before;
       yield { turn, screen };
@@ -183,7 +189,10 @@ const main = async (argv) => {
     );
     process.exit(2);
   }
-  for await (const event of run(goal, app, { root, text, cursor, values })) console.log(JSON.stringify(event));
+  for await (const event of run(goal, app, { root, text, cursor, values })) {
+    console.log(JSON.stringify(event));
+    if (event.stop && event.stop !== "done") process.exitCode = 1;
+  }
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
