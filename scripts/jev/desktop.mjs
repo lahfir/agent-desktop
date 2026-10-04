@@ -105,10 +105,54 @@ export const clipboardGuard = () => {
  * field is read back afterwards, because a paste reports the key press, not the
  * text the field ended up holding.
  */
-export const enterText = (app, node, text, clipboard) => {
+const VERIFY_MS = Number(process.env.JEV_VERIFY_MS ?? 2000);
+const VERIFY_INTERVAL_MS = 100;
+
+/**
+ * An application applies a paste on its own schedule, so the field is read
+ * again until it holds the text or the deadline passes. The paste is never
+ * repeated. The last read is returned so a failure can say what was seen.
+ */
+const awaitFieldText = async (ref, text) => {
+  const deadline = Date.now() + VERIFY_MS;
+  for (;;) {
+    const observed = cli("get", ref, "--property", "value");
+    if (observed.ok && observed.data?.value === text) return { held: true, observed };
+    if (Date.now() >= deadline) return { held: false, observed };
+    await sleep(VERIFY_INTERVAL_MS);
+  }
+};
+
+const verificationFailure = (observed) => ({
+  code: "TEXT_VERIFICATION_FAILED",
+  message: "after the paste the field does not hold the requested text",
+  disposition: { delivery: "delivered_unverified", retry: "unsafe" },
+  ...(observed.ok ? {} : { details: { read_error: observed.error ?? null } }),
+});
+
+/**
+ * Text goes in through whichever route the application accepts. A direct value
+ * write is one verified call, and the applications that refuse it report that
+ * refusal, so the paste path runs only when it is needed. A paste arrives whole
+ * where one key press per character loses characters and capitals. The paste
+ * is tried only when the write says nothing landed and a retry is safe, and the
+ * field is read back afterwards until it holds the text or a deadline passes,
+ * because a paste reports the key press, not the text the field ended up
+ * holding. A binary that reports no disposition cannot say whether a retry is
+ * safe, so the run stops and names that instead of skipping the paste quietly.
+ */
+export const enterText = async (app, node, text, clipboard) => {
   const written = cli("set-value", node.ref_id, text);
   if (written.ok) return { route: "set-value", result: written };
-  if (written.error?.disposition?.retry !== "safe") return { route: "set-value", result: written };
+  const failure = written.error;
+  if (failure && failure.code !== "SPAWN_FAILED" && !failure.disposition) {
+    return { route: "set-value", result: { ok: false, error: {
+      code: "BINARY_TOO_OLD",
+      message: "this agent-desktop binary reports no error disposition; the paste fallback needs a binary whose failed set-value says whether a retry is safe",
+      details: { cause: failure },
+    } } };
+  }
+  if (failure?.disposition?.retry !== "safe") return { route: "set-value", result: written };
   const focused = cli("focus", node.ref_id);
   if (!focused.ok) return { route: "paste", result: focused };
   clipboard.borrow();
@@ -116,14 +160,8 @@ export const enterText = (app, node, text, clipboard) => {
   if (!copied.ok) return { route: "paste", result: copied };
   const pasted = cli("press", "cmd+v", "--app", app);
   if (!pasted.ok) return { route: "paste", result: pasted };
-  const observed = cli("get", node.ref_id, "--property", "value");
-  if (!observed.ok || observed.data?.value !== text) {
-    return { route: "paste", result: { ok: false, error: {
-      code: "TEXT_VERIFICATION_FAILED",
-      message: "after the paste the field does not hold the requested text",
-      disposition: { delivery: "delivered_unverified", retry: "unsafe" },
-    } } };
-  }
+  const { held, observed } = await awaitFieldText(node.ref_id, text);
+  if (!held) return { route: "paste", result: { ok: false, error: verificationFailure(observed) } };
   return { route: "paste", result: { ...pasted, data: {
     ...pasted.data, disposition: { delivery: "delivered_verified", retry: "unsafe" },
   } } };
@@ -137,7 +175,7 @@ export const execute = async (app, operation, node, text, clipboard) => {
   if (operation === "DRILL") return { ok: true, delivery: "looked", root: node.ref_id };
   if (operation === "WIDEN") return { ok: true, delivery: "looked", root: null };
   if (operation === "TYPE_TEXT") {
-    const { route, result } = enterText(app, node, text, clipboard);
+    const { route, result } = await enterText(app, node, text, clipboard);
     return { ok: result.ok, delivery: result.data?.disposition?.delivery ?? result.error?.disposition?.delivery ?? null,
       error: result.error ?? null, route };
   }

@@ -29,11 +29,20 @@ if (command === 'snapshot') result = {ok:true,data:{window:{title:'試験'},tree
   ]}}};
 if (command === 'click' && mode === 'click_error') result=error('ACTION_FAILED');
 if (command === 'set-value') result= mode==='unsafe_type'
-  ? error('TIMEOUT') : error('ACTION_NOT_SUPPORTED','safe','not_delivered');
+  ? error('TIMEOUT') : mode==='old_binary'
+  ? {ok:false,error:{code:'ACTION_NOT_SUPPORTED',message:'古い'}}
+  : error('ACTION_NOT_SUPPORTED','safe','not_delivered');
+if (command === 'focus' && mode==='focus_error') result=error('ACTION_FAILED','unsafe','not_delivered');
+if (command === 'press' && mode==='press_error') result=error('ACTION_FAILED');
 if (command === 'clipboard-get') result={ok:true,data:{text:'元の文字'}};
 if (command === 'clipboard-set' && mode==='clipboard_error' && args[0]==='試験')
   result=error('COPY_FAILED','safe','not_delivered');
-if (command === 'get') result={ok:true,data:{value:mode==='paste_wrong'?'違う文字':'試験'}};
+if (command === 'get') {
+  const reads = require('node:fs').readFileSync(process.env.JEV_TEST_LOG,'utf8').split('\\n')
+    .filter(l => l.includes('"command":"get"')).length;
+  result = mode==='get_error' ? error('ACTION_FAILED','unsafe','not_delivered')
+    : {ok:true,data:{value:mode==='paste_wrong'?'違う文字':mode==='paste_late'&&reads<3?'':'試験'}};
+}
 console.log(JSON.stringify(result));
 `;
 for (const command of ["snapshot", "click", "set-value", "focus", "clipboard-get", "clipboard-set", "press", "get"]) {
@@ -45,7 +54,7 @@ globalThis.fetch=async (_url,options)=>{
   calls++;
   const body=JSON.parse(options.body), mode=process.env.JEV_TEST_MODE;
   const operation=mode==='wait'?(calls<=3?'WAIT':'DONE'):mode==='done'?'DONE':
-    mode==='blocked'?'BLOCKED':mode==='click_error'?'CLICK':mode==='paste_correct'&&calls>1?'DONE':'TYPE_TEXT';
+    mode==='blocked'?'BLOCKED':mode==='click_error'?'CLICK':(mode==='paste_correct'||mode==='paste_late')&&calls>1?'DONE':'TYPE_TEXT';
   const answers={};
   for (const [id,question] of Object.entries(body.questions)) {
     const ids=Object.keys(question.criteria);
@@ -63,7 +72,7 @@ const run = (mode) => {
     cwd: directory,
     encoding: "utf8",
     timeout: 10000,
-    env: { ...process.env, TYPESAFE_API_KEY: "fixture", AGENT_DESKTOP_BIN: process.execPath,
+    env: { ...process.env, JEV_VERIFY_MS: "600", TYPESAFE_API_KEY: "fixture", AGENT_DESKTOP_BIN: process.execPath,
       JEV_TEST_MODE: mode, JEV_TEST_LOG: log },
   });
   assert.ifError(result.error);
@@ -104,6 +113,37 @@ try {
   assert.equal(wrongText.status, 1);
   assert.equal(wrongText.stop.error.code, "TEXT_VERIFICATION_FAILED");
   assert.equal(wrongText.commands.filter(command => command.command === "press").length, 1);
+  assert.ok(wrongText.commands.filter(command => command.command === "get").length > 1, "a mismatch is re-read until the deadline");
+
+  const late = run("paste_late");
+  assert.equal(late.status, 0);
+  assert.equal(late.events[0].turn.delivery, "delivered_verified");
+  assert.equal(late.commands.filter(command => command.command === "press").length, 1, "the paste is not repeated");
+  assert.equal(late.commands.filter(command => command.command === "get").length, 3);
+
+  const old = run("old_binary");
+  assert.equal(old.status, 1);
+  assert.equal(old.stop.error.code, "BINARY_TOO_OLD");
+  assert.equal(old.commands.some(command => command.command === "focus"), false);
+
+  const focusFailed = run("focus_error");
+  assert.equal(focusFailed.status, 1);
+  assert.equal(focusFailed.stop.stop, "action_failed");
+  assert.equal(focusFailed.stop.error.code, "ACTION_FAILED");
+  assert.equal(focusFailed.events.filter(event => event.turn).at(-1).turn.ok, false);
+  assert.equal(focusFailed.commands.some(command => command.command === "press"), false);
+
+  const pressFailed = run("press_error");
+  assert.equal(pressFailed.status, 1);
+  assert.equal(pressFailed.stop.stop, "action_failed");
+  assert.equal(pressFailed.stop.error.code, "ACTION_FAILED");
+  assert.equal(pressFailed.commands.some(command => command.command === "get"), false);
+
+  const readFailed = run("get_error");
+  assert.equal(readFailed.status, 1);
+  assert.equal(readFailed.stop.stop, "action_failed");
+  assert.equal(readFailed.stop.error.code, "TEXT_VERIFICATION_FAILED");
+  assert.equal(readFailed.stop.error.details.read_error.code, "ACTION_FAILED");
 
   assert.equal(run("blocked").status, 1);
   assert.equal(run("done").status, 0);
