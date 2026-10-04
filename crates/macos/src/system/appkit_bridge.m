@@ -94,13 +94,18 @@ uint8_t agent_desktop_ensure_cocoa_multithreaded(void) {
     }
 }
 
+static NSString *agent_desktop_non_blank(NSString *value) {
+    NSString *trimmed = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    return trimmed.length == 0 ? nil : value;
+}
+
 static NSString *agent_desktop_application_name(NSRunningApplication *app) {
-    NSString *name = app.localizedName;
-    if (name == nil || name.length == 0) {
-        name = app.executableURL.lastPathComponent;
+    NSString *name = agent_desktop_non_blank(app.localizedName);
+    if (name == nil) {
+        name = agent_desktop_non_blank(app.executableURL.lastPathComponent);
     }
-    if (name == nil || name.length == 0) {
-        name = app.bundleIdentifier;
+    if (name == nil) {
+        name = agent_desktop_non_blank(app.bundleIdentifier);
     }
     return name;
 }

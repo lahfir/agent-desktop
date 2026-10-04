@@ -1,6 +1,12 @@
 #import "../../crates/macos/src/system/appkit_bridge.m"
 #import <objc/runtime.h>
-#include <assert.h>
+
+static void require(bool condition, const char *message) {
+    if (!condition) {
+        fprintf(stderr, "%s\n", message);
+        exit(1);
+    }
+}
 
 @interface InventoryTestApplication : NSRunningApplication
 @property(nonatomic, copy) NSString *testName;
@@ -41,11 +47,11 @@ static InventoryTestApplication *application(NSString *name, NSString *executabl
 
 static NSDictionary *snapshot(void) {
     AgentDesktopBytesResult result = agent_desktop_copy_workspace_snapshot_json();
-    assert(result.status == 0);
+    require(result.status == 0, "snapshot status");
     NSData *data = [NSData dataWithBytes:result.bytes length:result.length];
     agent_desktop_free_bridge_bytes(result.bytes);
     NSDictionary *value = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-    assert(value != nil);
+    require(value != nil, "snapshot json");
     return value;
 }
 
@@ -59,25 +65,29 @@ int main(void) {
             application(@"Approval Box", @"/tmp/ApprovalBox", @"dev.example.approvalbox", 10),
             application(@"", @"/System/FollowUpUI", @"com.apple.FollowUpUI", 11),
             application(nil, @"/tmp/Unnamed", @"dev.example.unnamed", 12),
-            application(nil, nil, @"dev.example.bundle", 13)
+            application(nil, nil, @"dev.example.bundle", 13),
+            application(@" \t\n", @"/tmp/Blank", @"dev.example.blank", 16)
         ];
         NSArray *records = snapshot()[@"applications"];
-        assert(records.count == 4);
-        assert([records[0][@"name"] isEqualToString:@"Approval Box"]);
-        assert([records[1][@"name"] isEqualToString:@"FollowUpUI"]);
-        assert([records[2][@"name"] isEqualToString:@"Unnamed"]);
-        assert([records[3][@"name"] isEqualToString:@"dev.example.bundle"]);
-        assert([records[1][@"pid"] intValue] == 11);
-        assert([records[1][@"bundle_id"] isEqualToString:@"com.apple.FollowUpUI"]);
+        require(records.count == 5, "record count");
+        require([records[0][@"name"] isEqualToString:@"Approval Box"], "name 0");
+        require([records[1][@"name"] isEqualToString:@"FollowUpUI"], "name 1");
+        require([records[2][@"name"] isEqualToString:@"Unnamed"], "name 2");
+        require([records[3][@"name"] isEqualToString:@"dev.example.bundle"], "name 3");
+        require([records[4][@"name"] isEqualToString:@"Blank"], "whitespace-only name falls back");
+        require([records[1][@"pid"] intValue] == 11, "fallback pid");
+        require([records[1][@"bundle_id"] isEqualToString:@"com.apple.FollowUpUI"], "fallback bundle id");
+        require([records[1][@"launch_time"] doubleValue] == 100.0, "fallback launch time");
+        require([records[1][@"activation_policy"] isEqualToString:@"accessory"], "fallback activation policy");
         testApplications = @[application(nil, nil, nil, 14)];
         AgentDesktopBytesResult missing = agent_desktop_copy_workspace_snapshot_json();
-        assert(missing.status == 2);
-        assert(missing.bytes == NULL);
+        require(missing.status == 2, "nameless status");
+        require(missing.bytes == NULL, "nameless bytes");
         NSString *oversized = [@"x" stringByPaddingToLength:16385 withString:@"x" startingAtIndex:0];
         testApplications = @[application(oversized, @"/tmp/Valid", @"dev.example.valid", 15)];
         AgentDesktopBytesResult invalid = agent_desktop_copy_workspace_snapshot_json();
-        assert(invalid.status == 2);
-        assert(invalid.bytes == NULL);
+        require(invalid.status == 2, "oversized status");
+        require(invalid.bytes == NULL, "oversized bytes");
         puts("AppKit inventory name regression tests passed");
     }
     return 0;
