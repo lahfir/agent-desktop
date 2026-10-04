@@ -94,6 +94,17 @@ uint8_t agent_desktop_ensure_cocoa_multithreaded(void) {
     }
 }
 
+static NSString *agent_desktop_application_name(NSRunningApplication *app) {
+    NSString *name = app.localizedName;
+    if (name == nil || name.length == 0) {
+        name = app.executableURL.lastPathComponent;
+    }
+    if (name == nil || name.length == 0) {
+        name = app.bundleIdentifier;
+    }
+    return name;
+}
+
 AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(void) {
     AgentDesktopBytesResult result = { .status = 5, .bytes = NULL, .length = 0 };
     @try {
@@ -154,7 +165,7 @@ AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(void) {
                     continue;
                 }
                 int32_t pid = app.processIdentifier;
-                NSString *name = app.localizedName;
+                NSString *name = agent_desktop_application_name(app);
                 if (pid <= 0 || name == nil || name.length == 0 ||
                     [name lengthOfBytesUsingEncoding:NSUTF8StringEncoding] > 16384) {
                     result.status = 2;
