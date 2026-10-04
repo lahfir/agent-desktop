@@ -95,8 +95,8 @@ fn workspace_snapshot_error(result: &BytesResult) -> AdapterError {
         "operation": "workspace_snapshot",
         "status": result.status,
         "failure_field": field,
-        "failure_index": result.failure_index,
-        "failure_pid": result.failure_pid,
+        "failure_index": (result.failure_index >= 0).then_some(result.failure_index),
+        "failure_pid": (result.failure_pid > 0).then_some(result.failure_pid),
         "retryable": true,
     }))
 }
@@ -235,9 +235,31 @@ mod tests {
         };
 
         let details = workspace_snapshot_error(&result).details.unwrap();
+        assert_eq!(details["kind"], "appkit_bridge");
+        assert_eq!(details["operation"], "workspace_snapshot");
+        assert_eq!(details["status"], 2);
         assert_eq!(details["failure_field"], "application_name");
         assert_eq!(details["failure_index"], 7);
         assert_eq!(details["failure_pid"], 123);
+        assert_eq!(details["retryable"], true);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn workspace_snapshot_failure_without_context_reports_null_not_sentinels() {
+        let result = BytesResult {
+            status: 1,
+            failure_field: std::ptr::null(),
+            failure_index: -1,
+            failure_pid: 0,
+            bytes: std::ptr::null_mut(),
+            length: 0,
+        };
+
+        let details = workspace_snapshot_error(&result).details.unwrap();
+        assert!(details["failure_field"].is_null());
+        assert!(details["failure_index"].is_null());
+        assert!(details["failure_pid"].is_null());
     }
 
     #[cfg(target_os = "macos")]

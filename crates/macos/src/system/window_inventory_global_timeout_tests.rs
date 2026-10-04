@@ -13,6 +13,9 @@ fn persistent_appkit_bridge_failure_preserves_operation_and_status() {
                 "kind": "appkit_bridge",
                 "operation": "workspace_snapshot",
                 "status": 2,
+                "failure_field": "application_name",
+                "failure_index": 7,
+                "failure_pid": 123,
                 "retryable": true,
             })))
         },
@@ -23,4 +26,7 @@ fn persistent_appkit_bridge_failure_preserves_operation_and_status() {
     assert_eq!(details["last_kind"], "appkit_bridge");
     assert_eq!(details["last_operation"], "workspace_snapshot");
     assert_eq!(details["last_status"], 2);
+    assert_eq!(details["last_failure_field"], "application_name");
+    assert_eq!(details["last_failure_index"], 7);
+    assert_eq!(details["last_failure_pid"], 123);
 }

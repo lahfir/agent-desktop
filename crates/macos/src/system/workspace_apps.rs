@@ -338,5 +338,9 @@ fn inventory_error(message: &str) -> AdapterError {
 }
 
 #[cfg(test)]
+#[path = "workspace_apps_pid_tests.rs"]
+mod pid_tests;
+
+#[cfg(test)]
 #[path = "workspace_apps_tests.rs"]
 mod tests;
