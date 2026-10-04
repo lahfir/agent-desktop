@@ -10,6 +10,7 @@ struct Scripted {
     reads: VecDeque<Option<bool>>,
     settles: VecDeque<Option<bool>>,
     settable: bool,
+    write_accepted: bool,
     writes: usize,
     clicks: usize,
 }
@@ -20,6 +21,7 @@ impl Scripted {
             reads: reads.iter().copied().collect(),
             settles: settles.iter().copied().collect(),
             settable,
+            write_accepted: true,
             writes: 0,
             clicks: 0,
         }
@@ -37,7 +39,7 @@ impl CheckTarget for Scripted {
 
     fn write_value(&mut self, _want_checked: bool) -> Result<bool, AdapterError> {
         self.writes += 1;
-        Ok(true)
+        Ok(self.write_accepted)
     }
 
     fn settle(&mut self, _want_checked: bool) -> Result<Option<bool>, AdapterError> {
@@ -142,4 +144,24 @@ fn unchecking_a_radio_that_ignores_the_write_does_not_press_it() {
     assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
     assert_eq!(target.clicks, 0);
+}
+
+#[test]
+fn a_refused_write_records_the_attempted_step_before_the_click() {
+    let mut target = Scripted::new(&[Some(false)], &[Some(true)], true);
+    target.write_accepted = false;
+    let steps = run_check(&mut target, true, true).unwrap();
+    assert_eq!(
+        labels(&steps),
+        [("AXValue".into(), None), ("AXPress".into(), Some(true))]
+    );
+    assert!(matches!(steps[0].outcome, ActionStepOutcome::Attempted));
+}
+
+#[test]
+fn unchecking_a_radio_that_ignores_the_write_suggests_a_sibling() {
+    let mut target = Scripted::new(&[Some(true), Some(true)], &[Some(true)], true);
+    let error = run_check(&mut target, false, false).unwrap_err();
+    let suggestion = error.suggestion.as_deref().unwrap_or_default();
+    assert!(suggestion.contains("sibling radio"), "{suggestion}");
 }

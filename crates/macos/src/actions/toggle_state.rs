@@ -72,7 +72,7 @@ pub(crate) fn check_uncheck(
         || agent_desktop_core::Role::from_token(role.as_deref().unwrap_or_default())
             != agent_desktop_core::Role::RadioButton;
     run_check(
-        &mut LiveCheckTarget {
+        &mut LiveToggleTarget {
             el,
             policy,
             deadline,
@@ -103,13 +103,13 @@ trait CheckTarget {
     fn click(&mut self) -> Result<Vec<ActionStep>, AdapterError>;
 }
 
-struct LiveCheckTarget<'a> {
+struct LiveToggleTarget<'a> {
     el: &'a AXElement,
     policy: InteractionPolicy,
     deadline: Deadline,
 }
 
-impl CheckTarget for LiveCheckTarget<'_> {
+impl CheckTarget for LiveToggleTarget<'_> {
     fn checked(&mut self) -> Result<Option<bool>, AdapterError> {
         checked_state(self.el, self.deadline)
     }
@@ -143,16 +143,22 @@ fn run_check(
     }
     let mut steps = Vec::new();
     let mut wrote = false;
-    if target.value_settable()? && target.write_value(want_checked)? {
-        wrote = true;
+    if target.value_settable()? {
+        if target.write_value(want_checked)? {
+            wrote = true;
+        } else {
+            steps.push(ignored_write_step());
+        }
+    }
+    if wrote {
         if target.settle(want_checked).map_err(after_delivery)? == Some(want_checked) {
             return Ok(vec![value_write_step()]);
         }
         match target.checked().map_err(after_delivery)? {
             Some(state) if state == want_checked => return Ok(vec![value_write_step()]),
-            Some(_) if press_after_ignored_write => steps
-                .push(ActionStep::attempted("AXValue").with_mechanism(StepMechanism::SemanticApi)),
-            _ => return Err(after_delivery(state_not_reached())),
+            Some(_) if press_after_ignored_write => steps.push(ignored_write_step()),
+            Some(_) => return Err(after_delivery(radio_uncheck_unsupported())),
+            None => return Err(after_delivery(state_not_reached())),
         }
     }
     let clicked = target
@@ -164,6 +170,23 @@ fn run_check(
     }
     mark_last_verified(&mut steps, true);
     Ok(steps)
+}
+
+fn ignored_write_step() -> ActionStep {
+    ActionStep::attempted("AXValue").with_mechanism(StepMechanism::SemanticApi)
+}
+
+fn radio_uncheck_unsupported() -> AdapterError {
+    AdapterError::new(
+        ErrorCode::ActionFailed,
+        "the radio button ignored the request to uncheck it",
+    )
+    .with_details(serde_json::json!({
+        "verification": "requested_checked_state_not_observed"
+    }))
+    .with_suggestion(
+        "A radio button cannot be unchecked directly. Select a sibling radio button in the same group instead.",
+    )
 }
 
 fn value_write_step() -> ActionStep {
