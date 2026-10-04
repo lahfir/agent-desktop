@@ -14,6 +14,12 @@ fn menu_shortcut_requires_one_character() {
 }
 
 #[test]
+fn menu_shortcut_matches_punctuation_by_name_and_symbol() {
+    assert_eq!(single_uppercase_character("comma").as_deref(), Some(","));
+    assert_eq!(single_uppercase_character(",").as_deref(), Some(","));
+}
+
+#[test]
 fn menu_modifier_encoding_distinguishes_command_from_no_command() {
     assert_eq!(
         combo_to_ax_modifiers(&combo(vec![Modifier::Meta, Modifier::Alt])),

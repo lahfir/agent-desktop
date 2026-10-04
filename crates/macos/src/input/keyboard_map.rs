@@ -1,4 +1,4 @@
-use agent_desktop_core::{AdapterError, ErrorCode};
+use agent_desktop_core::{AdapterError, DeliverySemantics, ErrorCode};
 
 const PUNCTUATION: [(char, &str); 11] = [
     (',', "comma"),
@@ -121,16 +121,19 @@ fn layout_code(
             "This symbol needs a modifier or is missing in the active layout; nothing was sent",
         )),
         LayoutLookup::LayoutUnavailable => Err(AdapterError::new(
-            ErrorCode::InvalidArgs,
+            ErrorCode::ActionFailed,
             format!("Could not read the active keyboard layout to resolve '{symbol}'"),
         )
-        .with_suggestion("Nothing was sent; select a keyboard layout input source and retry")),
+        .with_disposition(DeliverySemantics::not_delivered())
+        .with_suggestion(
+            "Nothing was sent; the layout is readable only from the process main thread. Retry from the main thread or with a named key",
+        )),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use agent_desktop_core::ErrorCode;
+    use agent_desktop_core::{DeliverySemantics, ErrorCode};
 
     use super::key_name_to_code;
 
@@ -179,14 +182,18 @@ mod tests {
             super::layout_code('[', LayoutLookup::Found(30)).unwrap(),
             30
         );
-        for lookup in [
-            LayoutLookup::NoKeyForSymbol,
-            LayoutLookup::LayoutUnavailable,
-        ] {
-            let err = super::layout_code('`', lookup).unwrap_err();
-            assert_eq!(err.code, ErrorCode::InvalidArgs);
-            assert!(err.message.contains('`'));
-        }
+        let err = super::layout_code('`', LayoutLookup::NoKeyForSymbol).unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidArgs);
+        assert!(err.message.contains('`'));
+    }
+
+    #[test]
+    fn an_unreadable_layout_is_an_environment_fault_that_is_safe_to_retry() {
+        use crate::input::keyboard_layout::LayoutLookup;
+        let err = super::layout_code('`', LayoutLookup::LayoutUnavailable).unwrap_err();
+        assert_eq!(err.code, ErrorCode::ActionFailed);
+        assert_eq!(err.disposition, DeliverySemantics::not_delivered());
+        assert!(err.message.contains('`'));
     }
 
     #[test]

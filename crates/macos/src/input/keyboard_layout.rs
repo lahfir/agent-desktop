@@ -13,6 +13,13 @@ pub(crate) fn code_for_symbol(symbol: char) -> LayoutLookup {
     }
 }
 
+fn accepted_character(status: i32, dead_key_state: u32, units: &[u16]) -> Option<char> {
+    match (status, dead_key_state, units) {
+        (0, 0, [unit]) => char::from_u32(u32::from(*unit)),
+        _ => None,
+    }
+}
+
 pub(crate) fn find_code(symbol: char, translate: impl Fn(u16) -> Option<char>) -> Option<u16> {
     (0..128).find(|&code| translate(code) == Some(symbol))
 }
@@ -21,13 +28,13 @@ pub(crate) fn find_code(symbol: char, translate: impl Fn(u16) -> Option<char>) -
 mod platform {
     use core_foundation_sys::{
         base::CFRelease,
-        data::{CFDataGetBytePtr, CFDataRef},
+        data::{CFDataGetBytePtr, CFDataGetLength, CFDataRef},
         string::CFStringRef,
     };
     use std::ffi::c_void;
 
     const KUC_KEY_ACTION_DOWN: u16 = 0;
-    const KUC_KEY_TRANSLATE_NO_DEAD_KEYS: u32 = 1;
+    const KUC_KEY_TRANSLATE_DEAD_KEYS: u32 = 0;
 
     #[link(name = "Carbon", kind = "framework")]
     unsafe extern "C" {
@@ -35,6 +42,7 @@ mod platform {
         fn TISGetInputSourceProperty(source: *mut c_void, key: CFStringRef) -> *const c_void;
         static kTISPropertyUnicodeKeyLayoutData: CFStringRef;
         fn LMGetKbdType() -> u8;
+        fn pthread_main_np() -> i32;
         fn UCKeyTranslate(
             layout: *const c_void,
             virtual_key_code: u16,
@@ -53,14 +61,21 @@ mod platform {
         run: impl FnOnce(&dyn Fn(u16) -> Option<char>) -> T,
     ) -> Option<T> {
         unsafe {
+            if pthread_main_np() != 1 {
+                return None;
+            }
             let source = TISCopyCurrentKeyboardLayoutInputSource();
             if source.is_null() {
                 return None;
             }
             let data =
                 TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) as CFDataRef;
-            let result = (!data.is_null()).then(|| {
-                let layout = CFDataGetBytePtr(data).cast::<c_void>();
+            let layout = if data.is_null() || CFDataGetLength(data) <= 0 {
+                std::ptr::null()
+            } else {
+                CFDataGetBytePtr(data).cast::<c_void>()
+            };
+            let result = (!layout.is_null()).then(|| {
                 let keyboard_type = u32::from(LMGetKbdType());
                 run(&|code| translate(layout, keyboard_type, code))
             });
@@ -80,17 +95,14 @@ mod platform {
                 KUC_KEY_ACTION_DOWN,
                 0,
                 keyboard_type,
-                KUC_KEY_TRANSLATE_NO_DEAD_KEYS,
+                KUC_KEY_TRANSLATE_DEAD_KEYS,
                 &mut dead_key_state,
                 buffer.len(),
                 &mut length,
                 buffer.as_mut_ptr(),
             )
         };
-        if status != 0 || length != 1 {
-            return None;
-        }
-        char::from_u32(u32::from(buffer[0]))
+        super::accepted_character(status, dead_key_state, buffer.get(..length)?)
     }
 }
 
@@ -105,7 +117,7 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
-    use super::find_code;
+    use super::{accepted_character, find_code};
 
     fn jis(code: u16) -> Option<char> {
         match code {
@@ -127,5 +139,24 @@ mod tests {
     #[test]
     fn returns_none_when_no_key_types_the_symbol() {
         assert_eq!(find_code('`', jis), None);
+    }
+
+    #[test]
+    fn a_dead_key_is_not_a_typable_symbol() {
+        assert_eq!(accepted_character(0, 0, &[0x2c]), Some(','));
+        assert_eq!(accepted_character(0, 7, &[0x60]), None);
+        assert_eq!(accepted_character(0, 7, &[]), None);
+        assert_eq!(accepted_character(-1, 0, &[0x2c]), None);
+        assert_eq!(accepted_character(0, 0, &[0x2c, 0x2c]), None);
+        assert_eq!(accepted_character(0, 0, &[]), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_layout_is_never_read_off_the_main_thread() {
+        let lookup = std::thread::spawn(|| super::code_for_symbol(','))
+            .join()
+            .unwrap();
+        assert_eq!(lookup, super::LayoutLookup::LayoutUnavailable);
     }
 }
