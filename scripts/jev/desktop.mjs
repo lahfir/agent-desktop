@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { collect, offerable, overlayRole } from "./screen.mjs";
+import { collect, offerable, outsideWindow, overlayRole } from "./screen.mjs";
 import { ARGV } from "./policy.mjs";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -61,11 +61,17 @@ export const observe = (app, root, windowId = null) => {
     { code: error?.code ?? null });
   let snap = root ? cli(...base, "--root", root) : cli(...base, "--skeleton");
   if (!snap.ok && root) throw unreadable("that region", snap.error);
+  if (snap.ok && root && windowId && outsideWindow(snap.data, windowId)) {
+    throw Object.assign(new Error(`that region is not in window ${windowId}`), { code: "ROOT_OUTSIDE_WINDOW" });
+  }
   if (!snap.ok && snap.error?.code !== "WINDOW_NOT_FOUND") snap = cli(...base, "--max-depth", "4");
   if (!snap.ok) throw unreadable("the screen", snap.error);
   const surface = root ? null : overlayRole(snap.data.tree);
   if (surface) {
     const scoped = cli("snapshot", ...scope, "--surface", surface, "-i", "--compact", "--include-bounds");
+    if (scoped.ok && windowId && outsideWindow(scoped.data, windowId)) {
+      throw Object.assign(new Error(`the ${surface} is not in window ${windowId}`), { code: "SURFACE_OUTSIDE_WINDOW" });
+    }
     if (scoped.ok) snap = scoped;
   }
   const nodes = offerable(collect(snap.data.tree));

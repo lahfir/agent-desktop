@@ -24,11 +24,26 @@ const error = (code, retry='unsafe', delivery='delivery_uncertain') =>
 let result = {ok:true,data:{disposition:{delivery:'delivered_verified',retry:'unsafe'}}};
 const clicked = () => require('node:fs').readFileSync(process.env.JEV_TEST_LOG,'utf8').includes('"command":"click"');
 if (command === 'snapshot' && mode === 'window_closed' && clicked()) result = error('WINDOW_NOT_FOUND','safe','not_delivered');
-else if (command === 'snapshot') result = {ok:true,data:{window:{title:'試験'},tree:{
-  role:'window',children:[
-    {ref_id:'@s1:e1',role:'button',name:'試験ボタン',available_actions:['Click']},
-    {ref_id:'@s1:e2',role:'textfield',name:'試験欄',value:'',available_actions:['SetValue']}
-  ]}}};
+else if (command === 'snapshot' && mode === 'closed_top' &&
+  require('node:fs').readFileSync(process.env.JEV_TEST_LOG,'utf8').split('\\n').filter(l=>l.includes('"command":"snapshot"')).length >= 3)
+  result = error('WINDOW_NOT_FOUND','safe','not_delivered');
+else if (command === 'snapshot') {
+  const at = args.indexOf('--window-id');
+  const pinned = at === -1 ? 'w-default' : args[at + 1];
+  const surfaced = args.includes('--surface');
+  const rooted = args.includes('--root');
+  let id = pinned;
+  if (surfaced && mode === 'surface_other') id = 'w-other';
+  if (rooted && mode === 'root_other') id = 'w-other';
+  const window = surfaced && mode === 'surface_noid' ? {title:'試験'} : {title:'試験',id};
+  const sheet = mode.startsWith('surface') && !surfaced ? [{role:'sheet',children:[]}] : [];
+  result = {ok:true,data:{window,tree:{
+    role:'window',children:[
+      {ref_id:'@s1:e1',role:'button',name:'試験ボタン',available_actions:['Click']},
+      {ref_id:'@s1:e2',role:'textfield',name:'試験欄',value:'',available_actions:['SetValue']},
+      ...sheet
+    ]}}};
+}
 if (command === 'click' && mode === 'click_error') result=error('ACTION_FAILED');
 if (command === 'set-value') result= mode==='unsafe_type'
   ? error('TIMEOUT') : error('ACTION_NOT_SUPPORTED','safe','not_delivered');
@@ -46,7 +61,7 @@ let calls=0;
 globalThis.fetch=async (_url,options)=>{
   calls++;
   const body=JSON.parse(options.body), mode=process.env.JEV_TEST_MODE;
-  const operation=mode==='wait'?(calls<=3?'WAIT':'DONE'):mode==='done'?'DONE':
+  const operation=mode==='wait'?(calls<=3?'WAIT':'DONE'):mode==='closed_top'?'WAIT':(mode==='done'||mode.startsWith('surface')||mode.endsWith('_other'))?'DONE':
     mode==='blocked'?'BLOCKED':mode==='click_error'||mode==='window_closed'?'CLICK':mode==='paste_correct'&&calls>1?'DONE':'TYPE_TEXT';
   const answers={};
   for (const [id,question] of Object.entries(body.questions)) {
@@ -57,6 +72,34 @@ globalThis.fetch=async (_url,options)=>{
   return {ok:true,status:200,json:async()=>({answers})};
 };
 `);
+
+const actEntry = join(dirname(fileURLToPath(import.meta.url)), "act.mjs");
+const actPreload = join(directory, "act-fetch.mjs");
+writeFileSync(actPreload, `
+globalThis.fetch=async (_url,options)=>{
+  const body=JSON.parse(options.body);
+  const ref=Object.keys(body.questions.target.criteria)[0];
+  const noul={type:'noul',noul:0.1};
+  return {ok:true,status:200,json:async()=>({answers:{
+    target:{type:'choice',choice:ref,confidence:0.95,probabilities:{[ref]:0.95}},
+    command:{type:'choice',choice:'click',confidence:0.95},
+    present:{type:'noul',noul:0.95},destructive:noul,needs_text:noul}})};
+};
+`);
+
+const act = (mode, extra = []) => {
+  writeFileSync(log, "");
+  const result = spawnSync(process.execPath, ["--import", pathToFileURL(actPreload).href, actEntry,
+    "--app", "試験アプリ", "--bin", process.execPath, ...extra, "試験ボタンを押す"], {
+    cwd: directory,
+    encoding: "utf8",
+    timeout: 10000,
+    env: { ...process.env, TYPESAFE_API_KEY: "fixture", JEV_TEST_MODE: mode, JEV_TEST_LOG: log },
+  });
+  assert.ifError(result.error);
+  const commands = readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(JSON.parse);
+  return { ...result, commands, out: result.stdout.trim() ? JSON.parse(result.stdout) : null };
+};
 
 const run = (mode, extra = []) => {
   writeFileSync(log, "");
@@ -113,6 +156,7 @@ try {
   assert.ok(snapshots.length > 0);
   for (const { args } of snapshots) assert.deepEqual(args.slice(args.indexOf("--window-id"), args.indexOf("--window-id") + 2), ["--window-id", "w-42"]);
   assert.equal(windowed.stop.screen.window_id, "w-42");
+  assert.ok(snapshots.every(({ args }) => args.includes("--window-id")));
   assert.equal(run("done").commands.some(command => command.args.includes("--window-id")), false);
 
   const windowPaste = run("paste_correct", ["--window-id", "w-42"]);
@@ -127,6 +171,59 @@ try {
   assert.equal(closed.events.find(event => event.turn).turn.ok, true);
   const afterClick = closed.commands.slice(closed.commands.findIndex(command => command.command === "click") + 1);
   assert.equal(afterClick.filter(command => command.command === "snapshot").length, 1);
+
+  const surfaced = run("surface_ok", ["--window-id", "w-42"]);
+  assert.equal(surfaced.status, 0);
+  const surfaceReads = surfaced.commands.filter(command => command.args.includes("--surface"));
+  assert.ok(surfaceReads.length > 0, "the surface path runs");
+  for (const { args } of surfaceReads) assert.deepEqual(args.slice(args.indexOf("--window-id"), args.indexOf("--window-id") + 2), ["--window-id", "w-42"]);
+  assert.equal(surfaced.stop.screen.surface, "sheet");
+
+  for (const mode of ["surface_other", "surface_noid"]) {
+    const outside = run(mode, ["--window-id", "w-42"]);
+    assert.equal(outside.status, 1, mode);
+    assert.equal(outside.stop.stop, "surface_outside_window", mode);
+    assert.equal(outside.commands.some(command => ["click", "set-value", "press"].includes(command.command)), false, mode);
+  }
+
+  const rootOutside = run("root_other", ["--window-id", "w-42", "--root", "@s1:e1"]);
+  assert.equal(rootOutside.status, 1);
+  assert.equal(rootOutside.stop.stop, "root_outside_window");
+  const rootInside = run("done", ["--window-id", "w-42", "--root", "@s1:e1"]);
+  assert.equal(rootInside.status, 0);
+
+  const closedTop = run("closed_top", ["--window-id", "w-42"]);
+  assert.equal(closedTop.status, 1);
+  assert.equal(closedTop.stop.stop, "window_closed");
+  assert.equal(closedTop.stop.error, undefined);
+  assert.equal(closedTop.stop.screen.window_id, "w-42");
+
+  for (const tail of [["--window-id"], ["--window-id", "--cursor"]]) {
+    const extra = tail;
+    const usage = spawnSync(process.execPath, [entry, "--app", "試験アプリ", "試験", ...extra],
+      { encoding: "utf8", env: { ...process.env, TYPESAFE_API_KEY: "fixture" } });
+    assert.equal(usage.status, 2, extra.join(" "));
+    assert.match(usage.stderr, /needs a value/);
+  }
+
+  const actWindowed = act("surface_ok", ["--window-id", "w-42"]);
+  assert.equal(actWindowed.status, 0);
+  assert.equal(actWindowed.out.window_id, "w-42");
+  assert.equal(actWindowed.out.surface, "sheet");
+  const actReads = actWindowed.commands.filter(command => command.command === "snapshot");
+  assert.equal(actReads.length, 2);
+  for (const { args } of actReads) assert.deepEqual(args.slice(args.indexOf("--window-id"), args.indexOf("--window-id") + 2), ["--window-id", "w-42"]);
+
+  for (const mode of ["surface_other", "surface_noid"]) {
+    const outside = act(mode, ["--window-id", "w-42"]);
+    assert.equal(outside.status, 1, mode);
+    assert.equal(outside.out.error, "surface_outside_window", mode);
+  }
+  const actRoot = act("root_other", ["--window-id", "w-42", "--root", "@s1:e1"]);
+  assert.equal(actRoot.status, 1);
+  assert.equal(actRoot.out.error, "root_outside_window");
+  const actUsage = act("done", ["--window-id", "--execute"]);
+  assert.equal(actUsage.status, 2);
 
   assert.equal(run("blocked").status, 1);
   assert.equal(run("done").status, 0);
