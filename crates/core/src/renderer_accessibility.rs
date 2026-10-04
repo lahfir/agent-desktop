@@ -47,10 +47,19 @@ fn activate(
     observing: crate::Deadline,
 ) -> Result<crate::Deadline, AppError> {
     let started = std::time::Instant::now();
+    switch_on(adapter, root).map_err(|error| match error {
+        AppError::Adapter(ref adapter_error) if adapter_error.code == crate::ErrorCode::Timeout => {
+            observing.timeout_error().into()
+        }
+        other => other,
+    })?;
+    Ok(observing.extended_by(started.elapsed()))
+}
+
+fn switch_on(adapter: &dyn PlatformAdapter, root: ObservationRoot<'_>) -> Result<(), AppError> {
     let acquired = adapter.acquire_interaction_lease(crate::Deadline::standard()?)?;
     adapter.activate_renderer_accessibility(root_process(root)?, &acquired)?;
-    drop(acquired);
-    Ok(observing.extended_by(started.elapsed()))
+    Ok(())
 }
 
 fn root_process(root: ObservationRoot<'_>) -> Result<crate::ProcessIdentity, AppError> {

@@ -330,3 +330,41 @@ fn a_spent_observation_still_switches_so_the_next_one_is_ready() {
     );
     assert_eq!(adapter.walks.lock().unwrap().len(), 1);
 }
+
+#[test]
+fn a_refused_switch_reports_the_operation_budget_and_is_not_retried() {
+    let adapter = switch(10_000, 0);
+    let window = renderer_window();
+    let request = snapshot_request(crate::Deadline::after(3_000).unwrap());
+
+    let error = observe_tree(&adapter, ObservationRoot::Window(&window), &request)
+        .expect_err("a switch that cannot run fails the observation");
+
+    let AppError::Adapter(error) = error else {
+        panic!("expected an adapter error");
+    };
+    assert_eq!(error.code, crate::ErrorCode::Timeout);
+    let details = error.details.expect("a timeout describes its deadline");
+    assert_eq!(details["timeout_ms"], 3_000);
+    assert!(!adapter.switched.load(Ordering::SeqCst));
+    assert_eq!(adapter.walks.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn the_credit_for_switch_time_stays_inside_an_inherited_deadline() {
+    let adapter = switch(0, 300);
+    let window = renderer_window();
+    let request = snapshot_request(crate::Deadline::after(60_000).unwrap());
+    let parent = crate::Deadline::detached_after(1_000).unwrap();
+    let bound = std::time::Instant::now() + parent.remaining();
+    let _scope = crate::deadline::enter_scope(Some(parent));
+
+    observe_tree(&adapter, ObservationRoot::Window(&window), &request)
+        .expect("the walk after the switch still fits the inherited deadline");
+
+    let walks = adapter.walks.lock().unwrap();
+    assert!(
+        walks[1].expires_no_earlier_than <= bound,
+        "the resumed walk outlives the deadline the command inherited"
+    );
+}
