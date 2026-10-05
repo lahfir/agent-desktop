@@ -174,10 +174,21 @@ export const execute = async (target, operation, node, text, clipboard) => {
   if (operation === "WIDEN") return { ok: true, delivery: "looked", root: null };
   if (operation === "TYPE_TEXT") {
     const { route, result } = await enterText(target, node, text, clipboard);
-    return { ok: result.ok, delivery: result.data?.disposition?.delivery ?? result.error?.disposition?.delivery ?? null,
-      error: result.error ?? null, route };
+    return { ...deliveryEvidence(result), route };
   }
   const result = cli(...ARGV[operation](node.ref_id));
-  return { ok: result.ok, delivery: result.data?.disposition?.delivery ?? result.error?.disposition?.delivery ?? null,
-    error: result.error ?? null };
+  return deliveryEvidence(result);
+};
+
+export const deliveryEvidence = (result) => {
+  const details = result.data?.details ?? result.error?.details ?? null;
+  const after = result.error?.details?.after_action;
+  return {
+    ok: result.ok,
+    delivery: result.data?.disposition?.delivery ?? result.error?.disposition?.delivery ?? null,
+    error: result.error ?? null,
+    steps: result.data?.steps ?? after?.steps ?? [],
+    post_state: result.data?.post_state ?? details?.post_state ?? after?.post_state ?? null,
+    details,
+  };
 };

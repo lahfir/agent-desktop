@@ -3,14 +3,14 @@ use serde_json::{Value, json};
 
 #[derive(Debug, Clone)]
 pub enum CursorOverlayAction {
-    Enable(CursorOverlayConfig),
+    Enable(Box<CursorOverlayConfig>),
     Disable,
 }
 
 pub fn execute(session_id: &str, action: CursorOverlayAction) -> Result<Value, AppError> {
     let (cursor_overlay, next) = match action {
         CursorOverlayAction::Enable(config) => {
-            (config, Some(super::session::activation_export(session_id)))
+            (*config, Some(super::session::activation_export(session_id)))
         }
         CursorOverlayAction::Disable => (CursorOverlayConfig::default(), None),
     };

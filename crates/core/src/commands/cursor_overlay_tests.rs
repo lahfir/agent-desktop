@@ -23,7 +23,7 @@ fn session_and_overlay_responses_show_portable_activation_guidance() {
 
     let enabled = execute(
         id,
-        CursorOverlayAction::Enable(CursorOverlayConfig::enabled(None, 6).unwrap()),
+        CursorOverlayAction::Enable(Box::new(CursorOverlayConfig::enabled(None, 6).unwrap())),
     )
     .expect("cursor overlay enable");
 

@@ -183,7 +183,7 @@ export const buildRequest = (goal, screen, space, history, { values = true } = {
       element_count: space.elements.length,
       truncated: space.truncated,
       elements: space.elements,
-      recent_actions: history.slice(-8),
+      recent_actions: history.slice(-8).map(({ steps: _steps, post_state: _post, details: _details, ...turn }) => turn),
     },
     questions,
   };
@@ -214,15 +214,18 @@ export const fingerprint = (nodes) =>
  */
 export const BARS = { floor: 0.55, act: 0.7, risky: 0.9 };
 
-export const route = (a, { floor = BARS.floor, act = BARS.act, risky = BARS.risky } = {}) => {
+export const route = (a, { floor = BARS.floor, act = BARS.act, risky = BARS.risky, confirmDestructive = false } = {}) => {
   if (a.target === NO_MATCH) return { decision: "abstain", why: "nothing on screen matches the intent" };
   if (a.present !== null && a.present < 0.3) {
     return { decision: "abstain", why: `the element is probably not on this screen (present ${a.present.toFixed(2)})` };
   }
+  const dangerous = a.destructive !== null && a.destructive >= 0.5;
+  if (dangerous && confirmDestructive) {
+    return { decision: "confirm", why: `hard to undo (destructive ${a.destructive.toFixed(2)})` };
+  }
   if (a.targetConfidence < floor) {
     return { decision: "abstain", why: `two elements fit equally well (${a.targetConfidence.toFixed(2)})` };
   }
-  const dangerous = a.destructive !== null && a.destructive >= 0.5;
   const bar = dangerous ? risky : act;
   if (a.targetConfidence < bar) {
     return {
@@ -235,14 +238,8 @@ export const route = (a, { floor = BARS.floor, act = BARS.act, risky = BARS.risk
   return { decision: "act", why: null };
 };
 
-/**
- * How hard a step is to undo only changes the outcome inside one band. Above
- * the risky bar a step clears either threshold, and below the ordinary one it
- * clears neither, so the question is worth asking about exactly the operation
- * and element that were chosen, and only when the answer can still decide
- * anything. Asking it alongside the operation would rate a step nobody picked.
- */
-export const needsRiskCheck = (confidence) => confidence >= BARS.act && confidence < BARS.risky;
+export const needsRiskCheck = (confidence, { confirmDestructive = false } = {}) =>
+  confidence >= BARS.act && (confirmDestructive || confidence < BARS.risky);
 
 export const riskRequest = (goal, screen, operation, node, { values = true } = {}) => ({
   model: resolveModel(),

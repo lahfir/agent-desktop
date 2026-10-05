@@ -65,7 +65,7 @@ pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
 ///
 /// `result` must be null or a pointer to an `AdActionResult` previously written
 /// by `ad_execute_action`, `ad_execute_action_with_policy`,
-/// `ad_execute_ref_action_with_policy`, or `ad_notification_action`. This frees
+/// `ad_execute_ref_action_exact_with_policy`, or `ad_notification_action`. This frees
 /// `post_state`, `steps`, and all nested strings. After this call all pointers
 /// inside the struct are invalid.
 #[unsafe(no_mangle)]

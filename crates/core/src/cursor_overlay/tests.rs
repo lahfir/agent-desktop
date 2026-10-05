@@ -68,10 +68,11 @@ fn label_limit_handles_unicode_words_and_ellipsis() {
 
 #[test]
 fn label_has_a_bounded_transport_size() {
-    let error = CursorOverlayConfig::enabled(Some("x".repeat(513)), MAX_CURSOR_LABEL_WORDS)
-        .expect_err("oversized labels must be rejected when configured");
-
-    assert_eq!(error.code, crate::ErrorCode::InvalidArgs);
+    for label in ["x".repeat(513), "\u{1}".repeat(86), "\"".repeat(257)] {
+        let error = CursorOverlayConfig::enabled(Some(label), MAX_CURSOR_LABEL_WORDS)
+            .expect_err("oversized encoded labels must be rejected when configured");
+        assert_eq!(error.code, crate::ErrorCode::InvalidArgs);
+    }
 }
 
 #[test]

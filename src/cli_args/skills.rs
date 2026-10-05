@@ -2,15 +2,18 @@ use clap::{Args, Subcommand};
 
 #[derive(Args, Debug)]
 #[command(after_help = "\
-Skills travel inside the binary so they always match this exact
-agent-desktop version. Output is raw markdown on stdout — parse it
-directly, or redirect into a file for storage.
+Skills are compiled into the binary, so they always match this exact
+agent-desktop version. Each command prints the JSON envelope; the skill's
+markdown is in data.content.
 
-Examples:
+Start here:
+  agent-desktop skills get desktop            # Core guide, any OS
+  agent-desktop skills get platform           # Guide for the OS you run on
+
+More:
   agent-desktop skills                        # List skills
-  agent-desktop skills get desktop            # Primary guide
-  agent-desktop skills get desktop --full     # Plus every reference
-  agent-desktop skills get desktop workflows  # Single reference
+  agent-desktop skills get desktop workflows  # One reference
+  agent-desktop skills get windows            # A named platform guide
   agent-desktop skills path                   # Where skills live")]
 pub(crate) struct SkillsArgs {
     #[command(subcommand)]
@@ -21,7 +24,7 @@ pub(crate) struct SkillsArgs {
 pub(crate) enum SkillsAction {
     #[command(about = "List bundled skills with summaries (default)")]
     List,
-    #[command(about = "Print a skill's markdown to stdout")]
+    #[command(about = "Print a skill (markdown in data.content)")]
     Get(SkillsGetArgs),
     #[command(about = "Print where bundled skills live")]
     Path,
@@ -29,7 +32,7 @@ pub(crate) enum SkillsAction {
 
 #[derive(Args, Debug)]
 pub(crate) struct SkillsGetArgs {
-    #[arg(help = "Skill name or alias (desktop, ffi, ...)")]
+    #[arg(help = "Skill name or alias: desktop, platform, macos, windows, ffi, jev")]
     pub name: String,
     #[arg(
         help = "Reference filename (e.g. workflows or references/workflows.md). Omit for the main guide."

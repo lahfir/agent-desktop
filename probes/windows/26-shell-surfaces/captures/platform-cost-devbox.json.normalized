@@ -1,0 +1,73 @@
+{
+    "probe":  "26-shell-surfaces/06-cost",
+    "question":  "what do the raw platform operations cost and does the nameless content-leaf population A24-11\u0027s fallback depends on actually present positive-area rectangles when measured live",
+    "cites":  [
+                  "A15-13",
+                  "A24-11"
+              ],
+    "label":  "devbox",
+    "client_stack":  "uia3-com",
+    "platform_cost":  {
+                          "measurable":  true,
+                          "branch":  "platform_costs_measured_in_single_com_process",
+                          "note":  "pre-implementation platform-cost reference, NOT the shipped command cost; U16 takes the product baseline through the release binary",
+                          "cost":  {
+                                       "mode":  "cost",
+                                       "client_stack":  "uia3-com",
+                                       "binding":  "CUIAutomation8",
+                                       "cycles_attempted":  7,
+                                       "open_detection_failures":  0,
+                                       "close_detection_failures":  0,
+                                       "raise_open_detect":  {
+                                                                 "warmup_discarded":  true,
+                                                                 "timed_runs":  6,
+                                                                 "elapsed_warmup_ms":  <duration>,
+                                                                 "elapsed_min_ms":  <duration>,
+                                                                 "elapsed_median_ms":  <duration>,
+                                                                 "elapsed_max_ms":  <duration>
+                                                             },
+                                       "close_detect":  {
+                                                            "warmup_discarded":  true,
+                                                            "timed_runs":  6,
+                                                            "elapsed_warmup_ms":  <duration>,
+                                                            "elapsed_min_ms":  <duration>,
+                                                            "elapsed_median_ms":  <duration>,
+                                                            "elapsed_max_ms":  <duration>
+                                                        },
+                                       "tray_subtree_enum":  {
+                                                                 "warmup_discarded":  true,
+                                                                 "timed_runs":  7,
+                                                                 "elapsed_warmup_ms":  <duration>,
+                                                                 "elapsed_min_ms":  <duration>,
+                                                                 "elapsed_median_ms":  <duration>,
+                                                                 "elapsed_max_ms":  <duration>
+                                                             },
+                                       "root_children_resolution":  {
+                                                                        "warmup_discarded":  true,
+                                                                        "timed_runs":  7,
+                                                                        "elapsed_warmup_ms":  <duration>,
+                                                                        "elapsed_min_ms":  <duration>,
+                                                                        "elapsed_median_ms":  <duration>,
+                                                                        "elapsed_max_ms":  <duration>
+                                                                    },
+                                       "action_center_tree_read":  {
+                                                                       "warmup_discarded":  true,
+                                                                       "timed_runs":  7,
+                                                                       "elapsed_warmup_ms":  <duration>,
+                                                                       "elapsed_min_ms":  <duration>,
+                                                                       "elapsed_median_ms":  <duration>,
+                                                                       "elapsed_max_ms":  <duration>
+                                                                   },
+                                       "action_center_tree_read_nodes_last_read":  8
+                                   }
+                      },
+    "chromium_leafs":  {
+                           "measurable":  false,
+                           "branch":  "electron_tree_never_exposed_past_settle_floor",
+                           "stack":  "uia3-com",
+                           "windows_read_candidates":  2,
+                           "unmeasurable_reason":  "a staged-vault Obsidian window appeared but its Chromium UIA tree stayed at or below the 40-node exposure floor for 60 s of settling and activation nudges (A1-4 settled exposure did not reproduce this session; consistent with A1-6\u0027s occlusion hazard), so no qualifying leaf existed to classify",
+                           "settle_seconds_spent":  60,
+                           "max_nodes_observed_any_window":  34
+                       }
+}

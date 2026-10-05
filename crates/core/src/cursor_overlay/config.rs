@@ -1,9 +1,9 @@
-use super::CursorOverlayStyle;
+use super::{CursorMotionProfile, CursorOverlayStyle};
 use crate::{AdapterError, ErrorCode};
 use serde::{Deserialize, Serialize};
 
 pub const MAX_CURSOR_LABEL_WORDS: usize = 12;
-const MAX_CURSOR_LABEL_BYTES: usize = 512;
+pub const MAX_CURSOR_LABEL_BYTES: usize = 512;
 const DEFAULT_CURSOR_LABEL_WORDS: usize = 6;
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
@@ -19,6 +19,8 @@ pub struct CursorOverlayConfig {
     style: CursorOverlayStyle,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     multi_agent: bool,
+    #[serde(default, skip_serializing_if = "CursorMotionProfile::is_default")]
+    motion: CursorMotionProfile,
 }
 
 impl CursorOverlayConfig {
@@ -29,6 +31,7 @@ impl CursorOverlayConfig {
             max_words,
             style: CursorOverlayStyle::default(),
             multi_agent: false,
+            motion: CursorMotionProfile::default(),
         }
         .validated()
     }
@@ -36,6 +39,15 @@ impl CursorOverlayConfig {
     pub fn with_style(mut self, style: CursorOverlayStyle) -> Result<Self, AdapterError> {
         self.style = style.validated()?;
         Ok(self)
+    }
+
+    pub fn with_motion(mut self, motion: CursorMotionProfile) -> Result<Self, AdapterError> {
+        self.motion = motion.validated()?;
+        Ok(self)
+    }
+
+    pub const fn motion(&self) -> &CursorMotionProfile {
+        &self.motion
     }
 
     pub fn with_multi_agent(mut self, enabled: bool) -> Self {
@@ -66,14 +78,16 @@ impl CursorOverlayConfig {
                 "Agent cursor label requires agent cursor mode 'on'",
             ));
         }
-        if self
-            .label
-            .as_deref()
-            .is_some_and(|label| label.trim().len() > MAX_CURSOR_LABEL_BYTES)
-        {
+        if self.label.as_deref().is_some_and(|label| {
+            serde_json::to_string(label.trim()).map_or(true, |json| {
+                json.len().saturating_sub(2) > MAX_CURSOR_LABEL_BYTES
+            })
+        }) {
             return Err(AdapterError::new(
                 ErrorCode::InvalidArgs,
-                format!("Agent cursor label must be at most {MAX_CURSOR_LABEL_BYTES} bytes"),
+                format!(
+                    "Agent cursor label must be at most {MAX_CURSOR_LABEL_BYTES} bytes once JSON-escaped"
+                ),
             ));
         }
         self.label = self
@@ -81,6 +95,7 @@ impl CursorOverlayConfig {
             .take()
             .and_then(|label| limit_words(label.trim(), self.max_words));
         self.style = std::mem::take(&mut self.style).validated()?;
+        self.motion.validate()?;
         Ok(self)
     }
 
@@ -109,6 +124,7 @@ impl Default for CursorOverlayConfig {
             max_words: DEFAULT_CURSOR_LABEL_WORDS,
             style: CursorOverlayStyle::default(),
             multi_agent: false,
+            motion: CursorMotionProfile::default(),
         }
     }
 }

@@ -137,7 +137,6 @@ fn non_launchservices_frontmost_app_uses_live_process_identity() {
 fn incomplete_or_contradictory_frontmost_identity_is_rejected() {
     for bytes in [
         br#"{"applications":[],"frontmost_pid":0}"#.as_slice(),
-        br#"{"applications":[],"frontmost_pid":0,"frontmost_launch_time":100.0}"#.as_slice(),
         br#"{"applications":[],"frontmost_pid":10,"frontmost_launch_time":null}"#.as_slice(),
     ] {
         let error = window_owner_snapshot_from_json(bytes, deadline()).unwrap_err();
@@ -147,7 +146,7 @@ fn incomplete_or_contradictory_frontmost_identity_is_rejected() {
 }
 
 #[test]
-fn duplicate_owner_pid_is_rejected_for_same_or_different_generation() {
+fn duplicate_owner_pid_is_skipped_for_same_or_different_generation() {
     for launch_time in [100.25, 101.5] {
         let bytes = format!(
             r#"{{
@@ -159,9 +158,9 @@ fn duplicate_owner_pid_is_rejected_for_same_or_different_generation() {
                 "frontmost_launch_time":null
             }}"#
         );
-        let error = window_owner_snapshot_from_json(bytes.as_bytes(), deadline()).unwrap_err();
-
-        assert_eq!(error.code, ErrorCode::AppUnresponsive);
+        let snapshot = window_owner_snapshot_from_json(bytes.as_bytes(), deadline()).unwrap();
+        assert_eq!(snapshot.owners.len(), 1);
+        assert_eq!(snapshot.owner(10).unwrap().name, "Mail");
     }
 }
 
@@ -250,7 +249,7 @@ fn app_inventory_labels_menu_bar_apps_and_drops_headless_services() {
 
 #[test]
 fn expired_workspace_deadline_is_rejected_before_native_reads() {
-    let error = list_apps_until(Instant::now()).unwrap_err();
+    let error = list_apps_inventory_until(Instant::now()).unwrap_err();
 
     assert_eq!(error.code.as_str(), "TIMEOUT");
 }

@@ -5,8 +5,8 @@ agent-desktop is a native Rust CLI and FFI library that gives AI agents structur
 ## Kinds of contributions that fit this project
 
 - **Bug fixes** — wrong JSON output, incorrect ref resolution, `STALE_REF` on a stable target, etc.
-- **New commands** — additions to the 54-command surface (follow the Extensibility Pattern below)
-- **Platform adapters** — Windows (Phase 2) and Linux (Phase 3) adapters implementing `PlatformAdapter`
+- **New commands** — additions to the 60-command surface (56 operational, four held-input names fail closed) (follow the Extensibility Pattern below)
+- **Platform adapters** — the Windows adapter (in progress) and the Linux adapter (planned), both implementing `PlatformAdapter`
 - **App-specific quirks** — documented edge cases for specific apps (Electron, game engines, etc.) under `skills/`
 - **Docs and skill files** — keeping `skills/agent-desktop*/` accurate when behaviour changes
 
@@ -20,8 +20,8 @@ This project follows the guidelines in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 | Requirement | Notes |
 |---|---|
-| **Rust toolchain** | Pinned to `stable` via `rust-toolchain.toml` (`rust-version` 1.85). `rustup` picks the correct channel automatically. |
-| **macOS 13.0+** | Required to build and run the macOS adapter (`crates/macos/`). The stub adapters for Windows and Linux compile on any platform. |
+| **Rust toolchain** | Pinned to `stable` via `rust-toolchain.toml` (`rust-version` 1.89). `rustup` picks the correct channel automatically. |
+| **macOS 13.0+** | Required to build and run the macOS adapter (`crates/macos/`). The Windows adapter (`crates/windows/`) builds on Windows only. The Linux crate is still a stub and compiles anywhere. |
 | **Accessibility permission** | Required for integration and E2E tests against real apps. Grant it in **System Settings > Privacy & Security > Accessibility** by adding the terminal you run tests from. |
 | **Screen Recording permission** | Required only for `screenshot` tests. Same path in System Settings. |
 
@@ -34,11 +34,17 @@ cd agent-desktop
 # Wire up the pre-commit hook (one time per clone)
 git config core.hooksPath .githooks
 
+# Every platform adapter compiles on its own OS only, so unscoped
+# workspace commands fail on every host. Scope cargo to the host package set
+# (this is the macOS set; on Windows use
+# -p agent-desktop-core -p agent-desktop-windows -p agent-desktop -p agent-desktop-ffi).
+HOST_PKGS="-p agent-desktop-core -p agent-desktop-macos -p agent-desktop-linux -p agent-desktop -p agent-desktop-ffi"
+
 # Debug build
-cargo build
+cargo build $HOST_PKGS
 
 # Release build (optimised, < 15 MB)
-cargo build --release
+cargo build --release -p agent-desktop
 
 # Run the binary
 ./target/release/agent-desktop snapshot --app Finder -i
@@ -46,17 +52,17 @@ cargo build --release
 
 ## Dev workflow and quality gates
 
-All of these must pass before a PR is merged. The pre-commit hook runs the first four automatically.
+All of these must pass before a PR is merged. The pre-commit hook runs the format, lint and library-test gates automatically (see Pre-commit hook). Set `HOST_PKGS` as shown in Getting started.
 
 ```bash
 # Format check
 cargo fmt --all -- --check
 
 # Lint — zero warnings required
-cargo clippy --all-targets -- -D warnings
+cargo clippy $HOST_PKGS --all-targets -- -D warnings
 
 # Unit tests (MockAdapter, golden fixtures)
-cargo test --lib --workspace
+cargo test $HOST_PKGS --lib
 
 # Binary-level command tests
 cargo test -p agent-desktop
@@ -84,14 +90,16 @@ The repo ships a pre-commit hook at `.githooks/pre-commit`. After cloning, enabl
 git config core.hooksPath .githooks
 ```
 
-On every commit that touches `.rs` or `.toml` files, the hook runs:
+On every commit that stages `.rs` or `.toml` files, the hook picks the package set for the host OS and runs:
 
-1. **Inline comment ban** — rejects bare `//` comments in staged `.rs` files (only `///` and `//!` are permitted)
-2. `cargo fmt --all -- --check`
-3. `cargo clippy --all-targets -- -D warnings`
-4. `cargo test --lib --workspace`
+1. `scripts/check-rust-file-size.sh` (400 LOC cap per Rust file and the inline-comment ban; only `///` and `//!` are permitted)
+2. `scripts/check-no-phase-references.sh` (no phase, sub-phase or plan ids in `crates/**` or `src/**`)
+3. `scripts/check-stale-ref-constructor-misuse.sh`
+4. `cargo fmt --all -- --check`
+5. `cargo clippy` on the host package set with `--all-targets -- -D warnings`
+6. `scripts/cargo-test-isolated-home.sh test` on the host package set with `--lib`
 
-When changes touch `crates/ffi/`, the hook also runs the FFI codegen-drift check and the stub-adapter passthrough tests locally.
+When changes touch `crates/ffi/`, the hook also runs the stub-adapter passthrough test and the cbindgen header-drift check (skipped when `cbindgen` 0.29.4 is not installed; CI still runs it).
 
 To bypass in a genuine emergency:
 
@@ -155,13 +163,13 @@ Follow the Extensibility Pattern exactly — no step may be skipped:
 
 No existing files are modified beyond these six registration points.
 
-**Mandatory skill update:** every new command or changed CLI flag must be reflected in the corresponding file under `skills/agent-desktop/references/`. Skill files are source-of-truth documentation consumed by AI agents and must stay in sync with the implementation.
+**Mandatory skill update:** every new command or changed CLI flag must be reflected in the matching skill. Cross-platform behavior goes in the core skill, `skills/agent-desktop/` (its `references/` hold the per-command detail). macOS behavior goes in `skills/agent-desktop-macos/` and Windows behavior in `skills/agent-desktop-windows/`. Skill files are documentation that AI agents read, and they must stay in sync with the implementation.
 
 ## Submitting a pull request
 
-1. **Branch from `main`.**
+1. **Pick the right base branch.** Branch from `main` for macOS and core work. Windows adapter work branches from `feat/windows-adapter` (as `feat/windows-<n.n>-<slug>`) and opens its PR into `feat/windows-adapter`, never into `main`.
 2. **Keep PRs focused.** One logical change per PR; separate refactors from features.
-3. **Ensure all quality gates pass** locally before pushing (see Dev workflow above).
+3. **Make sure all quality gates pass** locally before pushing (see Dev workflow above).
 4. **Use a Conventional Commit title** for the PR title — it becomes the squash-merge commit message.
 5. **Link related issues** with `Fixes #N` or `Refs #N` in the PR description.
 6. **Check that `cargo tree -p agent-desktop-core` is clean** if you touched any crate dependency.

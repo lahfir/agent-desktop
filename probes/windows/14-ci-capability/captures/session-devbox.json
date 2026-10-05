@@ -1,0 +1,18 @@
+{
+    "probe":  "14-ci-capability",
+    "label":  "devbox",
+    "scope":  "app/provider",
+    "stack":  "n/a",
+    "runnerImageOs":  "\u003cnot a hosted runner\u003e",
+    "runnerImageVersion":  "\u003cnot a hosted runner\u003e",
+    "osCaption":  "Microsoft Windows Server 2019 Datacenter",
+    "osVersion":  "10.0.17763",
+    "osBuildNumber":  "17763",
+    "osInstallationType":  "Server",
+    "sessionName":  "Console",
+    "sessionId":  1,
+    "userInteractive":  true,
+    "windowStation":  "WinSta0",
+    "desktop":  "Default",
+    "queryUserSessions":  "SESSIONNAME       USERNAME                 ID  STATE   TYPE        DEVICE \r\n services                                    0  Disc                        \r\n\u003econsole           <user>             1  Active"
+}

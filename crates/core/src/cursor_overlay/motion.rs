@@ -1,5 +1,6 @@
-use super::CursorPose;
 use super::hand_path::HandPath;
+use super::path_shape::PathShape;
+use super::{CursorMotionProfile, CursorPose};
 use crate::Point;
 
 const RIPPLE_MS: u64 = 300;
@@ -7,17 +8,42 @@ const RIPPLE_MS: u64 = 300;
 pub struct CursorMotion {
     path: HandPath,
     duration_ms: u64,
+    dwell_ms: u64,
     click: bool,
     ripple: bool,
 }
 
 impl CursorMotion {
     pub fn new(start: Point, destination: Point) -> Self {
-        let path = HandPath::new(start, destination);
-        let duration_ms = path.duration_ms();
+        Self::shaped(start, destination, &CursorMotionProfile::default(), 0)
+    }
+
+    /// Overlay motion tuned by `profile`; `move_index` varies seeded paths
+    /// from one move to the next. A profile that fails validation falls back
+    /// to the default motion.
+    pub fn shaped(
+        start: Point,
+        destination: Point,
+        profile: &CursorMotionProfile,
+        move_index: u64,
+    ) -> Self {
+        let fallback;
+        let profile = if profile.validate().is_ok() {
+            profile
+        } else {
+            fallback = CursorMotionProfile::default();
+            &fallback
+        };
+        let path = HandPath::shaped(
+            start,
+            destination,
+            &PathShape::from_profile(profile, move_index),
+        );
+        let duration_ms = path.duration_ms(profile.travel_ms());
         Self {
             path,
             duration_ms,
+            dwell_ms: profile.dwell_ms(),
             click: false,
             ripple: true,
         }
@@ -37,11 +63,16 @@ impl CursorMotion {
         self.duration_ms
     }
 
+    pub const fn dwell_ms(&self) -> u64 {
+        self.dwell_ms
+    }
+
     pub const fn total_ms(&self) -> u64 {
+        let settled = self.settled_ms();
         if self.plays_ripple() {
-            self.duration_ms + RIPPLE_MS
+            settled + RIPPLE_MS
         } else {
-            self.duration_ms
+            settled
         }
     }
 
@@ -54,13 +85,18 @@ impl CursorMotion {
 
     pub fn pose(&self, elapsed_ms: u64) -> CursorPose {
         let point = self.sample(elapsed_ms.min(self.duration_ms));
-        if !self.plays_ripple() || elapsed_ms <= self.duration_ms {
+        let settled = self.settled_ms();
+        if !self.plays_ripple() || elapsed_ms <= settled {
             return CursorPose::still(point);
         }
         CursorPose {
             point,
-            ripple: ((elapsed_ms - self.duration_ms) as f64 / RIPPLE_MS as f64).clamp(0.0, 1.0),
+            ripple: ((elapsed_ms - settled) as f64 / RIPPLE_MS as f64).clamp(0.0, 1.0),
         }
+    }
+
+    const fn settled_ms(&self) -> u64 {
+        self.duration_ms + self.dwell_ms
     }
 
     const fn plays_ripple(&self) -> bool {

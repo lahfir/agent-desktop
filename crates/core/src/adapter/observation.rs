@@ -1,5 +1,6 @@
 use crate::{
-    AccessibilityNode, AdapterError, AppInfo, Deadline, ErrorCode, Rect, SurfaceInfo, WindowInfo,
+    AccessibilityNode, AdapterError, AppInfo, Deadline, ErrorCode, Rect, SnapshotSurface,
+    SurfaceInfo, WindowInfo,
     element_state::ElementState,
     live_element::LiveElement,
     live_locator::{ObservationRequest, ObservationRoot, ObservedTree},
@@ -45,6 +46,13 @@ pub trait ObservationOps: Send + Sync {
 
     fn list_apps(&self, _deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
         Err(AdapterError::not_supported("list_apps"))
+    }
+
+    fn list_apps_inventory(&self, deadline: Deadline) -> Result<crate::AppInventory, AdapterError> {
+        Ok(crate::AppInventory {
+            apps: self.list_apps(deadline)?,
+            skipped: Vec::new(),
+        })
     }
 
     fn list_apps_scoped(
@@ -98,6 +106,21 @@ pub trait ObservationOps: Send + Sync {
         _deadline: Deadline,
     ) -> Result<Vec<SurfaceInfo>, AdapterError> {
         Err(AdapterError::not_supported("list_surfaces"))
+    }
+
+    /// Reads an already-open OS-chrome surface - the Start menu, the taskbar,
+    /// the notification area, the Action Center - into the window identity
+    /// the observation stack consumes. It only reads what is already up and
+    /// never raises anything, which is why it takes a deadline and no
+    /// interaction policy. An adapter that does not implement it answers with
+    /// this default, and core's app-less surface resolution falls through to
+    /// the application-owned path exactly as it did before the seam existed.
+    fn resolve_shell_surface(
+        &self,
+        _surface: SnapshotSurface,
+        _deadline: Deadline,
+    ) -> Result<WindowInfo, AdapterError> {
+        Err(AdapterError::not_supported("resolve_shell_surface"))
     }
 
     fn get_live_value(

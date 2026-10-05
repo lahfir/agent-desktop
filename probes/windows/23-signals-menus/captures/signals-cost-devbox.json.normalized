@@ -1,0 +1,112 @@
+{
+    "probe":  "23-signals-menus",
+    "question":  "hot-path cost for the single-pass cached capture, the same pass filtered to one process, the naive two-walk composition it replaces, the re-walk forced to its maximum attempt count, and the two menu-predicate sources scoped to one process (min-of-seven, warm-up discarded per A15-13)",
+    "methodology_cites":  [
+                              "A15-13",
+                              "A18-7",
+                              "A20-6"
+                          ],
+    "single_pass_cached_unfiltered":  {
+                                          "samples_ms":  [
+                                                             8.3016,
+                                                             4.69,
+                                                             3.3215,
+                                                             2.9735,
+                                                             2.8942,
+                                                             3.5686,
+                                                             2.9285,
+                                                             2.7732
+                                                         ],
+                                          "min_ms":  2.8942,
+                                          "median_ms":  3.3215,
+                                          "max_ms":  8.3016,
+                                          "n":  7,
+                                          "warmup_discarded":  true
+                                      },
+    "single_pass_cached_filtered_one_process":  {
+                                                    "samples_ms":  [
+                                                                       3.5296,
+                                                                       2.8399,
+                                                                       2.8286,
+                                                                       3.3987,
+                                                                       2.9856,
+                                                                       2.8219,
+                                                                       2.8321,
+                                                                       3.0328
+                                                                   ],
+                                                    "min_ms":  2.8286,
+                                                    "median_ms":  2.9856,
+                                                    "max_ms":  3.5296,
+                                                    "n":  7,
+                                                    "warmup_discarded":  true
+                                                },
+    "two_walk_composition_naive":  {
+                                       "samples_ms":  [
+                                                          5.5124,
+                                                          3.2068,
+                                                          2.9067,
+                                                          2.9641,
+                                                          3.0066,
+                                                          3.0107,
+                                                          2.9188,
+                                                          2.8793
+                                                      ],
+                                       "min_ms":  2.9067,
+                                       "median_ms":  3.0066,
+                                       "max_ms":  5.5124,
+                                       "n":  7,
+                                       "warmup_discarded":  true
+                                   },
+    "rewalk_forced_to_max_attempts":  {
+                                          "samples_ms":  [
+                                                             14.1747,
+                                                             14.0844,
+                                                             14.2068,
+                                                             13.8657,
+                                                             14.092,
+                                                             13.3908,
+                                                             13.3646,
+                                                             13.7789
+                                                         ],
+                                          "min_ms":  13.3908,
+                                          "median_ms":  14.0844,
+                                          "max_ms":  14.2068,
+                                          "n":  7,
+                                          "warmup_discarded":  true
+                                      },
+    "menu_predicate_classic_flags":  {
+                                         "samples_ms":  [
+                                                            17.1361,
+                                                            15.1931,
+                                                            16.7362,
+                                                            15.8691,
+                                                            15.9284,
+                                                            16.7488,
+                                                            17.0189,
+                                                            16.2642
+                                                        ],
+                                         "min_ms":  15.8691,
+                                         "median_ms":  16.7362,
+                                         "max_ms":  17.1361,
+                                         "n":  7,
+                                         "warmup_discarded":  true
+                                     },
+    "menu_predicate_uia_scan":  {
+                                    "samples_ms":  [
+                                                       10.5205,
+                                                       6.8397,
+                                                       7.1323,
+                                                       7.179,
+                                                       6.5238,
+                                                       6.1201,
+                                                       6.1962,
+                                                       6.5945
+                                                   ],
+                                    "min_ms":  6.1962,
+                                    "median_ms":  6.8397,
+                                    "max_ms":  10.5205,
+                                    "n":  7,
+                                    "warmup_discarded":  true
+                                },
+    "note":  "absolute ms are environment-sensitive; CI asserts min\u003c=median\u003c=max, n=7, warmup_discarded only. filtering to one process does not shrink the walk itself (the enumeration still visits every agent-facing window before any pid comparison), so single_pass_cached_unfiltered and _filtered_one_process are expected to read close to each other"
+}

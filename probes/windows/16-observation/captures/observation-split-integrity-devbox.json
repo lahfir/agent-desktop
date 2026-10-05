@@ -1,0 +1,15 @@
+{
+    "window_handle_int":  26477206,
+    "high_integrity_read":  {
+                                "token_read":  true,
+                                "root_resolved":  true,
+                                "exit_code":  0
+                            },
+    "medium_integrity_read":  {
+                                  "token_read":  true,
+                                  "root_resolved":  true,
+                                  "produced_capture":  true,
+                                  "integrity_sid":  "S-1-16-8192",
+                                  "process_id":  2476
+                              }
+}

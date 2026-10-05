@@ -197,24 +197,24 @@ act() {
 act_target() {
     local target="$1" command="$2"
     shift 2
-    act "$command" "$(target_ref "$target")" --snapshot "$(target_snapshot "$target")" "$@"
+    act "$command" "$(target_ref "$target")" "$@"
 }
 
 get_target() {
     local target="$1"
     shift
-    "$bin" get "$(target_ref "$target")" --snapshot "$(target_snapshot "$target")" "$@"
+    "$bin" get "$(target_ref "$target")" "$@"
 }
 
 is_target() {
     local target="$1" property="$2"
-    "$bin" is "$(target_ref "$target")" --snapshot "$(target_snapshot "$target")" --property "$property"
+    "$bin" is "$(target_ref "$target")" --property "$property"
 }
 
 wait_target() {
     local target="$1" predicate="$2" timeout="$3"
     shift 3
-    "$bin" wait --element "$(target_ref "$target")" --snapshot "$(target_snapshot "$target")" \
+    "$bin" wait --element "$(target_ref "$target")" \
         --predicate "$predicate" --timeout "$timeout" "$@"
 }
 

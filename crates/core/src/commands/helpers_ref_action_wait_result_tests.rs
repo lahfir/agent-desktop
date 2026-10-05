@@ -8,8 +8,7 @@ fn post_action_wait_without_flag_returns_action_only() {
     let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
     let adapter = ScopedWaitAdapter::new();
     let args = RefArgs {
-        ref_id: "@e1".into(),
-        snapshot_id: Some(snapshot_id),
+        ref_id: format!("@{}:e1", snapshot_id),
         timeout_ms: None,
     };
 
@@ -40,8 +39,7 @@ fn post_action_wait_timeout_embeds_action_result_in_details() {
         timeout_ms: 50,
     }));
     let args = RefArgs {
-        ref_id: "@e1".into(),
-        snapshot_id: Some(snapshot_id),
+        ref_id: format!("@{}:e1", snapshot_id),
         timeout_ms: None,
     };
 

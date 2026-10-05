@@ -25,10 +25,9 @@ after_includes = """
  *     "@s8f3k2p9:e5") that address
  *     individual interactive elements.  A refmap is written under
  *     ~/.agent-desktop/ and is keyed to the session.  The envelope carries
- *     data.snapshot_id. Qualified refs already pin the exact snapshot; legacy
- *     bare @eN refs require that ID as the snapshot_id argument.
+ *     data.snapshot_id. Qualified refs already pin the exact snapshot.
  *
- *  4. Act via ad_execute_by_ref(a, "@s8f3k2p9:e5", NULL, &action, policy, &out).
+ *  4. Act via ad_execute_by_ref(a, "@s8f3k2p9:e5", &action, policy, &out).
  *     Build an AdAction by zero-initialising it and setting its kind field to
  *     an AD_ACTION_KIND_* constant plus any kind-specific fields (e.g. .text
  *     for AD_ACTION_KIND_TYPE_TEXT).  policy=0 (Headless) keeps each action's
@@ -136,7 +135,7 @@ _Static_assert(sizeof(struct AdWaitArgs) == AD_WAIT_ARGS_SIZE, "AdWaitArgs ABI s
 _Static_assert(_Alignof(struct AdWaitArgs) == 8, "AdWaitArgs ABI alignment changed");
 _Static_assert(offsetof(AdWaitArgs, mode) == 0, "AdWaitArgs.mode offset changed");
 _Static_assert(offsetof(AdWaitArgs, predicate) == 48, "AdWaitArgs.predicate offset changed");
-_Static_assert(offsetof(AdWaitArgs, scope) == 96, "AdWaitArgs.scope offset changed");
+_Static_assert(offsetof(AdWaitArgs, scope) == 88, "AdWaitArgs.scope offset changed");
 _Static_assert(sizeof(AdOptionalU64) == AD_OPTIONAL_U64_SIZE, "AdOptionalU64 ABI size changed");
 _Static_assert(sizeof(AdOptionalUsize) == AD_OPTIONAL_USIZE_SIZE, "AdOptionalUsize ABI size changed");
 _Static_assert(sizeof(AdWaitSurfaceModes) == AD_WAIT_SURFACE_MODES_SIZE, "AdWaitSurfaceModes ABI size changed");

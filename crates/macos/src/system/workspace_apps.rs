@@ -1,4 +1,4 @@
-use agent_desktop_core::{AdapterError, AppInfo, ErrorCode};
+use agent_desktop_core::{AdapterError, AppInfo, AppInventory, ErrorCode};
 use serde::Deserialize;
 use std::time::Instant;
 
@@ -28,6 +28,8 @@ struct BridgedWorkspaceSnapshot {
     applications: Vec<BridgedApplication>,
     frontmost_pid: i32,
     frontmost_launch_time: NullableLaunchTime,
+    #[serde(default)]
+    skipped: Vec<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -57,6 +59,7 @@ pub(crate) struct WindowOwner {
 pub(crate) struct WindowOwnerSnapshot {
     owners: Vec<WindowOwner>,
     frontmost_pid: Option<i32>,
+    skipped: Vec<serde_json::Value>,
 }
 
 impl WindowOwnerSnapshot {
@@ -78,6 +81,13 @@ impl WindowOwnerSnapshot {
             .collect()
     }
 
+    pub(crate) fn require_match(&self, identifier: &str) -> Result<(), AdapterError> {
+        if self.matching_pids(identifier).is_empty() {
+            require_complete(&self.skipped)?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn owner(&self, pid: i32) -> Option<&WindowOwner> {
         self.owners.iter().find(|owner| owner.pid == pid)
     }
@@ -91,15 +101,29 @@ impl WindowOwnerSnapshot {
     }
 }
 
-pub(crate) fn list_apps_until(deadline: Instant) -> Result<Vec<AppInfo>, AdapterError> {
+pub(crate) fn list_apps_inventory_until(deadline: Instant) -> Result<AppInventory, AdapterError> {
+    #[cfg(test)]
+    if let Some(inventory) = crate::system::app_inventory::adapter_tests::workspace_inventory() {
+        return Ok(inventory);
+    }
     list_apps_with(deadline, |_| true, true)
+}
+
+pub(crate) fn require_complete(skipped: &[serde_json::Value]) -> Result<(), AdapterError> {
+    if skipped.is_empty() {
+        return Ok(());
+    }
+    Err(records::with_skipped(
+        inventory_error("AppKit application inventory skipped records"),
+        skipped,
+    ))
 }
 
 pub(crate) fn list_apps_scoped_until(
     name: &str,
     bundle_id: Option<&str>,
     deadline: Instant,
-) -> Result<Vec<AppInfo>, AdapterError> {
+) -> Result<AppInventory, AdapterError> {
     list_apps_with(
         deadline,
         |app| {
@@ -133,12 +157,12 @@ fn list_apps_with(
     deadline: Instant,
     include: impl Fn(&BridgedApplication) -> bool,
     skip_cross_uid: bool,
-) -> Result<Vec<AppInfo>, AdapterError> {
+) -> Result<AppInventory, AdapterError> {
     ensure_before_deadline(deadline)?;
     crate::system::cocoa_runtime::ensure_cocoa_multithreaded()?;
     let bytes = crate::system::appkit_bridge::workspace_snapshot_json()?;
     ensure_before_deadline(deadline)?;
-    apps_from_json_with(
+    apps_inventory_from_json_with(
         &bytes,
         deadline,
         include,
@@ -158,15 +182,25 @@ fn apps_from_json(bytes: &[u8], deadline: Instant) -> Result<Vec<AppInfo>, Adapt
     )
 }
 
+#[cfg(test)]
 fn apps_from_json_with(
     bytes: &[u8],
     deadline: Instant,
     include: impl Fn(&BridgedApplication) -> bool,
     skip_cross_uid: bool,
-    mut resolve: impl FnMut(i32) -> Result<Option<String>, AdapterError>,
+    resolve: impl FnMut(i32) -> Result<Option<String>, AdapterError>,
 ) -> Result<Vec<AppInfo>, AdapterError> {
+    Ok(apps_inventory_from_json_with(bytes, deadline, include, skip_cross_uid, resolve)?.apps)
+}
+
+fn apps_inventory_from_json_with(
+    bytes: &[u8],
+    deadline: Instant,
+    include: impl Fn(&BridgedApplication) -> bool,
+    skip_cross_uid: bool,
+    mut resolve: impl FnMut(i32) -> Result<Option<String>, AdapterError>,
+) -> Result<AppInventory, AdapterError> {
     let bridged = bridged_snapshot(bytes)?;
-    let mut seen_pids = rustc_hash::FxHashSet::default();
     let mut apps = Vec::with_capacity(bridged.applications.len());
     for app in bridged
         .applications
@@ -174,17 +208,14 @@ fn apps_from_json_with(
         .filter(|app| app.activation_policy != ActivationPolicy::Prohibited)
         .filter(include)
     {
-        ensure_before_deadline(deadline)?;
-        if !valid_application(&app) || !seen_pids.insert(app.pid) {
-            return Err(inventory_error(
-                "AppKit returned invalid running-application identity",
-            ));
-        }
+        ensure_before_deadline(deadline)
+            .map_err(|error| records::with_skipped(error, &bridged.skipped))?;
         let process_instance = match resolve(app.pid) {
             Ok(Some(instance)) => instance,
             Ok(None) => {
-                return Err(inventory_error(
-                    "Selected application exited during inventory",
+                return Err(records::with_skipped(
+                    inventory_error("Selected application exited during inventory"),
+                    &bridged.skipped,
                 ));
             }
             Err(error)
@@ -193,7 +224,7 @@ fn apps_from_json_with(
             {
                 continue;
             }
-            Err(error) => return Err(error),
+            Err(error) => return Err(records::with_skipped(error, &bridged.skipped)),
         };
         apps.push(AppInfo {
             name: app.name,
@@ -203,8 +234,12 @@ fn apps_from_json_with(
             presentation: Some(presentation_of(app.activation_policy)),
         });
     }
-    ensure_before_deadline(deadline)?;
-    Ok(apps)
+    ensure_before_deadline(deadline)
+        .map_err(|error| records::with_skipped(error, &bridged.skipped))?;
+    Ok(AppInventory {
+        apps,
+        skipped: bridged.skipped,
+    })
 }
 
 fn presentation_of(policy: ActivationPolicy) -> agent_desktop_core::AppPresentation {
@@ -221,27 +256,19 @@ fn window_owner_snapshot_from_json(
     deadline: Instant,
 ) -> Result<WindowOwnerSnapshot, AdapterError> {
     let bridged = bridged_snapshot(bytes)?;
-    let mut seen_pids = rustc_hash::FxHashSet::default();
     let mut owners = Vec::with_capacity(bridged.applications.len());
     for app in bridged
         .applications
         .into_iter()
         .filter(|app| app.activation_policy != ActivationPolicy::Prohibited)
     {
-        ensure_before_deadline(deadline)?;
+        ensure_before_deadline(deadline)
+            .map_err(|error| records::with_skipped(error, &bridged.skipped))?;
         let Some(launch_time) = app.launch_time.value() else {
             return Err(inventory_error(
                 "AppKit returned invalid window-owner identity",
             ));
         };
-        if launch_time.is_some_and(|value| !valid_launch_time(value))
-            || !valid_application(&app)
-            || !seen_pids.insert(app.pid)
-        {
-            return Err(inventory_error(
-                "AppKit returned invalid window-owner identity",
-            ));
-        }
         owners.push(WindowOwner {
             pid: app.pid,
             name: app.name,
@@ -256,12 +283,25 @@ fn window_owner_snapshot_from_json(
             "AppKit returned incomplete frontmost-application identity",
         ));
     };
-    let frontmost_pid =
-        validate_frontmost(&mut owners, bridged.frontmost_pid, frontmost_launch_time)?;
-    ensure_before_deadline(deadline)?;
+    let frontmost_pid = if bridged
+        .skipped
+        .iter()
+        .any(|record| record["pid"].as_i64() == Some(i64::from(bridged.frontmost_pid)))
+        && !owners
+            .iter()
+            .any(|owner| owner.pid == bridged.frontmost_pid)
+    {
+        None
+    } else {
+        validate_frontmost(&mut owners, bridged.frontmost_pid, frontmost_launch_time)
+            .map_err(|error| records::with_skipped(error, &bridged.skipped))?
+    };
+    ensure_before_deadline(deadline)
+        .map_err(|error| records::with_skipped(error, &bridged.skipped))?;
     Ok(WindowOwnerSnapshot {
         owners,
         frontmost_pid,
+        skipped: bridged.skipped,
     })
 }
 
@@ -299,23 +339,6 @@ fn validate_frontmost(
     Ok(Some(pid))
 }
 
-fn bridged_snapshot(bytes: &[u8]) -> Result<BridgedWorkspaceSnapshot, AdapterError> {
-    if bytes.len() > MAX_SNAPSHOT_BYTES {
-        return Err(inventory_error("AppKit returned an oversized snapshot"));
-    }
-    serde_json::from_slice(bytes).map_err(|_| inventory_error("AppKit returned invalid JSON"))
-}
-
-fn valid_application(app: &BridgedApplication) -> bool {
-    app.pid > 0
-        && !app.name.trim().is_empty()
-        && app.name.len() <= MAX_FIELD_BYTES
-        && app
-            .bundle_id
-            .as_ref()
-            .is_none_or(|bundle_id| bundle_id.len() <= MAX_FIELD_BYTES)
-}
-
 fn valid_launch_time(value: f64) -> bool {
     value.is_finite() && value > 0.0
 }
@@ -333,6 +356,7 @@ fn inventory_error(message: &str) -> AdapterError {
         .with_details(serde_json::json!({
             "kind": "inventory_source",
             "source": "ns_workspace",
+            "complete": false,
             "retryable": true,
         }))
 }
@@ -344,3 +368,11 @@ mod pid_tests;
 #[cfg(test)]
 #[path = "workspace_apps_tests.rs"]
 mod tests;
+
+#[path = "workspace_apps_records.rs"]
+mod records;
+use records::bridged_snapshot;
+
+#[cfg(test)]
+#[path = "workspace_apps_skip_tests.rs"]
+mod skip_tests;

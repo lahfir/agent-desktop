@@ -207,7 +207,7 @@ const main = async (argv) => {
     }
     return value;
   };
-  const bools = new Set(["--execute", "--raw"]);
+  const bools = new Set(["--execute", "--raw", "--confirm-destructive"]);
   const app = flag("app");
   const text = flag("text");
   const root = flag("root");
@@ -221,7 +221,7 @@ const main = async (argv) => {
     .join(" ");
 
   if (!app || !intent) {
-    console.error('usage: act.mjs --app <name> [--window-id <id>] [--text "…"] [--root @ref] [--execute] "<intent>"');
+    console.error('usage: act.mjs --app <name> [--window-id <id>] [--text "…"] [--root @ref] [--execute] [--confirm-destructive] "<intent>"');
     process.exit(2);
   }
   if (!process.env.TYPESAFE_API_KEY) fail("TYPESAFE_API_KEY unset");
@@ -282,7 +282,7 @@ const main = async (argv) => {
   const { verb, corrected } = reconcile(answers.command, node, text !== null);
 
   /** Only the verb decides whether text is required; the gate is a speculative read of the intent. */
-  const decision = route(answers);
+  const decision = route(answers, { confirmDestructive: argv.includes("--confirm-destructive") });
   const missingText = TAKES_TEXT.has(verb) && text === null;
 
   const out = {

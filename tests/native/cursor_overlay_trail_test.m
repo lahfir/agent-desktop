@@ -1,5 +1,6 @@
 #import "../../crates/macos/src/system/cursor_overlay_chrome_bridge.m"
 #import "../../crates/macos/src/system/cursor_overlay_display_bridge.m"
+#import "../../crates/macos/src/system/cursor_overlay_image_bridge.m"
 #import "../../crates/macos/src/system/cursor_overlay_bridge.m"
 
 static void require(bool condition, const char *message) {

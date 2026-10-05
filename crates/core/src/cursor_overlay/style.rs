@@ -1,3 +1,4 @@
+use super::{CursorImage, CursorImages};
 use crate::{AdapterError, ErrorCode};
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +23,8 @@ pub struct CursorOverlayStyle {
     ripple: bool,
     #[serde(default = "enabled_effect")]
     highlight: bool,
+    #[serde(default, skip_serializing_if = "CursorImages::is_empty")]
+    images: CursorImages,
 }
 
 impl CursorOverlayStyle {
@@ -29,7 +32,7 @@ impl CursorOverlayStyle {
         std::mem::take(self)
     }
 
-    pub fn validated(self) -> Result<Self, AdapterError> {
+    pub fn validated(mut self) -> Result<Self, AdapterError> {
         for color in [&self.fill, &self.rim, &self.accent] {
             rgb(color).ok_or_else(|| {
                 AdapterError::new(
@@ -44,6 +47,7 @@ impl CursorOverlayStyle {
                 format!("Cursor overlay size must be between {MIN_SIZE} and {MAX_SIZE}"),
             ));
         }
+        self.images = std::mem::take(&mut self.images).validated()?;
         Ok(self)
     }
 
@@ -66,6 +70,26 @@ impl CursorOverlayStyle {
     pub fn set_effects(&mut self, ripple: bool, highlight: bool) {
         self.ripple = ripple;
         self.highlight = highlight;
+    }
+
+    pub fn set_image(&mut self, image: Option<CursorImage>) {
+        self.images.set_arrow(image);
+    }
+
+    pub fn set_pointer_image(&mut self, image: Option<CursorImage>) {
+        self.images.set_pointer(image);
+    }
+
+    pub const fn image(&self) -> Option<&CursorImage> {
+        self.images.arrow()
+    }
+
+    pub const fn pointer_image(&self) -> Option<&CursorImage> {
+        self.images.pointer()
+    }
+
+    pub const fn images(&self) -> &CursorImages {
+        &self.images
     }
 
     pub fn fill_rgb(&self) -> [f64; 3] {
@@ -102,6 +126,7 @@ impl Default for CursorOverlayStyle {
             size: default_size(),
             ripple: true,
             highlight: true,
+            images: CursorImages::default(),
         }
     }
 }

@@ -252,12 +252,14 @@ fn validate_launched_target(
 #[cfg(target_os = "macos")]
 fn matching_apps(id: &str, deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
     ensure_launch_budget(deadline, id)?;
-    Ok(
-        crate::system::workspace_apps::list_apps_until(deadline_instant(deadline)?)?
-            .into_iter()
-            .filter(|app| app.matches_identifier(id))
-            .collect(),
-    )
+    let until = deadline_instant(deadline)?;
+    crate::system::app_inventory::stabilize_apps_until(until, || {
+        let inventory = crate::system::workspace_apps::list_apps_scoped_until(id, None, until)?;
+        if inventory.apps.is_empty() {
+            crate::system::workspace_apps::require_complete(&inventory.skipped)?;
+        }
+        Ok(inventory.apps)
+    })
 }
 
 #[cfg(target_os = "macos")]
@@ -273,10 +275,10 @@ fn required_instance(app: &AppInfo) -> Result<String, AdapterError> {
 
 #[cfg(target_os = "macos")]
 fn ambiguous_apps(apps: &[AppInfo]) -> AdapterError {
-    AdapterError::ambiguous_target("More than one application instance matches the launch target")
-        .with_details(serde_json::json!({
-            "candidate_pids": apps.iter().map(|app| app.pid).collect::<Vec<_>>(),
-        }))
+    AdapterError::ambiguous_process_target(
+        "More than one application instance matches the launch target",
+        &apps.iter().map(|app| app.pid).collect::<Vec<_>>(),
+    )
 }
 
 #[cfg(target_os = "macos")]

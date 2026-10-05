@@ -2,6 +2,10 @@ use agent_desktop_core::{AdapterError, AppInfo, ErrorCode};
 use std::{process::Output, time::Instant};
 
 pub(crate) fn list_apps_until(deadline: Instant) -> Result<Vec<AppInfo>, AdapterError> {
+    #[cfg(test)]
+    if crate::system::app_inventory::adapter_tests::workspace_inventory().is_some() {
+        return Ok(Vec::new());
+    }
     list_apps_with_filter(None, deadline)
 }
 

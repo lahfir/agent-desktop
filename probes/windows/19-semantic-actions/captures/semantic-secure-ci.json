@@ -1,0 +1,139 @@
+{
+    "capture_rule":  "never emit marker verbatim; lengths and digests only",
+    "marker_digest":  "c0441403bc63bb2e",
+    "marker_len":  13,
+    "winforms":  {
+                     "after_value":  {
+                                         "ok":  true,
+                                         "readonly":  false,
+                                         "value":  {
+                                                       "contains_marker":  false,
+                                                       "digest":  "cbf29ce484222325",
+                                                       "len":  0
+                                                   }
+                                     },
+                     "any_echo_of_marker":  false,
+                     "automation_id_digest":  "bb9c66c8407b2c68",
+                     "before_value":  {
+                                          "ok":  true,
+                                          "readonly":  false,
+                                          "value":  {
+                                                        "contains_marker":  false,
+                                                        "digest":  "cbf29ce484222325",
+                                                        "len":  0
+                                                    }
+                                      },
+                     "branch":  "write_lands_ktd7_as_designed",
+                     "error_echo_check":  {
+                                              "failure_present":  false
+                                          },
+                     "is_password":  true,
+                     "legacy_value":  {
+                                          "contains_marker":  false,
+                                          "digest":  "cbf29ce484222325",
+                                          "len":  0
+                                      },
+                     "name_after":  {
+                                        "contains_marker":  false,
+                                        "digest":  "cbf29ce484222325",
+                                        "len":  0
+                                    },
+                     "name_before":  {
+                                         "contains_marker":  false,
+                                         "digest":  "cbf29ce484222325",
+                                         "len":  0
+                                     },
+                     "plant_path":  "fixture planted marker in-process and asserted length before Show",
+                     "shape":  {
+                                   "automation_id_digest":  "bb9c66c8407b2c68",
+                                   "automation_id_len":  9,
+                                   "bounds":  "544,171,160,20",
+                                   "control_type":  50004,
+                                   "expand_available":  false,
+                                   "invoke_available":  false,
+                                   "is_enabled":  true,
+                                   "is_password":  true,
+                                   "legacy_available":  true,
+                                   "range_available":  false,
+                                   "scroll_available":  false,
+                                   "selection_item_available":  false,
+                                   "toggle_available":  false,
+                                   "value_available":  true
+                               },
+                     "stack":  "winforms",
+                     "write":  {
+                                   "ktd2_arm":  "clean_ok",
+                                   "ok":  true,
+                                   "payload":  {
+                                                   "contains_marker":  true,
+                                                   "digest":  "c0441403bc63bb2e",
+                                                   "len":  13
+                                               }
+                               }
+                 },
+    "wpf":  {
+                "after_value":  {
+                                    "failure":  {
+                                                    "code":  -2146233079,
+                                                    "result_hex":  "0x80131509"
+                                                },
+                                    "ok":  false
+                                },
+                "any_echo_of_marker":  false,
+                "automation_id_digest":  "bb9c66c8407b2c68",
+                "before_value":  {
+                                     "failure":  {
+                                                     "code":  -2146233079,
+                                                     "result_hex":  "0x80131509"
+                                                 },
+                                     "ok":  false
+                                 },
+                "branch":  "write_lands_ktd7_as_designed",
+                "error_echo_check":  {
+                                         "failure_present":  false
+                                     },
+                "is_password":  true,
+                "legacy_value":  {
+                                     "contains_marker":  false,
+                                     "digest":  "cbf29ce484222325",
+                                     "len":  0
+                                 },
+                "name_after":  {
+                                   "contains_marker":  false,
+                                   "digest":  "cbf29ce484222325",
+                                   "len":  0
+                               },
+                "name_before":  {
+                                    "contains_marker":  false,
+                                    "digest":  "cbf29ce484222325",
+                                    "len":  0
+                                },
+                "plant_path":  "fixture planted marker in-process and asserted length before Show",
+                "shape":  {
+                              "automation_id_digest":  "bb9c66c8407b2c68",
+                              "automation_id_len":  9,
+                              "bounds":  "60,540,120,24",
+                              "control_type":  50004,
+                              "expand_available":  false,
+                              "invoke_available":  false,
+                              "is_enabled":  true,
+                              "is_password":  true,
+                              "legacy_available":  true,
+                              "range_available":  false,
+                              "scroll_available":  true,
+                              "selection_item_available":  false,
+                              "toggle_available":  false,
+                              "value_available":  true
+                          },
+                "stack":  "wpf",
+                "write":  {
+                              "ktd2_arm":  "clean_ok",
+                              "ok":  true,
+                              "payload":  {
+                                              "contains_marker":  true,
+                                              "digest":  "c0441403bc63bb2e",
+                                              "len":  13
+                                          }
+                          }
+            }
+}

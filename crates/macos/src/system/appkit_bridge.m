@@ -126,14 +126,14 @@ AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(void) {
                 result.status = 1;
                 return result;
             }
+            NSMutableArray<NSDictionary *> *skipped = [NSMutableArray array];
             int32_t frontmostPID = 0;
             id frontmostLaunchTime = [NSNull null];
             NSRunningApplication *frontmost = workspace.frontmostApplication;
             if (frontmost != nil) {
                 if (![frontmost isKindOfClass:[NSRunningApplication class]]) {
-                    result.status = 2;
-                    result.failureField = "frontmost_class";
-                    return result;
+                    [skipped addObject:@{@"pid": @0, @"field": @"frontmost_class"}];
+                    frontmost = nil;
                 }
                 frontmostPID = frontmost.processIdentifier;
                 if (frontmostPID > 0) {
@@ -141,12 +141,12 @@ AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(void) {
                     if (frontmostLaunchDate != nil) {
                         double launchTime = frontmostLaunchDate.timeIntervalSince1970;
                         if (!isfinite(launchTime) || launchTime <= 0.0) {
-                            result.status = 2;
-                            result.failureField = "frontmost_launch_time";
-                            result.failurePID = frontmostPID;
-                            return result;
+                            [skipped addObject:@{@"pid": @(frontmostPID), @"field": @"frontmost_launch_time"}];
+                            frontmostPID = 0;
                         }
-                        frontmostLaunchTime = @(launchTime);
+                        if (frontmostPID > 0) {
+                            frontmostLaunchTime = @(launchTime);
+                        }
                     }
                 } else {
                     frontmostPID = 0;
@@ -158,13 +158,12 @@ AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(void) {
             for (NSUInteger index = 0; index < running.count; index++) {
                 NSRunningApplication *app = running[index];
                 if (![app isKindOfClass:[NSRunningApplication class]]) {
-                    result.status = 2;
-                    result.failureField = "application_class";
-                    result.failureIndex = (int32_t)index;
-                    return result;
+                    [skipped addObject:@{@"pid": @(0), @"field": @"application_class", @"index": @(index)}];
+                    continue;
                 }
                 int32_t pid = app.processIdentifier;
                 if (pid <= 0) {
+                    [skipped addObject:@{@"pid": @(pid), @"field": @"pid", @"index": @(index)}];
                     continue;
                 }
                 NSApplicationActivationPolicy policy = app.activationPolicy;
@@ -179,11 +178,8 @@ AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(void) {
                     case NSApplicationActivationPolicyProhibited:
                         continue;
                     default:
-                        result.status = 2;
-                        result.failureField = "activation_policy";
-                        result.failureIndex = (int32_t)index;
-                        result.failurePID = pid;
-                        return result;
+                        [skipped addObject:@{@"pid": @(pid), @"field": @"activation_policy", @"index": @(index)}];
+                        continue;
                 }
                 if (policyName == nil) {
                     continue;
@@ -191,31 +187,21 @@ AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(void) {
                 NSString *name = agent_desktop_application_name(app);
                 if (name == nil || name.length == 0 ||
                     [name lengthOfBytesUsingEncoding:NSUTF8StringEncoding] > 16384) {
-                    result.status = 2;
-                    result.failureField = "application_name";
-                    result.failureIndex = (int32_t)index;
-                    result.failurePID = pid;
-                    return result;
+                    [skipped addObject:@{@"pid": @(pid), @"field": @"application_name", @"index": @(index)}];
+                    continue;
                 }
                 NSNumber *pidNumber = @(pid);
                 if ([seen containsObject:pidNumber]) {
-                    result.status = 2;
-                    result.failureField = "duplicate_pid";
-                    result.failureIndex = (int32_t)index;
-                    result.failurePID = pid;
-                    return result;
+                    [skipped addObject:@{@"pid": @(pid), @"field": @"duplicate_pid", @"index": @(index)}];
+                    continue;
                 }
-                [seen addObject:pidNumber];
                 NSDate *launchDate = app.launchDate;
                 id launchTime = [NSNull null];
                 if (launchDate != nil) {
                     double seconds = launchDate.timeIntervalSince1970;
                     if (!isfinite(seconds) || seconds <= 0.0) {
-                        result.status = 2;
-                        result.failureField = "application_launch_time";
-                        result.failureIndex = (int32_t)index;
-                        result.failurePID = pid;
-                        return result;
+                        [skipped addObject:@{@"pid": @(pid), @"field": @"application_launch_time", @"index": @(index)}];
+                        continue;
                     }
                     launchTime = @(seconds);
                 }
@@ -228,21 +214,22 @@ AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(void) {
                 NSString *bundle = app.bundleIdentifier;
                 if (bundle != nil) {
                     if ([bundle lengthOfBytesUsingEncoding:NSUTF8StringEncoding] > 16384) {
-                        result.status = 2;
-                        result.failureField = "bundle_identifier";
-                        result.failureIndex = (int32_t)index;
-                        result.failurePID = pid;
-                        return result;
+                        [skipped addObject:@{@"pid": @(pid), @"field": @"bundle_identifier", @"index": @(index)}];
+                        continue;
                     }
                     record[@"bundle_id"] = bundle;
                 }
+                [seen addObject:pidNumber];
                 [records addObject:record];
             }
-            NSDictionary *snapshot = @{
+            NSMutableDictionary *snapshot = [@{
                 @"applications": records,
                 @"frontmost_pid": @(frontmostPID),
                 @"frontmost_launch_time": frontmostLaunchTime,
-            };
+            } mutableCopy];
+            if (skipped.count > 0) {
+                snapshot[@"skipped"] = skipped;
+            }
             NSError *error = nil;
             NSData *data = [NSJSONSerialization dataWithJSONObject:snapshot options:0 error:&error];
             if (data == nil || error != nil || data.length > 1048576) {

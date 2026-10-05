@@ -118,7 +118,7 @@ anchor="$(printf '%s' "$skeleton" | python3 "$json_tool" drill-anchor 2>/dev/nul
 if [ -z "$anchor" ] || [ -z "$skeleton_id" ]; then
     abort_suite "skeleton did not expose a drill-down anchor and snapshot_id"
 fi
-drill="$("$bin" snapshot --app "$app" --root "$anchor" --snapshot "$skeleton_id" 2>&1)"
+drill="$("$bin" snapshot --app "$app" --root "$anchor" 2>&1)"
 drilled_refs="$(json_field "$drill" data.ref_count)"
 assert "skeleton drill-down stays pinned to its source snapshot" \
     "$([ "$(json_field "$drill" ok)" = "True" ] && [ "$drilled_refs" -gt 0 ] && echo 1 || echo 0)" \
@@ -135,7 +135,7 @@ session_ref="$(printf '%s' "$session_a" | python3 "$json_tool" tree primary-butt
 if [ -z "$session_ref" ]; then
     abort_suite "session-a snapshot omitted primary-button ref"
 fi
-session_get="$("$bin" --session run-a get "$session_ref" --snapshot "$session_a_id" --property role 2>&1)"
+session_get="$("$bin" --session run-a get "$session_ref" --property role 2>&1)"
 assert "explicit session snapshot resolves within its owning session" \
     "$([ "$(json_field "$session_get" ok)" = "True" ] && echo 1 || echo 0)" \
     "ref=$session_ref snapshot=$session_a_id value=$(json_field "$session_get" data.value) err=$(json_field "$session_get" error.code)"

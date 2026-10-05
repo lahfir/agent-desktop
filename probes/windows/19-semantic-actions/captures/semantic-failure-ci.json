@@ -1,0 +1,293 @@
+{
+    "taxonomy":  {
+                     "note":  "killed-provider leg is merged by the orchestrator",
+                     "wpf_taxonomy":  {
+                                          "expand_leaf":  {
+                                                              "after":  {
+                                                                            "ok":  true,
+                                                                            "state":  "LeafNode"
+                                                                        },
+                                                              "before":  {
+                                                                             "ok":  true,
+                                                                             "state":  "LeafNode"
+                                                                         },
+                                                              "call":  {
+                                                                           "failure":  {
+                                                                                           "code":  -2146233079,
+                                                                                           "result_hex":  "0x80131509"
+                                                                                       },
+                                                                           "ktd2_arm":  "unclassified_uncertain",
+                                                                           "ok":  false
+                                                                       },
+                                                              "shape":  {
+                                                                            "automation_id_digest":  "dc3373d2a2c060ab",
+                                                                            "automation_id_len":  7,
+                                                                            "bounds":  "81,616,400,16",
+                                                                            "control_type":  50024,
+                                                                            "expand_available":  true,
+                                                                            "invoke_available":  false,
+                                                                            "is_enabled":  true,
+                                                                            "is_password":  false,
+                                                                            "legacy_available":  true,
+                                                                            "range_available":  false,
+                                                                            "scroll_available":  false,
+                                                                            "selection_item_available":  true,
+                                                                            "toggle_available":  false,
+                                                                            "value_available":  false
+                                                                        }
+                                                          },
+                                          "get_pattern_absent":  {
+                                                                     "failure":  {
+                                                                                     "code":  0,
+                                                                                     "result_hex":  null
+                                                                                 },
+                                                                     "invoke_available":  false,
+                                                                     "ktd2_arm":  "sentinel_or_non_hresult_absent",
+                                                                     "shape":  "sentinel_or_non_hresult"
+                                                                 },
+                                          "rangevalue_disabled":  {
+                                                                      "call":  {
+                                                                                   "failure":  {
+                                                                                                   "code":  -2146233079,
+                                                                                                   "result_hex":  "0x80131509"
+                                                                                               },
+                                                                                   "ktd2_arm":  "unclassified_uncertain",
+                                                                                   "ok":  false,
+                                                                                   "requested":  90.0
+                                                                               },
+                                                                      "shape":  {
+                                                                                    "automation_id_digest":  "7b6b765d5081877a",
+                                                                                    "automation_id_len":  16,
+                                                                                    "bounds":  "292,572,160,18",
+                                                                                    "control_type":  50015,
+                                                                                    "expand_available":  false,
+                                                                                    "invoke_available":  false,
+                                                                                    "is_enabled":  false,
+                                                                                    "is_password":  false,
+                                                                                    "legacy_available":  true,
+                                                                                    "range_available":  true,
+                                                                                    "scroll_available":  false,
+                                                                                    "selection_item_available":  false,
+                                                                                    "toggle_available":  false,
+                                                                                    "value_available":  false
+                                                                                }
+                                                                  },
+                                          "rangevalue_out_of_range":  {
+                                                                          "after_10000":  {
+                                                                                              "max":  100.0,
+                                                                                              "min":  0.0,
+                                                                                              "ok":  true,
+                                                                                              "readonly":  false,
+                                                                                              "value":  77.0
+                                                                                          },
+                                                                          "after_neg50":  {
+                                                                                              "max":  100.0,
+                                                                                              "min":  0.0,
+                                                                                              "ok":  true,
+                                                                                              "readonly":  false,
+                                                                                              "value":  77.0
+                                                                                          },
+                                                                          "before":  {
+                                                                                         "max":  100.0,
+                                                                                         "min":  0.0,
+                                                                                         "ok":  true,
+                                                                                         "readonly":  false,
+                                                                                         "value":  77.0
+                                                                                     },
+                                                                          "branch":  "error",
+                                                                          "set_10000":  {
+                                                                                            "failure":  {
+                                                                                                            "code":  -2146233086,
+                                                                                                            "result_hex":  "0x80131502"
+                                                                                                        },
+                                                                                            "ktd2_arm":  "unclassified_uncertain",
+                                                                                            "ok":  false,
+                                                                                            "requested":  10000.0
+                                                                                        },
+                                                                          "set_neg50":  {
+                                                                                            "failure":  {
+                                                                                                            "code":  -2146233086,
+                                                                                                            "result_hex":  "0x80131502"
+                                                                                                        },
+                                                                                            "ktd2_arm":  "unclassified_uncertain",
+                                                                                            "ok":  false,
+                                                                                            "requested":  -50.0
+                                                                                        }
+                                                                      },
+                                          "setvalue_disabled":  {
+                                                                    "call":  {
+                                                                                 "failure":  {
+                                                                                                 "code":  -2147220992,
+                                                                                                 "result_hex":  "0x80040200"
+                                                                                             },
+                                                                                 "ktd2_arm":  "not_enabled_UIA_E_ELEMENTNOTENABLED",
+                                                                                 "ok":  false,
+                                                                                 "payload":  {
+                                                                                                 "contains_marker":  false,
+                                                                                                 "digest":  "77e1356700ba1f07",
+                                                                                                 "len":  14
+                                                                                             }
+                                                                             },
+                                                                    "shape":  {
+                                                                                  "automation_id_digest":  "21942c5083f6f31f",
+                                                                                  "automation_id_len":  11,
+                                                                                  "bounds":  "268,142,160,24",
+                                                                                  "control_type":  50004,
+                                                                                  "expand_available":  false,
+                                                                                  "invoke_available":  false,
+                                                                                  "is_enabled":  false,
+                                                                                  "is_password":  false,
+                                                                                  "legacy_available":  true,
+                                                                                  "range_available":  false,
+                                                                                  "scroll_available":  true,
+                                                                                  "selection_item_available":  false,
+                                                                                  "toggle_available":  false,
+                                                                                  "value_available":  true
+                                                                              }
+                                                                },
+                                          "setvalue_readonly":  {
+                                                                    "after":  {
+                                                                                  "ok":  true,
+                                                                                  "readonly":  true,
+                                                                                  "value":  {
+                                                                                                "contains_marker":  false,
+                                                                                                "digest":  "d5764aa89f9af067",
+                                                                                                "len":  13
+                                                                                            }
+                                                                              },
+                                                                    "call":  {
+                                                                                 "failure":  {
+                                                                                                 "code":  -2146233079,
+                                                                                                 "result_hex":  "0x80131509"
+                                                                                             },
+                                                                                 "ktd2_arm":  "unclassified_uncertain",
+                                                                                 "ok":  false,
+                                                                                 "payload":  {
+                                                                                                 "contains_marker":  false,
+                                                                                                 "digest":  "0d87f37b700b19ad",
+                                                                                                 "len":  11
+                                                                                             }
+                                                                             },
+                                                                    "shape":  {
+                                                                                  "automation_id_digest":  "a92b1b854071e9ed",
+                                                                                  "automation_id_len":  11,
+                                                                                  "bounds":  "60,142,200,24",
+                                                                                  "control_type":  50004,
+                                                                                  "expand_available":  false,
+                                                                                  "invoke_available":  false,
+                                                                                  "is_enabled":  true,
+                                                                                  "is_password":  false,
+                                                                                  "legacy_available":  true,
+                                                                                  "range_available":  false,
+                                                                                  "scroll_available":  true,
+                                                                                  "selection_item_available":  false,
+                                                                                  "toggle_available":  false,
+                                                                                  "value_available":  true
+                                                                              }
+                                                                },
+                                          "tri_state_toggle":  {
+                                                                   "full_cycle_observed":  true,
+                                                                   "initial_pattern_state":  "Indeterminate",
+                                                                   "states_seen":  [
+                                                                                       "Off",
+                                                                                       "On",
+                                                                                       "Indeterminate"
+                                                                                   ],
+                                                                   "steps":  [
+                                                                                 {
+                                                                                     "after":  {
+                                                                                                   "ok":  true,
+                                                                                                   "state":  "Off"
+                                                                                               },
+                                                                                     "before":  {
+                                                                                                    "ok":  true,
+                                                                                                    "state":  "Indeterminate"
+                                                                                                },
+                                                                                     "call":  {
+                                                                                                  "ktd2_arm":  "clean_ok",
+                                                                                                  "ok":  true
+                                                                                              },
+                                                                                     "step":  0
+                                                                                 },
+                                                                                 {
+                                                                                     "after":  {
+                                                                                                   "ok":  true,
+                                                                                                   "state":  "On"
+                                                                                               },
+                                                                                     "before":  {
+                                                                                                    "ok":  true,
+                                                                                                    "state":  "Off"
+                                                                                                },
+                                                                                     "call":  {
+                                                                                                  "ktd2_arm":  "clean_ok",
+                                                                                                  "ok":  true
+                                                                                              },
+                                                                                     "step":  1
+                                                                                 },
+                                                                                 {
+                                                                                     "after":  {
+                                                                                                   "ok":  true,
+                                                                                                   "state":  "Indeterminate"
+                                                                                               },
+                                                                                     "before":  {
+                                                                                                    "ok":  true,
+                                                                                                    "state":  "On"
+                                                                                                },
+                                                                                     "call":  {
+                                                                                                  "ktd2_arm":  "clean_ok",
+                                                                                                  "ok":  true
+                                                                                              },
+                                                                                     "step":  2
+                                                                                 }
+                                                                             ]
+                                                               }
+                                      }
+                 },
+    "killed_provider":  {
+                            "automation_id_digest":  "8153e352565945e4",
+                            "expected_hresult":  "0x80040201",
+                            "invoke_after_kill":  {
+                                                      "ktd2_arm":  "stale_UIA_E_ELEMENTNOTAVAILABLE",
+                                                      "ok":  false,
+                                                      "pattern":  {
+                                                                      "code":  -2147220991,
+                                                                      "result_hex":  "0x80040201"
+                                                                  }
+                                                  },
+                            "invoke_ktd2":  "stale_UIA_E_ELEMENTNOTAVAILABLE",
+                            "kill_ok":  true,
+                            "pre_kill_shape":  {
+                                                   "automation_id_digest":  "8153e352565945e4",
+                                                   "automation_id_len":  8,
+                                                   "bounds":  "520,170,423,24",
+                                                   "control_type":  50004,
+                                                   "expand_available":  false,
+                                                   "invoke_available":  false,
+                                                   "is_enabled":  true,
+                                                   "is_password":  false,
+                                                   "legacy_available":  true,
+                                                   "range_available":  false,
+                                                   "scroll_available":  true,
+                                                   "selection_item_available":  false,
+                                                   "toggle_available":  false,
+                                                   "value_available":  true
+                                               },
+                            "root_after_kill":  {
+                                                    "root_failed":  {
+                                                                        "code":  -2147220991,
+                                                                        "result_hex":  "0x80040201"
+                                                                    }
+                                                },
+                            "setvalue_after_kill":  {
+                                                        "ok":  false,
+                                                        "pattern":  {
+                                                                        "code":  -2147220991,
+                                                                        "result_hex":  "0x80040201"
+                                                                    }
+                                                    },
+                            "setvalue_ktd2":  null,
+                            "walk_after_kill":  {
+                                                    "skipped":  true
+                                                }
+                        }
+}

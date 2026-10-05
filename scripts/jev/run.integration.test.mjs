@@ -65,11 +65,19 @@ for (const command of ["snapshot", "click", "set-value", "focus", "clipboard-get
   writeFileSync(join(directory, command), fake);
 }
 writeFileSync(preload, `
+import { appendFileSync } from 'node:fs';
 let calls=0;
 globalThis.fetch=async (_url,options)=>{
   calls++;
   const body=JSON.parse(options.body), mode=process.env.JEV_TEST_MODE;
-  const operation=mode==='wait'?(calls<=3?'WAIT':'DONE'):mode==='closed_top'?'WAIT':(mode==='done'||mode.startsWith('surface')||mode.endsWith('_other'))?'DONE':
+  if (body.questions.destructive) {
+    appendFileSync(process.env.JEV_TEST_LOG,JSON.stringify({command:'risk',args:[]})+'\\n');
+    return {ok:true,status:200,json:async()=>({answers:{destructive:{noul:mode==='destructive'?0.99:0.1}}})};
+  }
+  if (['destructive','risk_safe'].includes(mode)) {
+    appendFileSync(process.env.JEV_TEST_LOG,JSON.stringify({command:'goal',args:[body.state.goal]})+'\\n');
+  }
+  const operation=['destructive','risk_safe'].includes(mode)?(calls===1?'CLICK':'DONE'):mode==='wait'?(calls<=3?'WAIT':'DONE'):mode==='closed_top'?'WAIT':(mode==='done'||mode.startsWith('surface')||mode.endsWith('_other'))?'DONE':
     mode==='blocked'?'BLOCKED':mode==='click_error'||mode==='window_closed'?'CLICK':(mode==='paste_correct'||mode==='paste_late')&&calls>1?'DONE':'TYPE_TEXT';
   const answers={};
   for (const [id,question] of Object.entries(body.questions)) {
@@ -91,7 +99,7 @@ globalThis.fetch=async (_url,options)=>{
   return {ok:true,status:200,json:async()=>({answers:{
     target:{type:'choice',choice:ref,confidence:0.95,probabilities:{[ref]:0.95}},
     command:{type:'choice',choice:'click',confidence:0.95},
-    present:{type:'noul',noul:0.95},destructive:noul,needs_text:noul}})};
+    present:{type:'noul',noul:0.95},destructive:{type:'noul',noul:process.env.JEV_TEST_MODE==='destructive'?0.99:0.1},needs_text:noul}})};
 };
 `);
 
@@ -112,7 +120,7 @@ const act = (mode, extra = []) => {
 const run = (mode, extra = []) => {
   writeFileSync(log, "");
   const result = spawnSync(process.execPath, ["--import", pathToFileURL(preload).href, entry,
-    "--app", "試験アプリ", ...extra, "--text", "試験", "試験を完了する"], {
+    "--app", "試験アプリ", "--text", "試験", ...extra, "試験を完了する"], {
     cwd: directory,
     encoding: "utf8",
     timeout: 10000,
@@ -127,6 +135,31 @@ const run = (mode, extra = []) => {
 };
 
 try {
+  const confirmed = run("destructive", ["--confirm-destructive"]);
+  assert.equal(confirmed.status, 1);
+  assert.match(confirmed.stop.stop, /^confirm: hard to undo/);
+  assert.equal(confirmed.commands.filter(c => c.command === "risk").length, 1);
+  assert.equal(confirmed.commands.some(c => c.command === "click"), false);
+  assert.deepEqual(confirmed.commands.find(c => c.command === "goal").args, ["試験を完了する"]);
+  const defaultRisk = run("destructive");
+  assert.equal(defaultRisk.status, 0);
+  assert.equal(defaultRisk.commands.some(c => c.command === "risk"), false);
+  assert.equal(defaultRisk.commands.filter(c => c.command === "click").length, 1);
+  const safeRisk = run("risk_safe", ["--confirm-destructive"]);
+  assert.equal(safeRisk.status, 0);
+  assert.equal(safeRisk.commands.filter(c => c.command === "risk").length, 1);
+  assert.equal(safeRisk.commands.filter(c => c.command === "click").length, 1);
+  const actConfirmed = act("destructive", ["--execute", "--confirm-destructive"]);
+  assert.equal(actConfirmed.status, 1);
+  assert.equal(actConfirmed.out.decision, "confirm");
+  assert.equal(actConfirmed.out.intent, "試験ボタンを押す");
+  assert.equal(actConfirmed.commands.some(c => c.command === "click"), false);
+  for (const [mode, extra] of [["destructive", []], ["risk_safe", ["--confirm-destructive"]]]) {
+    const allowed = act(mode, ["--execute", ...extra]);
+    assert.equal(allowed.status, 0);
+    assert.equal(allowed.out.decision, "act");
+    assert.equal(allowed.commands.filter(c => c.command === "click").length, 1);
+  }
   const started = performance.now();
   await execute({ app: "試験アプリ" }, "WAIT", null, null, null);
   assert.ok(performance.now() - started >= 230, "WAIT actually waits");

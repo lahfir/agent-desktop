@@ -8,8 +8,7 @@ fn get_property(
 ) -> Result<Value, AppError> {
     get::execute(
         GetArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot.into()),
+            ref_id: format!("@{snapshot}:e1"),
             property,
         },
         adapter,
@@ -29,8 +28,7 @@ fn get_states_and_is_checked_agree_after_both_live_transitions() {
         let observed = get_property(&snapshot, &adapter, GetProperty::States).unwrap();
         let checked = execute(
             IsArgs {
-                ref_id: "@e1".into(),
-                snapshot_id: Some(snapshot),
+                ref_id: format!("@{}:e1", snapshot),
                 property: IsProperty::Checked,
             },
             &adapter,
@@ -165,8 +163,7 @@ fn is_enabled_and_wait_enabled_agree_on_live_evidence() {
         adapter.state.lock().unwrap().as_mut().unwrap().enabled = enabled;
         let result = execute(
             IsArgs {
-                ref_id: "@e1".into(),
-                snapshot_id: Some(snapshot.clone()),
+                ref_id: format!("@{}:e1", snapshot.clone()),
                 property: IsProperty::Enabled,
             },
             &adapter,

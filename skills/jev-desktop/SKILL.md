@@ -73,7 +73,9 @@ confidential.
 hard the step would be to reverse. An ordinary step needs 0.70 confidence in its
 target, one rated destructive needs 0.90, and below 0.55 nothing runs. When the
 bar is not met the run stops and names the candidate it would have acted on, so
-you decide instead of it.
+you decide instead of it. By default, a destructive step at target confidence
+0.90 or higher runs. Pass `--confirm-destructive` to `run.mjs` or `act.mjs` to
+stop for confirmation on every step rated destructive, regardless of confidence.
 
 **`--cursor` makes the run watchable.** It starts a session, shows a cursor that
 travels to each element before the operation lands, and turns it off at the end.
@@ -231,3 +233,8 @@ node scripts/jev/act.test.mjs
 node scripts/jev/run.test.mjs
 node scripts/jev/run.integration.test.mjs
 ```
+
+Turns retain native `steps`, `post_state` and `details` for the caller. A verified
+`AlreadyInState` step with `outcome: "skipped"` and `delivery: "not_delivered"`
+means no input was needed. Those evidence fields are excluded from model history.
+A failed postcondition keeps `ok: false` and any nested action evidence.

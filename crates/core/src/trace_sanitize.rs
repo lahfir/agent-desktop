@@ -40,10 +40,16 @@ fn is_sensitive_trace_key(key: &str) -> bool {
         "url",
         "help",
         "placeholder",
+        "subrole",
+        "dom",
+        "classes",
+        "body",
     ];
-    trace_key_tokens(key)
-        .iter()
-        .any(|part| SENSITIVE_KEYS.contains(&part.as_str()))
+    const SENSITIVE_WHOLE_KEYS: &[&str] = &["actions"];
+    SENSITIVE_WHOLE_KEYS.contains(&key.to_ascii_lowercase().as_str())
+        || trace_key_tokens(key)
+            .iter()
+            .any(|part| SENSITIVE_KEYS.contains(&part.as_str()))
 }
 
 fn trace_key_tokens(key: &str) -> Vec<String> {

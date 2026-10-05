@@ -11,7 +11,6 @@ use std::time::Instant;
 
 pub(crate) struct ElementWaitInput {
     pub(crate) ref_id: String,
-    pub(crate) snapshot_id: Option<String>,
     pub(crate) predicate: wait_predicate::ElementPredicate,
     pub(crate) timeout_ms: u64,
 }
@@ -23,13 +22,12 @@ pub(crate) fn wait_for_element(
 ) -> Result<Value, AppError> {
     let ElementWaitInput {
         ref_id,
-        snapshot_id,
         predicate,
         timeout_ms,
     } = input;
     let start = Instant::now();
     let deadline = crate::Deadline::at(start, timeout_ms)?;
-    let entry = load_ref_entry(&ref_id, snapshot_id.as_deref(), context)?;
+    let entry = load_ref_entry(&ref_id, context)?;
 
     let mut last_observed = json!(null);
     let mut expected_bounds_hash = None;

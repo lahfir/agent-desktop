@@ -15,6 +15,8 @@ pub struct CursorOverlayInstruction {
     target: Option<Rect>,
     #[serde(default)]
     phase: CursorPhase,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pointer: bool,
 }
 
 impl CursorOverlayInstruction {
@@ -37,12 +39,23 @@ impl CursorOverlayInstruction {
             click,
             target: None,
             phase: CursorPhase::Travel,
+            pointer: false,
         })
     }
 
     pub const fn with_phase(mut self, phase: CursorPhase) -> Self {
         self.phase = phase;
         self
+    }
+
+    /// Arrive showing the pointer image: the travel ends on a pressable control.
+    pub const fn with_pointer(mut self, pointer: bool) -> Self {
+        self.pointer = pointer;
+        self
+    }
+
+    pub const fn is_pointer(&self) -> bool {
+        self.pointer
     }
 
     pub fn with_drag_from(mut self, drag_from: Option<Point>) -> Self {

@@ -2,7 +2,7 @@ use crate::AdAdapter;
 use crate::convert::string::required_adapter_string;
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
-use crate::types::{AdExactWindowInfo, AdFindQuery, AdWindowInfo};
+use crate::types::{AdExactWindowInfo, AdFindQuery};
 use agent_desktop_core::{ObservationRoot, resolve_query};
 use std::os::raw::c_char;
 
@@ -37,38 +37,6 @@ impl SupportedProperty {
             Self::Selected => contains("selected"),
         }
     }
-}
-
-/// Legacy ABI compatibility entrypoint. `AdWindowInfo` cannot carry process
-/// generation, so this function fails closed with `AD_RESULT_ERR_INVALID_ARGS`.
-/// Use `ad_is_exact`.
-///
-/// # Safety
-/// All pointers must be valid. `property` must be a non-null UTF-8 C string.
-/// `out` must be a valid writable `*mut bool`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ad_is(
-    adapter: *const AdAdapter,
-    win: *const AdWindowInfo,
-    query: *const AdFindQuery,
-    property: *const c_char,
-    out: *mut bool,
-) -> AdResult {
-    trap_panic(|| unsafe {
-        crate::pointer_guard::guard_non_null!(out, c"out is null");
-        *out = false;
-        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
-        crate::pointer_guard::guard_non_null!(win, c"win is null");
-        crate::pointer_guard::guard_non_null!(query, c"query is null");
-        let core_window = match crate::windows::ad_window_to_core(&*win) {
-            Ok(window) => window,
-            Err(error) => {
-                set_last_error(&error);
-                return crate::error::last_error_code();
-            }
-        };
-        is_in_window(adapter, &core_window, &*query, property, out)
-    })
 }
 
 /// Checks a boolean state within a generation-pinned exact window.

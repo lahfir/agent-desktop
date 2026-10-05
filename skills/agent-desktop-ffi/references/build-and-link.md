@@ -195,7 +195,6 @@ char *result = NULL;
 AdResult rc = ad_execute_by_ref(
     adapter,
     "@s8f3k2p9:e5", // qualified ref from snapshot data.tree
-    NULL,            // the qualified ref embeds its snapshot ID
     &act,
     0,            // policy = Headless
     &result
@@ -219,7 +218,7 @@ AdAction type_act = {0};
 type_act.kind = AD_ACTION_KIND_TYPE_TEXT;
 type_act.text = "hello";
 // TypeText defaults to focus_fallback via ad_execute_by_ref; explicit policy:
-rc = ad_execute_by_ref(adapter, "@s8f3k2p9:e3", NULL, &type_act,
+rc = ad_execute_by_ref(adapter, "@s8f3k2p9:e3", &type_act,
                        AD_POLICY_KIND_FOCUS_FALLBACK, &result);
 ```
 
@@ -241,7 +240,7 @@ lib = ctypes.CDLL("./target/release-ffi/libagent_desktop_ffi.dylib")
 # ABI handshake
 lib.ad_init.restype = c_int32
 lib.ad_init.argtypes = [ctypes.c_uint32]
-AD_ABI_VERSION_MAJOR = 4  # sync with header macro
+AD_ABI_VERSION_MAJOR = 5  # sync with header macro
 rc = lib.ad_init(AD_ABI_VERSION_MAJOR)
 assert rc == 0, f"ABI mismatch: rc={rc}"
 

@@ -44,8 +44,7 @@ pub(super) fn click_before(
     context: &CommandContext,
 ) -> Result<(WindowInfo, Value), AppError> {
     let deadline = Deadline::standard()?;
-    let entry = RefStore::for_session(context.session_id())?
-        .load_ref(&args.ref_id, args.snapshot_id.as_deref())?;
+    let entry = RefStore::for_session(context.session_id())?.load_ref(&args.ref_id)?;
     let handle = adapter.resolve_element_strict(&entry, deadline)?;
     let bounds = adapter.get_element_bounds(&handle, deadline)?;
     let window = window_for_entry(&entry, adapter, deadline)?;
@@ -71,7 +70,7 @@ pub(super) fn snapshot_frame(
     let ref_id = first_ref(&tree).ok_or_else(|| {
         AppError::invalid_input("No returned ref identifies an exact window for debug capture")
     })?;
-    let entry = RefStore::for_session(context.session_id())?.load_ref(ref_id, None)?;
+    let entry = RefStore::for_session(context.session_id())?.load_ref(ref_id)?;
     let deadline = Deadline::standard()?;
     let window = window_for_entry(&entry, adapter, deadline)?;
     if data["window"]["id"].as_str() != Some(window.id.as_str())

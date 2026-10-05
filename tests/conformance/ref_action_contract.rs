@@ -15,8 +15,7 @@ pub fn run_click_command(
     with_saved_entry(entry, &context, |snapshot_id| {
         click::execute(
             RefArgs {
-                ref_id: "@e1".into(),
-                snapshot_id: Some(snapshot_id),
+                ref_id: format!("@{}:e1", snapshot_id),
                 timeout_ms: None,
             },
             adapter,
@@ -44,7 +43,7 @@ pub fn run_wait_element_command_with_predicate(
             wait::WaitArgs {
                 mode: wait::WaitModeArgs {
                     ms: None,
-                    element: Some("@e1".into()),
+                    element: Some(format!("@{snapshot_id}:e1")),
                     window: None,
                     text: None,
                     surface: None,
@@ -52,7 +51,6 @@ pub fn run_wait_element_command_with_predicate(
                     window_id: None,
                 },
                 predicate: wait::WaitPredicateArgs {
-                    snapshot_id: Some(snapshot_id),
                     predicate: Some(predicate.name.into()),
                     value: predicate.value.map(String::from),
                     action: predicate.action.map(String::from),

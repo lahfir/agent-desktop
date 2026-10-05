@@ -22,6 +22,10 @@ typedef struct {
 
 static const uint8_t ADReduceMotion = 1 << 2;
 static const uint8_t ADHighlightCue = 1 << 3;
+static const uint8_t ADPointOnArrival = 1 << 4;
+static const uint8_t ADArrowOnDeparture = 1 << 5;
+static const uint8_t ADArrowAfterEffect = 1 << 6;
+static const double ADPointerReleaseSeconds = 0.35;
 static const CGFloat ADStage = 240.0;
 static const CGFloat ADBoxWidth = 32.0;
 static const CGFloat ADBoxHeight = 40.0;
@@ -304,6 +308,11 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
                 ADRipple = ADRippleWindow();
             }
             ADTintPointer();
+            if ((config->flags & ADArrowOnDeparture) != 0) {
+                ADPointerImageSelect(ADCursorWindow, ADPointer, false);
+            }
+            ADPointerImageApply(ADCursorWindow, ADPointer);
+            bool pointsOnArrival = (config->flags & ADPointOnArrival) != 0;
             [ADCursorWindow orderFrontRegardless];
 
             bool showsBubble = config->label != NULL && config->label[0] != '\0';
@@ -330,6 +339,10 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
 
             for (size_t index = 0; index < movementFrameCount; index += 1) {
                 ADMoveCursor(&frames[index], mainHeight);
+                if (pointsOnArrival && frames[index].x == last->x && frames[index].y == last->y) {
+                    ADPointerImageSelect(ADCursorWindow, ADPointer, true);
+                    pointsOnArrival = false;
+                }
                 if (followsBubble) {
                     [ADBubbleWindow setFrameOrigin:NSMakePoint(
                         bubbleFrame.origin.x + frames[index].x - last->x,
@@ -355,6 +368,9 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
                 ADShowBubble(ADBubbleText, bubbleFrame, changedLabel && !reduceMotion);
             } else {
                 [ADBubbleWindow orderOut:nil];
+            }
+            if ((config->flags & ADArrowAfterEffect) != 0) {
+                ADPointerImageRelease(ADCursorWindow, ADPointer, ADPointerReleaseSeconds);
             }
             return true;
         }

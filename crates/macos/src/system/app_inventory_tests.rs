@@ -115,3 +115,50 @@ fn source_error(source: &str) -> AdapterError {
         format!("{source} inventory failed"),
     )
 }
+
+#[test]
+fn persistent_source_failure_preserves_diagnosis_without_churn() {
+    let source = inventory_failure_fixture();
+    let mut attempts = 0;
+    let error = stabilize_apps_until(
+        Instant::now() + std::time::Duration::from_millis(20),
+        || {
+            attempts += 1;
+            complete_apps_from_sources(Err(source.clone()), Ok(Vec::new()))
+        },
+    )
+    .unwrap_err();
+    let details = error.details.unwrap();
+    assert_eq!(details["attempts"], attempts);
+    assert_eq!(details["churn_events"], 0);
+    let failure = &details["last_failure_details"]["failures"][0];
+    assert_eq!(failure["source"], "ns_workspace");
+    assert_eq!(failure["code"], "APP_UNRESPONSIVE");
+    assert_eq!(failure["details"]["skipped"][0]["pid"], 11);
+}
+
+fn inventory_failure_fixture() -> AdapterError {
+    source_error("ns_workspace").with_details(serde_json::json!({
+        "retryable":true, "skipped":[{"pid":11,"field":"activation_policy"}],
+    }))
+}
+
+#[test]
+fn changing_app_inventory_counts_only_observed_changes() {
+    let mut attempts = 0_u64;
+    let error = stabilize_apps_until(
+        Instant::now() + std::time::Duration::from_millis(20),
+        || {
+            attempts += 1;
+            Ok(vec![app(
+                if attempts.is_multiple_of(2) { "A" } else { "B" },
+                10,
+            )])
+        },
+    )
+    .unwrap_err();
+    let details = error.details.unwrap();
+    assert_eq!(details["churn_events"], attempts - 1);
+    assert!(details.get("last_failure").is_none());
+    assert!(details.get("last_failure_details").is_none());
+}

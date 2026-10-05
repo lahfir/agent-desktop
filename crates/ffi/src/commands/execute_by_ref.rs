@@ -17,11 +17,8 @@ use std::ffi::c_char;
 /// FFI share a single source of policy truth.
 ///
 /// `ref_id` tri-state: null → `ErrInvalidArgs`; non-null invalid UTF-8 →
-/// `ErrInvalidArgs`; valid UTF-8 but bad `@e{N}` format → `ErrInvalidArgs`.
-///
-/// `snapshot_id` tri-state: null is valid only when `ref_id` embeds its
-/// snapshot; valid UTF-8 pins a legacy bare `@eN` ref or must match the
-/// snapshot embedded in a qualified ref; invalid UTF-8 returns `ErrInvalidArgs`.
+/// `ErrInvalidArgs`; valid UTF-8 that is not a snapshot-qualified
+/// `@<snapshot_id>:e{N}` ref, including a bare `@e{N}` → `ErrInvalidArgs`.
 ///
 /// `policy` is an `AdPolicyKind` discriminant (0=Headless, 1=FocusFallback,
 /// 2=Headed). An out-of-range value returns `ErrInvalidArgs`. `Headless (0)`
@@ -54,8 +51,7 @@ use std::ffi::c_char;
 /// `ref_id` must be a non-null pointer to a NUL-terminated C string within
 /// `AD_MAX_STRING_BYTES + 1` bytes; null is **not** optional — it is defined
 /// behaviour (no UB) but is rejected immediately with `ErrInvalidArgs`.
-/// `snapshot_id` may be null only for a snapshot-qualified ref, or a non-null
-/// NUL-terminated C string within `AD_MAX_STRING_BYTES + 1` bytes. `action`
+/// `action`
 /// must be a non-null pointer to a
 /// valid `AdAction`. `out` must be a non-null writable pointer. All pointers
 /// must remain valid for the duration of the call. Must be called from the
@@ -64,20 +60,13 @@ use std::ffi::c_char;
 pub unsafe extern "C" fn ad_execute_by_ref(
     adapter: *const AdAdapter,
     ref_id: *const c_char,
-    snapshot_id: *const c_char,
     action: *const AdAction,
     policy: i32,
     out: *mut *mut c_char,
 ) -> AdResult {
     unsafe {
         super::execute_by_ref_timeout::ad_execute_by_ref_timeout(
-            adapter,
-            ref_id,
-            snapshot_id,
-            action,
-            policy,
-            -1,
-            out,
+            adapter, ref_id, action, policy, -1, out,
         )
     }
 }

@@ -66,7 +66,7 @@ const windowStop = (error, windowId) => (windowId ? WINDOW_STOPS[error.code] ?? 
 export const run = async function* (
   goal,
   app,
-  { root = null, windowId = null, text = null, cursor = false, values = true } = {},
+  { root = null, windowId = null, text = null, cursor = false, values = true, confirmDestructive = false } = {},
 ) {
   if (!process.env.TYPESAFE_API_KEY) throw new Error("TYPESAFE_API_KEY unset");
   const supply = textSupply(text);
@@ -122,7 +122,7 @@ export const run = async function* (
         node = space.targets[state.operation][head.choice];
         confidence = head.confidence;
         let destructive = null;
-        if (needsRiskCheck(confidence)) {
+        if (needsRiskCheck(confidence, { confirmDestructive })) {
           const rated = await rateRisk(goal, screen, state.operation, node, values);
           state.calls += 1;
           const answer = rated.answers?.destructive?.noul;
@@ -133,7 +133,7 @@ export const run = async function* (
           targetConfidence: confidence,
           present: null,
           destructive,
-        });
+        }, { confirmDestructive });
         if (settled.decision !== "act") {
           yield {
             stop: `${settled.decision}: ${settled.why}`,
@@ -163,6 +163,9 @@ export const run = async function* (
         confidence,
         ok: outcome.ok,
         delivery: outcome.delivery,
+        steps: outcome.steps ?? [],
+        post_state: outcome.post_state ?? null,
+        details: outcome.details ?? null,
         error: outcome.error ?? null,
         route: outcome.route ?? null,
         truncated: space.truncated,
@@ -217,16 +220,17 @@ const main = async (argv) => {
   const text = argv.flatMap((a, i) => (argv[i - 1] === "--text" ? [a] : []));
   const cursor = argv.includes("--cursor");
   const values = !argv.includes("--no-values");
+  const confirmDestructive = argv.includes("--confirm-destructive");
   const goal = argv
-    .filter((a, i) => !a.startsWith("--") && !(argv[i - 1]?.startsWith("--") && argv[i - 1] !== "--cursor" && argv[i - 1] !== "--no-values"))
+    .filter((a, i) => !a.startsWith("--") && !(argv[i - 1]?.startsWith("--") && argv[i - 1] !== "--cursor" && argv[i - 1] !== "--no-values" && argv[i - 1] !== "--confirm-destructive"))
     .join(" ");
   if (!app || !goal) {
     console.error(
-      'usage: run.mjs --app <name> [--window-id <id>] [--cursor] [--no-values] [--root @ref] [--text "value"]... "<goal>"',
+      'usage: run.mjs --app <name> [--window-id <id>] [--cursor] [--no-values] [--confirm-destructive] [--root @ref] [--text "value"]... "<goal>"',
     );
     process.exit(2);
   }
-  for await (const event of run(goal, app, { root, windowId, text, cursor, values })) {
+  for await (const event of run(goal, app, { root, windowId, text, cursor, values, confirmDestructive })) {
     console.log(JSON.stringify(event));
     if (event.stop && event.stop !== "done") process.exitCode = 1;
   }

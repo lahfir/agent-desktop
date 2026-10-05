@@ -93,17 +93,13 @@ static_assert(AD_STEP_MECHANISM_PHYSICAL_SYNTHETIC == 2);
 using AppPid = decltype(AdAppInfo{}.pid);
 using WindowPid = decltype(AdWindowInfo{}.pid);
 using RefPid = decltype(AdRefProcess{}.pid);
-using ScreenshotPid = decltype(AdScreenshotTarget{}.pid);
 static_assert(std::is_same_v<AppPid, std::uint32_t>);
 static_assert(std::is_same_v<WindowPid, std::uint32_t>);
 static_assert(std::is_same_v<RefPid, std::uint32_t>);
-static_assert(std::is_same_v<ScreenshotPid, std::uint32_t>);
 static_assert(std::numeric_limits<AppPid>::max() == UINT32_MAX);
 
-using ListSurfacesFn = AdResult (*)(const AdAdapter *, std::uint32_t, AdSurfaceList **);
 using ListExactSurfacesFn = AdResult (*)(const AdAdapter *, std::uint32_t, AdExactSurfaceList **);
 using ListDisplaysFn = AdResult (*)(const AdAdapter *, AdDisplayList **);
-static_assert(std::is_same_v<decltype(&ad_list_surfaces), ListSurfacesFn>);
 static_assert(std::is_same_v<decltype(&ad_list_surfaces_exact), ListExactSurfacesFn>);
 static_assert(std::is_same_v<decltype(&ad_list_displays), ListDisplaysFn>);
 static_assert(sizeof(AdDisplayInfo) == AD_DISPLAY_INFO_SIZE);

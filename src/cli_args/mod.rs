@@ -6,6 +6,8 @@ pub(crate) mod batch;
 pub(crate) mod cursor_overlay;
 pub(crate) mod cursor_overlay_action;
 pub(crate) mod cursor_overlay_enable;
+pub(crate) mod cursor_overlay_images;
+pub(crate) mod cursor_overlay_motion;
 pub(crate) mod cursor_overlay_style;
 pub(crate) mod drag;
 pub(crate) mod drag_target;
@@ -42,15 +44,29 @@ pub(crate) enum Surface {
     Alert,
     Desktop,
     Taskbar,
+    #[value(alias = "system_tray")]
+    #[serde(alias = "system_tray")]
     SystemTray,
+    #[value(alias = "quick_settings")]
+    #[serde(alias = "quick_settings")]
     QuickSettings,
+    #[value(alias = "notification_center")]
+    #[serde(alias = "notification_center")]
     NotificationCenter,
     Toolbar,
     Dock,
     Spotlight,
+    #[value(alias = "menu_bar_extras")]
+    #[serde(alias = "menu_bar_extras")]
     MenuBarExtras,
+    #[value(alias = "system_tray_overflow")]
+    #[serde(alias = "system_tray_overflow")]
     SystemTrayOverflow,
+    #[value(alias = "start_menu")]
+    #[serde(alias = "start_menu")]
     StartMenu,
+    #[value(alias = "action_center")]
+    #[serde(alias = "action_center")]
     ActionCenter,
 }
 
@@ -187,12 +203,6 @@ pub(crate) struct FindArgs {
     pub root: Option<String>,
     #[arg(
         long,
-        value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID to use when resolving --root"
-    )]
-    pub snapshot: Option<String>,
-    #[arg(
-        long,
         value_enum,
         default_value_t = Surface::Window,
         help = "Surface to search (menubar, menu, sheet ...) instead of the window"
@@ -206,6 +216,13 @@ pub(crate) struct FindArgs {
     )]
     #[serde(default)]
     pub states: Vec<String>,
+    #[arg(
+        long = "timeout-ms",
+        value_name = "MS",
+        help = "Traversal deadline in milliseconds (default 5000; raise for a large tree such as a shell file dialog)"
+    )]
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
     #[command(flatten)]
     #[serde(flatten)]
     pub selection: FindSelectionArgs,
@@ -231,19 +248,13 @@ pub(crate) struct ScreenshotArgs {
 pub(crate) struct GetArgs {
     #[arg(
         value_name = "REF",
-        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN)"
     )]
     pub ref_id: String,
     #[arg(
         long,
-        value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
-    )]
-    pub snapshot: Option<String>,
-    #[arg(
-        long,
         default_value = "text",
-        help = "Property: text, value, title, bounds, role, states"
+        help = "Property: text (what a person reads: content for text-bearing roles, otherwise the name), value, title, bounds, role, states"
     )]
     #[serde(default = "default_get_property")]
     pub property: String,
@@ -254,15 +265,9 @@ pub(crate) struct GetArgs {
 pub(crate) struct IsArgs {
     #[arg(
         value_name = "REF",
-        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN)"
     )]
     pub ref_id: String,
-    #[arg(
-        long,
-        value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
-    )]
-    pub snapshot: Option<String>,
     #[arg(
         long,
         default_value = "visible",
@@ -277,16 +282,9 @@ pub(crate) struct IsArgs {
 pub(crate) struct RefArgs {
     #[arg(
         value_name = "REF",
-        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN)"
     )]
     pub ref_id: String,
-    #[arg(
-        long = "snapshot",
-        value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
-    )]
-    #[serde(rename = "snapshot", alias = "snapshot_id")]
-    pub snapshot_id: Option<String>,
     #[arg(
         long = "timeout-ms",
         default_value_t = 5000,

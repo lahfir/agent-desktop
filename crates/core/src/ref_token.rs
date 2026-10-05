@@ -16,21 +16,7 @@ pub(crate) fn qualify_tree_refs(tree: &mut AccessibilityNode, snapshot_id: &str)
     }
 }
 
-pub(crate) fn resolve_ref_target(
-    ref_id: &str,
-    explicit_snapshot_id: Option<&str>,
-) -> Result<(String, String), AppError> {
-    if is_local_ref(ref_id) {
-        let snapshot_id = explicit_snapshot_id.ok_or_else(|| {
-            AppError::invalid_input_with_suggestion(
-                "Bare refs require an explicit snapshot_id",
-                "Use the snapshot-qualified ref returned by snapshot, or pass --snapshot with a legacy @eN ref.",
-            )
-        })?;
-        validate_snapshot_id(snapshot_id)?;
-        return Ok((snapshot_id.to_string(), ref_id.to_string()));
-    }
-
+pub(crate) fn resolve_ref_target(ref_id: &str) -> Result<(String, String), AppError> {
     let Some(without_at) = ref_id.strip_prefix('@') else {
         return Err(invalid_ref(ref_id));
     };
@@ -42,20 +28,19 @@ pub(crate) fn resolve_ref_target(
     if !is_local_ref(&local_ref) {
         return Err(invalid_ref(ref_id));
     }
-    if explicit_snapshot_id.is_some_and(|explicit| explicit != snapshot_id) {
-        return Err(AppError::invalid_input_with_suggestion(
-            "Ref snapshot does not match the explicit snapshot_id",
-            "Use the snapshot_id embedded in the ref, or pass a ref from the requested snapshot.",
-        ));
-    }
     Ok((snapshot_id.to_string(), local_ref))
 }
 
-pub(crate) fn validate_ref_token(ref_id: &str) -> Result<(), AppError> {
-    if is_local_ref(ref_id) {
-        return Ok(());
+#[cfg(test)]
+pub(crate) fn qualify_for_test(ref_id: &str, snapshot_id: Option<&str>) -> String {
+    match snapshot_id {
+        Some(snapshot_id) if is_local_ref(ref_id) => qualify_ref_id(snapshot_id, ref_id),
+        _ => ref_id.to_string(),
     }
-    resolve_ref_target(ref_id, None).map(|_| ())
+}
+
+pub(crate) fn validate_ref_token(ref_id: &str) -> Result<(), AppError> {
+    resolve_ref_target(ref_id).map(|_| ())
 }
 
 fn is_local_ref(ref_id: &str) -> bool {
@@ -68,9 +53,10 @@ fn is_local_ref(ref_id: &str) -> bool {
 }
 
 fn invalid_ref(ref_id: &str) -> AppError {
-    AppError::invalid_input(format!(
-        "Invalid ref_id '{ref_id}': expected @<snapshot_id>:e<N> or legacy @e<N> with an explicit snapshot"
-    ))
+    AppError::invalid_input_with_suggestion(
+        format!("Invalid ref_id '{ref_id}': expected @<snapshot_id>:e<N>"),
+        "Use the snapshot-qualified ref that snapshot prints, for example @s8f3k2p9:e1. A bare @eN ref is not accepted.",
+    )
 }
 
 #[cfg(test)]

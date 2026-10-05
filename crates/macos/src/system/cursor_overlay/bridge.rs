@@ -1,11 +1,16 @@
 use agent_desktop_core::{
-    AdapterError, CURSOR_HIGHLIGHT_HOLD_MS, CursorOverlayInstruction, CursorOverlayStyle,
-    CursorPose, ErrorCode, Point, Rect,
+    AdapterError, CURSOR_HIGHLIGHT_HOLD_MS, CursorImage, CursorOverlayInstruction,
+    CursorOverlayStyle, CursorPhase, CursorPose, ErrorCode, Point, Rect,
 };
 use std::ffi::{CString, c_char};
 
 const REDUCE_MOTION: u8 = 1 << 2;
 const HIGHLIGHT: u8 = 1 << 3;
+const POINT_ON_ARRIVAL: u8 = 1 << 4;
+const ARROW_ON_DEPARTURE: u8 = 1 << 5;
+const ARROW_AFTER_EFFECT: u8 = 1 << 6;
+const ARROW_SLOT: u8 = 0;
+const POINTER_SLOT: u8 = 1;
 
 #[repr(C)]
 struct NativeCursorStyle {
@@ -45,6 +50,12 @@ unsafe extern "C" {
     fn agent_desktop_cursor_overlay_drag_end(x: f64, y: f64, completed: bool);
     fn agent_desktop_cursor_overlay_drag_active() -> bool;
     fn agent_desktop_cursor_overlay_style(style: *const NativeCursorStyle);
+    fn agent_desktop_cursor_overlay_image(
+        slot: u8,
+        path: *const c_char,
+        hotspot_x: f64,
+        hotspot_y: f64,
+    ) -> bool;
     fn agent_desktop_cursor_overlay_idle();
     fn agent_desktop_cursor_overlay_hide();
     fn agent_desktop_cursor_overlay_rest();
@@ -128,6 +139,7 @@ pub(super) fn run(
     if target.is_some() {
         flags |= HIGHLIGHT;
     }
+    flags |= pointer_flags(instruction);
     let config = NativeRenderConfig {
         frame_seconds: 1.0 / f64::from(fps),
         label: label
@@ -149,7 +161,7 @@ pub(super) fn run(
     }
 }
 
-pub(super) fn apply_style(style: &CursorOverlayStyle) {
+pub(super) fn apply_style(style: &CursorOverlayStyle, image_changed: bool) {
     let native = NativeCursorStyle {
         fill: style.fill_rgb(),
         rim: style.rim_rgb(),
@@ -157,6 +169,26 @@ pub(super) fn apply_style(style: &CursorOverlayStyle) {
         size: style.size(),
     };
     unsafe { agent_desktop_cursor_overlay_style(&native) }
+    if image_changed {
+        apply_image(ARROW_SLOT, style.image());
+        apply_image(POINTER_SLOT, style.pointer_image());
+    }
+}
+
+fn pointer_flags(instruction: &CursorOverlayInstruction) -> u8 {
+    match instruction.phase() {
+        CursorPhase::Effect => ARROW_AFTER_EFFECT,
+        CursorPhase::Drag => ARROW_ON_DEPARTURE,
+        CursorPhase::Travel if instruction.is_pointer() => ARROW_ON_DEPARTURE | POINT_ON_ARRIVAL,
+        CursorPhase::Travel => ARROW_ON_DEPARTURE,
+    }
+}
+
+fn apply_image(slot: u8, image: Option<&CursorImage>) {
+    let path = image.and_then(|image| CString::new(image.path()).ok());
+    let hotspot = image.map_or((0.0, 0.0), |image| (image.hotspot().x, image.hotspot().y));
+    let pointer = path.as_ref().map_or(std::ptr::null(), |path| path.as_ptr());
+    let _ = unsafe { agent_desktop_cursor_overlay_image(slot, pointer, hotspot.0, hotspot.1) };
 }
 
 pub(super) fn idle() {
@@ -178,3 +210,7 @@ pub(super) fn hide() {
 pub(super) fn show() {
     unsafe { agent_desktop_cursor_overlay_show() }
 }
+
+#[cfg(test)]
+#[path = "bridge_tests.rs"]
+mod tests;

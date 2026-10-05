@@ -138,8 +138,7 @@ fn hidden_element_reports_not_visible() {
 
     let result = execute(
         IsArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             property: IsProperty::Visible,
         },
         &adapter,
@@ -167,8 +166,7 @@ fn zero_sized_bounds_report_not_visible() {
 
     let result = execute(
         IsArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             property: IsProperty::Visible,
         },
         &adapter,
@@ -188,8 +186,7 @@ fn offscreen_element_reports_not_visible() {
 
     let result = execute(
         IsArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             property: IsProperty::Visible,
         },
         &adapter,
@@ -209,8 +206,7 @@ fn visible_element_with_live_evidence_reports_true() {
 
     let result = execute(
         IsArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             property: IsProperty::Visible,
         },
         &adapter,
@@ -230,8 +226,7 @@ fn visible_degrades_applicability_when_live_reads_unsupported() {
 
     let result = execute(
         IsArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             property: IsProperty::Visible,
         },
         &adapter,
@@ -263,8 +258,7 @@ fn checked_uses_live_canonical_state() {
 
     let result = execute(
         IsArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             property: IsProperty::Checked,
         },
         &adapter,
@@ -289,8 +283,7 @@ fn checked_does_not_infer_platform_values_in_core() {
 
     let result = execute(
         IsArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             property: IsProperty::Checked,
         },
         &adapter,
@@ -315,8 +308,7 @@ fn checked_falls_back_to_snapshot_state_when_live_state_is_missing() {
 
     let result = execute(
         IsArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             property: IsProperty::Checked,
         },
         &adapter,
@@ -345,8 +337,7 @@ fn basic_state_properties_use_live_state() {
     ] {
         let result = execute(
             IsArgs {
-                ref_id: "@e1".into(),
-                snapshot_id: Some(snapshot_id.clone()),
+                ref_id: format!("@{}:e1", snapshot_id.clone()),
                 property,
             },
             &adapter,

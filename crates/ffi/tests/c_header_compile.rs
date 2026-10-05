@@ -93,13 +93,10 @@ int main(void) {
     _Static_assert(_Generic(((AdAppInfo){0}).pid, uint32_t: 1, default: 0), "AdAppInfo.pid must be uint32_t");
     _Static_assert(_Generic(((AdWindowInfo){0}).pid, uint32_t: 1, default: 0), "AdWindowInfo.pid must be uint32_t");
     _Static_assert(_Generic(((AdRefProcess){0}).pid, uint32_t: 1, default: 0), "AdRefProcess.pid must be uint32_t");
-    _Static_assert(_Generic(((AdScreenshotTarget){0}).pid, uint32_t: 1, default: 0), "AdScreenshotTarget.pid must be uint32_t");
-    AdResult (*list_surfaces)(const struct AdAdapter *, uint32_t, struct AdSurfaceList **) = ad_list_surfaces;
     AdResult (*list_surfaces_exact)(const struct AdAdapter *, uint32_t, struct AdExactSurfaceList **) = ad_list_surfaces_exact;
     AdResult (*list_displays)(const struct AdAdapter *, struct AdDisplayList **) = ad_list_displays;
     AdResult callback_result = ad_set_log_callback(log_callback);
     AdResult clear_callback_result = ad_set_log_callback(NULL);
-    (void)list_surfaces;
     (void)list_surfaces_exact;
     (void)list_displays;
     (void)callback_result;

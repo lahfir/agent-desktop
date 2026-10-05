@@ -295,8 +295,7 @@ fn timeout_none_is_single_shot() {
 
     let error = execute(
         HoverArgs {
-            ref_id: Some("@e1".into()),
-            snapshot_id: Some(snapshot_id),
+            ref_id: Some(format!("@{}:e1", snapshot_id)),
             xy: None,
             duration_ms: None,
             timeout_ms: None,
@@ -317,7 +316,6 @@ fn expired_xy_budget_never_dispatches_mouse_move() {
     let err = execute(
         HoverArgs {
             ref_id: None,
-            snapshot_id: None,
             xy: Some((5.0, 6.0)),
             duration_ms: None,
             timeout_ms: Some(0),

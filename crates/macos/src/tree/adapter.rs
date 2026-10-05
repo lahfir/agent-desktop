@@ -60,6 +60,15 @@ impl ObservationOps for MacOSAdapter {
         )
     }
 
+    fn list_apps_inventory(
+        &self,
+        deadline: Deadline,
+    ) -> Result<agent_desktop_core::AppInventory, AdapterError> {
+        crate::system::app_inventory::list_apps_inventory_until(
+            crate::tree::locator_deadline::from_operation(deadline)?,
+        )
+    }
+
     fn list_apps_scoped(
         &self,
         name: &str,

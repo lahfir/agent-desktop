@@ -109,3 +109,42 @@ fn valid_profile_is_used_over_session_config() {
         profile.with_multi_agent(false)
     );
 }
+
+#[test]
+fn agent_profiles_carry_their_own_motion() {
+    let _guard = HomeGuard::new();
+    let session = start_session(Default::default()).unwrap();
+    let master = CursorOverlayConfig::enabled(None, 6).unwrap();
+    set_cursor_overlay(&session.id, master.clone()).unwrap();
+    let mut motion = crate::CursorMotionProfile::default();
+    motion.set_travel_ms(200, 500);
+    motion.set_dwell_ms(100);
+    motion.set_seed(Some(7));
+    let profile = CursorOverlayConfig::enabled(None, 6)
+        .unwrap()
+        .with_motion(motion.clone())
+        .unwrap();
+    save_cursor_overlay_profile(&session.id, "a", profile).unwrap();
+    let loaded = cursor_overlay_for_session_agent(Some(&session.id), Some("a")).unwrap();
+    assert_eq!(loaded.motion(), &motion);
+    let other = cursor_overlay_for_session_agent(Some(&session.id), Some("b")).unwrap();
+    assert!(other.motion().is_default());
+}
+
+#[test]
+fn invalid_profile_motion_falls_back_to_session_config() {
+    let _guard = HomeGuard::new();
+    let session = start_session(Default::default()).unwrap();
+    let master = CursorOverlayConfig::enabled(None, 6).unwrap();
+    set_cursor_overlay(&session.id, master.clone()).unwrap();
+    let path = agent_profile_path(&session.id, "a").unwrap();
+    write_private_file(
+        &path,
+        br#"{"enabled":true,"motion":{"travel_min_ms":90,"travel_max_ms":650,"dwell_ms":200}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        cursor_overlay_for_session_agent(Some(&session.id), Some("a")).unwrap(),
+        master
+    );
+}

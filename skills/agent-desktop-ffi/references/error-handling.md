@@ -8,7 +8,8 @@ populated; read it with the `ad_last_error_*` accessors.
 ## Minimal pattern
 
 ```c
-AdResult rc = ad_launch_app(adapter, "com.apple.finder", 5000, &win);
+AdExactWindowInfo win;
+AdResult rc = ad_launch_app_exact(adapter, "com.apple.finder", 5000, &win);
 if (rc != AD_RESULT_OK) {
     const char *msg = ad_last_error_message();
     const char *sug = ad_last_error_suggestion();   // may be NULL
@@ -18,7 +19,7 @@ if (rc != AD_RESULT_OK) {
     return -1;
 }
 // ...use win...
-ad_release_window_fields(&win);
+ad_release_exact_window_fields(&win);
 ```
 
 ## Last-error accessors
@@ -99,16 +100,15 @@ releases may add codes.
 
 ## Ref token validation
 
-Ref-taking entrypoints accept two canonical forms:
+Ref-taking entrypoints accept one canonical form:
 
-- `@<snapshot_id>:e<N>` is a qualified ref. `snapshot_id` may be null. If a
-  separate snapshot ID is supplied, it must match the embedded ID.
-- `@e<N>` is a legacy bare ref. It requires a non-null snapshot ID argument.
+- `@<snapshot_id>:e<N>` is a qualified ref. It embeds its snapshot ID.
+
+A bare `@e<N>` ref is not accepted.
 
 `N` is a positive `u32` written without a sign and with at most 10 decimal
 digits. Snapshot IDs are 3–64 ASCII alphanumeric, `-`, or `_` characters.
-Malformed tokens, invalid UTF-8, a bare ref without a snapshot ID, or mismatched
-embedded and explicit snapshot IDs return `AD_RESULT_ERR_INVALID_ARGS` before
+Malformed tokens, invalid UTF-8, or a bare ref return `AD_RESULT_ERR_INVALID_ARGS` before
 dispatch. A well-formed token whose saved snapshot is absent returns
 `AD_RESULT_ERR_SNAPSHOT_NOT_FOUND`; a saved snapshot with no matching local ref
 returns `AD_RESULT_ERR_STALE_REF`.

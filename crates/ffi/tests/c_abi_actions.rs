@@ -3,8 +3,8 @@ mod common;
 use common::{
     AdActionResult, AdActionStep, AdNativeHandle, AdPolicyKind, AdResult,
     ad_adapter_create_with_session, ad_adapter_destroy, ad_execute_action,
-    ad_execute_action_with_policy, ad_execute_ref_action_with_policy, ad_free_action_result,
-    default_action, default_ref_entry, with_adapter,
+    ad_execute_action_with_policy, ad_execute_ref_action_exact_with_policy, ad_free_action_result,
+    default_action, default_exact_ref_entry, with_adapter,
 };
 use std::ffi::CString;
 
@@ -55,15 +55,15 @@ fn execute_action_rejects_null_handle_ptr() {
 }
 
 #[test]
-fn legacy_ref_action_fails_closed_without_exact_identity() {
+fn exact_ref_action_without_process_generation_is_rejected() {
     with_adapter(|adapter| unsafe {
         let role = std::ffi::CString::new("button").unwrap();
-        let mut entry = default_ref_entry();
-        entry.identity.role = role.as_ptr();
+        let mut entry = default_exact_ref_entry();
+        entry.entry.identity.role = role.as_ptr();
         let action = default_action();
         let mut out: AdActionResult = std::mem::zeroed();
 
-        let rc = ad_execute_ref_action_with_policy(
+        let rc = ad_execute_ref_action_exact_with_policy(
             adapter,
             &entry,
             &action,
@@ -97,7 +97,7 @@ fn execute_action_policy_rejects_null_adapter_on_worker_thread() {
     assert_eq!(rc, AdResult::ErrInvalidArgs);
 }
 
-/// Session context must not weaken the legacy ref entry's fail-closed identity
+/// Session context must not weaken the exact ref entry's fail-closed identity
 /// check.
 #[test]
 fn execute_ref_action_with_session_adapter_wires_context() {
@@ -107,12 +107,12 @@ fn execute_ref_action_with_session_adapter_wires_context() {
         assert!(!adapter.is_null());
 
         let role = CString::new("button").unwrap();
-        let mut entry = default_ref_entry();
-        entry.identity.role = role.as_ptr();
+        let mut entry = default_exact_ref_entry();
+        entry.entry.identity.role = role.as_ptr();
         let action = default_action();
         let mut out: AdActionResult = std::mem::zeroed();
 
-        let rc = ad_execute_ref_action_with_policy(
+        let rc = ad_execute_ref_action_exact_with_policy(
             adapter,
             &entry,
             &action,

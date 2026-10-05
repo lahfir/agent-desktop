@@ -2,9 +2,7 @@ use crate::AdAdapter;
 use crate::convert::string::optional_adapter_string;
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
-use crate::types::{
-    AdExactWindowInfo, AdFindQuery, AdFindSelectionKind, AdNativeHandle, AdWindowInfo,
-};
+use crate::types::{AdExactWindowInfo, AdFindQuery, AdFindSelectionKind, AdNativeHandle};
 use agent_desktop_core::{
     AdapterError, ContainmentPredicate, ErrorCode, IdentityPredicate, LocatorMaterialization,
     LocatorQuery, LocatorResolveRequest, LocatorSelection, ObservationRoot, StatePredicate,
@@ -15,38 +13,6 @@ use std::collections::HashSet;
 const DEFAULT_FIND_TIMEOUT_MS: u64 = 5_000;
 const MAX_FIND_STATES: usize = 64;
 const MAX_CONTAINMENT_DEPTH: usize = 8;
-
-/// Legacy ABI compatibility entrypoint. `AdWindowInfo` cannot carry process
-/// generation, so this function fails closed with `AD_RESULT_ERR_INVALID_ARGS`.
-/// Use `ad_find_exact`.
-///
-/// # Safety
-/// `adapter`, `win`, and `query` must be valid pointers. `out_handle`
-/// must be a valid writable `*mut AdNativeHandle`. On
-/// `AD_RESULT_ERR_ELEMENT_NOT_FOUND` the out-handle is zero-initialized.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ad_find(
-    adapter: *const AdAdapter,
-    win: *const AdWindowInfo,
-    query: *const AdFindQuery,
-    out_handle: *mut AdNativeHandle,
-) -> AdResult {
-    trap_panic(|| unsafe {
-        crate::pointer_guard::guard_non_null!(out_handle, c"out_handle is null");
-        (*out_handle).ptr = std::ptr::null();
-        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
-        crate::pointer_guard::guard_non_null!(win, c"win is null");
-        crate::pointer_guard::guard_non_null!(query, c"query is null");
-        let core_win = match crate::windows::ad_window_to_core(&*win) {
-            Ok(w) => w,
-            Err(e) => {
-                set_last_error(&e);
-                return crate::error::last_error_code();
-            }
-        };
-        find_in_window(adapter, &core_win, &*query, out_handle)
-    })
-}
 
 /// Finds and strictly resolves one element within a generation-pinned window.
 /// `AdFindQuery.control.selection` must explicitly request first, last, or nth

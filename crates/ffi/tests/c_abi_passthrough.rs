@@ -9,8 +9,8 @@
 /// - **Adapter lifecycle**: `ad_adapter_create`, `ad_adapter_destroy`
 /// - **Permissions**: `ad_check_permissions`
 ///
-/// The ~35 Family-A entrypoints (`ad_find`, `ad_execute_action`,
-/// `ad_list_windows`, `ad_screenshot`, clipboard, notifications, etc.) are
+/// The ~35 Family-A entrypoints (`ad_find_exact`, `ad_execute_action`,
+/// `ad_list_windows_exact`, `ad_screenshot`, clipboard, notifications, etc.) are
 /// **not covered here**; broader Family-A passthrough is a documented
 /// follow-up.
 ///
@@ -192,7 +192,6 @@ fn stub_ad_wait_ms_mode_callable_under_stub() {
                 },
             },
             predicate: common::AdWaitPredicate {
-                snapshot_id: std::ptr::null(),
                 predicate: std::ptr::null(),
                 value: std::ptr::null(),
                 action: std::ptr::null(),
@@ -223,14 +222,7 @@ fn stub_ad_execute_by_ref_returns_structured_ref_error() {
         let ref_id = std::ffi::CString::new("@stub-snapshot:e1").unwrap();
         let action = default_action();
         let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
-        let rc = ad_execute_by_ref(
-            adapter,
-            ref_id.as_ptr(),
-            std::ptr::null(),
-            &action,
-            0,
-            &mut out,
-        );
+        let rc = ad_execute_by_ref(adapter, ref_id.as_ptr(), &action, 0, &mut out);
         match rc {
             AdResult::ErrPlatformNotSupported
             | AdResult::ErrSnapshotNotFound

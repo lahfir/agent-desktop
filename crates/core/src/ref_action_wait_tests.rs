@@ -229,6 +229,151 @@ fn transient_ambiguity_is_recorded_in_result_details() {
     );
 }
 
+struct DisabledPolicyBlockedAdapter {
+    preflight_reads: AtomicU32,
+}
+
+impl ObservationOps for DisabledPolicyBlockedAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    fn get_live_element(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::LiveElement, AdapterError> {
+        self.preflight_reads.fetch_add(1, Ordering::SeqCst);
+        Ok(crate::LiveElement {
+            identity: crate::adapter::live_identity("Run"),
+            state: crate::ElementState {
+                role: "button".into(),
+                states: Vec::new(),
+                value: None,
+                enabled: Some(false),
+                hidden: Some(false),
+                offscreen: Some(false),
+            },
+            states_complete: true,
+            bounds: Some(crate::Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+            }),
+            available_actions: vec![capability::CLICK.into()],
+        })
+    }
+}
+
+impl ActionOps for DisabledPolicyBlockedAdapter {}
+impl InputOps for DisabledPolicyBlockedAdapter {}
+impl SystemOps for DisabledPolicyBlockedAdapter {}
+
+/// Regression for a target that is simultaneously disabled (transient,
+/// waitable) and policy-blocked (permanent): `terminal_code()` used to
+/// surface the first blocking check it found rather than the most severe
+/// one, so this misread as a retryable `ActionFailed` and the auto-wait
+/// loop polled it until the entire wait budget was gone. It must instead
+/// classify as the permanent `PolicyDenied` on the first read and return
+/// immediately.
+#[test]
+fn policy_denied_disabled_target_fails_fast_without_exhausting_wait_budget() {
+    let adapter = DisabledPolicyBlockedAdapter {
+        preflight_reads: AtomicU32::new(0),
+    };
+    let started = std::time::Instant::now();
+    let err = execute_with_auto_wait(
+        RefActionWaitCtx {
+            adapter: &adapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
+        ActionRequest::headless(Action::RightClick).with_timeout_ms(Some(5_000)),
+        crate::ref_action::dispatch_resolved,
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::PolicyDenied);
+    assert_eq!(adapter.preflight_reads.load(Ordering::SeqCst), 1);
+    assert!(
+        started.elapsed().as_millis() < 500,
+        "fail-fast target should not consume the wait budget, took {:?}",
+        started.elapsed()
+    );
+}
+
+struct SettledStaleAdapter;
+
+impl ObservationOps for SettledStaleAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Err(
+            AdapterError::stale_ref_because("Stored ref does not match any live element")
+                .with_details(serde_json::json!({
+                    "kind": "resolve_no_candidate",
+                    "complete": true,
+                    "retryable": true,
+                })),
+        )
+    }
+
+    crate::adapter::complete_live_observation!("button", "Run", [capability::CLICK]);
+}
+
+impl ActionOps for SettledStaleAdapter {
+    fn execute_action(
+        &self,
+        _handle: &NativeHandle,
+        _request: ActionRequest,
+        _lease: &crate::InteractionLease,
+    ) -> Result<crate::action_result::ActionResult, AdapterError> {
+        Ok(crate::action_result::ActionResult::delivered_unverified(
+            "click",
+        ))
+    }
+}
+
+impl InputOps for SettledStaleAdapter {}
+
+impl SystemOps for SettledStaleAdapter {
+    crate::adapter::guarded_interaction_lease!();
+}
+
+/// A ref that stays unresolvable through a complete search must surface the
+/// settled `STALE_REF` when the budget runs out, not a `TIMEOUT` claiming the
+/// application may be busy: the resolver already proved the target is gone,
+/// and the polling loop must not discard that diagnosis.
+#[test]
+fn exhausted_budget_returns_the_settled_stale_ref_not_timeout() {
+    let adapter = SettledStaleAdapter;
+    let err = execute_with_auto_wait(
+        RefActionWaitCtx {
+            adapter: &adapter,
+            entry: &entry(),
+            ref_id: "@e1",
+            context: &CommandContext::default(),
+        },
+        request_with_timeout(300),
+        crate::ref_action::dispatch_resolved,
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code, ErrorCode::StaleRef);
+    assert_eq!(err.disposition, crate::DeliverySemantics::not_delivered());
+    let details = err.details.expect("settled details");
+    assert_eq!(details["kind"], "resolve_no_candidate");
+    assert!(details.get("elapsed_ms").is_some());
+}
+
 #[path = "ref_action_wait_lease_tests.rs"]
 mod lease_tests;
 

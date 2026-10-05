@@ -194,7 +194,7 @@ fn first_in_window(
 }
 
 #[cfg(target_os = "macos")]
-fn role_or_subrole_matches(
+pub(super) fn role_or_subrole_matches(
     element: &AXElement,
     target: &str,
     deadline: Instant,
@@ -245,7 +245,7 @@ pub(crate) fn alert_for_pid(
 }
 
 #[cfg(target_os = "macos")]
-fn is_alert(element: &AXElement, deadline: Instant) -> Result<bool, AdapterError> {
+pub(super) fn is_alert(element: &AXElement, deadline: Instant) -> Result<bool, AdapterError> {
     let role = surface_read::string(element, "AXRole", deadline)?;
     let subrole = surface_read::string(element, "AXSubrole", deadline)?;
     Ok(matches!(role.as_deref(), Some("AXSheet"))

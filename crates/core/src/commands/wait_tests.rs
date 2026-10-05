@@ -1,20 +1,11 @@
 use super::test_support::wait_args;
 use super::*;
+use crate::adapter::NoopAdapter;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     AdapterError, ErrorCode, NotificationFilter, NotificationInfo, WindowInfo,
     adapter::WindowFilter,
 };
-
-struct NoopAdapter;
-
-impl ObservationOps for NoopAdapter {}
-
-impl ActionOps for NoopAdapter {}
-
-impl InputOps for NoopAdapter {}
-
-impl SystemOps for NoopAdapter {}
 
 struct NotificationErrorAdapter;
 

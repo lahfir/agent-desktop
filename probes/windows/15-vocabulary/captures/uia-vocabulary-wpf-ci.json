@@ -1,0 +1,1415 @@
+{
+    "measurements":  {
+                         "batch_cost":  {
+                                            "base_set":  {
+                                                             "nodes":  81,
+                                                             "prefetch_max_micros":  243936,
+                                                             "prefetch_median_micros":  207968,
+                                                             "prefetch_min_micros":  196175,
+                                                             "properties":  10,
+                                                             "read_median_micros":  1039,
+                                                             "repeats":  7,
+                                                             "successful_reads":  809
+                                                         },
+                                            "base_set_repeat":  {
+                                                                    "nodes":  81,
+                                                                    "prefetch_max_micros":  211472,
+                                                                    "prefetch_median_micros":  207038,
+                                                                    "prefetch_min_micros":  198159,
+                                                                    "properties":  10,
+                                                                    "read_median_micros":  1047,
+                                                                    "repeats":  7,
+                                                                    "successful_reads":  809
+                                                                },
+                                            "conditional_split":  {
+                                                                      "nodes_needing_a_round_trip":  26,
+                                                                      "total_max_micros":  537483,
+                                                                      "total_median_micros":  422859,
+                                                                      "total_min_micros":  397161
+                                                                  },
+                                            "core_plus_availability":  {
+                                                                           "nodes":  81,
+                                                                           "prefetch_max_micros":  406867,
+                                                                           "prefetch_median_micros":  389413,
+                                                                           "prefetch_min_micros":  375930,
+                                                                           "properties":  36,
+                                                                           "read_median_micros":  3378,
+                                                                           "repeats":  7,
+                                                                           "successful_reads":  2915
+                                                                       },
+                                            "core_set":  {
+                                                             "nodes":  81,
+                                                             "prefetch_max_micros":  355704,
+                                                             "prefetch_median_micros":  335629,
+                                                             "prefetch_min_micros":  324957,
+                                                             "properties":  24,
+                                                             "read_median_micros":  2303,
+                                                             "repeats":  7,
+                                                             "successful_reads":  1943
+                                                         },
+                                            "full_set":  {
+                                                             "nodes":  81,
+                                                             "prefetch_max_micros":  439450,
+                                                             "prefetch_median_micros":  411548,
+                                                             "prefetch_min_micros":  402956,
+                                                             "properties":  43,
+                                                             "read_median_micros":  3978,
+                                                             "repeats":  7,
+                                                             "successful_reads":  3482
+                                                         },
+                                            "note":  "min is the least noise-sensitive estimator; the spread is reported so a claim can be checked against it",
+                                            "warmed_up":  true
+                                        },
+                         "cached_labeled_by":  {
+                                                   "cached_nodes":  81,
+                                                   "labelled_nodes":  2,
+                                                   "rows":  [
+                                                                {
+                                                                    "control_type":  50004,
+                                                                    "target_cached_is_password":  {
+                                                                                                      "failed":  {
+                                                                                                                     "code":  -2147024809,
+                                                                                                                     "result_hex":  "0x80070057",
+                                                                                                                     "result_is_none":  false
+                                                                                                                 }
+                                                                                                  },
+                                                                    "target_cached_name":  {
+                                                                                               "failed":  {
+                                                                                                              "code":  -2147024809,
+                                                                                                              "result_hex":  "0x80070057",
+                                                                                                              "result_is_none":  false
+                                                                                                          }
+                                                                                           },
+                                                                    "target_control_type":  50020
+                                                                },
+                                                                {
+                                                                    "control_type":  50004,
+                                                                    "target_cached_is_password":  {
+                                                                                                      "failed":  {
+                                                                                                                     "code":  -2147024809,
+                                                                                                                     "result_hex":  "0x80070057",
+                                                                                                                     "result_is_none":  false
+                                                                                                                 }
+                                                                                                  },
+                                                                    "target_cached_name":  {
+                                                                                               "failed":  {
+                                                                                                              "code":  -2147024809,
+                                                                                                              "result_hex":  "0x80070057",
+                                                                                                              "result_is_none":  false
+                                                                                                          }
+                                                                                           },
+                                                                    "target_control_type":  50004
+                                                                }
+                                                            ]
+                                               },
+                         "child_process":  {
+                                               "attached":  true,
+                                               "descendants":  81,
+                                               "hosted":  true,
+                                               "root_resolved":  true
+                                           },
+                         "labeled_by":  {
+                                            "elements":  81,
+                                            "non_secure_labelled_by_secure":  true,
+                                            "resolved":  2,
+                                            "resolved_rows":  [
+                                                                  {
+                                                                      "control_type":  50004,
+                                                                      "resolved":  true,
+                                                                      "secure":  false,
+                                                                      "target_control_type":  50020,
+                                                                      "target_name":  {
+                                                                                          "length":  11,
+                                                                                          "non_empty":  true,
+                                                                                          "variant_type":  "VARENUM(8)"
+                                                                                      },
+                                                                      "target_secure":  false
+                                                                  },
+                                                                  {
+                                                                      "control_type":  50004,
+                                                                      "resolved":  true,
+                                                                      "secure":  false,
+                                                                      "target_control_type":  50004,
+                                                                      "target_name":  {
+                                                                                          "variant_type":  "VARENUM(8)"
+                                                                                      },
+                                                                      "target_secure":  true
+                                                                  }
+                                                              ],
+                                            "unresolved_shapes":  [
+                                                                      {
+                                                                          "control_type":  50011,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50010,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50000,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50037,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50020,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50002,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50014,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50033,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50004,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50003,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50007,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50008,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50019,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50018,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50027,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50035,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50034,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50025,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50029,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      },
+                                                                      {
+                                                                          "control_type":  50028,
+                                                                          "failed":  {
+                                                                                         "code":  0,
+                                                                                         "result_hex":  null,
+                                                                                         "result_is_none":  true
+                                                                                     }
+                                                                      }
+                                                                  ]
+                                        },
+                         "pattern_state_without_pattern":  {
+                                                               "rows":  [
+                                                                            {
+                                                                                "availability_property_reported":  false,
+                                                                                "control_type":  50011,
+                                                                                "outcome":  {
+                                                                                                "number":  2,
+                                                                                                "variant_type":  "VARENUM(3)"
+                                                                                            },
+                                                                                "property":  "ToggleToggleState"
+                                                                            },
+                                                                            {
+                                                                                "availability_property_reported":  false,
+                                                                                "control_type":  50010,
+                                                                                "outcome":  {
+                                                                                                "number":  3,
+                                                                                                "variant_type":  "VARENUM(3)"
+                                                                                            },
+                                                                                "property":  "ExpandCollapseExpandCollapseState"
+                                                                            },
+                                                                            {
+                                                                                "availability_property_reported":  false,
+                                                                                "control_type":  50011,
+                                                                                "outcome":  {
+                                                                                                "bool":  false,
+                                                                                                "variant_type":  "VARENUM(11)"
+                                                                                            },
+                                                                                "property":  "SelectionItemIsSelected"
+                                                                            },
+                                                                            {
+                                                                                "availability_property_reported":  false,
+                                                                                "control_type":  50011,
+                                                                                "outcome":  {
+                                                                                                "bool":  true,
+                                                                                                "variant_type":  "VARENUM(11)"
+                                                                                            },
+                                                                                "property":  "ValueIsReadOnly"
+                                                                            },
+                                                                            {
+                                                                                "availability_property_reported":  false,
+                                                                                "control_type":  50011,
+                                                                                "outcome":  {
+                                                                                                "bool":  false,
+                                                                                                "variant_type":  "VARENUM(11)"
+                                                                                            },
+                                                                                "property":  "SelectionCanSelectMultiple"
+                                                                            }
+                                                                        ]
+                                                           },
+                         "per_control_type":  {
+                                                  "rows":  [
+                                                               {
+                                                                   "control_type":  50000,
+                                                                   "count":  5,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  false,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "length":  5,
+                                                                                                 "non_empty":  true,
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  0,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50002,
+                                                                   "count":  1,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "length":  5,
+                                                                                                 "non_empty":  true,
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  1048576,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50003,
+                                                                   "count":  1,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "length":  6,
+                                                                                                 "non_empty":  true,
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  1049600,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50004,
+                                                                   "count":  5,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  1048576,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  true,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  false,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             },
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50007,
+                                                                   "count":  5,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "length":  12,
+                                                                                                 "non_empty":  true,
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  3145728,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50008,
+                                                                   "count":  1,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  1048576,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50010,
+                                                                   "count":  1,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  false,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  1048576,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50011,
+                                                                   "count":  1,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  1074790400,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50014,
+                                                                   "count":  10,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  false,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  98369,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50018,
+                                                                   "count":  1,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  1048576,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50019,
+                                                                   "count":  3,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "length":  6,
+                                                                                                 "non_empty":  true,
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  3145730,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50020,
+                                                                   "count":  19,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  0,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50025,
+                                                                   "count":  6,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "length":  5,
+                                                                                                 "non_empty":  true,
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  1048576,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  false,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             },
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50027,
+                                                                   "count":  8,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  false,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  98304,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50028,
+                                                                   "count":  1,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  1048576,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  true,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50029,
+                                                                   "count":  2,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "length":  12,
+                                                                                                 "non_empty":  true,
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  18874368,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  true,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50033,
+                                                                   "count":  5,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  false,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  false,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  0,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50034,
+                                                                   "count":  1,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  false,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  0,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50035,
+                                                                   "count":  4,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  false,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "length":  5,
+                                                                                                 "non_empty":  true,
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  131072,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  true,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               },
+                                                               {
+                                                                   "control_type":  50037,
+                                                                   "count":  1,
+                                                                   "full_description":  {
+                                                                                            "variant_type":  "VARENUM(8)"
+                                                                                        },
+                                                                   "help_text":  {
+                                                                                     "variant_type":  "VARENUM(8)"
+                                                                                 },
+                                                                   "is_content_element":  {
+                                                                                              "bool":  false,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_control_element":  {
+                                                                                              "bool":  true,
+                                                                                              "variant_type":  "VARENUM(11)"
+                                                                                          },
+                                                                   "is_dialog":  {
+                                                                                     "bool":  false,
+                                                                                     "variant_type":  "VARENUM(11)"
+                                                                                 },
+                                                                   "item_status":  {
+                                                                                       "variant_type":  "VARENUM(8)"
+                                                                                   },
+                                                                   "legacy_available":  {
+                                                                                            "bool":  true,
+                                                                                            "variant_type":  "VARENUM(11)"
+                                                                                        },
+                                                                   "legacy_default_action":  {
+                                                                                                 "variant_type":  "VARENUM(8)"
+                                                                                             },
+                                                                   "legacy_state":  {
+                                                                                        "number":  1048576,
+                                                                                        "variant_type":  "VARENUM(3)"
+                                                                                    },
+                                                                   "secure":  false,
+                                                                   "selection_can_select_multiple":  [
+                                                                                                         {
+                                                                                                             "bool":  false,
+                                                                                                             "variant_type":  "VARENUM(11)"
+                                                                                                         }
+                                                                                                     ],
+                                                                   "value_is_readonly":  [
+                                                                                             {
+                                                                                                 "bool":  false,
+                                                                                                 "variant_type":  "VARENUM(11)"
+                                                                                             }
+                                                                                         ]
+                                                               }
+                                                           ]
+                                              },
+                         "view_delta":  {
+                                            "control_view":  {
+                                                                 "control_types":  [
+                                                                                       50000,
+                                                                                       50002,
+                                                                                       50003,
+                                                                                       50004,
+                                                                                       50007,
+                                                                                       50008,
+                                                                                       50010,
+                                                                                       50011,
+                                                                                       50014,
+                                                                                       50018,
+                                                                                       50019,
+                                                                                       50020,
+                                                                                       50025,
+                                                                                       50027,
+                                                                                       50028,
+                                                                                       50029,
+                                                                                       50034,
+                                                                                       50035,
+                                                                                       50037
+                                                                                   ],
+                                                                 "nodes":  76
+                                                             },
+                                            "raw_view":  {
+                                                             "control_types":  [
+                                                                                   50000,
+                                                                                   50002,
+                                                                                   50003,
+                                                                                   50004,
+                                                                                   50007,
+                                                                                   50008,
+                                                                                   50010,
+                                                                                   50011,
+                                                                                   50014,
+                                                                                   50018,
+                                                                                   50019,
+                                                                                   50020,
+                                                                                   50025,
+                                                                                   50027,
+                                                                                   50028,
+                                                                                   50029,
+                                                                                   50033,
+                                                                                   50034,
+                                                                                   50035,
+                                                                                   50037
+                                                                               ],
+                                                             "nodes":  81
+                                                         }
+                                        }
+                     },
+    "probe":  "15-vocabulary",
+    "secure_content_leaked":  false,
+    "stack":  "uia3-com",
+    "uiautomation_version":  "0.25.0"
+}

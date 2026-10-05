@@ -1,0 +1,45 @@
+{
+    "probe":  "21-system-lifecycle",
+    "question":  "IsHungAppWindow vs SendMessageTimeout(WM_NULL, SMTO_ABORTIFHUNG) agreement and latency",
+    "foundation_cites":  [
+                             "A14-11"
+                         ],
+    "stalled_window_ready":  true,
+    "samples":  [
+                    {
+                        "is_hung_app_window":  true,
+                        "is_hung_elapsed_ms":  0,
+                        "sendmessage_timed_out":  true,
+                        "sendmessage_elapsed_ms":  0,
+                        "agree_hung":  true
+                    },
+                    {
+                        "is_hung_app_window":  true,
+                        "is_hung_elapsed_ms":  0,
+                        "sendmessage_timed_out":  true,
+                        "sendmessage_elapsed_ms":  0,
+                        "agree_hung":  true
+                    },
+                    {
+                        "is_hung_app_window":  true,
+                        "is_hung_elapsed_ms":  0,
+                        "sendmessage_timed_out":  true,
+                        "sendmessage_elapsed_ms":  0,
+                        "agree_hung":  true
+                    }
+                ],
+    "agreement_rate":  1,
+    "all_samples_agree":  true,
+    "ishung_cheaper_precheck":  false,
+    "median_is_hung_ms":  0,
+    "median_sendmessage_timeout_ms":  0,
+    "pumping_control":  {
+                            "is_hung_app_window":  false,
+                            "sendmessage_timed_out":  false,
+                            "agree_responsive":  true,
+                            "sendmessage_elapsed_ms":  0,
+                            "is_hung_elapsed_ms":  0
+                        },
+    "ktd3_conclusion":  "reuse_SendMessageTimeout_as_authoritative_IsHungAppWindow_cheap_precheck",
+    "branch":  "stalled_non_pumping_measured"
+}

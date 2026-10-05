@@ -1,0 +1,320 @@
+{
+    "probe":  "23-signals-menus",
+    "question":  "is there a stateless predicate - one evaluable from a single observation, no baseline, no prior sample - that distinguishes \"this pid has a menu open\" from \"this pid merely has a menu bar\": root-level UIA child classification (ControlType, is-main-window, menu-family reachability, ClassName, non-zero rect, passes_filter) per KTD6\u0027s new-root-level-window hypothesis, plus two other candidates (ExpandCollapsePattern.ExpandCollapseState == Expanded on any MenuItem; any reachable Menu-family element with IsOffscreen false and a non-empty rect), for both win32_classic and wpf",
+    "stacks":  {
+                   "win32_classic":  {
+                                         "measurable":  true,
+                                         "branch":  "notepad_classic_win32_staged",
+                                         "idle":  {
+                                                      "root_level":  {
+                                                                         "root_children_count":  1,
+                                                                         "children":  [
+                                                                                          {
+                                                                                              "control_type":  "ControlType.Window",
+                                                                                              "is_main_window":  true,
+                                                                                              "has_native_window_handle":  true,
+                                                                                              "menu_family_reachable":  true,
+                                                                                              "class_name":  "Notepad",
+                                                                                              "non_zero_rect":  true,
+                                                                                              "is_tool_window":  false,
+                                                                                              "passes_agent_facing_filter":  true
+                                                                                          }
+                                                                                      ],
+                                                                         "non_main_root_child_present":  false,
+                                                                         "non_main_root_child_menu_family_reachable":  false,
+                                                                         "non_main_root_child_passes_agent_facing_filter":  false,
+                                                                         "non_main_tool_window_menu_child_present":  false
+                                                                     },
+                                                      "expand_collapse":  {
+                                                                              "any_menu_item_seen":  true,
+                                                                              "any_expanded":  false
+                                                                          },
+                                                      "offscreen_rect":  {
+                                                                             "any_menu_family_seen":  true,
+                                                                             "any_visible_onscreen_nonempty_rect":  true
+                                                                         }
+                                                  },
+                                         "menu_bar_dropdown":  {
+                                                                   "root_level":  {
+                                                                                      "root_children_count":  1,
+                                                                                      "children":  [
+                                                                                                       {
+                                                                                                           "control_type":  "ControlType.Window",
+                                                                                                           "is_main_window":  true,
+                                                                                                           "has_native_window_handle":  true,
+                                                                                                           "menu_family_reachable":  true,
+                                                                                                           "class_name":  "Notepad",
+                                                                                                           "non_zero_rect":  true,
+                                                                                                           "is_tool_window":  false,
+                                                                                                           "passes_agent_facing_filter":  true
+                                                                                                       }
+                                                                                                   ],
+                                                                                      "non_main_root_child_present":  false,
+                                                                                      "non_main_root_child_menu_family_reachable":  false,
+                                                                                      "non_main_root_child_passes_agent_facing_filter":  false,
+                                                                                      "non_main_tool_window_menu_child_present":  false
+                                                                                  },
+                                                                   "expand_collapse":  {
+                                                                                           "any_menu_item_seen":  true,
+                                                                                           "any_expanded":  true
+                                                                                       },
+                                                                   "offscreen_rect":  {
+                                                                                          "any_menu_family_seen":  true,
+                                                                                          "any_visible_onscreen_nonempty_rect":  true
+                                                                                      }
+                                                               },
+                                         "context_menu":  {
+                                                              "root_level":  {
+                                                                                 "root_children_count":  2,
+                                                                                 "children":  [
+                                                                                                  {
+                                                                                                      "control_type":  "ControlType.Menu",
+                                                                                                      "is_main_window":  false,
+                                                                                                      "has_native_window_handle":  true,
+                                                                                                      "menu_family_reachable":  true,
+                                                                                                      "class_name":  "#32768",
+                                                                                                      "non_zero_rect":  true,
+                                                                                                      "is_tool_window":  true,
+                                                                                                      "passes_agent_facing_filter":  false
+                                                                                                  },
+                                                                                                  {
+                                                                                                      "control_type":  "ControlType.Window",
+                                                                                                      "is_main_window":  true,
+                                                                                                      "has_native_window_handle":  true,
+                                                                                                      "menu_family_reachable":  true,
+                                                                                                      "class_name":  "Notepad",
+                                                                                                      "non_zero_rect":  true,
+                                                                                                      "is_tool_window":  false,
+                                                                                                      "passes_agent_facing_filter":  true
+                                                                                                  }
+                                                                                              ],
+                                                                                 "non_main_root_child_present":  true,
+                                                                                 "non_main_root_child_menu_family_reachable":  true,
+                                                                                 "non_main_root_child_passes_agent_facing_filter":  false,
+                                                                                 "non_main_tool_window_menu_child_present":  true
+                                                                             },
+                                                              "expand_collapse":  {
+                                                                                      "any_menu_item_seen":  true,
+                                                                                      "any_expanded":  false
+                                                                                  },
+                                                              "offscreen_rect":  {
+                                                                                     "any_menu_family_seen":  true,
+                                                                                     "any_visible_onscreen_nonempty_rect":  true
+                                                                                 }
+                                                          },
+                                         "context_menu_closed":  {
+                                                                     "root_level":  {
+                                                                                        "root_children_count":  1,
+                                                                                        "children":  [
+                                                                                                         {
+                                                                                                             "control_type":  "ControlType.Window",
+                                                                                                             "is_main_window":  true,
+                                                                                                             "has_native_window_handle":  true,
+                                                                                                             "menu_family_reachable":  true,
+                                                                                                             "class_name":  "Notepad",
+                                                                                                             "non_zero_rect":  true,
+                                                                                                             "is_tool_window":  false,
+                                                                                                             "passes_agent_facing_filter":  true
+                                                                                                         }
+                                                                                                     ],
+                                                                                        "non_main_root_child_present":  false,
+                                                                                        "non_main_root_child_menu_family_reachable":  false,
+                                                                                        "non_main_root_child_passes_agent_facing_filter":  false,
+                                                                                        "non_main_tool_window_menu_child_present":  false
+                                                                                    },
+                                                                     "expand_collapse":  {
+                                                                                             "any_menu_item_seen":  true,
+                                                                                             "any_expanded":  false
+                                                                                         },
+                                                                     "offscreen_rect":  {
+                                                                                            "any_menu_family_seen":  true,
+                                                                                            "any_visible_onscreen_nonempty_rect":  true
+                                                                                        }
+                                                                 }
+                                     },
+                   "wpf":  {
+                               "measurable":  true,
+                               "branch":  "wpf_scratch_menu_host_staged",
+                               "idle":  {
+                                            "root_level":  {
+                                                               "root_children_count":  2,
+                                                               "children":  [
+                                                                                {
+                                                                                    "control_type":  "ControlType.Window",
+                                                                                    "is_main_window":  true,
+                                                                                    "has_native_window_handle":  true,
+                                                                                    "menu_family_reachable":  true,
+                                                                                    "class_name":  "HwndWrapper[DefaultDomain;Pipeline Execution Thread;<guid>]",
+                                                                                    "non_zero_rect":  true,
+                                                                                    "is_tool_window":  false,
+                                                                                    "passes_agent_facing_filter":  true
+                                                                                },
+                                                                                {
+                                                                                    "control_type":  "ControlType.Window",
+                                                                                    "is_main_window":  false,
+                                                                                    "has_native_window_handle":  true,
+                                                                                    "menu_family_reachable":  true,
+                                                                                    "class_name":  "ConsoleWindowClass",
+                                                                                    "non_zero_rect":  true,
+                                                                                    "is_tool_window":  false,
+                                                                                    "passes_agent_facing_filter":  true
+                                                                                }
+                                                                            ],
+                                                               "non_main_root_child_present":  true,
+                                                               "non_main_root_child_menu_family_reachable":  true,
+                                                               "non_main_root_child_passes_agent_facing_filter":  true,
+                                                               "non_main_tool_window_menu_child_present":  false
+                                                           },
+                                            "expand_collapse":  {
+                                                                    "any_menu_item_seen":  true,
+                                                                    "any_expanded":  false
+                                                                },
+                                            "offscreen_rect":  {
+                                                                   "any_menu_family_seen":  true,
+                                                                   "any_visible_onscreen_nonempty_rect":  true
+                                                               },
+                                            "fixture_confirmed":  true
+                                        },
+                               "menu_bar_dropdown":  {
+                                                         "root_level":  {
+                                                                            "root_children_count":  3,
+                                                                            "children":  [
+                                                                                             {
+                                                                                                 "control_type":  "ControlType.Window",
+                                                                                                 "is_main_window":  false,
+                                                                                                 "has_native_window_handle":  true,
+                                                                                                 "menu_family_reachable":  true,
+                                                                                                 "class_name":  "HwndWrapper[DefaultDomain;Pipeline Execution Thread;<guid>]",
+                                                                                                 "non_zero_rect":  true,
+                                                                                                 "is_tool_window":  true,
+                                                                                                 "passes_agent_facing_filter":  false
+                                                                                             },
+                                                                                             {
+                                                                                                 "control_type":  "ControlType.Window",
+                                                                                                 "is_main_window":  true,
+                                                                                                 "has_native_window_handle":  true,
+                                                                                                 "menu_family_reachable":  true,
+                                                                                                 "class_name":  "HwndWrapper[DefaultDomain;Pipeline Execution Thread;<guid>]",
+                                                                                                 "non_zero_rect":  true,
+                                                                                                 "is_tool_window":  false,
+                                                                                                 "passes_agent_facing_filter":  true
+                                                                                             },
+                                                                                             {
+                                                                                                 "control_type":  "ControlType.Window",
+                                                                                                 "is_main_window":  false,
+                                                                                                 "has_native_window_handle":  true,
+                                                                                                 "menu_family_reachable":  true,
+                                                                                                 "class_name":  "ConsoleWindowClass",
+                                                                                                 "non_zero_rect":  true,
+                                                                                                 "is_tool_window":  false,
+                                                                                                 "passes_agent_facing_filter":  true
+                                                                                             }
+                                                                                         ],
+                                                                            "non_main_root_child_present":  true,
+                                                                            "non_main_root_child_menu_family_reachable":  true,
+                                                                            "non_main_root_child_passes_agent_facing_filter":  true,
+                                                                            "non_main_tool_window_menu_child_present":  true
+                                                                        },
+                                                         "expand_collapse":  {
+                                                                                 "any_menu_item_seen":  true,
+                                                                                 "any_expanded":  true
+                                                                             },
+                                                         "offscreen_rect":  {
+                                                                                "any_menu_family_seen":  true,
+                                                                                "any_visible_onscreen_nonempty_rect":  true
+                                                                            },
+                                                         "fixture_confirmed":  true
+                                                     },
+                               "context_menu":  {
+                                                    "root_level":  {
+                                                                       "root_children_count":  3,
+                                                                       "children":  [
+                                                                                        {
+                                                                                            "control_type":  "ControlType.Window",
+                                                                                            "is_main_window":  false,
+                                                                                            "has_native_window_handle":  true,
+                                                                                            "menu_family_reachable":  true,
+                                                                                            "class_name":  "HwndWrapper[DefaultDomain;Pipeline Execution Thread;<guid>]",
+                                                                                            "non_zero_rect":  true,
+                                                                                            "is_tool_window":  true,
+                                                                                            "passes_agent_facing_filter":  false
+                                                                                        },
+                                                                                        {
+                                                                                            "control_type":  "ControlType.Window",
+                                                                                            "is_main_window":  true,
+                                                                                            "has_native_window_handle":  true,
+                                                                                            "menu_family_reachable":  true,
+                                                                                            "class_name":  "HwndWrapper[DefaultDomain;Pipeline Execution Thread;<guid>]",
+                                                                                            "non_zero_rect":  true,
+                                                                                            "is_tool_window":  false,
+                                                                                            "passes_agent_facing_filter":  true
+                                                                                        },
+                                                                                        {
+                                                                                            "control_type":  "ControlType.Window",
+                                                                                            "is_main_window":  false,
+                                                                                            "has_native_window_handle":  true,
+                                                                                            "menu_family_reachable":  true,
+                                                                                            "class_name":  "ConsoleWindowClass",
+                                                                                            "non_zero_rect":  true,
+                                                                                            "is_tool_window":  false,
+                                                                                            "passes_agent_facing_filter":  true
+                                                                                        }
+                                                                                    ],
+                                                                       "non_main_root_child_present":  true,
+                                                                       "non_main_root_child_menu_family_reachable":  true,
+                                                                       "non_main_root_child_passes_agent_facing_filter":  true,
+                                                                       "non_main_tool_window_menu_child_present":  true
+                                                                   },
+                                                    "expand_collapse":  {
+                                                                            "any_menu_item_seen":  true,
+                                                                            "any_expanded":  false
+                                                                        },
+                                                    "offscreen_rect":  {
+                                                                           "any_menu_family_seen":  true,
+                                                                           "any_visible_onscreen_nonempty_rect":  true
+                                                                       },
+                                                    "fixture_confirmed":  true
+                                                },
+                               "context_menu_closed":  {
+                                                           "root_level":  {
+                                                                              "root_children_count":  2,
+                                                                              "children":  [
+                                                                                               {
+                                                                                                   "control_type":  "ControlType.Window",
+                                                                                                   "is_main_window":  true,
+                                                                                                   "has_native_window_handle":  true,
+                                                                                                   "menu_family_reachable":  true,
+                                                                                                   "class_name":  "HwndWrapper[DefaultDomain;Pipeline Execution Thread;<guid>]",
+                                                                                                   "non_zero_rect":  true,
+                                                                                                   "is_tool_window":  false,
+                                                                                                   "passes_agent_facing_filter":  true
+                                                                                               },
+                                                                                               {
+                                                                                                   "control_type":  "ControlType.Window",
+                                                                                                   "is_main_window":  false,
+                                                                                                   "has_native_window_handle":  true,
+                                                                                                   "menu_family_reachable":  true,
+                                                                                                   "class_name":  "ConsoleWindowClass",
+                                                                                                   "non_zero_rect":  true,
+                                                                                                   "is_tool_window":  false,
+                                                                                                   "passes_agent_facing_filter":  true
+                                                                                               }
+                                                                                           ],
+                                                                              "non_main_root_child_present":  true,
+                                                                              "non_main_root_child_menu_family_reachable":  true,
+                                                                              "non_main_root_child_passes_agent_facing_filter":  true,
+                                                                              "non_main_tool_window_menu_child_present":  false
+                                                                          },
+                                                           "expand_collapse":  {
+                                                                                   "any_menu_item_seen":  true,
+                                                                                   "any_expanded":  false
+                                                                               },
+                                                           "offscreen_rect":  {
+                                                                                  "any_menu_family_seen":  true,
+                                                                                  "any_visible_onscreen_nonempty_rect":  true
+                                                                              },
+                                                           "fixture_confirmed":  true
+                                                       }
+                           }
+               }
+}

@@ -40,7 +40,7 @@ unsafe fn free_node_fields(node: &mut AdNode) {
 
 /// # Safety
 /// `tree` must be null or point to a valid `AdNodeTree` previously returned
-/// by `flatten_tree` or `ad_get_tree`. After this call the tree is zeroed.
+/// by `flatten_tree` or `ad_get_tree_exact`. After this call the tree is zeroed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ad_free_tree(tree: *mut AdNodeTree) {
     crate::ffi_try::trap_panic_void(|| unsafe {

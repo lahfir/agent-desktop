@@ -1,0 +1,67 @@
+{
+    "measurements":  {
+                         "after_items":  0,
+                         "before_items":  0,
+                         "classification":  {
+                                                "not_measured":  "the fixture exposed no list items, so nothing was classified"
+                                            },
+                         "index_id_ratio_percent":  0.0,
+                         "items_carrying_index_id":  0.0,
+                         "list_item_reachability":  {
+                                                        "descendant_listitem_findall_count":  0,
+                                                        "listbox_pane_found_by_id":  true,
+                                                        "pane_child_findall_count":  0,
+                                                        "raw_walker_listitem_count":  0
+                                                    },
+                         "mutation_applied":  false,
+                         "mutation_trigger":  {
+                                                  "postmessage_wm_app":  true
+                                              },
+                         "tree_shape":  {
+                                            "control_types":  [
+                                                                  {
+                                                                      "control_type":  50000,
+                                                                      "count":  8
+                                                                  },
+                                                                  {
+                                                                      "control_type":  50004,
+                                                                      "count":  1
+                                                                  },
+                                                                  {
+                                                                      "control_type":  50010,
+                                                                      "count":  1
+                                                                  },
+                                                                  {
+                                                                      "control_type":  50011,
+                                                                      "count":  1
+                                                                  },
+                                                                  {
+                                                                      "control_type":  50014,
+                                                                      "count":  1
+                                                                  },
+                                                                  {
+                                                                      "control_type":  50016,
+                                                                      "count":  1
+                                                                  },
+                                                                  {
+                                                                      "control_type":  50027,
+                                                                      "count":  1
+                                                                  },
+                                                                  {
+                                                                      "control_type":  50033,
+                                                                      "count":  29
+                                                                  },
+                                                                  {
+                                                                      "control_type":  50037,
+                                                                      "count":  1
+                                                                  }
+                                                              ],
+                                            "elements":  44,
+                                            "list_items_by_name_prefix":  {
+
+                                                                          }
+                                        }
+                     },
+    "probe":  "17-resolution",
+    "uiautomation_version":  "0.25.0"
+}

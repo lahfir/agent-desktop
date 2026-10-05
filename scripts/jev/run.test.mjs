@@ -195,6 +195,17 @@ const space = actionSpace(screen());
   assert.equal(needsRiskCheck(0.7), true, "only inside the band can the answer change anything");
   assert.equal(needsRiskCheck(0.89), true);
 
+  for (const confidence of [0.7, 0.9, 0.95, 1]) {
+    assert.equal(needsRiskCheck(confidence, { confirmDestructive: true }), true);
+  }
+  assert.equal(needsRiskCheck(0.69, { confirmDestructive: true }), false);
+  const sure = { target: "1", targetConfidence: 0.95, present: null, destructive: 0.5 };
+  assert.equal(route(sure).decision, "act");
+  for (const targetConfidence of [0.4, 0.7, 0.9, 0.95, 1]) {
+    assert.equal(route({ ...sure, targetConfidence }, { confirmDestructive: true }).decision, "confirm");
+  }
+  assert.equal(route({ ...sure, destructive: 0.49 }, { confirmDestructive: true }).decision, "act");
+
   const node = { role: "button", name: "Delete", ref_id: "@s:e1" };
   const ask = riskRequest("tidy up", { app: "Finder", window: "Downloads" }, "CLICK", node);
   assert.deepEqual(Object.keys(ask.questions), ["destructive"]);

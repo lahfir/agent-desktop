@@ -100,12 +100,8 @@ impl RefStore {
         }
     }
 
-    pub fn load_ref(
-        &self,
-        ref_id: &str,
-        snapshot_id: Option<&str>,
-    ) -> Result<crate::RefEntry, AppError> {
-        let (snapshot_id, local_ref) = crate::ref_token::resolve_ref_target(ref_id, snapshot_id)?;
+    pub fn load_ref(&self, ref_id: &str) -> Result<crate::RefEntry, AppError> {
+        let (snapshot_id, local_ref) = crate::ref_token::resolve_ref_target(ref_id)?;
         self.load_snapshot(&snapshot_id)?
             .get(&local_ref)
             .cloned()

@@ -25,7 +25,7 @@ pub struct AdWaitArgs {
 /// assert below and the `ad_wait_args_size()` runtime getter form the
 /// 3-layer pin: Rust const assert, C `_Static_assert` in the header,
 /// and the test in `c_abi_layout.rs`.
-pub const AD_WAIT_ARGS_SIZE: usize = 112;
+pub const AD_WAIT_ARGS_SIZE: usize = 104;
 
 const _: () = assert!(std::mem::size_of::<AdWaitArgs>() == AD_WAIT_ARGS_SIZE);
 

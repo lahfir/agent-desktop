@@ -1,6 +1,7 @@
 use agent_desktop_core::{
-    AdapterError, CURSOR_IDLE_REST_MS, CursorMotion, CursorOverlayConfig, CursorOverlayControl,
-    CursorOverlayInstruction, CursorOverlayStyle, CursorPose, ErrorCode, Point, place_label,
+    AdapterError, CURSOR_IDLE_REST_MS, CursorMotion, CursorMotionProfile, CursorOverlayConfig,
+    CursorOverlayControl, CursorOverlayInstruction, CursorOverlayStyle, CursorPhase, CursorPose,
+    ErrorCode, Point, place_label,
 };
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -19,6 +20,8 @@ const BUBBLE_SIZE: (f64, f64) = (232.0, 38.0);
 #[derive(Default)]
 struct OverlayState {
     style: CursorOverlayStyle,
+    motion: CursorMotionProfile,
+    moves: u64,
     at: Option<Point>,
     resting: bool,
 }
@@ -132,9 +135,8 @@ fn handle(control: &CursorOverlayControl, state: &mut OverlayState) -> Result<bo
     if control.is_disable() {
         return Ok(false);
     }
-    if let Some(style) = control.style() {
-        state.style = style.clone();
-        bridge::apply_style(&state.style);
+    if let Some(image_changed) = absorb_settings(control, state) {
+        bridge::apply_style(&state.style, image_changed);
     }
     if control.is_hide() {
         bridge::hide();
@@ -156,7 +158,34 @@ fn handle(control: &CursorOverlayControl, state: &mut OverlayState) -> Result<bo
     };
     render(instruction, state)?;
     apply_landing_memory(control, state, Some(instruction));
+    advance_moves(control, state);
     Ok(true)
+}
+
+fn absorb_settings(control: &CursorOverlayControl, state: &mut OverlayState) -> Option<bool> {
+    if let Some(motion) = control.motion() {
+        state.motion = motion.clone();
+    }
+    if control.is_enable() {
+        state.moves = 0;
+    }
+    absorb_style(control, state)
+}
+
+fn advance_moves(control: &CursorOverlayControl, state: &mut OverlayState) {
+    if control
+        .instruction()
+        .is_some_and(|instruction| instruction.phase() == CursorPhase::Travel)
+    {
+        state.moves = state.moves.wrapping_add(1);
+    }
+}
+
+fn absorb_style(control: &CursorOverlayControl, state: &mut OverlayState) -> Option<bool> {
+    let style = control.style()?;
+    let image_changed = state.style.images() != style.images();
+    state.style = style.clone();
+    Some(image_changed)
 }
 
 fn apply_landing_memory(
@@ -174,23 +203,21 @@ fn apply_landing_memory(
     let Some(instruction) = instruction else {
         return;
     };
-    state.at = Some(
-        if instruction.phase() == agent_desktop_core::CursorPhase::Drag {
-            instruction
-                .drag_from()
-                .unwrap_or(instruction.destination())
-                .clone()
-        } else {
-            instruction.destination().clone()
-        },
-    );
+    state.at = Some(if instruction.phase() == CursorPhase::Drag {
+        instruction
+            .drag_from()
+            .unwrap_or(instruction.destination())
+            .clone()
+    } else {
+        instruction.destination().clone()
+    });
 }
 
 fn render(
     instruction: &CursorOverlayInstruction,
     state: &OverlayState,
 ) -> Result<(), AdapterError> {
-    if instruction.phase() == agent_desktop_core::CursorPhase::Drag {
+    if instruction.phase() == CursorPhase::Drag {
         let from = instruction.drag_from().unwrap_or(instruction.destination());
         let (screen, fps, reduce_motion) = bridge::screen_at(from)?;
         let bubble = place_label(from, BUBBLE_SIZE, &screen);
@@ -204,7 +231,7 @@ fn render(
         bridge::begin_drag(from, state.style.ripple() && !reduce_motion);
         return Ok(());
     }
-    if instruction.phase() == agent_desktop_core::CursorPhase::Effect {
+    if instruction.phase() == CursorPhase::Effect {
         bridge::end_drag(instruction.destination(), instruction.drag_from().is_some());
     }
     let (screen, fps, reduce_motion) = bridge::screen_at(instruction.destination())?;
@@ -214,12 +241,22 @@ fn render(
     } else {
         instruction.clone().with_target(None)
     };
-    let frames = if reduce_motion {
+    let frames = frames_for(state, &shown, &screen, fps, reduce_motion);
+    bridge::run(&frames, fps, &shown, reduce_motion, &bubble)
+}
+
+fn frames_for(
+    state: &OverlayState,
+    instruction: &CursorOverlayInstruction,
+    screen: &agent_desktop_core::Rect,
+    fps: u32,
+    reduce_motion: bool,
+) -> Vec<CursorPose> {
+    if reduce_motion {
         vec![CursorPose::still(instruction.destination().clone())]
     } else {
-        motion_frames(state, &shown, &screen, fps)
-    };
-    bridge::run(&frames, fps, &shown, reduce_motion, &bubble)
+        motion_frames(state, instruction, screen, fps)
+    }
 }
 
 fn motion_frames(
@@ -229,7 +266,7 @@ fn motion_frames(
     fps: u32,
 ) -> Vec<CursorPose> {
     let destination = instruction.destination();
-    if instruction.phase() == agent_desktop_core::CursorPhase::Effect {
+    if instruction.phase() == CursorPhase::Effect {
         let mut frames = vec![CursorPose::still(destination.clone())];
         if instruction.is_click() && state.style.ripple() {
             frames.push(CursorPose {
@@ -243,7 +280,7 @@ fn motion_frames(
         x: (destination.x - 180.0).clamp(screen.x, screen.x + screen.width),
         y: (destination.y + 108.0).clamp(screen.y, screen.y + screen.height),
     });
-    let motion = CursorMotion::new(start, destination.clone())
+    let motion = CursorMotion::shaped(start, destination.clone(), &state.motion, state.moves)
         .with_impact(instruction.is_click())
         .with_ripple(state.style.ripple());
     let frame_ms = 1_000.0 / f64::from(fps);
@@ -329,3 +366,11 @@ fn cleanup(path: PathBuf) -> Result<(), AdapterError> {
 #[cfg(test)]
 #[path = "child_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "child_motion_tests.rs"]
+mod motion_tests;
+
+#[cfg(test)]
+#[path = "child_image_tests.rs"]
+mod image_tests;

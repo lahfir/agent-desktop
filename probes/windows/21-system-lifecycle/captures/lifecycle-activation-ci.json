@@ -1,0 +1,47 @@
+{
+    "probe":  "21-system-lifecycle",
+    "question":  "SetForegroundWindow uncontended success; whether bounded retry budget is needed",
+    "contention_staged":  false,
+    "contention_note":  "repo-controlled scratch cannot stage foreground contention; contended re-measure owned by section 2.12 split-integrity runner",
+    "trials":  [
+                   {
+                       "api_returned_true":  false,
+                       "owned_after_first":  false,
+                       "second_attempt_needed":  true,
+                       "owned_after_second":  false,
+                       "was_owned_before":  false
+                   },
+                   {
+                       "api_returned_true":  false,
+                       "owned_after_first":  false,
+                       "second_attempt_needed":  true,
+                       "owned_after_second":  false,
+                       "was_owned_before":  false
+                   },
+                   {
+                       "api_returned_true":  false,
+                       "owned_after_first":  false,
+                       "second_attempt_needed":  true,
+                       "owned_after_second":  false,
+                       "was_owned_before":  false
+                   },
+                   {
+                       "api_returned_true":  false,
+                       "owned_after_first":  false,
+                       "second_attempt_needed":  true,
+                       "owned_after_second":  false,
+                       "was_owned_before":  false
+                   },
+                   {
+                       "api_returned_true":  false,
+                       "owned_after_first":  false,
+                       "second_attempt_needed":  true,
+                       "owned_after_second":  false,
+                       "was_owned_before":  false
+                   }
+               ],
+    "first_attempt_success_rate":  0,
+    "first_attempt_always_lands":  false,
+    "recommended_retry_budget":  2,
+    "branch":  "uncontended_second_attempt_sometimes_needed"
+}

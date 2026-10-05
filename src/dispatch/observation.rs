@@ -27,7 +27,8 @@ pub(super) fn snapshot(
             surface: args.surface.to_core(),
             skeleton: args.tree.skeleton,
             root_ref: args.root,
-            snapshot_id: args.snapshot,
+            timeout_ms: args.timeout_ms,
+            force_electron_a11y: args.force_electron_a11y,
         },
         adapter,
         context,
@@ -49,8 +50,8 @@ pub(super) fn find(
             app: args.scope.app,
             window_id: args.scope.window_id,
             root: args.root,
-            snapshot: args.snapshot,
             surface: args.surface.to_core(),
+            timeout_ms: args.timeout_ms,
             filter: find_command::FindFilterArgs {
                 role: args.filter.role,
                 name: args.filter.name,
@@ -97,7 +98,6 @@ pub(super) fn get(
     get_command::execute(
         get_command::GetArgs {
             ref_id: args.ref_id,
-            snapshot_id: args.snapshot,
             property: parse_get_property(&args.property)?,
         },
         adapter,
@@ -113,7 +113,6 @@ pub(super) fn is(
     is_command::execute(
         is_command::IsArgs {
             ref_id: args.ref_id,
-            snapshot_id: args.snapshot,
             property: parse_is_property(&args.property)?,
         },
         adapter,

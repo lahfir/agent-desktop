@@ -14,7 +14,6 @@ use serde_json::Value;
 /// `ActionRequest` config-struct pattern used elsewhere in this module).
 pub struct ExecuteByRefArgs<'a> {
     pub ref_id: &'a str,
-    pub snapshot_id: Option<&'a str>,
     pub action: Action,
     pub caller_policy: InteractionPolicy,
 }
@@ -23,9 +22,8 @@ pub struct ExecuteByRefArgs<'a> {
 /// ref-action pipeline: `RefStore` load → `RefMap` lookup → strict element
 /// resolution → live actionability preflight → dispatch.
 ///
-/// A qualified `ref_id` embeds its snapshot and accepts `snapshot_id: None`.
-/// A legacy bare `@eN` ref requires `Some(id)`. When both are supplied, the
-/// explicit ID must match the qualified ref.
+/// `ref_id` must be snapshot-qualified (`@<snapshot_id>:eN`); a bare `@eN`
+/// is rejected with `INVALID_ARGS`.
 ///
 /// The effective `InteractionPolicy` is the join of `caller_policy` and the
 /// action's base policy. Semantic actions, including `TypeText`, are strict
@@ -39,7 +37,6 @@ pub fn execute_with_timeout(
 ) -> Result<Value, AppError> {
     let ExecuteByRefArgs {
         ref_id,
-        snapshot_id,
         action,
         caller_policy,
     } = args;
@@ -56,7 +53,6 @@ pub fn execute_with_timeout(
     execute_ref_action_with_context(
         RefArgs {
             ref_id: ref_id.to_owned(),
-            snapshot_id: snapshot_id.map(ToOwned::to_owned),
             timeout_ms,
         },
         adapter,

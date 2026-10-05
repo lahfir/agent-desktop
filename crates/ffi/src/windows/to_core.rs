@@ -2,22 +2,6 @@ use crate::convert::string::{optional_adapter_string, required_adapter_string};
 use crate::types::{AdExactWindowInfo, AdWindowInfo};
 use agent_desktop_core::{AdapterError, Rect, WindowInfo};
 
-/// Converts an `AdWindowInfo` from C into the core `WindowInfo`.
-///
-/// The `id` and `title` fields are mandatory in the ABI contract — null
-/// or non-UTF-8 inputs would silently coerce to an empty string and
-/// match the wrong window. The function returns `InvalidArgs` so the
-/// caller can propagate the error to the consumer instead.
-///
-/// `app_name` is allowed to be empty (some Electron apps report blank
-/// window owners) and is filled in from the platform adapter as needed.
-pub(crate) fn ad_window_to_core(_w: &AdWindowInfo) -> Result<WindowInfo, AdapterError> {
-    Err(AdapterError::new(
-        agent_desktop_core::ErrorCode::InvalidArgs,
-        "legacy AdWindowInfo lacks process-generation evidence; use AdExactWindowInfo",
-    ))
-}
-
 pub(crate) fn ad_exact_window_to_core(
     exact: &AdExactWindowInfo,
 ) -> Result<WindowInfo, AdapterError> {
@@ -51,6 +35,12 @@ fn decode_window(
         ));
     }
     let id = required_adapter_string(w.id, "window id")?;
+    if id.is_empty() {
+        return Err(AdapterError::new(
+            agent_desktop_core::ErrorCode::InvalidArgs,
+            "window id is empty",
+        ));
+    }
     let title = required_adapter_string(w.title, "window title")?;
     let app = optional_adapter_string(w.app_name, "window app_name")?.unwrap_or_default();
     let bounds = if w.has_bounds {
@@ -117,15 +107,6 @@ mod tests {
     }
 
     #[test]
-    fn legacy_window_fails_closed_without_process_generation() {
-        let window = unsafe { std::mem::zeroed::<AdWindowInfo>() };
-        let error = ad_window_to_core(&window).unwrap_err();
-
-        assert_eq!(error.code, ErrorCode::InvalidArgs);
-        assert!(error.message.contains("AdExactWindowInfo"));
-    }
-
-    #[test]
     fn exact_window_rejects_unknown_layout_version() {
         let mut exact = unsafe { std::mem::zeroed::<AdExactWindowInfo>() };
         exact.version = u32::MAX;
@@ -135,6 +116,18 @@ mod tests {
 
         assert_eq!(error.code, ErrorCode::InvalidArgs);
         assert!(error.message.contains("version or size"));
+    }
+
+    #[test]
+    fn exact_window_rejects_an_empty_window_id() {
+        let id = CString::new("").unwrap();
+        let title = CString::new("Main").unwrap();
+        let exact = window(id.as_ptr(), title.as_ptr(), std::ptr::null());
+
+        let error = ad_exact_window_to_core(&exact).unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::InvalidArgs);
+        assert!(error.message.contains("window id is empty"));
     }
 
     #[test]

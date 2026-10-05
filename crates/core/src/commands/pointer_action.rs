@@ -56,11 +56,17 @@ fn resolve_point_from_entry(
             .into());
         }
         let Some(lease) = lease else {
+            let mut details = json!({ "check": "visible", "requires_scroll": true });
+            if let Some(hash) = bounds.and_then(|rect| rect.bounds_hash())
+                && let Some(object) = details.as_object_mut()
+            {
+                object.insert("observed_bounds_hash".into(), json!(hash));
+            }
             return Err(crate::AdapterError::new(
                 crate::ErrorCode::ActionFailed,
                 "Pointer target is not visible in the live accessibility tree",
             )
-            .with_details(json!({ "check": "visible", "requires_scroll": true }))
+            .with_details(details)
             .into());
         };
         adapter.scroll_into_view(&handle, lease)?;
@@ -159,9 +165,10 @@ pub(crate) fn wait_for_point_with_deadline<'a>(
         let lease = crate::InteractionLease::guarded(deadline, ())?;
         return resolve_point_from_ref_or_xy_with_context(args, adapter, context, deadline, &lease);
     };
-    let entry = load_ref_entry(ref_id, args.snapshot_id, context)?;
+    let entry = load_ref_entry(ref_id, context)?;
     let mut stability = Some(None);
     let mut last_report = None;
+    let mut last_scrolled_bounds_hash = None;
     loop {
         if deadline.is_expired() {
             return Err(point_actionability_timeout(last_report));
@@ -191,12 +198,15 @@ pub(crate) fn wait_for_point_with_deadline<'a>(
                 if remaining.is_zero() {
                     return Err(point_actionability_timeout(last_report));
                 }
-                if point_requires_scroll(&err) {
+                let observed = point_observed_bounds_hash(&err);
+                if point_requires_scroll(&err)
+                    && !(observed.is_some() && observed == last_scrolled_bounds_hash)
+                {
                     scroll_point_target(&entry, deadline, adapter)?;
+                    last_scrolled_bounds_hash = observed;
                     std::thread::sleep(POLL_INTERVAL.min(deadline.remaining()));
                     continue;
                 }
-                let observed = point_observed_bounds_hash(&err);
                 if let Some(observed) = observed {
                     stability = Some(Some(observed));
                 }
@@ -223,7 +233,7 @@ pub(crate) fn focus_point_under_lease(
     let Some(ref_id) = args.ref_id else {
         return Ok(false);
     };
-    let entry = load_ref_entry(ref_id, args.snapshot_id, context)?;
+    let entry = load_ref_entry(ref_id, context)?;
     crate::commands::point_resolve::focus_for_physical_input(Some(&entry), adapter, context, lease)
 }
 
@@ -244,7 +254,7 @@ pub(crate) fn resolve_point_under_lease<'a>(
     let Some(ref_id) = args.ref_id else {
         return resolve_point_from_ref_or_xy_with_context(args, adapter, context, deadline, lease);
     };
-    let entry = load_ref_entry(ref_id, args.snapshot_id, context)?;
+    let entry = load_ref_entry(ref_id, context)?;
     resolve_point_from_entry(
         EntryPointResolve {
             ref_id,

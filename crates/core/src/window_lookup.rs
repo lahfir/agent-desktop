@@ -89,12 +89,6 @@ pub(crate) fn select_window(
     if candidates.len() == 1 {
         return Ok(candidates.swap_remove(0));
     }
-    if candidates.iter().any(|window| window.state.accessible) {
-        candidates.retain(|window| window.state.accessible);
-        if candidates.len() == 1 {
-            return Ok(candidates.swap_remove(0));
-        }
-    }
     if candidates
         .iter()
         .any(|window| window.state.visible == Some(true))
@@ -114,6 +108,12 @@ pub(crate) fn select_window(
         });
     if let Some(index) = focused {
         return Ok(candidates.swap_remove(index));
+    }
+    if candidates.iter().any(|window| window.state.accessible) {
+        candidates.retain(|window| window.state.accessible);
+        if candidates.len() == 1 {
+            return Ok(candidates.swap_remove(0));
+        }
     }
     let summaries = candidates
         .iter()

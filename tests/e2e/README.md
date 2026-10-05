@@ -47,14 +47,14 @@ The fixture process is force-closed by the cleanup trap even when a test fails.
 Every non-count `find` returns two inseparable values:
 
 ```json
-{"ref_id":"@e12","snapshot_id":"..."}
+{"ref_id":"@s8f3k2p9:e12","snapshot_id":"s8f3k2p9"}
 ```
 
 `lib.sh` carries that pair as one target and every ref action, `get`, `is`, and
-element `wait` passes the exact `--snapshot` value. The harness deliberately
-runs unrelated observations between `find` and `get` to prove that a ref does
-not depend on the mutable latest-snapshot pointer. Do not add a helper that
-returns a bare `@eN`.
+element `wait` passes the qualified ref, which embeds its snapshot. The harness
+deliberately runs unrelated observations between `find` and `get` to prove that
+a ref does not depend on the mutable latest-snapshot pointer. Do not add a
+helper that returns a bare `@eN`.
 
 ## Layout
 

@@ -1,10 +1,11 @@
 use serde_json::{Value, json};
 
-use crate::{ActionResult, AdapterError, actionability::StabilityExpectation};
+use crate::{ActionResult, AdapterError, ErrorCode, actionability::StabilityExpectation};
 
 #[derive(Default)]
 pub(crate) struct RefActionPollState {
     pub(crate) last_report: Option<Value>,
+    pub(crate) last_settled_identity_error: Option<AdapterError>,
     pub(crate) saw_ambiguity: bool,
     pub(crate) expected_bounds_hash: Option<u64>,
     pub(crate) resolve_attempts: u64,
@@ -30,12 +31,23 @@ impl RefActionPollState {
 
     pub(crate) fn record_resolve_error(&mut self, error: &AdapterError) {
         self.live_read_incomplete_only = Some(false);
+        if is_settled_identity(error) {
+            self.last_settled_identity_error = Some(error.clone());
+        }
         self.last_report = Some(json!({
             "phase": "resolve",
             "code": error.code.as_str(),
             "message": error.message,
             "details": error.details,
         }));
+    }
+
+    pub(crate) fn note_resolved(&mut self) {
+        self.last_settled_identity_error = None;
+    }
+
+    pub(crate) fn settled_identity_error(&self) -> Option<&AdapterError> {
+        self.last_settled_identity_error.as_ref()
     }
 
     pub(crate) fn only_live_read_incomplete(&self) -> bool {
@@ -99,6 +111,16 @@ impl RefActionPollState {
         }
         error
     }
+}
+
+fn is_settled_identity(error: &AdapterError) -> bool {
+    matches!(error.code, ErrorCode::StaleRef | ErrorCode::AmbiguousTarget)
+        && error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("complete"))
+            .and_then(Value::as_bool)
+            == Some(true)
 }
 
 fn is_live_read_incomplete(error: &AdapterError) -> bool {

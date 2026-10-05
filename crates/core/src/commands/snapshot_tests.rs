@@ -1,4 +1,5 @@
 use super::*;
+use crate::adapter::NoopAdapter as DefaultSurfaceAdapter;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps, WindowFilter};
 use crate::context::{CommandContext, WaitSelector};
 use crate::refs_test_support::HomeGuard;
@@ -17,13 +18,6 @@ impl SystemOps for NoopAdapter {
         vec![SnapshotSurface::Window]
     }
 }
-
-struct DefaultSurfaceAdapter;
-
-impl ObservationOps for DefaultSurfaceAdapter {}
-impl ActionOps for DefaultSurfaceAdapter {}
-impl InputOps for DefaultSurfaceAdapter {}
-impl SystemOps for DefaultSurfaceAdapter {}
 
 struct WaitSnapshotAdapter;
 
@@ -160,7 +154,8 @@ fn base_args() -> SnapshotArgs {
         surface: SnapshotSurface::Window,
         skeleton: false,
         root_ref: None,
-        snapshot_id: None,
+        timeout_ms: None,
+        force_electron_a11y: false,
     }
 }
 
@@ -255,7 +250,7 @@ fn test_root_with_window_surface_does_not_short_circuit_validation() {
     );
     if let AppError::Adapter(adapter_err) = result.unwrap_err() {
         assert_eq!(adapter_err.code, ErrorCode::InvalidArgs);
-        assert!(adapter_err.message.contains("explicit snapshot_id"));
+        assert!(adapter_err.message.contains("expected @<snapshot_id>:e<N>"));
         assert!(!adapter_err.message.contains("--surface"));
     }
 }
@@ -311,17 +306,24 @@ fn test_invalid_root_ref_format_returns_invalid_args() {
 }
 
 #[test]
-fn test_bare_root_ref_requires_an_explicit_snapshot_id() {
+fn test_bare_root_ref_is_rejected_with_a_qualified_ref_suggestion() {
     let args = SnapshotArgs {
         root_ref: Some("@e42".into()),
         ..base_args()
     };
     let err = execute(args, &NoopAdapter, &CommandContext::default())
-        .expect_err("bare refs cannot resolve without a snapshot namespace");
-    if let AppError::Adapter(adapter_err) = err {
-        assert_eq!(adapter_err.code, ErrorCode::InvalidArgs);
-        assert!(adapter_err.message.contains("explicit snapshot_id"));
-    }
+        .expect_err("bare refs are not accepted");
+    let AppError::Adapter(adapter_err) = err else {
+        panic!("expected an adapter error");
+    };
+    assert_eq!(adapter_err.code, ErrorCode::InvalidArgs);
+    assert!(adapter_err.message.contains("expected @<snapshot_id>:e<N>"));
+    assert!(
+        adapter_err
+            .suggestion
+            .as_deref()
+            .is_some_and(|suggestion| suggestion.contains("@s8f3k2p9:e1"))
+    );
 }
 
 #[test]

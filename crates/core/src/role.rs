@@ -280,6 +280,32 @@ impl Role {
         )
     }
 
+    /// Controls a pointing hand hovers over: pressing them is their primary use.
+    pub const fn is_pressable(self) -> bool {
+        matches!(
+            self,
+            Self::Button
+                | Self::Checkbox
+                | Self::ColorWell
+                | Self::Disclosure
+                | Self::DockItem
+                | Self::Incrementor
+                | Self::Link
+                | Self::MenuButton
+                | Self::MenuItem
+                | Self::Option
+                | Self::RadioButton
+                | Self::Switch
+                | Self::Tab
+                | Self::TreeItem
+        )
+    }
+
+    /// Controls that take typed text, where a cursor shows the text caret rather than a hand.
+    pub const fn takes_text(self) -> bool {
+        matches!(self, Self::TextField | Self::ComboBox | Self::DateField)
+    }
+
     pub const fn is_transparent_wrapper(self) -> bool {
         matches!(self, Self::Group)
     }

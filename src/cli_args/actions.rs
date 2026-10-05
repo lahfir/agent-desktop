@@ -26,15 +26,9 @@ fn default_ref_timeout_ms() -> u64 {
 pub(crate) struct TypeArgs {
     #[arg(
         value_name = "REF",
-        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN)"
     )]
     pub ref_id: String,
-    #[arg(
-        long,
-        value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
-    )]
-    pub snapshot: Option<String>,
     #[arg(value_name = "TEXT", allow_hyphen_values = true, help = "Text to type")]
     pub text: String,
     #[arg(
@@ -51,15 +45,9 @@ pub(crate) struct TypeArgs {
 pub(crate) struct SetValueArgs {
     #[arg(
         value_name = "REF",
-        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN)"
     )]
     pub ref_id: String,
-    #[arg(
-        long,
-        value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
-    )]
-    pub snapshot: Option<String>,
     #[arg(
         value_name = "VALUE",
         allow_hyphen_values = true,
@@ -80,15 +68,9 @@ pub(crate) struct SetValueArgs {
 pub(crate) struct SelectArgs {
     #[arg(
         value_name = "REF",
-        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN)"
     )]
     pub ref_id: String,
-    #[arg(
-        long,
-        value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
-    )]
-    pub snapshot: Option<String>,
     #[arg(value_name = "VALUE", help = "Option to select")]
     pub value: String,
     #[arg(
@@ -105,15 +87,9 @@ pub(crate) struct SelectArgs {
 pub(crate) struct ScrollArgs {
     #[arg(
         value_name = "REF",
-        help = "Qualified ref from snapshot (@<snapshot_id>:eN), or legacy @eN with --snapshot"
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN)"
     )]
     pub ref_id: String,
-    #[arg(
-        long,
-        value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
-    )]
-    pub snapshot: Option<String>,
     #[arg(
         long,
         default_value = "down",
@@ -185,12 +161,6 @@ pub(crate) struct HoverArgs {
         help = "Element ref to hover over; requires --headed"
     )]
     pub ref_id: Option<String>,
-    #[arg(
-        long,
-        value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID required for a legacy bare @eN ref; omit for a qualified ref"
-    )]
-    pub snapshot: Option<String>,
     #[arg(long, help = "Absolute coordinates as x,y; requires --headed")]
     pub xy: Option<String>,
     #[arg(

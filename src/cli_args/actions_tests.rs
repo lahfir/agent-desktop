@@ -4,7 +4,7 @@ use clap::CommandFactory;
 
 /// F2 regression: `TypeArgs`, `SetValueArgs`, `SelectArgs`, `ScrollArgs`,
 /// `HoverArgs`, and `DragCliArgs` previously had no `--timeout-ms` field at
-/// all, so the auto-wait budget these commands' CLI docs promise (R7) was
+/// all, so the auto-wait budget these commands' CLI docs promise was
 /// unreachable for them. Each pair below proves the paired clap/serde default
 /// (5000) actually fires from both entry points: clap's `default_value_t`
 /// covers the CLI, and `#[serde(default = "default_ref_timeout_ms")]` covers

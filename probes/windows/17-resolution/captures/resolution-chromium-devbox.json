@@ -1,0 +1,109 @@
+{
+    "measurements":  {
+                         "census":  {
+                                        "bounds_census":  {
+                                                              "duplicate_bounds_elements":  0,
+                                                              "duplicate_bounds_groups":  0,
+                                                              "ref_able_positive_area":  0,
+                                                              "ref_able_with_id_positive_area":  0,
+                                                              "ref_able_zero_extent":  0,
+                                                              "ref_able_zero_extent_id_less":  0
+                                                          },
+                                        "id_census":  {
+                                                          "collision_groups":  [
+
+                                                                               ],
+                                                          "distinct_id_values":  2,
+                                                          "elements_carrying_id":  2,
+                                                          "ids_resolving_to_exactly_one":  2,
+                                                          "ids_resolving_to_two_or_more":  0
+                                                      },
+                                        "id_less_ref_able":  {
+                                                                 "distinct_role_and_name_keys":  0,
+                                                                 "role_and_name_collision_groups":  0
+                                                             },
+                                        "ref_able_approx":  0,
+                                        "total_elements":  12
+                                    },
+                         "child_process":  {
+                                               "attached":  true,
+                                               "descendants":  12,
+                                               "handle_int":  23856290,
+                                               "hosted":  false,
+                                               "root_resolved":  true
+                                           },
+                         "findall_vs_walk":  {
+                                                 "discipline":  {
+                                                                    "caller_boundable":  false,
+                                                                    "partial_result_signal":  "none - all-or-nothing Vec or Err",
+                                                                    "single_blocking_call":  true
+                                                                },
+                                                 "findall":  {
+                                                                 "absent_id_returns":  0,
+                                                                 "distinct_ids":  2,
+                                                                 "findall_union_count":  2,
+                                                                 "per_id":  [
+                                                                                {
+                                                                                    "counts_agree":  true,
+                                                                                    "findall_count":  2,
+                                                                                    "id_length":  11,
+                                                                                    "walk_count":  2
+                                                                                },
+                                                                                {
+                                                                                    "counts_agree":  false,
+                                                                                    "findall_count":  0,
+                                                                                    "id_length":  6,
+                                                                                    "walk_count":  1
+                                                                                }
+                                                                            ],
+                                                                 "union_counts_agree":  false,
+                                                                 "walk_union_count":  3
+                                                             },
+                                                 "target":  "attached",
+                                                 "timing_ms":  {
+                                                                   "findall_absent_id":  {
+                                                                                             "max":  17.761200000000002,
+                                                                                             "median":  7.5649999999999995,
+                                                                                             "min":  7.3263
+                                                                                         },
+                                                                   "findall_one_id":  {
+                                                                                          "max":  16.014899999999997,
+                                                                                          "median":  7.8853,
+                                                                                          "min":  7.7279
+                                                                                      },
+                                                                   "resolve_scoped_walk":  {
+                                                                                               "max":  138.78730000000002,
+                                                                                               "median":  134.435,
+                                                                                               "min":  109.99849999999999
+                                                                                           }
+                                                               },
+                                                 "walk_candidate_reads":  165,
+                                                 "walked_elements":  165
+                                             },
+                         "secure_live_read":  {
+                                                  "password_control_present":  false
+                                              },
+                         "timing_ms":  {
+                                           "single_element_read":  {
+                                                                       "max":  0.9258,
+                                                                       "median":  0.5966,
+                                                                       "min":  0.5473
+                                                                   },
+                                           "single_strict_resolve":  {
+                                                                         "max":  316.2683,
+                                                                         "median":  252.3308,
+                                                                         "min":  245.56369999999998
+                                                                     }
+                                       },
+                         "zero_one_n":  {
+                                            "absent_id_candidates":  0,
+                                            "duplicate_id_candidates":  null,
+                                            "duplicate_key_present":  false,
+                                            "unique_id_candidates":  1,
+                                            "unique_key_present":  true
+                                        }
+                     },
+    "probe":  "17-resolution",
+    "stack":  "uia3-com",
+    "uiautomation_version":  "0.25.0"
+}

@@ -1,0 +1,6 @@
+{
+  "probe": "self-test-fixture",
+  "notification": {
+    "app_name": "Real Sender Application Display Name"
+  }
+}

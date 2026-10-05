@@ -1,4 +1,4 @@
-use super::{CursorOverlayInstruction, CursorOverlayStyle, CursorPhase};
+use super::{CursorMotionProfile, CursorOverlayInstruction, CursorOverlayStyle, CursorPhase};
 use crate::{AdapterError, ErrorCode, context::validate_session_id, session::validate_agent_id};
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +14,8 @@ pub enum CursorOverlayControl {
         agent_id: Option<String>,
         #[serde(default)]
         style: CursorOverlayStyle,
+        #[serde(default, skip_serializing_if = "CursorMotionProfile::is_default")]
+        motion: CursorMotionProfile,
     },
     Present {
         session_id: String,
@@ -22,6 +24,8 @@ pub enum CursorOverlayControl {
         agent_id: Option<String>,
         #[serde(default)]
         style: CursorOverlayStyle,
+        #[serde(default, skip_serializing_if = "CursorMotionProfile::is_default")]
+        motion: CursorMotionProfile,
     },
     Hide {
         session_id: String,
@@ -45,6 +49,7 @@ impl CursorOverlayControl {
             label: CURSOR_OVERLAY_GREETING.into(),
             agent_id: None,
             style,
+            motion: CursorMotionProfile::default(),
         }
     }
 
@@ -69,6 +74,7 @@ impl CursorOverlayControl {
             instruction,
             agent_id: None,
             style,
+            motion: CursorMotionProfile::default(),
         }
     }
 
@@ -101,6 +107,26 @@ impl CursorOverlayControl {
         self
     }
 
+    pub fn with_motion(mut self, motion: CursorMotionProfile) -> Self {
+        if let Self::Enable {
+            motion: current, ..
+        }
+        | Self::Present {
+            motion: current, ..
+        } = &mut self
+        {
+            *current = motion;
+        }
+        self
+    }
+
+    pub fn motion(&self) -> Option<&CursorMotionProfile> {
+        match self {
+            Self::Enable { motion, .. } | Self::Present { motion, .. } => Some(motion),
+            _ => None,
+        }
+    }
+
     pub fn agent_id(&self) -> Option<&str> {
         match self {
             Self::Enable { agent_id, .. }
@@ -122,6 +148,12 @@ impl CursorOverlayControl {
         }
         if let Self::Present { instruction, .. } = self {
             instruction.validate()?;
+        }
+        if let Some(style) = self.style() {
+            style.clone().validated()?;
+        }
+        if let Some(motion) = self.motion() {
+            motion.validate()?;
         }
         Ok(())
     }

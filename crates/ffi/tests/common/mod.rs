@@ -8,10 +8,14 @@ pub use agent_desktop_ffi::{
     AdExactWindowList, AdFindQuery, AdIdentifierKind, AdKeyCombo, AdNativeHandle,
     AdNotificationActionRequest, AdNotificationIdentity, AdOptionalU64, AdOptionalUsize, AdPoint,
     AdPolicyKind, AdRect, AdRefEntry, AdScrollParams, AdWaitArgs, AdWaitMode, AdWaitPredicate,
-    AdWaitScope, AdWaitSurfaceModes, AdWindowInfo, AdWindowList,
+    AdWaitScope, AdWaitSurfaceModes,
 };
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
+
+#[cfg(target_os = "windows")]
+pub mod win32_fixture;
+
 use std::sync::{
     Mutex,
     atomic::{AtomicU64, Ordering},
@@ -20,10 +24,13 @@ use std::sync::{
 static HOME_LOCK: Mutex<()> = Mutex::new(());
 static HOME_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Clears AGENT_DESKTOP_HOME rather than pinning it: the two layout branches
+/// produce different paths, and a pinned var breaks test layout assumptions.
 struct IsolatedHome {
     _lock: std::sync::MutexGuard<'static, ()>,
     path: std::path::PathBuf,
     previous: Option<std::ffi::OsString>,
+    previous_state_root: Option<std::ffi::OsString>,
 }
 
 impl IsolatedHome {
@@ -38,11 +45,14 @@ impl IsolatedHome {
         ));
         std::fs::create_dir_all(&path).expect("create isolated FFI test HOME");
         let previous = std::env::var_os("HOME");
+        let previous_state_root = std::env::var_os("AGENT_DESKTOP_HOME");
         unsafe { std::env::set_var("HOME", &path) };
+        unsafe { std::env::remove_var("AGENT_DESKTOP_HOME") };
         Self {
             _lock: lock,
             path,
             previous,
+            previous_state_root,
         }
     }
 }
@@ -52,6 +62,10 @@ impl Drop for IsolatedHome {
         match self.previous.as_ref() {
             Some(previous) => unsafe { std::env::set_var("HOME", previous) },
             None => unsafe { std::env::remove_var("HOME") },
+        }
+        match self.previous_state_root.as_ref() {
+            Some(previous) => unsafe { std::env::set_var("AGENT_DESKTOP_HOME", previous) },
+            None => unsafe { std::env::remove_var("AGENT_DESKTOP_HOME") },
         }
         let _ = std::fs::remove_dir_all(&self.path);
     }
@@ -104,14 +118,6 @@ unsafe extern "C" {
     pub fn ad_set_clipboard(adapter: *const AdAdapter, text: *const c_char) -> AdResult;
     pub fn ad_clear_clipboard(adapter: *const AdAdapter) -> AdResult;
 
-    pub fn ad_list_windows(
-        adapter: *const AdAdapter,
-        app_filter: *const c_char,
-        focused_only: bool,
-        out: *mut *mut AdWindowList,
-    ) -> AdResult;
-    pub fn ad_window_list_count(list: *const AdWindowList) -> u32;
-    pub fn ad_window_list_free(list: *mut AdWindowList);
     pub fn ad_list_windows_exact(
         adapter: *const AdAdapter,
         app_filter: *const c_char,
@@ -136,11 +142,11 @@ unsafe extern "C" {
     ) -> *const AdExactSurfaceInfo;
     pub fn ad_exact_surface_list_free(list: *mut AdExactSurfaceList);
 
-    pub fn ad_launch_app(
+    pub fn ad_launch_app_exact(
         adapter: *const AdAdapter,
         id: *const c_char,
         timeout_ms: u64,
-        out: *mut AdWindowInfo,
+        out: *mut AdExactWindowInfo,
     ) -> AdResult;
 
     pub fn ad_execute_action(
@@ -156,29 +162,24 @@ unsafe extern "C" {
         policy: i32,
         out: *mut AdActionResult,
     ) -> AdResult;
-    pub fn ad_execute_ref_action_with_policy(
+    pub fn ad_execute_ref_action_exact_with_policy(
         adapter: *const AdAdapter,
-        entry: *const AdRefEntry,
+        entry: *const AdExactRefEntry,
         action: *const AdAction,
         policy: i32,
         out: *mut AdActionResult,
     ) -> AdResult;
     pub fn ad_free_action_result(result: *mut AdActionResult);
 
-    pub fn ad_find(
+    pub fn ad_find_exact(
         adapter: *const AdAdapter,
-        win: *const AdWindowInfo,
+        win: *const AdExactWindowInfo,
         query: *const AdFindQuery,
         out: *mut AdNativeHandle,
     ) -> AdResult;
 
     pub fn ad_free_handle(adapter: *const AdAdapter, handle: *mut AdNativeHandle) -> AdResult;
 
-    pub fn ad_resolve_element(
-        adapter: *const AdAdapter,
-        entry: *const AdRefEntry,
-        out: *mut AdNativeHandle,
-    ) -> AdResult;
     pub fn ad_resolve_element_exact(
         adapter: *const AdAdapter,
         entry: *const AdExactRefEntry,
@@ -199,7 +200,6 @@ unsafe extern "C" {
     pub fn ad_execute_by_ref(
         adapter: *const AdAdapter,
         ref_id: *const c_char,
-        snapshot_id: *const c_char,
         action: *const AdAction,
         policy: i32,
         out: *mut *mut c_char,
@@ -207,7 +207,6 @@ unsafe extern "C" {
     pub fn ad_execute_by_ref_timeout(
         adapter: *const AdAdapter,
         ref_id: *const c_char,
-        snapshot_id: *const c_char,
         action: *const AdAction,
         policy: i32,
         timeout_ms: i64,
@@ -231,15 +230,36 @@ pub fn with_isolated_home<F: FnOnce()>(body: F) {
     body();
 }
 
-pub fn default_ref_entry() -> AdRefEntry {
-    unsafe { std::mem::zeroed() }
-}
-
 pub fn default_exact_ref_entry() -> AdExactRefEntry {
     let mut entry: AdExactRefEntry = unsafe { std::mem::zeroed() };
     entry.version = 1;
     entry.size = std::mem::size_of::<AdExactRefEntry>() as u32;
     entry
+}
+
+/// Depth-first search over a decoded envelope (or any JSON subtree of one)
+/// for the first value satisfying `matches`. Walks every object field and
+/// every array element rather than a fixed key such as `children`, so it
+/// finds a match wherever the schema puts it. `searched` counts every value
+/// visited, for a caller's own diagnostic message on a failed search.
+pub fn find_ref_in_tree(
+    value: &serde_json::Value,
+    searched: &mut usize,
+    matches: &impl Fn(&serde_json::Value) -> Option<String>,
+) -> Option<String> {
+    *searched += 1;
+    if let Some(found) = matches(value) {
+        return Some(found);
+    }
+    match value {
+        serde_json::Value::Object(map) => map
+            .values()
+            .find_map(|child| find_ref_in_tree(child, searched, matches)),
+        serde_json::Value::Array(items) => items
+            .iter()
+            .find_map(|child| find_ref_in_tree(child, searched, matches)),
+        _ => None,
+    }
 }
 
 pub fn default_action() -> AdAction {

@@ -168,6 +168,10 @@ fn enabled_cursor_moves_before_dispatch_then_clicks_after_it() {
         "the cursor sets off before the action runs"
     );
     assert!(travel.target().is_none());
+    assert!(
+        !travel.is_pointer(),
+        "clicking into a text field keeps the arrow"
+    );
     assert_eq!(click.destination(), &center);
     assert!(
         click.is_click(),
@@ -285,6 +289,62 @@ fn renderer_failure_does_not_change_successful_action() {
     assert_eq!(result.action, "click");
 }
 
+struct NoOverlaySupportAdapter;
+
+impl ObservationOps for NoOverlaySupportAdapter {
+    fn resolve_element_strict(
+        &self,
+        _entry: &RefEntry,
+        _deadline: crate::Deadline,
+    ) -> Result<NativeHandle, AdapterError> {
+        Ok(NativeHandle::null())
+    }
+
+    crate::adapter::complete_live_observation!(
+        "textfield",
+        "Run",
+        [capability::CLICK, capability::SET_VALUE]
+    );
+}
+
+impl ActionOps for NoOverlaySupportAdapter {
+    fn execute_action(
+        &self,
+        _handle: &NativeHandle,
+        _request: ActionRequest,
+        _lease: &crate::InteractionLease,
+    ) -> Result<ActionResult, AdapterError> {
+        Ok(ActionResult::delivered_unverified("click"))
+    }
+}
+
+impl InputOps for NoOverlaySupportAdapter {}
+
+impl SystemOps for NoOverlaySupportAdapter {
+    crate::adapter::guarded_interaction_lease!();
+    crate::adapter::exact_window_focus!();
+}
+
+#[test]
+fn adapter_with_no_overlay_support_still_completes_the_action() {
+    let adapter = NoOverlaySupportAdapter;
+
+    let error = adapter
+        .update_cursor_overlay(&CursorOverlayControl::disable("test-session".into()))
+        .expect_err("the trait default must refuse, proving this adapter has no override");
+    assert_eq!(error.code, crate::ErrorCode::PlatformNotSupported);
+
+    let result = execute_entry_with_context(
+        &adapter,
+        &entry(),
+        ActionRequest::headless(Action::Click),
+        &enabled_context(),
+    )
+    .expect("an adapter with no overlay support must still complete the action");
+
+    assert_eq!(result.action, "click");
+}
+
 #[test]
 fn a_value_write_outlines_the_element_without_a_click_ripple() {
     let adapter = CursorAdapter::new(false);
@@ -332,3 +392,6 @@ fn headed_and_headless_contexts_present_the_same_cursor() {
     assert_eq!(presented[0].instruction(), presented[2].instruction());
     assert_eq!(presented[1].instruction(), presented[3].instruction());
 }
+
+#[path = "ref_action_cursor_overlay_unknown_tests.rs"]
+mod unknown_hit_tests;

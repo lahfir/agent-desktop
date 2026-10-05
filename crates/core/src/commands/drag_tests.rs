@@ -142,7 +142,6 @@ fn xy_args(drop_delay_ms: Option<u64>) -> DragArgs {
             ref_id: None,
             xy: Some((3.0, 4.0)),
         },
-        snapshot_id: None,
         duration_ms: None,
         drop_delay_ms,
         timeout_ms: None,
@@ -296,14 +295,13 @@ fn cross_app_snapshot() -> String {
 fn cross_app_args(snapshot_id: String) -> DragArgs {
     DragArgs {
         from: DragEndpoint {
-            ref_id: Some("@e1".into()),
+            ref_id: Some(format!("@{}:e1", snapshot_id)),
             xy: None,
         },
         to: DragEndpoint {
-            ref_id: Some("@e2".into()),
+            ref_id: Some(format!("@{}:e2", snapshot_id)),
             xy: None,
         },
-        snapshot_id: Some(snapshot_id),
         duration_ms: None,
         drop_delay_ms: None,
         timeout_ms: None,

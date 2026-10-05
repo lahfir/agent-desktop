@@ -306,3 +306,23 @@ fn record(app_name: &str, pid: i32, window_number: i64, visible: bool) -> Window
         process_instance: Some(format!("instance-{pid}")),
     }
 }
+
+#[test]
+fn persistent_capture_failure_is_not_window_churn() {
+    let mut attempts = 0;
+    let error = stabilize_records_until(
+        Instant::now() + std::time::Duration::from_millis(20),
+        || {
+            attempts += 1;
+            Err(inventory_error("unavailable"))
+        },
+    )
+    .unwrap_err();
+    let details = error.details.unwrap();
+    assert_eq!(details["attempts"], attempts);
+    assert_eq!(details["churn_events"], 0);
+    assert_eq!(
+        details["last_failure_details"]["source"],
+        "core_graphics_windows"
+    );
+}

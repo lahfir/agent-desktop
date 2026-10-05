@@ -135,6 +135,7 @@ fn push_menu_surface(
         kind: kind.into(),
         title,
         item_count,
+        unclassified: Vec::new(),
     });
     Ok(())
 }
@@ -151,6 +152,7 @@ fn collect_window_surfaces(
             kind: kind.into(),
             title: read_title(window, deadline)?,
             item_count: None,
+            unclassified: Vec::new(),
         });
     }
     let Some(children) = read_array(window, "AXChildren", deadline)? else {
@@ -163,6 +165,7 @@ fn collect_window_surfaces(
                 kind: kind.into(),
                 title: read_title(child, deadline)?,
                 item_count: None,
+                unclassified: Vec::new(),
             });
         }
     }

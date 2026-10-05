@@ -18,6 +18,7 @@ fn surface(kind: &str) -> SurfaceInfo {
         kind: kind.into(),
         title: None,
         item_count: None,
+        unclassified: Vec::new(),
     }
 }
 

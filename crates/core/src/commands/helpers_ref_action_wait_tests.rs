@@ -162,8 +162,7 @@ fn post_action_wait_scopes_to_source_app_and_merges_action_result() {
         timeout_ms: 5_000,
     }));
     let args = RefArgs {
-        ref_id: "@e1".into(),
-        snapshot_id: Some(snapshot_id),
+        ref_id: format!("@{}:e1", snapshot_id),
         timeout_ms: None,
     };
 
@@ -344,8 +343,7 @@ fn post_action_wait_polls_acted_on_window_not_focused_window() {
         timeout_ms: 500,
     }));
     let args = RefArgs {
-        ref_id: "@e1".into(),
-        snapshot_id: Some(snapshot_id),
+        ref_id: format!("@{}:e1", snapshot_id),
         timeout_ms: None,
     };
 

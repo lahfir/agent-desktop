@@ -108,7 +108,6 @@ fn stabilize_records_until(
                 last_failure = None;
             }
             Err(error) if retryable_inventory_error(&error) => {
-                churn_events += 1;
                 previous = None;
                 last_failure = Some(error);
             }
@@ -285,15 +284,21 @@ fn unstable_inventory_error(
     churn_events: u64,
     last_failure: Option<&AdapterError>,
 ) -> AdapterError {
+    let mut details = serde_json::json!({
+        "kind": "core_graphics_window_inventory_unstable",
+        "attempts": attempts,
+        "churn_events": churn_events,
+        "retryable": true,
+    });
+    if let Some(error) = last_failure {
+        details["last_failure"] = serde_json::json!(error.message);
+        if let Some(failure_details) = &error.details {
+            details["last_failure_details"] = failure_details.clone();
+        }
+    }
     AdapterError::timeout("CoreGraphics window inventory did not stabilize before the deadline")
         .with_suggestion("Retry after active window animations and application launches settle")
-        .with_details(serde_json::json!({
-            "kind": "core_graphics_window_inventory_unstable",
-            "attempts": attempts,
-            "churn_events": churn_events,
-            "last_failure": last_failure.map(|error| &error.message),
-            "retryable": true,
-        }))
+        .with_details(details)
 }
 
 fn missing_field_error(field: &str) -> AdapterError {

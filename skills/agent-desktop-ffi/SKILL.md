@@ -10,7 +10,7 @@ description: >
   link libagent_desktop_ffi.{dylib,so,dll} and call `ad_*` functions
   directly instead of spawning the CLI binary per call. The canonical
   observe-act workflow is: ad_init → ad_adapter_create[_with_session]
-  → ad_snapshot → parse @e refs → ad_execute_by_ref → ad_free_string
+  → ad_snapshot → read qualified refs (@s8f3k2p9:e5) → ad_execute_by_ref → ad_free_string
   → ad_adapter_destroy.
 ---
 
@@ -55,15 +55,15 @@ rc = ad_snapshot(adapter, "Finder", 0, 10, false, false, &json_out)
 ad_free_string(json_out)
 // build action:
 AdAction act = {0}; act.kind = AD_ACTION_KIND_CLICK;
-rc = ad_execute_by_ref(adapter, "@s8f3k2p9:e5", NULL, &act, 0, &result_out)
+rc = ad_execute_by_ref(adapter, "@s8f3k2p9:e5", &act, 0, &result_out)
 ad_free_string(result_out)
 ad_adapter_destroy(adapter)
 ```
 
 `ad_snapshot` returns a `{version, ok, command, data}` JSON envelope
 identical to the CLI output. The `data.tree` field contains snapshot-qualified
-ref IDs for interactive elements. Pass a qualified ref, or a legacy bare ref
-plus its explicit `snapshot_id`, to `ad_execute_by_ref` to drive the pipeline
+ref IDs for interactive elements. Pass a qualified ref to `ad_execute_by_ref`
+to drive the pipeline
 (RefStore load → strict resolution → actionability preflight → dispatch).
 
 ## Core constraints
@@ -77,8 +77,8 @@ plus its explicit `snapshot_id`, to `ad_execute_by_ref` to drive the pipeline
 
 - **Session adapters.** `ad_adapter_create_with_session("session-id")` associates
   the adapter with a session namespace for refmap persistence — the same as CLI
-  `--session <id>`. A null `snapshot_id` is valid only for a qualified ref;
-  legacy bare `@eN` refs require an explicit snapshot ID. Session IDs: 1–64
+  `--session <id>`. A bare `@eN` ref is rejected with
+  `AD_RESULT_ERR_INVALID_ARGS`. Session IDs: 1–64
   chars, ASCII alphanumeric / `-` / `_`.
   Invalid IDs return null (check `ad_last_error_*`).
 
@@ -129,13 +129,15 @@ plus its explicit `snapshot_id`, to `ad_execute_by_ref` to drive the pipeline
   actions default to `headless`. Pass `AD_POLICY_KIND_HEADED` (2) to opt in to
   cursor-based fallbacks.
 
-- **Generation-safe direct APIs.** Legacy `AdRefEntry` and
-  `AdWindowInfo` layouts remain available for binary compatibility, but they do
-  not carry process-generation evidence and direct targeting functions fail
-  closed. Use `AdExactRefEntry`, `AdExactWindowInfo`,
-  `ad_list_windows_exact`, and the `*_exact` targeting symbols. Likewise,
-  `ad_list_surfaces_exact` preserves `SurfaceInfo.id`; the legacy surface list
-  is an observation-only projection that omits it.
+- **Generation-safe direct APIs.** Every direct targeting function takes
+  process-generation evidence: `AdExactRefEntry`, `AdExactWindowInfo`,
+  `ad_list_windows_exact`, `ad_launch_app_exact`, and the other `*_exact`
+  symbols. `AdRefEntry`, `AdWindowInfo`, and `AdSurfaceInfo` exist only as
+  fields embedded in the exact structs. `ad_list_surfaces_exact` preserves
+  `SurfaceInfo.id`. From `AD_EXACT_SURFACE_INFO_VERSION` 2, an exact entry's
+  `unclassified` names the surface kinds its probe could not read (for example
+  `sheet,menu`), or is null. On Windows, a missing `sheet` or `menu` next to a
+  listed kind is unknown, not absent.
 
 - **Display discovery.** Call `ad_list_displays` before using
   `AdScreenshotTarget.screen_index`. List order is the screenshot index order;

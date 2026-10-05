@@ -19,7 +19,7 @@ dual-failure mode (command-level errors write `ok:false` JSON into
 | `ad_version(&out)`                                                                | `ad_free_string(out)`   |
 | `ad_status(adapter, &out)`                                                        | `ad_free_string(out)`   |
 | `ad_snapshot(adapter, app, surface, max_depth, interactive_only, compact, &out)` | `ad_free_string(out)`   |
-| `ad_execute_by_ref(adapter, ref_id, snapshot_id, action, policy, &out)`          | `ad_free_string(out)`   |
+| `ad_execute_by_ref(adapter, ref_id, action, policy, &out)`                       | `ad_free_string(out)`   |
 | `ad_wait(adapter, args, &out)`                                                    | `ad_free_string(out)`   |
 
 ### Adapter lifecycle
@@ -35,9 +35,7 @@ dual-failure mode (command-level errors write `ok:false` JSON into
 |--------------------------------------------------------------|-----------------------------------------|
 | `ad_list_apps(adapter, &list)`                               | `ad_app_list_free(list)`                |
 | `ad_list_displays(adapter, &list)`                           | `ad_display_list_free(list)`            |
-| `ad_list_windows(adapter, app, focused, &list)`              | `ad_window_list_free(list)`             |
 | `ad_list_windows_exact(adapter, app, focused, &list)`        | `ad_exact_window_list_free(list)`       |
-| `ad_list_surfaces(adapter, pid, &list)`                      | `ad_surface_list_free(list)`            |
 | `ad_list_surfaces_exact(adapter, pid, &list)`                | `ad_exact_surface_list_free(list)`      |
 | `ad_list_notifications(adapter, filter, &list)`              | `ad_notification_list_free(list)`       |
 | `ad_dismiss_all_notifications(adapter, f, &ok, &fail)`       | `ad_notification_list_free` on each, or `ad_dismiss_all_notifications_free(ok, fail)` |
@@ -46,7 +44,6 @@ dual-failure mode (command-level errors write `ok:false` JSON into
 
 | Allocates                                                 | Frees with                                                          |
 |-----------------------------------------------------------|---------------------------------------------------------------------|
-| `ad_launch_app(adapter, id, timeout, &out)`               | `ad_release_window_fields(&out)` — frees interior strings only; the `AdWindowInfo` struct lives on the caller's stack |
 | `ad_launch_app_exact(adapter, id, timeout, &out)`         | `ad_release_exact_window_fields(&out)` |
 
 ### Raw tree and element access
@@ -115,8 +112,8 @@ In particular:
 
 - `ad_get_clipboard` writes `*out = NULL` before the adapter call —
   no stale buffer visible on error.
-- `ad_launch_app` writes `*out = zeroed AdWindowInfo` before the
-  platform call — `ad_release_window_fields(&out)` on the zero-init
+- `ad_launch_app_exact` writes `*out = zeroed AdExactWindowInfo` before the
+  platform call — `ad_release_exact_window_fields(&out)` on the zero-init
   struct is a no-op.
 - `ad_screenshot` writes `*out = NULL` before allocating the image
   buffer — no stale pointer when the screenshot fails.

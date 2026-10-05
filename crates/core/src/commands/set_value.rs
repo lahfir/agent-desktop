@@ -9,7 +9,6 @@ use serde_json::Value;
 
 pub struct SetValueArgs {
     pub ref_id: String,
-    pub snapshot_id: Option<String>,
     pub value: String,
     pub timeout_ms: Option<u64>,
 }
@@ -23,7 +22,6 @@ pub fn execute(
     execute_ref_action_with_context(
         RefArgs {
             ref_id: args.ref_id,
-            snapshot_id: args.snapshot_id,
             timeout_ms: args.timeout_ms,
         },
         adapter,
