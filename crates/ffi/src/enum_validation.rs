@@ -76,7 +76,7 @@ try_from_c_enum! {
 
 try_from_c_enum! {
     AdScreenshotKind {
-        Screen = 0, Window = 1, FullScreen = 2,
+        Screen = 0, FullScreen = 2,
     }
 }
 
@@ -159,6 +159,10 @@ mod tests {
     #[test]
     fn test_screenshot_kind_valid_range() {
         assert!(AdScreenshotKind::from_c(0).is_some());
+        assert!(
+            AdScreenshotKind::from_c(1).is_none(),
+            "1 was the removed window kind and must never be reused"
+        );
         assert!(AdScreenshotKind::from_c(2).is_some());
         assert!(AdScreenshotKind::from_c(3).is_none());
     }

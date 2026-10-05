@@ -3,10 +3,10 @@ run_ref_timed() {
     shift 2
     if [ "$mode" = "headed" ]; then
         run_timed "$bin" --headed click "$(target_ref "$target")" \
-            --snapshot "$(target_snapshot "$target")" "$@"
+            "$@"
     else
         run_timed "$bin" click "$(target_ref "$target")" \
-            --snapshot "$(target_snapshot "$target")" "$@"
+            "$@"
     fi
 }
 
@@ -172,10 +172,10 @@ if [ -z "$open_sheet_ref" ] || [ -z "$open_sheet_snapshot" ]; then
 fi
 open_sheet="${open_sheet_ref}"$'\t'"${open_sheet_snapshot}"
 sheet_scroll_output="$(act_target "$open_sheet" scroll-to 2>&1)"
-batch_payload="$(python3 - "$(target_ref "$open_sheet")" "$(target_snapshot "$open_sheet")" <<'PY'
+batch_payload="$(python3 - "$(target_ref "$open_sheet")" <<'PY'
 import json, sys
 print(json.dumps([
-    {"command": "click", "args": {"ref_id": sys.argv[1], "snapshot": sys.argv[2]}},
+    {"command": "click", "args": {"ref_id": sys.argv[1]}},
     {"command": "wait", "args": {"event": "surface-appeared", "app": "AgentDeskFixture", "timeout": 5000}},
 ]))
 PY

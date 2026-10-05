@@ -1,0 +1,85 @@
+{
+    "probe":  "25-packaging-03-motw-and-execution",
+    "question":  "does a curl-downloaded file carry a Mark-of-the-Web stream at all, and against a file that genuinely carries a browser-equivalent ZoneId=3 mark, what do direct command-line invocation and a ShellExecute GUI launch actually do on this host, bounded by which download-protection controls this OS even has",
+    "measurable":  true,
+    "branch":  "both_cases_measured",
+    "label":  "devbox",
+    "host_control_surface":  {
+                                 "product_name":  "Windows Server 2019 Datacenter",
+                                 "build":  17763,
+                                 "ubr":  7434,
+                                 "smart_screen_value_present":  false,
+                                 "smart_screen_state_class":  "value_absent_server_default_off",
+                                 "smart_app_control_policy_value_present":  false,
+                                 "smart_app_control_available_on_host":  false,
+                                 "bound_note":  "Server 2019 host: SmartScreen off by default and Smart App Control does not exist as an OS feature here; rows measured where the controls cannot fire bound nothing about a Windows 11 client"
+                             },
+    "curl_download_case":  {
+                               "attempted":  true,
+                               "transport":  "http_loopback_probe_owned",
+                               "curl_exit_code":  0,
+                               "payload_bytes":  131072,
+                               "received_bytes_match_source":  true,
+                               "received_sha256_matches_source":  true,
+                               "alternate_streams_count":  1,
+                               "zone_identifier_present":  false
+                           },
+    "compile":  {
+                    "attempted":  true,
+                    "target":  "console_exe",
+                    "exit_code":  0,
+                    "compiled_ok":  true,
+                    "error_codes":  [
+
+                                    ]
+                },
+    "marked_execution_case":  {
+                                  "attempted":  true,
+                                  "zone_id_written":  3,
+                                  "zone_identifier_present_after_write":  true,
+                                  "zone_id_readback":  3,
+                                  "command_line_launch":  {
+                                                              "ran_to_completion":  true,
+                                                              "exit_code":  0,
+                                                              "started_marker_emitted":  true,
+                                                              "stdout_sentinel_seen":  true
+                                                          },
+                                  "shell_gui_launch":  {
+                                                           "unmarked_control":  {
+                                                                                    "observation":  "unblocked_shellexecute_completed",
+                                                                                    "class_32770_dialog_windows":  0,
+                                                                                    "launcher_child_windows":  0,
+                                                                                    "ran_to_completion":  true,
+                                                                                    "exit_code":  null,
+                                                                                    "started_marker_emitted":  true,
+                                                                                    "exited_without_manual_dismiss":  true
+                                                                                },
+                                                           "marked":  {
+                                                                          "observation":  "blocked_without_visible_dialog",
+                                                                          "class_32770_dialog_windows":  0,
+                                                                          "launcher_child_windows":  0,
+                                                                          "ran_to_completion":  false,
+                                                                          "exit_code":  null,
+                                                                          "started_marker_emitted":  false,
+                                                                          "exited_without_manual_dismiss":  false
+                                                                      },
+                                                           "marked_zonecheck_bypassed":  {
+                                                                                             "observation":  "unblocked_shellexecute_completed",
+                                                                                             "class_32770_dialog_windows":  0,
+                                                                                             "launcher_child_windows":  0,
+                                                                                             "ran_to_completion":  true,
+                                                                                             "exit_code":  null,
+                                                                                             "started_marker_emitted":  true,
+                                                                                             "exited_without_manual_dismiss":  true
+                                                                                         }
+                                                       }
+                              },
+    "summary":  {
+                    "npm_path_carries_no_motw":  true,
+                    "marked_file_ran_from_shell":  true,
+                    "unmarked_shell_control_ran":  true,
+                    "marked_shell_launch_gated":  true,
+                    "zonecheck_bypass_unblocks":  true,
+                    "host_can_fire_either_control":  false
+                }
+}

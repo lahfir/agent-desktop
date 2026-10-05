@@ -7,7 +7,7 @@ import sys
 MAX_JSON_BYTES = 4 * 1024 * 1024
 FIXTURE_WINDOW_TITLE = "AgentDesk Fixture"
 SNAPSHOT_TOKEN = r"[A-Za-z0-9][A-Za-z0-9_-]{2,63}"
-REF_PATTERN = re.compile(rf"^@(?:(?:{SNAPSHOT_TOKEN}):)?e[1-9][0-9]*$")
+REF_PATTERN = re.compile(rf"^@{SNAPSHOT_TOKEN}:e[1-9][0-9]*$")
 SNAPSHOT_PATTERN = re.compile(rf"^{SNAPSHOT_TOKEN}$")
 SAFE_NAMED_TARGETS = {
     ("button", "primary-button"),
@@ -123,17 +123,15 @@ def _validate_timeout(raw):
 
 
 def _validate_ref_action_tail(argv, positional_count):
-    expected_length = positional_count + 4
+    expected_length = positional_count + 2
     if len(argv) != expected_length:
         raise SafetyError("ref action arguments do not match the safe contract")
     if not REF_PATTERN.fullmatch(argv[1]):
         raise SafetyError("ref action requires a qualified element ref")
     tail = argv[positional_count:]
-    if tail[0] != "--snapshot" or not SNAPSHOT_PATTERN.fullmatch(tail[1]):
-        raise SafetyError("ref action requires an explicit snapshot ID")
-    if tail[2] != "--timeout-ms":
+    if tail[0] != "--timeout-ms":
         raise SafetyError("ref action requires an explicit bounded timeout")
-    _validate_timeout(tail[3])
+    _validate_timeout(tail[1])
 
 
 def validate_command(argv, fixture_app, window_id, mutation_armed):
@@ -151,10 +149,9 @@ def validate_command(argv, fixture_app, window_id, mutation_armed):
             raise SafetyError("list-windows must be global or fixture-scoped")
         return
     if command == "get":
-        if not window_id or len(argv) != 6 or not REF_PATTERN.fullmatch(argv[1]) \
-                or argv[2] != "--snapshot" or not SNAPSHOT_PATTERN.fullmatch(argv[3]) \
-                or argv[4:] != ["--property", "value"]:
-            raise SafetyError("get requires a snapshot-scoped fixture value target")
+        if not window_id or len(argv) != 4 or not REF_PATTERN.fullmatch(argv[1]) \
+                or argv[2:] != ["--property", "value"]:
+            raise SafetyError("get requires a qualified fixture value target")
         return
     if command == "find":
         if not window_id:

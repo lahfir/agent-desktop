@@ -5,11 +5,11 @@ use std::ffi::CStr;
 unsafe extern "C" {
     fn ad_adapter_create() -> *mut agent_desktop_ffi::AdAdapter;
     fn ad_adapter_destroy(adapter: *mut agent_desktop_ffi::AdAdapter);
-    fn ad_launch_app(
+    fn ad_launch_app_exact(
         adapter: *const agent_desktop_ffi::AdAdapter,
         id: *const std::os::raw::c_char,
         timeout_ms: u64,
-        out: *mut agent_desktop_ffi::AdWindowInfo,
+        out: *mut agent_desktop_ffi::AdExactWindowInfo,
     ) -> AdResult;
     fn ad_last_error_message() -> *const std::os::raw::c_char;
     fn ad_last_error_details() -> *const std::os::raw::c_char;
@@ -25,8 +25,8 @@ fn last_error_pointer_survives_across_successful_calls() {
         assert!(!adapter.is_null());
 
         let bad_id = std::ptr::null();
-        let mut out_win: agent_desktop_ffi::AdWindowInfo = std::mem::zeroed();
-        let rc = ad_launch_app(adapter, bad_id, 0, &mut out_win);
+        let mut out_win: agent_desktop_ffi::AdExactWindowInfo = std::mem::zeroed();
+        let rc = ad_launch_app_exact(adapter, bad_id, 0, &mut out_win);
         assert_eq!(rc, AdResult::ErrInvalidArgs);
 
         let first_msg_ptr = ad_last_error_message();

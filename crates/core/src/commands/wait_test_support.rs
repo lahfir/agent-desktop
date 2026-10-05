@@ -27,7 +27,6 @@ pub(super) fn wait_args() -> WaitArgs {
             window_id: None,
         },
         predicate: WaitPredicateArgs {
-            snapshot_id: None,
             predicate: None,
             value: None,
             action: None,
@@ -48,8 +47,7 @@ pub(super) fn wait_for_element_test(
 ) -> Result<Value, AppError> {
     wait_for_element(
         ElementWaitInput {
-            ref_id,
-            snapshot_id,
+            ref_id: crate::ref_token::qualify_for_test(&ref_id, snapshot_id.as_deref()),
             predicate,
             timeout_ms,
         },

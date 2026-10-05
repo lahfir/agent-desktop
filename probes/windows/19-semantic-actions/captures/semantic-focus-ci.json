@@ -1,0 +1,14 @@
+{
+    "branch":  "foreground_moves_ktd4_10_stands",
+    "focused_automation_id_digest":  "8153e352565945e4",
+    "focused_automation_id_len":  8,
+    "foreground_changed":  true,
+    "foreground_equals_target_after":  true,
+    "foreground_pid_changed":  true,
+    "set_focus":  {
+                      "ok":  true
+                  },
+    "stack":  "uia3-com-product-CUIAutomation8",
+    "target_hwnd_nonzero":  true,
+    "target_was_foreground_before":  false
+}

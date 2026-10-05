@@ -142,8 +142,7 @@ def verify_exact_namespace(runner, args, window_id, sample):
         if not noise_snapshot or noise_snapshot == sample["snapshot_id"]:
             return False
         resolved = run_bounded(
-            [runner.binary, "get", sample["ref_id"], "--snapshot", sample["snapshot_id"],
-             "--property", "role"],
+            [runner.binary, "get", sample["ref_id"], "--property", "role"],
             timeout_seconds=args.timeout_seconds,
             max_capture_bytes=args.capture_limit_bytes,
             env=runner.environment,

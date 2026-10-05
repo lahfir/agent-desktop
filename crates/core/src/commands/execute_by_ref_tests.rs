@@ -188,8 +188,7 @@ fn execute_with_timeout_zero_normalizes_to_single_attempt() {
 
     let err = execute_with_timeout(
         ExecuteByRefArgs {
-            ref_id: "@e1",
-            snapshot_id: Some(&snapshot_id),
+            ref_id: &format!("@{snapshot_id}:e1"),
             action: Action::Click,
             caller_policy: InteractionPolicy::headless(),
         },
@@ -211,8 +210,7 @@ fn explicit_press_key_keeps_its_focus_fallback_policy() {
 
     execute_with_timeout(
         ExecuteByRefArgs {
-            ref_id: "@e1",
-            snapshot_id: Some(&snapshot_id),
+            ref_id: &format!("@{snapshot_id}:e1"),
             action: Action::PressKey(KeyCombo {
                 key: "A".into(),
                 modifiers: vec![],
@@ -239,8 +237,7 @@ fn effective_policy_honors_caller_policy_above_action_base() {
 
     execute_with_timeout(
         ExecuteByRefArgs {
-            ref_id: "@e1",
-            snapshot_id: Some(&snapshot_id),
+            ref_id: &format!("@{snapshot_id}:e1"),
             action: Action::SetValue("value".into()),
             caller_policy: InteractionPolicy::headed(),
         },

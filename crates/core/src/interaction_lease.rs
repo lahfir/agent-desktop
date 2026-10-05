@@ -68,8 +68,12 @@ impl InteractionLease {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn guarded_with_contention(
+    /// A guarded lease that reports the contention it earned rather than a
+    /// hardcoded zero, so a platform lease that queued behind another holder
+    /// before it acquired reports that queueing in the success-path envelope
+    /// (`ref_action_poll_state.rs`'s `lease_contention_count`) instead of
+    /// understating it.
+    pub fn guarded_with_contention(
         deadline: Deadline,
         guard: impl Send + Sync + 'static,
         contention_count: u64,

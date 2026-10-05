@@ -102,10 +102,17 @@ fn test_get_missing() {
 }
 
 #[test]
-fn test_validate_ref_id_accepts_positive_element_refs() {
-    assert!(validate_ref_id("@e1").is_ok());
-    assert!(validate_ref_id("@e14").is_ok());
-    assert!(validate_ref_id("@e999").is_ok());
+fn test_validate_ref_id_accepts_snapshot_qualified_refs() {
+    assert!(validate_ref_id("@sabc:e1").is_ok());
+    assert!(validate_ref_id("@s8f3k2p9:e14").is_ok());
+    assert!(validate_ref_id("@s8f3k2p9:e999").is_ok());
+}
+
+#[test]
+fn test_validate_ref_id_rejects_bare_element_refs() {
+    assert!(validate_ref_id("@e1").is_err());
+    assert!(validate_ref_id("@e14").is_err());
+    assert!(validate_ref_id("@e999").is_err());
 }
 
 #[test]
@@ -115,6 +122,7 @@ fn test_validate_ref_id_rejects_malformed_refs() {
     assert!(validate_ref_id("@e").is_err());
     assert!(validate_ref_id("@e0").is_err());
     assert!(validate_ref_id("@e0abc").is_err());
+    assert!(validate_ref_id("@sabc:e0").is_err());
     assert!(validate_ref_id("1").is_err());
     assert!(validate_ref_id("").is_err());
 }

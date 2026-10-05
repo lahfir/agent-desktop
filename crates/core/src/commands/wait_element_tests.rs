@@ -75,8 +75,7 @@ fn snapshot_pinned_missing_ref_matches_get_recovery() {
 
     let get_error = crate::commands::get::execute(
         crate::commands::get::GetArgs {
-            ref_id: "@e2".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e2", snapshot_id),
             property: crate::commands::get::GetProperty::Value,
         },
         &NoopAdapter,
@@ -245,7 +244,7 @@ fn element_wait_wraps_bare_live_read_timeout_in_the_documented_wait_timeout() {
 
     let err = wait_for_element_test(
         "@e1".into(),
-        Some(snapshot_id),
+        Some(snapshot_id.clone()),
         wait_predicate::ElementPredicate::Enabled,
         400,
         &adapter,
@@ -263,7 +262,7 @@ fn element_wait_wraps_bare_live_read_timeout_in_the_documented_wait_timeout() {
         .details
         .expect("wait timeout should carry details");
     assert_eq!(details["kind"], "wait_timeout");
-    assert_eq!(details["ref"], "@e1");
+    assert_eq!(details["ref"], format!("@{snapshot_id}:e1"));
     assert_eq!(details["predicate"], "enabled");
     assert_eq!(details["timeout_ms"], 400);
     assert_eq!(details["last_observed"]["error"], "TIMEOUT");

@@ -1,0 +1,33 @@
+{
+    "probe":  "21-system-lifecycle",
+    "question":  "WM_CLOSE vs TerminateProcess; WaitForSingleObject+GetExitCodeProcess; Exited vs Crashed boundary",
+    "clean_exit":  {
+                       "wait_signaled":  true,
+                       "exit_code_is_zero":  true,
+                       "high_nibble_is_c":  false,
+                       "classification":  "exited"
+                   },
+    "crash_shaped_exit":  {
+                              "wait_signaled":  true,
+                              "exit_code_hex":  "0xC0000005",
+                              "high_nibble_is_c":  true,
+                              "classification":  "crashed",
+                              "crashed_boundary_rule":  "high_nibble_0xC",
+                              "example_status":  "0xC0000005"
+                          },
+    "wm_close":  {
+                     "posted":  true,
+                     "signaled":  true,
+                     "branch":  "wm_close_verified_exit"
+                 },
+    "terminate_process":  {
+                              "api_ok":  true,
+                              "wait_signaled":  true,
+                              "exit_code":  1,
+                              "classification":  "exited"
+                          },
+    "still_active_guard":  {
+                               "still_active_constant":  259,
+                               "note":  "WaitForSingleObject must gate GetExitCodeProcess; a live process can also read 259"
+                           }
+}

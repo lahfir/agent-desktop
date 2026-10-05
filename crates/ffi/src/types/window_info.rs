@@ -1,11 +1,10 @@
 use crate::types::rect::AdRect;
 use std::os::raw::c_char;
 
+/// Window fields embedded in `AdExactWindowInfo`, which adds the process
+/// generation token every targeting API requires.
 #[repr(C)]
 pub struct AdWindowInfo {
-    /// Legacy observation-only window ID. This struct has no process-generation
-    /// evidence and is rejected by targeting APIs; use `AdExactWindowInfo` for
-    /// any operation that sends a previously observed window back to the library.
     pub id: *const c_char,
     pub title: *const c_char,
     pub app_name: *const c_char,

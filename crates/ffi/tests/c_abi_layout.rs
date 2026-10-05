@@ -15,11 +15,10 @@ use std::mem::{MaybeUninit, align_of, offset_of, size_of};
 
 #[test]
 fn screenshot_target_layout_is_guarded_for_c_consumers() {
-    assert_eq!(size_of::<AdScreenshotTarget>(), 24);
+    assert_eq!(size_of::<AdScreenshotTarget>(), 16);
     assert_eq!(align_of::<AdScreenshotTarget>(), 8);
     assert_eq!(offset_of!(AdScreenshotTarget, kind), 0);
     assert_eq!(offset_of!(AdScreenshotTarget, screen_index), 8);
-    assert_eq!(offset_of!(AdScreenshotTarget, pid), 16);
 }
 
 #[test]
@@ -254,30 +253,31 @@ fn exact_window_info_is_additive_versioned_and_layout_pinned() {
 
 #[test]
 fn exact_surface_info_is_additive_versioned_and_layout_pinned() {
-    assert_eq!(agent_desktop_ffi::AD_EXACT_SURFACE_INFO_VERSION, 1);
-    assert_eq!(agent_desktop_ffi::AD_EXACT_SURFACE_INFO_SIZE, 40);
-    assert_eq!(unsafe { common::ad_exact_surface_info_size() }, 40);
-    assert_eq!(size_of::<AdExactSurfaceInfo>(), 40);
+    assert_eq!(agent_desktop_ffi::AD_EXACT_SURFACE_INFO_VERSION, 2);
+    assert_eq!(agent_desktop_ffi::AD_EXACT_SURFACE_INFO_SIZE, 48);
+    assert_eq!(unsafe { common::ad_exact_surface_info_size() }, 48);
+    assert_eq!(size_of::<AdExactSurfaceInfo>(), 48);
     assert_eq!(align_of::<AdExactSurfaceInfo>(), align_of::<usize>());
     assert_eq!(offset_of!(AdExactSurfaceInfo, version), 0);
     assert_eq!(offset_of!(AdExactSurfaceInfo, size), 4);
     assert_eq!(offset_of!(AdExactSurfaceInfo, id), 8);
     assert_eq!(offset_of!(AdExactSurfaceInfo, surface), 16);
+    assert_eq!(offset_of!(AdExactSurfaceInfo, unclassified), 40);
 }
 
 #[test]
 fn wait_args_layout_is_guarded_for_c_consumers() {
-    assert_eq!(agent_desktop_ffi::AD_WAIT_ARGS_SIZE, 112);
+    assert_eq!(agent_desktop_ffi::AD_WAIT_ARGS_SIZE, 104);
     assert_eq!(
         unsafe { common::ad_wait_args_size() },
         agent_desktop_ffi::AD_WAIT_ARGS_SIZE
     );
-    assert_eq!(size_of::<AdWaitArgs>(), 112);
+    assert_eq!(size_of::<AdWaitArgs>(), 104);
     assert_eq!(align_of::<AdWaitArgs>(), align_of::<usize>());
 
     assert_eq!(offset_of!(AdWaitArgs, mode), 0);
     assert_eq!(offset_of!(AdWaitArgs, predicate), 48);
-    assert_eq!(offset_of!(AdWaitArgs, scope), 96);
+    assert_eq!(offset_of!(AdWaitArgs, scope), 88);
     assert_eq!(size_of::<AdOptionalU64>(), 16);
     assert_eq!(offset_of!(AdOptionalU64, present), 8);
     assert_eq!(size_of::<AdWaitSurfaceModes>(), 3);
@@ -286,8 +286,8 @@ fn wait_args_layout_is_guarded_for_c_consumers() {
     assert_eq!(offset_of!(AdWaitMode, surfaces), 40);
     assert_eq!(size_of::<AdOptionalUsize>(), 16);
     assert_eq!(offset_of!(AdOptionalUsize, present), 8);
-    assert_eq!(size_of::<AdWaitPredicate>(), 48);
-    assert_eq!(offset_of!(AdWaitPredicate, count), 32);
+    assert_eq!(size_of::<AdWaitPredicate>(), 40);
+    assert_eq!(offset_of!(AdWaitPredicate, count), 24);
     assert_eq!(size_of::<AdWaitScope>(), 16);
     assert_eq!(offset_of!(AdWaitScope, app), 8);
 

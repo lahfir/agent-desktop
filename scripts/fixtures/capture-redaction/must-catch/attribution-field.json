@@ -1,0 +1,6 @@
+{
+  "probe": "self-test-fixture",
+  "notification": {
+    "attribution": "Real app attribution line with a timestamp"
+  }
+}

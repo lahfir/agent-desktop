@@ -20,10 +20,9 @@
  *     "@s8f3k2p9:e5") that address
  *     individual interactive elements.  A refmap is written under
  *     ~/.agent-desktop/ and is keyed to the session.  The envelope carries
- *     data.snapshot_id. Qualified refs already pin the exact snapshot; legacy
- *     bare @eN refs require that ID as the snapshot_id argument.
+ *     data.snapshot_id. Qualified refs already pin the exact snapshot.
  *
- *  4. Act via ad_execute_by_ref(a, "@s8f3k2p9:e5", NULL, &action, policy, &out).
+ *  4. Act via ad_execute_by_ref(a, "@s8f3k2p9:e5", &action, policy, &out).
  *     Build an AdAction by zero-initialising it and setting its kind field to
  *     an AD_ACTION_KIND_* constant plus any kind-specific fields (e.g. .text
  *     for AD_ACTION_KIND_TYPE_TEXT).  policy=0 (Headless) keeps each action's
@@ -52,7 +51,7 @@
  * mismatch means the header and dylib are incompatible and the consumer should
  * refuse to proceed rather than risk undefined behaviour.
  */
-#define AD_ABI_VERSION_MAJOR 4
+#define AD_ABI_VERSION_MAJOR 5
 
 /**
  * Maximum byte length (excluding the NUL terminator) accepted for any
@@ -85,9 +84,9 @@
 
 #define AD_EXACT_REF_ENTRY_SIZE 224
 
-#define AD_EXACT_SURFACE_INFO_VERSION 1
+#define AD_EXACT_SURFACE_INFO_VERSION 2
 
-#define AD_EXACT_SURFACE_INFO_SIZE 40
+#define AD_EXACT_SURFACE_INFO_SIZE 48
 
 #define AD_EXACT_WINDOW_INFO_VERSION 2
 
@@ -161,11 +160,11 @@
  * 3-layer pin: Rust const assert, C `_Static_assert` in the header,
  * and the test in `c_abi_layout.rs`.
  */
-#define AD_WAIT_ARGS_SIZE 112
+#define AD_WAIT_ARGS_SIZE 104
 
 #define AD_WAIT_MODE_SIZE 48
 
-#define AD_WAIT_PREDICATE_SIZE 48
+#define AD_WAIT_PREDICATE_SIZE 40
 
 #define AD_WAIT_SCOPE_SIZE 16
 
@@ -424,7 +423,6 @@ enum AdScreenshotKind
 #endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
   AD_SCREENSHOT_KIND_SCREEN = 0,
-  AD_SCREENSHOT_KIND_WINDOW = 1,
   AD_SCREENSHOT_KIND_FULL_SCREEN = 2,
 };
 #ifndef __cplusplus
@@ -506,8 +504,7 @@ typedef int32_t AdWindowOpKind;
 typedef struct AdAdapter AdAdapter;
 
 /**
- * Opaque list handle emitted by `ad_list_apps`. See
- * [`crate::types::window_list::AdWindowList`] for the pattern.
+ * Opaque list handle emitted by `ad_list_apps`.
  */
 typedef struct AdAppList AdAppList;
 
@@ -539,24 +536,6 @@ typedef struct AdImageBuffer AdImageBuffer;
  * Opaque notification list returned by `ad_list_notifications`.
  */
 typedef struct AdNotificationList AdNotificationList;
-
-/**
- * Opaque list handle emitted by `ad_list_surfaces`. See
- * [`crate::types::window_list::AdWindowList`] for the pattern.
- */
-typedef struct AdSurfaceList AdSurfaceList;
-
-/**
- * Opaque list handle emitted by `ad_list_windows`.
- *
- * The struct intentionally has no `#[repr(C)]` so cbindgen emits a
- * forward declaration only (`typedef struct AdWindowList AdWindowList;`).
- * Consumers cannot read the backing pointer or length and cannot
- * construct a count mismatch — they walk the list through
- * `ad_window_list_count`, `ad_window_list_get`, and free it with
- * `ad_window_list_free`.
- */
-typedef struct AdWindowList AdWindowList;
 
 typedef struct AdNativeHandle {
   /**
@@ -743,12 +722,11 @@ typedef struct AdExactRefEntry {
   int32_t identifier_kind;
 } AdExactRefEntry;
 
+/**
+ * Window fields embedded in `AdExactWindowInfo`, which adds the process
+ * generation token every targeting API requires.
+ */
 typedef struct AdWindowInfo {
-  /**
-   * Legacy observation-only window ID. This struct has no process-generation
-   * evidence and is rejected by targeting APIs; use `AdExactWindowInfo` for
-   * any operation that sends a previously observed window back to the library.
-   */
   const char *id;
   const char *title;
   const char *app_name;
@@ -804,7 +782,6 @@ typedef struct AdOptionalUsize {
 } AdOptionalUsize;
 
 typedef struct AdWaitPredicate {
-  const char *snapshot_id;
   const char *predicate;
   const char *value;
   const char *action;
@@ -939,14 +916,16 @@ typedef struct AdFindQuery {
  * `kind` is stored as `int32_t` to keep the enum-discriminant check
  * at the boundary. Valid values are the discriminants of
  * `AdScreenshotKind`. `screen_index` is only consulted when kind is
- * `SCREEN`; `pid` only when kind is `WINDOW`.
+ * `SCREEN`. Window capture goes through `ad_screenshot_window_exact`.
  */
 typedef struct AdScreenshotTarget {
   int32_t kind;
   uint64_t screen_index;
-  uint32_t pid;
 } AdScreenshotTarget;
 
+/**
+ * Surface fields embedded in `AdExactSurfaceInfo`, which adds the surface ID.
+ */
 typedef struct AdSurfaceInfo {
   const char *kind;
   const char *title;
@@ -961,6 +940,13 @@ typedef struct AdExactSurfaceInfo {
   uint32_t size;
   const char *id;
   struct AdSurfaceInfo surface;
+  /**
+   * Comma-separated surface kinds that could not be read for this window
+   * (for example `sheet,menu`), or null when every kind was read. A
+   * missing `sheet` or `menu` entry next to a listed kind is unknown, not
+   * absent. Present from version 2.
+   */
+  const char *unclassified;
 } AdExactSurfaceInfo;
 
 typedef struct AdNodeContent {
@@ -997,7 +983,7 @@ typedef struct AdNodeTree {
 } AdNodeTree;
 
 /**
- * Options for `ad_get_tree`.
+ * Options for `ad_get_tree_exact`.
  *
  * `surface` is stored as `int32_t` so foreign callers cannot write
  * an invalid discriminant into a Rust enum slot. Valid values are the
@@ -1013,7 +999,7 @@ typedef struct AdTreeOptions {
 } AdTreeOptions;
 
 /**
- * Window-manager operation dispatched by `ad_window_op`.
+ * Window-manager operation dispatched by `ad_window_op_exact`.
  *
  * `kind` is stored as `int32_t` to keep the enum-discriminant check at
  * the boundary — out-of-range values return
@@ -1104,35 +1090,6 @@ AdResult ad_execute_action_with_policy(const struct AdAdapter *adapter,
                                        struct AdActionResult *out);
 
 /**
- * Low-level struct-based ref-action path: takes a pre-resolved `AdRefEntry`,
- * runs strict element re-identification and actionability preflight, then
- * dispatches using the caller-supplied `policy` verbatim (no base-policy
- * elevation). The adapter's session context (from `ad_adapter_create_with_session`)
- * is threaded through so that trace events carry the correct session id.
- *
- * This is the low-level escape hatch for callers that have already resolved
- * a `RefEntry` outside the `RefStore` pipeline (e.g. serialized from an
- * external snapshot). The `policy` discriminant is applied as-is — there is
- * no `Action::base_interaction_policy` join here.
- *
- * Callers wanting full CLI-semantics parity (RefStore load → `RefMap` lookup
- * → strict resolution → preflight → dispatch with base-policy join) should
- * use `ad_execute_by_ref` instead.
- *
- * # Safety
- *
- * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
- * `entry` must be a non-null pointer to a valid `AdRefEntry`.
- * `action` must be a non-null pointer to a valid `AdAction`.
- * `out` must be a non-null pointer to an `AdActionResult` to write the result into.
- */
-AdResult ad_execute_ref_action_with_policy(const struct AdAdapter *adapter,
-                                           const struct AdRefEntry *entry,
-                                           const struct AdAction *action,
-                                           int32_t policy,
-                                           struct AdActionResult *out);
-
-/**
  * Executes a struct-based ref action with exact process-generation and typed
  * native-id evidence.
  *
@@ -1172,19 +1129,6 @@ AdResult ad_execute_ref_action_exact_with_policy(const struct AdAdapter *adapter
 AdResult ad_free_handle(const struct AdAdapter *adapter, struct AdNativeHandle *handle);
 
 /**
- * # Safety
- *
- * `adapter` must be a non-null pointer returned by `ad_adapter_create`.
- * `entry` must be a non-null pointer to a valid `AdRefEntry`.
- * `out` must be a non-null pointer to an `AdNativeHandle` to write the result into.
- *
- * This legacy entrypoint lacks exact identity evidence and fails closed. Use ad_resolve_element_exact.
- */
-AdResult ad_resolve_element(const struct AdAdapter *adapter,
-                            const struct AdRefEntry *entry,
-                            struct AdNativeHandle *out);
-
-/**
  * Resolves an element using process-generation and typed native-id evidence.
  *
  * # Safety
@@ -1200,7 +1144,7 @@ AdResult ad_resolve_element_exact(const struct AdAdapter *adapter,
  *
  * `result` must be null or a pointer to an `AdActionResult` previously written
  * by `ad_execute_action`, `ad_execute_action_with_policy`,
- * `ad_execute_ref_action_with_policy`, or `ad_notification_action`. This frees
+ * `ad_execute_ref_action_exact_with_policy`, or `ad_notification_action`. This frees
  * `post_state`, `steps`, and all nested strings. After this call all pointers
  * inside the struct are invalid.
  */
@@ -1272,31 +1216,20 @@ AdResult ad_close_app(const struct AdAdapter *adapter, const char *id, bool forc
 
 /**
  * Launches the application identified by `id` (bundle id on macOS,
- * executable path on other platforms) and, on success, writes the
- * first window that becomes available into `*out`. Waits for the windows
- * the launch itself produces, bounded by `timeout_ms`; zero means "no wait".
- * An application that presents no window fails with `WINDOW_NOT_FOUND`.
+ * executable path on other platforms) and, on success, writes the first
+ * generation-pinned window that becomes available into `*out`. Waits for the
+ * windows the launch itself produces, bounded by `timeout_ms`; zero means
+ * "no wait". An application that presents no window fails with
+ * `WINDOW_NOT_FOUND`.
  *
- * The returned `AdWindowInfo` owns heap-allocated interior strings that
- * must be released with `ad_release_window_fields` once done. On error
- * the out-param is zero-initialized, so calling the release fn on it
- * is a safe no-op.
+ * The returned `AdExactWindowInfo` owns heap-allocated interior strings that
+ * must be released with `ad_release_exact_window_fields` once done. On error
+ * the out-param is zero-initialized, so calling the release fn on it is a
+ * safe no-op.
  *
  * # Safety
  * `adapter` must be non-null. `id` must be a non-null UTF-8 C string.
- * `out` must be a non-null writable `*mut AdWindowInfo`.
- */
-AdResult ad_launch_app(const struct AdAdapter *adapter,
-                       const char *id,
-                       uint64_t timeout_ms,
-                       struct AdWindowInfo *out);
-
-/**
- * Launches an application and returns a generation-pinned exact window.
- *
- * # Safety
- * `adapter`, `id`, and `out` must satisfy the same requirements as
- * `ad_launch_app`. Release the result with `ad_release_exact_window_fields`.
+ * `out` must be a non-null writable `*mut AdExactWindowInfo`.
  */
 AdResult ad_launch_app_exact(const struct AdAdapter *adapter,
                              const char *id,
@@ -1351,11 +1284,8 @@ void ad_app_list_free(struct AdAppList *list);
  * FFI share a single source of policy truth.
  *
  * `ref_id` tri-state: null → `ErrInvalidArgs`; non-null invalid UTF-8 →
- * `ErrInvalidArgs`; valid UTF-8 but bad `@e{N}` format → `ErrInvalidArgs`.
- *
- * `snapshot_id` tri-state: null is valid only when `ref_id` embeds its
- * snapshot; valid UTF-8 pins a legacy bare `@eN` ref or must match the
- * snapshot embedded in a qualified ref; invalid UTF-8 returns `ErrInvalidArgs`.
+ * `ErrInvalidArgs`; valid UTF-8 that is not a snapshot-qualified
+ * `@<snapshot_id>:e{N}` ref, including a bare `@e{N}` → `ErrInvalidArgs`.
  *
  * `policy` is an `AdPolicyKind` discriminant (0=Headless, 1=FocusFallback,
  * 2=Headed). An out-of-range value returns `ErrInvalidArgs`. `Headless (0)`
@@ -1388,8 +1318,7 @@ void ad_app_list_free(struct AdAppList *list);
  * `ref_id` must be a non-null pointer to a NUL-terminated C string within
  * `AD_MAX_STRING_BYTES + 1` bytes; null is **not** optional — it is defined
  * behaviour (no UB) but is rejected immediately with `ErrInvalidArgs`.
- * `snapshot_id` may be null only for a snapshot-qualified ref, or a non-null
- * NUL-terminated C string within `AD_MAX_STRING_BYTES + 1` bytes. `action`
+ * `action`
  * must be a non-null pointer to a
  * valid `AdAction`. `out` must be a non-null writable pointer. All pointers
  * must remain valid for the duration of the call. Must be called from the
@@ -1397,7 +1326,6 @@ void ad_app_list_free(struct AdAppList *list);
  */
 AdResult ad_execute_by_ref(const struct AdAdapter *adapter,
                            const char *ref_id,
-                           const char *snapshot_id,
                            const struct AdAction *action,
                            int32_t policy,
                            char **out);
@@ -1413,7 +1341,6 @@ AdResult ad_execute_by_ref(const struct AdAdapter *adapter,
  */
 AdResult ad_execute_by_ref_timeout(const struct AdAdapter *adapter,
                                    const char *ref_id,
-                                   const char *snapshot_id,
                                    const struct AdAction *action,
                                    int32_t policy,
                                    int64_t timeout_ms,
@@ -1425,7 +1352,15 @@ AdResult ad_execute_by_ref_timeout(const struct AdAdapter *adapter,
  * to disk, and writes the JSON envelope into `*out`.
  *
  * The JSON shape matches `agent-desktop snapshot`:
- * `{"version":"2.4","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","tree":{...}}}`.
+ * `{"version":"2.4","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","complete":true,"tree":{...}}}`.
+ *
+ * `data.complete` is always present. A snapshot that exhausts its observation
+ * budget still succeeds with `"complete":false` and the tree it did observe,
+ * and then also carries `"truncated":true` and `"nodes_observed":N`; each node
+ * whose descendants were cut short carries `"subtree_truncated":true`, a field
+ * that is emitted only when true. Callers must read `complete` to decide
+ * whether a tree is whole — an incomplete observation is not reported as a
+ * `TIMEOUT` error.
  *
  * **`*out` ownership and error behaviour:**
  * - On success (`AD_RESULT_OK`): `*out` is a heap-allocated JSON string with `"ok":true`.
@@ -1915,21 +1850,6 @@ const struct AdNotificationInfo *ad_notification_list_get(const struct AdNotific
 void ad_notification_list_free(struct AdNotificationList *list);
 
 /**
- * Legacy ABI compatibility entrypoint. `AdWindowInfo` cannot carry process
- * generation, so this function fails closed with `AD_RESULT_ERR_INVALID_ARGS`.
- * Use `ad_find_exact`.
- *
- * # Safety
- * `adapter`, `win`, and `query` must be valid pointers. `out_handle`
- * must be a valid writable `*mut AdNativeHandle`. On
- * `AD_RESULT_ERR_ELEMENT_NOT_FOUND` the out-handle is zero-initialized.
- */
-AdResult ad_find(const struct AdAdapter *adapter,
-                 const struct AdWindowInfo *win,
-                 const struct AdFindQuery *query,
-                 struct AdNativeHandle *out_handle);
-
-/**
  * Finds and strictly resolves one element within a generation-pinned window.
  * `AdFindQuery.control.selection` must explicitly request first, last, or nth
  * behavior when duplicate matches are acceptable. The returned native handle
@@ -1965,21 +1885,6 @@ AdResult ad_get(const struct AdAdapter *adapter,
                 const struct AdNativeHandle *handle,
                 const char *property,
                 char **out);
-
-/**
- * Legacy ABI compatibility entrypoint. `AdWindowInfo` cannot carry process
- * generation, so this function fails closed with `AD_RESULT_ERR_INVALID_ARGS`.
- * Use `ad_is_exact`.
- *
- * # Safety
- * All pointers must be valid. `property` must be a non-null UTF-8 C string.
- * `out` must be a valid writable `*mut bool`.
- */
-AdResult ad_is(const struct AdAdapter *adapter,
-               const struct AdWindowInfo *win,
-               const struct AdFindQuery *query,
-               const char *property,
-               bool *out);
 
 /**
  * Checks a boolean state within a generation-pinned exact window.
@@ -2084,38 +1989,6 @@ AdResult ad_screenshot_window_exact(const struct AdAdapter *adapter,
 void ad_image_buffer_free(struct AdImageBuffer *buf);
 
 /**
- * # Safety
- * `adapter` must be valid. `out` must be a valid writable
- * `*mut *mut AdSurfaceList`. Success produces a list handle freed via
- * `ad_surface_list_free`.
- */
-AdResult ad_list_surfaces(const struct AdAdapter *adapter,
-                          uint32_t pid,
-                          struct AdSurfaceList **out);
-
-/**
- * # Safety
- * `list` must be null or a pointer returned by `ad_list_surfaces`.
- */
-uint32_t ad_surface_list_count(const struct AdSurfaceList *list);
-
-/**
- * Borrow a surface info entry. Null if `index` is out of range.
- *
- * # Safety
- * `list` must be null or a pointer returned by `ad_list_surfaces`.
- */
-const struct AdSurfaceInfo *ad_surface_list_get(const struct AdSurfaceList *list, uint32_t index);
-
-/**
- * Frees the list and each entry's interior strings.
- *
- * # Safety
- * `list` must be null or a pointer returned by `ad_list_surfaces`.
- */
-void ad_surface_list_free(struct AdSurfaceList *list);
-
-/**
  * Lists surfaces without dropping their core surface IDs.
  *
  * # Safety
@@ -2149,22 +2022,9 @@ void ad_exact_surface_list_free(struct AdExactSurfaceList *list);
 /**
  * # Safety
  * `tree` must be null or point to a valid `AdNodeTree` previously returned
- * by `flatten_tree` or `ad_get_tree`. After this call the tree is zeroed.
+ * by `flatten_tree` or `ad_get_tree_exact`. After this call the tree is zeroed.
  */
 void ad_free_tree(struct AdNodeTree *tree);
-
-/**
- * Legacy ABI compatibility entrypoint. `AdWindowInfo` cannot carry process
- * generation, so this function fails closed with `AD_RESULT_ERR_INVALID_ARGS`.
- * Use `ad_get_tree_exact`.
- *
- * # Safety
- * All pointers must be non-null and `out` must be writable.
- */
-AdResult ad_get_tree(const struct AdAdapter *adapter,
-                     const struct AdWindowInfo *win,
-                     const struct AdTreeOptions *opts,
-                     struct AdNodeTree *out);
 
 /**
  * Snapshots a generation-pinned window into the flat, owned, breadth-first C
@@ -2214,17 +2074,6 @@ size_t ad_ref_entry_size(void);
 size_t ad_wait_args_size(void);
 
 /**
- * Legacy ABI compatibility entrypoint. `AdWindowInfo` cannot carry process
- * generation, so this function fails closed with `AD_RESULT_ERR_INVALID_ARGS`.
- * Use `ad_focus_window_exact`.
- *
- * # Safety
- * `adapter` must be a non-null pointer from `ad_adapter_create`. `win`
- * must be a non-null pointer to an `AdWindowInfo`.
- */
-AdResult ad_focus_window(const struct AdAdapter *adapter, const struct AdWindowInfo *win);
-
-/**
  * Focuses a generation-pinned exact window.
  *
  * # Safety
@@ -2235,63 +2084,12 @@ AdResult ad_focus_window_exact(const struct AdAdapter *adapter,
                                const struct AdExactWindowInfo *win);
 
 /**
- * Releases the heap-allocated string fields (`id`, `title`, `app_name`)
- * inside a single `AdWindowInfo` previously written by `ad_launch_app`
- * or returned through a list accessor. Does not free the `AdWindowInfo`
- * struct itself — that memory is owned by the caller's stack or by the
- * enclosing list.
- *
- * Named `ad_release_window_fields` (not `ad_free_window`) to disambiguate
- * from the now-removed list-free function and make the semantics clear
- * in the header.
- *
- * # Safety
- * `win` must be null or point to a valid `AdWindowInfo` whose string
- * fields were allocated by this crate. Do not call on pointers inside
- * an `AdWindowList` — free the list instead.
- */
-void ad_release_window_fields(struct AdWindowInfo *win);
-
-/**
  * Releases every owned string inside one exact window value.
  *
  * # Safety
  * `win` must be null or point to a value written by `ad_launch_app_exact`.
  */
 void ad_release_exact_window_fields(struct AdExactWindowInfo *win);
-
-/**
- * # Safety
- * `adapter` must be valid. `out` must be a valid writable
- * `*mut *mut AdWindowList`. `app_filter` may be null or a C string.
- * Success produces a list handle freed via `ad_window_list_free`.
- */
-AdResult ad_list_windows(const struct AdAdapter *adapter,
-                         const char *app_filter,
-                         bool focused_only,
-                         struct AdWindowList **out);
-
-/**
- * # Safety
- * `list` must be null or a pointer returned by `ad_list_windows`.
- */
-uint32_t ad_window_list_count(const struct AdWindowList *list);
-
-/**
- * Borrow a window info entry. Null if `index` is out of range.
- *
- * # Safety
- * `list` must be null or a pointer returned by `ad_list_windows`.
- */
-const struct AdWindowInfo *ad_window_list_get(const struct AdWindowList *list, uint32_t index);
-
-/**
- * Frees the list and each entry's interior strings.
- *
- * # Safety
- * `list` must be null or a pointer returned by `ad_list_windows`.
- */
-void ad_window_list_free(struct AdWindowList *list);
 
 /**
  * Lists windows with explicit process-generation evidence.
@@ -2325,18 +2123,6 @@ const struct AdExactWindowInfo *ad_exact_window_list_get(const struct AdExactWin
  * `list` must be null or returned by `ad_list_windows_exact`.
  */
 void ad_exact_window_list_free(struct AdExactWindowList *list);
-
-/**
- * Legacy ABI compatibility entrypoint. `AdWindowInfo` cannot carry process
- * generation, so this function fails closed with `AD_RESULT_ERR_INVALID_ARGS`.
- * Use `ad_window_op_exact`.
- *
- * # Safety
- * `adapter` and `win` must be non-null pointers.
- */
-AdResult ad_window_op(const struct AdAdapter *adapter,
-                      const struct AdWindowInfo *win,
-                      struct AdWindowOp op);
 
 /**
  * Performs a window-manager operation against an exact generation-pinned
@@ -2440,7 +2226,7 @@ _Static_assert(sizeof(struct AdWaitArgs) == AD_WAIT_ARGS_SIZE, "AdWaitArgs ABI s
 _Static_assert(_Alignof(struct AdWaitArgs) == 8, "AdWaitArgs ABI alignment changed");
 _Static_assert(offsetof(AdWaitArgs, mode) == 0, "AdWaitArgs.mode offset changed");
 _Static_assert(offsetof(AdWaitArgs, predicate) == 48, "AdWaitArgs.predicate offset changed");
-_Static_assert(offsetof(AdWaitArgs, scope) == 96, "AdWaitArgs.scope offset changed");
+_Static_assert(offsetof(AdWaitArgs, scope) == 88, "AdWaitArgs.scope offset changed");
 _Static_assert(sizeof(AdOptionalU64) == AD_OPTIONAL_U64_SIZE, "AdOptionalU64 ABI size changed");
 _Static_assert(sizeof(AdOptionalUsize) == AD_OPTIONAL_USIZE_SIZE, "AdOptionalUsize ABI size changed");
 _Static_assert(sizeof(AdWaitSurfaceModes) == AD_WAIT_SURFACE_MODES_SIZE, "AdWaitSurfaceModes ABI size changed");

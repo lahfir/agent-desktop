@@ -185,7 +185,7 @@ fn load_session_snapshot(session_id: &str, snapshot_id: &str) -> RefMap {
 }
 
 fn local_ref(ref_id: &str) -> String {
-    crate::ref_token::resolve_ref_target(ref_id, None)
+    crate::ref_token::resolve_ref_target(ref_id)
         .expect("result refs must be snapshot-qualified")
         .1
 }
@@ -253,9 +253,14 @@ fn test_run_from_ref_explicit_session_snapshot_with_matching_context() {
 
     let adapter = StubAdapter::new(named("button", "Save"));
     let context = crate::CommandContext::new(Some("agent-a".into()), None, false).unwrap();
-    let result =
-        run_from_ref_with_context(&adapter, &drill_opts(), "@e1", Some(&snapshot_id), &context)
-            .expect("session snapshot should drill within its namespace");
+    let result = run_from_ref_with_context(
+        &adapter,
+        &drill_opts(),
+        &format!("@{snapshot_id}:e1"),
+        &context,
+        crate::snapshot::DEFAULT_SNAPSHOT_TIMEOUT_MS,
+    )
+    .expect("session snapshot should drill within its namespace");
 
     assert_eq!(result.snapshot_id.as_deref(), Some(snapshot_id.as_str()));
     let on_disk = load_session_snapshot("agent-a", &snapshot_id);

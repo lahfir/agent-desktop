@@ -1,5 +1,5 @@
 use super::{AXElement, element::element_for_pid, surface_read};
-use agent_desktop_core::{AdapterError, ErrorCode};
+use agent_desktop_core::{AdapterError, ErrorCode, SnapshotSurface};
 use std::time::Instant;
 
 const MAX_SURFACE_NODES: usize = 2_048;
@@ -151,11 +151,42 @@ fn first_child_with_role_or_subrole(
     let Some(window) = focused_surface_for_pid(pid, deadline)? else {
         return Ok(None);
     };
-    if role_or_subrole_matches(&window, target, deadline)? {
-        return Ok(Some(window));
+    first_in_window(&window, deadline, |element| {
+        role_or_subrole_matches(element, target, deadline)
+    })
+}
+
+/// Finds a sheet, popover or alert on this window or its direct children only.
+#[cfg(target_os = "macos")]
+pub(crate) fn surface_in_window(
+    window: &AXElement,
+    surface: SnapshotSurface,
+    deadline: Instant,
+) -> Result<Option<AXElement>, AdapterError> {
+    let target = match surface {
+        SnapshotSurface::Sheet => "AXSheet",
+        SnapshotSurface::Popover => "AXPopover",
+        SnapshotSurface::Alert => {
+            return first_in_window(window, deadline, |element| is_alert(element, deadline));
+        }
+        _ => return Err(AdapterError::not_supported("window-owned surface")),
+    };
+    first_in_window(window, deadline, |element| {
+        role_or_subrole_matches(element, target, deadline)
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn first_in_window(
+    window: &AXElement,
+    deadline: Instant,
+    matches: impl Fn(&AXElement) -> Result<bool, AdapterError>,
+) -> Result<Option<AXElement>, AdapterError> {
+    if matches(window)? {
+        return Ok(Some(window.clone()));
     }
-    for child in surface_read::elements(&window, "AXChildren", deadline)? {
-        if role_or_subrole_matches(&child, target, deadline)? {
+    for child in surface_read::elements(window, "AXChildren", deadline)? {
+        if matches(&child)? {
             return Ok(Some(child));
         }
     }
@@ -163,7 +194,7 @@ fn first_child_with_role_or_subrole(
 }
 
 #[cfg(target_os = "macos")]
-fn role_or_subrole_matches(
+pub(super) fn role_or_subrole_matches(
     element: &AXElement,
     target: &str,
     deadline: Instant,
@@ -214,7 +245,7 @@ pub(crate) fn alert_for_pid(
 }
 
 #[cfg(target_os = "macos")]
-fn is_alert(element: &AXElement, deadline: Instant) -> Result<bool, AdapterError> {
+pub(super) fn is_alert(element: &AXElement, deadline: Instant) -> Result<bool, AdapterError> {
     let role = surface_read::string(element, "AXRole", deadline)?;
     let subrole = surface_read::string(element, "AXSubrole", deadline)?;
     Ok(matches!(role.as_deref(), Some("AXSheet"))

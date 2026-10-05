@@ -18,16 +18,15 @@ pub(crate) fn observe_tree(
     root: ObservationRoot<'_>,
     request: &ObservationRequest,
 ) -> Result<ObservedTree, AppError> {
+    let mut request = *request;
     let mut activated = false;
     let mut retry_delay = INITIAL_ACTIVATION_RETRY;
     loop {
-        match adapter.observe_tree(root, request) {
+        match adapter.observe_tree(root, &request) {
             Ok(tree) => return Ok(tree),
             Err(error) if error.requires_renderer_accessibility_activation() => {
                 if !activated {
-                    let acquired = adapter.acquire_interaction_lease(request.deadline)?;
-                    adapter.activate_renderer_accessibility(root_process(root)?, &acquired)?;
-                    drop(acquired);
+                    request.deadline = activate(adapter, root, request.deadline)?;
                     activated = true;
                 }
                 let remaining = request.deadline.remaining();
@@ -40,6 +39,27 @@ pub(crate) fn observe_tree(
             Err(error) => return Err(AppError::Adapter(error)),
         }
     }
+}
+
+fn activate(
+    adapter: &dyn PlatformAdapter,
+    root: ObservationRoot<'_>,
+    observing: crate::Deadline,
+) -> Result<crate::Deadline, AppError> {
+    let started = std::time::Instant::now();
+    switch_on(adapter, root).map_err(|error| match error {
+        AppError::Adapter(ref adapter_error) if adapter_error.code == crate::ErrorCode::Timeout => {
+            observing.timeout_error().into()
+        }
+        other => other,
+    })?;
+    Ok(observing.extended_by(started.elapsed()))
+}
+
+fn switch_on(adapter: &dyn PlatformAdapter, root: ObservationRoot<'_>) -> Result<(), AppError> {
+    let acquired = adapter.acquire_interaction_lease(crate::Deadline::standard()?)?;
+    adapter.activate_renderer_accessibility(root_process(root)?, &acquired)?;
+    Ok(())
 }
 
 fn root_process(root: ObservationRoot<'_>) -> Result<crate::ProcessIdentity, AppError> {
@@ -55,7 +75,7 @@ fn root_process(root: ObservationRoot<'_>) -> Result<crate::ProcessIdentity, App
             .map(|instance| crate::ProcessIdentity::new(entry.process.pid, instance)),
     }
     .ok_or_else(|| {
-        crate::AdapterError::stale_ref("renderer process instance is unavailable").into()
+        crate::AdapterError::stale_ref_because("renderer process instance is unavailable").into()
     })
 }
 

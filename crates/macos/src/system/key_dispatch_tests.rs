@@ -96,3 +96,25 @@ fn a_missing_focused_element_names_both_recovery_routes() {
     assert!(suggestion.contains("--headed"), "{suggestion}");
     assert!(suggestion.contains("--surface menubar"), "{suggestion}");
 }
+
+#[test]
+fn an_unresolvable_key_fails_before_any_focus_change() {
+    let pid = std::process::id();
+    let instance = crate::system::process_identity::token_for_pid(pid as i32)
+        .unwrap()
+        .unwrap();
+    let error = press_for_app_impl(
+        ProcessIdentity::new(pid, instance),
+        &key("comma", Vec::new()),
+        agent_desktop_core::InteractionPolicy::headed(),
+        Deadline::standard().unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, ErrorCode::ActionFailed);
+    assert_eq!(error.disposition, DeliverySemantics::not_delivered());
+    assert!(
+        error.message.contains("keyboard layout"),
+        "{}",
+        error.message
+    );
+}

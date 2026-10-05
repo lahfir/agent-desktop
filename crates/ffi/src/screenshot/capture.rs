@@ -50,14 +50,6 @@ pub unsafe extern "C" fn ad_screenshot(
                     return AdResult::ErrInvalidArgs;
                 }
             },
-            AdScreenshotKind::Window => {
-                let error = agent_desktop_core::AdapterError::new(
-                    agent_desktop_core::ErrorCode::InvalidArgs,
-                    "legacy window screenshot targeting lacks process-generation identity; use ad_screenshot_window_exact",
-                );
-                set_last_error(&error);
-                return AdResult::ErrInvalidArgs;
-            }
             AdScreenshotKind::FullScreen => CoreScreenshotTarget::FullScreen,
         };
         capture(adapter, core_target, out)

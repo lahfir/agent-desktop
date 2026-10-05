@@ -82,8 +82,7 @@ fn transient_stale_ref_retries_then_succeeds_when_timeout_wired() {
 
     let value = execute(
         TypeArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             text: "hi".into(),
             timeout_ms: Some(5_000),
         },
@@ -104,8 +103,7 @@ fn timeout_none_makes_exactly_one_resolve_attempt() {
 
     let err = execute(
         TypeArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             text: "hi".into(),
             timeout_ms: None,
         },

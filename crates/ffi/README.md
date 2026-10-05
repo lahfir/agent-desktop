@@ -41,10 +41,11 @@ The full declaration list is in [`include/agent_desktop.h`](include/agent_deskto
 Consumers must call `ad_init(AD_ABI_VERSION_MAJOR)` after `dlopen` to verify the
 loaded dylib matches the header the consumer was built against.
 
-Use additive versioned `AdExactRefEntry`, `AdExactWindowInfo`, and
-`AdExactSurfaceInfo` APIs when round-tripping observed identities. Legacy
-layouts remain available but cannot express process generation or a
-surface ID; legacy direct window/ref targeting therefore fails closed.
+Direct window, surface and ref targeting takes the versioned
+`AdExactRefEntry`, `AdExactWindowInfo`, and `AdExactSurfaceInfo` structs, which
+carry the process generation and surface ID of the observed identity.
+`ad_execute_by_ref` and `ad_wait` accept only snapshot-qualified refs
+(`@<snapshot_id>:eN`).
 
 ## Command wrappers
 

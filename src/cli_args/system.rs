@@ -1,7 +1,7 @@
 use clap::{Args, Parser};
 use serde::Deserialize;
 
-use super::WindowScope;
+use super::{Surface, WindowScope};
 
 fn default_launch_timeout() -> u64 {
     30000
@@ -258,12 +258,6 @@ pub(crate) struct WaitModeArgs {
 pub(crate) struct WaitPredicateArgs {
     #[arg(
         long,
-        value_name = "SNAPSHOT_ID",
-        help = "Snapshot ID required when --element is a legacy bare @eN ref; omit for a qualified ref"
-    )]
-    pub snapshot: Option<String>,
-    #[arg(
-        long,
         value_name = "PREDICATE",
         help = "Element wait predicate: exists, enabled, visible, actionable, or value"
     )]
@@ -286,6 +280,17 @@ pub(crate) struct WaitPredicateArgs {
         help = "Expected match count for --text waits"
     )]
     pub count: Option<usize>,
+}
+
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct OpenSystemSurfaceArgs {
+    #[arg(
+        long,
+        value_enum,
+        help = "Shell surface to open: start-menu, taskbar, system-tray, system-tray-overflow, action-center"
+    )]
+    pub surface: Surface,
 }
 
 #[derive(Parser, Debug, Deserialize)]

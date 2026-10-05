@@ -51,7 +51,7 @@ def action_data(action="click", delivery="delivered_verified", mechanism="semant
 
 class CommandPolicyTests(unittest.TestCase):
     def test_value_readback_requires_owned_window_and_snapshot(self):
-        command = ["get", "@snap-1:e2", "--snapshot", "snap-1", "--property", "value"]
+        command = ["get", "@snap-1:e2", "--property", "value"]
         validate_command(command, APP, WINDOW, False)
         for argv, window in [(command, ""), (command[:2], WINDOW), (command[:-1] + ["text"], WINDOW)]:
             with self.assertRaises(SafetyError):
@@ -139,13 +139,13 @@ class CommandPolicyTests(unittest.TestCase):
                 validate_command(argv, APP, WINDOW, False)
 
     def test_mutations_require_arming_ref_snapshot_and_timeout(self):
-        click = ["click", "@snap-1:e1", "--snapshot", "snap-1", "--timeout-ms", "1500"]
+        click = ["click", "@snap-1:e1", "--timeout-ms", "1500"]
         validate_command(click, APP, WINDOW, True)
         for armed, window, argv in [
             (False, WINDOW, click),
             (True, "", click),
             (True, WINDOW, ["click", "@snap-1:e1"]),
-            (True, WINDOW, ["click", "@snap-1:e1", "--snapshot", "snap-1", "--timeout-ms", "9000"]),
+            (True, WINDOW, ["click", "@snap-1:e1", "--timeout-ms", "9000"]),
         ]:
             with self.assertRaises(SafetyError):
                 validate_command(argv, APP, window, armed)
@@ -155,7 +155,7 @@ class CommandPolicyTests(unittest.TestCase):
             validate_command(
                 [
                     command, "@snap-1:e2", "safe-semantic-4242",
-                    "--snapshot", "snap-1", "--timeout-ms", "1500",
+                    "--timeout-ms", "1500",
                 ],
                 APP,
                 WINDOW,
@@ -163,7 +163,7 @@ class CommandPolicyTests(unittest.TestCase):
             )
         unsafe = [[
             "set-value", "@snap-1:e2", "arbitrary user text",
-            "--snapshot", "snap-1", "--timeout-ms", "1500",
+            "--timeout-ms", "1500",
         ]]
         for argv in unsafe:
             with self.subTest(argv=argv), self.assertRaises(SafetyError):

@@ -237,15 +237,6 @@ fn ffi_ref_entry_rejects_unterminated_name_within_byte_cap() {
 }
 
 #[test]
-fn legacy_ref_entry_fails_closed_without_exact_identity() {
-    let entry = test_ref_entry();
-    let error = unsafe { core_ref_entry_from_ffi(&entry) }.unwrap_err();
-
-    assert_eq!(error.code, ErrorCode::InvalidArgs);
-    assert!(error.message.contains("AdExactRefEntry"));
-}
-
-#[test]
 fn exact_ref_entry_preserves_typed_identifier_atomically() {
     let role = CString::new("button").unwrap();
     let native_id = CString::new("checkout").unwrap();

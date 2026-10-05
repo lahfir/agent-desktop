@@ -182,8 +182,7 @@ fn hover_none_scrolls_once_then_dispatches_stable_point_once() {
     let adapter = SingleShotScrollAdapter::new();
     let value = hover::execute(
         hover::HoverArgs {
-            ref_id: Some("@e1".into()),
-            snapshot_id: Some(snapshot(1)),
+            ref_id: Some(format!("@{}:e1", snapshot(1))),
             xy: None,
             duration_ms: None,
             timeout_ms: None,
@@ -208,14 +207,13 @@ fn drag_none_scrolls_once_then_dispatches_revalidated_endpoints_once() {
     let value = drag::execute(
         drag::DragArgs {
             from: drag::DragEndpoint {
-                ref_id: Some("@e1".into()),
+                ref_id: Some(format!("@{}:e1", snapshot(2))),
                 xy: None,
             },
             to: drag::DragEndpoint {
-                ref_id: Some("@e2".into()),
+                ref_id: Some(format!("@{}:e2", snapshot(2))),
                 xy: None,
             },
-            snapshot_id: Some(snapshot(2)),
             duration_ms: None,
             drop_delay_ms: None,
             timeout_ms: None,

@@ -2,6 +2,5 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdScreenshotKind {
     Screen = 0,
-    Window = 1,
     FullScreen = 2,
 }

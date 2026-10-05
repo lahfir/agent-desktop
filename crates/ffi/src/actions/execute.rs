@@ -4,9 +4,7 @@ use crate::actions::result::action_result_to_c;
 use crate::commands::app_error_to_adapter;
 use crate::error::{self, AdResult};
 use crate::ffi_try::trap_panic;
-use crate::types::{
-    AdAction, AdActionResult, AdExactRefEntry, AdNativeHandle, AdPolicyKind, AdRefEntry,
-};
+use crate::types::{AdAction, AdActionResult, AdExactRefEntry, AdNativeHandle, AdPolicyKind};
 use agent_desktop_core::{Action, ActionRequest};
 
 /// Low-level native-handle action. Dispatches directly to the platform adapter
@@ -116,53 +114,6 @@ pub unsafe extern "C" fn ad_execute_action_with_policy(
                 error::last_error_code()
             }
         }
-    })
-}
-
-/// Low-level struct-based ref-action path: takes a pre-resolved `AdRefEntry`,
-/// runs strict element re-identification and actionability preflight, then
-/// dispatches using the caller-supplied `policy` verbatim (no base-policy
-/// elevation). The adapter's session context (from `ad_adapter_create_with_session`)
-/// is threaded through so that trace events carry the correct session id.
-///
-/// This is the low-level escape hatch for callers that have already resolved
-/// a `RefEntry` outside the `RefStore` pipeline (e.g. serialized from an
-/// external snapshot). The `policy` discriminant is applied as-is — there is
-/// no `Action::base_interaction_policy` join here.
-///
-/// Callers wanting full CLI-semantics parity (RefStore load → `RefMap` lookup
-/// → strict resolution → preflight → dispatch with base-policy join) should
-/// use `ad_execute_by_ref` instead.
-///
-/// # Safety
-///
-/// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
-/// `entry` must be a non-null pointer to a valid `AdRefEntry`.
-/// `action` must be a non-null pointer to a valid `AdAction`.
-/// `out` must be a non-null pointer to an `AdActionResult` to write the result into.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ad_execute_ref_action_with_policy(
-    adapter: *const AdAdapter,
-    entry: *const AdRefEntry,
-    action: *const AdAction,
-    policy: i32,
-    out: *mut AdActionResult,
-) -> AdResult {
-    trap_panic(|| unsafe {
-        crate::pointer_guard::guard_non_null!(out, c"out is null");
-        *out = std::mem::zeroed();
-        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
-        crate::pointer_guard::guard_non_null!(entry, c"entry is null");
-        crate::pointer_guard::guard_non_null!(action, c"action is null");
-        let entry_ref = &*entry;
-        let core_entry = match crate::actions::resolve::core_ref_entry_from_ffi(entry_ref) {
-            Ok(entry) => entry,
-            Err(err) => {
-                error::set_last_error(&err);
-                return error::last_error_code();
-            }
-        };
-        execute_core_ref_action(adapter, core_entry, &*action, policy, out)
     })
 }
 

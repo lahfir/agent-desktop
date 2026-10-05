@@ -41,7 +41,6 @@ pub struct WaitModeArgs {
 
 #[derive(Clone)]
 pub struct WaitPredicateArgs {
-    pub snapshot_id: Option<String>,
     pub predicate: Option<String>,
     pub value: Option<String>,
     pub action: Option<String>,
@@ -67,14 +66,9 @@ pub fn execute(
         WaitMode::Notification { app, text } => {
             wait_for_notification(app, text, timeout_ms, adapter, context)
         }
-        WaitMode::Element {
-            ref_id,
-            snapshot_id,
-            predicate,
-        } => wait_for_element(
+        WaitMode::Element { ref_id, predicate } => wait_for_element(
             ElementWaitInput {
                 ref_id,
-                snapshot_id,
                 predicate,
                 timeout_ms,
             },

@@ -4,24 +4,15 @@ const { spawn } = require('child_process');
 const { existsSync, accessSync, chmodSync, constants } = require('fs');
 const { isAbsolute, join } = require('path');
 const { platform, arch } = require('os');
+const { MACOS_HELPER_NAME, releasedKeys, resolve } = require('../lib/platform');
 
 const binDir = __dirname;
-const MACOS_HELPER_NAME = 'agent-desktop-macos-helper';
 const MACOS_HELPER_PATH_ENV = 'AGENT_DESKTOP_MACOS_HELPER_PATH';
 
+// Check `released` flag, not just table presence, to distinguish unsupported vs missing binary.
 function getBinaryName() {
-  const os = platform();
-  const cpuArch = arch();
-
-  const platformMap = {
-    'darwin-arm64': 'agent-desktop-darwin-arm64',
-    'darwin-x64': 'agent-desktop-darwin-x64',
-    'linux-x64': 'agent-desktop-linux-x64',
-    'linux-arm64': 'agent-desktop-linux-arm64',
-    'win32-x64': 'agent-desktop-win32-x64.exe',
-  };
-
-  return platformMap[`${os}-${cpuArch}`] || null;
+  const entry = resolve(platform(), arch());
+  return entry && entry.released ? entry.binaryName : null;
 }
 
 function main() {
@@ -29,18 +20,19 @@ function main() {
 
   if (!binaryName) {
     console.error(`Error: Unsupported platform: ${platform()}-${arch()}`);
-    console.error('agent-desktop currently supports: macOS (ARM64, x64)');
-    console.error('Windows and Linux support is coming in Phase 2.');
+    console.error(`Released platform keys today: ${releasedKeys().join(', ')}`);
     console.error('See: https://github.com/lahfir/agent-desktop');
     process.exit(1);
   }
 
   const binaryPath = join(binDir, binaryName);
 
-  if (!binaryPath || !existsSync(binaryPath)) {
+  if (!existsSync(binaryPath)) {
     console.error(`Error: Native binary not found for ${platform()}-${arch()}`);
     console.error(`Expected: ${binaryPath}`);
     console.error('');
+    console.error('This usually means the install ran with --ignore-scripts');
+    console.error('or its postinstall download step failed.');
     console.error('Try reinstalling:');
     console.error('  npm install -g agent-desktop');
     console.error('');
@@ -104,7 +96,11 @@ function main() {
     process.exit(1);
   });
 
-  child.on('close', (code) => {
+  child.on('close', (code, signal) => {
+    if (signal) {
+      console.error(`Error: agent-desktop child was terminated by signal: ${signal}`);
+      process.exit(1);
+    }
     process.exit(code ?? 0);
   });
 }

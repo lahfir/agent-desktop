@@ -101,10 +101,6 @@ fn wait_args_from_ffi(args: &AdWaitArgs) -> Result<WaitArgs, AdapterError> {
             window_id: None,
         },
         predicate: WaitPredicateArgs {
-            snapshot_id: optional_adapter_string(
-                args.predicate.snapshot_id,
-                "predicate.snapshot_id",
-            )?,
             predicate: optional_adapter_string(args.predicate.predicate, "predicate.kind")?,
             value: optional_adapter_string(args.predicate.value, "predicate.value")?,
             action: optional_adapter_string(args.predicate.action, "predicate.action")?,

@@ -123,6 +123,9 @@ impl CursorOverlayControl {
         if let Self::Present { instruction, .. } = self {
             instruction.validate()?;
         }
+        if let Some(style) = self.style() {
+            style.clone().validated()?;
+        }
         Ok(())
     }
 

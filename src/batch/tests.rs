@@ -48,15 +48,29 @@ fn session_batch_rejects_unknown_field() {
 
 #[test]
 fn parses_ref_command_into_cli_enum() {
-    let command =
-        parse_command(item("click", serde_json::json!({ "ref_id": "@e1" }))).expect("click parses");
+    let command = parse_command(item(
+        "click",
+        serde_json::json!({ "ref_id": "@s8f3k2p9:e1" }),
+    ))
+    .expect("click parses");
 
     match command {
         Commands::Click(args) => {
-            assert_eq!(args.ref_id, "@e1");
-            assert_eq!(args.snapshot_id, None);
+            assert_eq!(args.ref_id, "@s8f3k2p9:e1");
         }
         other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_the_removed_snapshot_field_on_ref_commands() {
+    for key in ["snapshot", "snapshot_id"] {
+        let err = parse_command(item(
+            "click",
+            serde_json::json!({ "ref_id": "@s8f3k2p9:e1", key: "s8f3k2p9" }),
+        ))
+        .expect_err("a snapshot field no longer qualifies anything");
+        assert!(err.to_string().contains(key), "{key}: {err}");
     }
 }
 

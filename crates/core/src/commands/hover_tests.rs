@@ -149,8 +149,7 @@ fn ref_snapshot(pid: u32) -> String {
 
 fn ref_args(snapshot_id: String) -> HoverArgs {
     HoverArgs {
-        ref_id: Some("@e1".into()),
-        snapshot_id: Some(snapshot_id),
+        ref_id: Some(format!("@{}:e1", snapshot_id)),
         xy: None,
         duration_ms: None,
         timeout_ms: None,
@@ -216,7 +215,6 @@ fn headed_xy_hover_never_steals_focus() {
     let value = execute(
         HoverArgs {
             ref_id: None,
-            snapshot_id: None,
             xy: Some((5.0, 6.0)),
             duration_ms: None,
             timeout_ms: None,
@@ -334,8 +332,7 @@ fn transient_stale_ref_retries_then_succeeds_when_timeout_wired() {
 
     let value = execute(
         HoverArgs {
-            ref_id: Some("@e1".into()),
-            snapshot_id: Some(snapshot_id),
+            ref_id: Some(format!("@{}:e1", snapshot_id)),
             xy: None,
             duration_ms: None,
             timeout_ms: Some(5_000),

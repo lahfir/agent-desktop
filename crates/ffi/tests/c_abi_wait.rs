@@ -22,7 +22,6 @@ fn wait_args(ms: Option<u64>, element: *const std::os::raw::c_char, timeout_ms: 
             },
         },
         predicate: AdWaitPredicate {
-            snapshot_id: std::ptr::null(),
             predicate: std::ptr::null(),
             value: std::ptr::null(),
             action: std::ptr::null(),

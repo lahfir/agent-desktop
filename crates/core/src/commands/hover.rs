@@ -15,7 +15,6 @@ use serde_json::{Value, json};
 
 pub struct HoverArgs {
     pub ref_id: Option<String>,
-    pub snapshot_id: Option<String>,
     pub xy: Option<(f64, f64)>,
     pub duration_ms: Option<u64>,
     pub timeout_ms: Option<u64>,
@@ -38,8 +37,7 @@ pub fn execute(
     let point_args = PointResolveArgs {
         ref_id: args.ref_id.as_deref(),
         xy: args.xy,
-        snapshot_id: args.snapshot_id.as_deref(),
-        missing_input_message: "Provide a ref (@e1) or --xy x,y",
+        missing_input_message: "Provide a ref (@<snapshot_id>:e1) or --xy x,y",
         headed_requirement: crate::HeadedRequirement::FocusedWindowAndCursor,
     };
     let auto_wait = args.timeout_ms.is_some_and(|timeout_ms| timeout_ms > 0);

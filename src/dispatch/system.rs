@@ -34,7 +34,6 @@ pub(super) fn wait(
                 window_id: args.event.window_id,
             },
             predicate: wait_command::WaitPredicateArgs {
-                snapshot_id: args.predicate.snapshot,
                 predicate: args.predicate.predicate,
                 value: args.predicate.value,
                 action: args.predicate.action,

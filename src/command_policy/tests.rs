@@ -5,7 +5,7 @@ use crate::cli_args::{
 };
 use agent_desktop_core::{PermissionReport, PermissionState};
 
-const VALID_REF_ID: &str = "@e1";
+const VALID_REF_ID: &str = "@s8f3k2p9:e1";
 
 #[test]
 fn permission_report_is_collected_only_for_permission_consumers() {
@@ -16,9 +16,14 @@ fn permission_report_is_collected_only_for_permission_consumers() {
         stop_on_error: false,
         timeout_ms: 1,
     });
+    let open_system_surface =
+        Commands::OpenSystemSurface(crate::cli_args::system::OpenSystemSurfaceArgs {
+            surface: crate::cli_args::Surface::ActionCenter,
+        });
 
     assert!(requires_permission_report(&status));
     assert!(requires_permission_report(&batch));
+    assert!(requires_permission_report(&open_system_surface));
     assert!(!requires_permission_report(&list_displays));
 }
 
@@ -71,7 +76,6 @@ fn accessibility_denial_is_preflighted_for_ax_commands() {
     };
     let command = Commands::Click(crate::cli_args::RefArgs {
         ref_id: VALID_REF_ID.into(),
-        snapshot_id: None,
         timeout_ms: 5000,
     });
 
@@ -92,7 +96,6 @@ fn invalid_ref_args_are_rejected_before_permission_preflight() {
     };
     let command = Commands::Click(RefArgs {
         ref_id: "bad-ref".into(),
-        snapshot_id: None,
         timeout_ms: 5000,
     });
 
@@ -124,7 +127,8 @@ fn invalid_snapshot_root_is_rejected_before_permission_preflight() {
         },
         surface: crate::cli_args::Surface::Window,
         root: Some("bad-root".into()),
-        snapshot: None,
+        timeout_ms: None,
+        force_electron_a11y: false,
     });
 
     let err = preflight(&command, &report).expect_err("invalid root fails first");

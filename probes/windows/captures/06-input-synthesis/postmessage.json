@@ -1,0 +1,77 @@
+{
+    "probe":  "06-input-synthesis",
+    "question":  "does posting WM_KEYDOWN/WM_KEYUP to a control actually register the keystroke - on a classic Win32 control and on Chromium",
+    "stack":  "win32-PostMessage",
+    "scope":  "system",
+    "why":  "Engineering Invariant #5 asserts the message-posting path is dead for Chromium and UWP. Nothing else in this corpus tests it, so the invariant has been carried on assumption. These rows file it from observation.",
+    "foregroundIrrelevantNote":  "PostMessage is targeted at a window, not at the desktop input queue, so these rows are deliberately NOT foreground-gated. That is the whole appeal of the path and the reason it is worth measuring rather than assuming.",
+    "rows":  [
+                 {
+                     "target":  "scratch WinForms Edit (control id 1003), same session, same integrity level as the probe",
+                     "stack":  "win32-PostMessage",
+                     "integrityRelation":  "High -\u003e High. 09-elevation-uipi measured the Medium -\u003e High case for PostMessage(WM_CHAR) and got false with error 5 (ERROR_ACCESS_DENIED). This row is the different question: with UIPI out of the way entirely, does a posted key message register at all?",
+                     "keyDownPostResult":  "true",
+                     "keyUpPostResult":  "true",
+                     "charPostResult":  "true",
+                     "resultFormat":  "\"true\" on success, \"false:\u003cGetLastError\u003e\" on failure. The error code is only meaningful when the call failed, so it is only recorded then.",
+                     "textBeforeShape":  {
+                                             "utf16Units":  0,
+                                             "codepoints":  0,
+                                             "surrogatePairs":  0,
+                                             "replacementChars":  0,
+                                             "sha256Utf16":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                         },
+                     "textAfterKeyDownShape":  {
+                                                   "utf16Units":  1,
+                                                   "codepoints":  1,
+                                                   "surrogatePairs":  0,
+                                                   "replacementChars":  0,
+                                                   "sha256Utf16":  "c03ad57f5b1b1bddf59ddb5c973b459f432291edad374fe9d051c59d102d8742"
+                                               },
+                     "textAfterKeyUpShape":  {
+                                                 "utf16Units":  1,
+                                                 "codepoints":  1,
+                                                 "surrogatePairs":  0,
+                                                 "replacementChars":  0,
+                                                 "sha256Utf16":  "c03ad57f5b1b1bddf59ddb5c973b459f432291edad374fe9d051c59d102d8742"
+                                             },
+                     "textAfterCharShape":  {
+                                                "utf16Units":  2,
+                                                "codepoints":  2,
+                                                "surrogatePairs":  0,
+                                                "replacementChars":  0,
+                                                "sha256Utf16":  "219173f2f738427068d89f63e4ebe7b9d440ec37c08234356c276d6eafc77eca"
+                                            },
+                     "keyDownRegistered":  true,
+                     "keyUpAddedAnything":  false,
+                     "charMessageRegistered":  true,
+                     "measuredResult":  "the posted WM_KEYDOWN alone inserted one character into the Edit. WM_KEYUP added nothing, and a subsequently posted WM_CHAR inserted a second character.",
+                     "interpretation":  "this contradicts the usual reading that a posted WM_KEYDOWN is inert because it carries a virtual key rather than a character. TranslateMessage runs inside the TARGET thread\u0027s own message pump and does not care whether the message it retrieved was posted or came from the input queue, so it synthesises the WM_CHAR itself. The message-posting path is therefore alive - not dead - for a classic Win32 Edit at equal integrity. What it cannot do is carry modifier state: TranslateMessage reads the target thread\u0027s keyboard state, which the poster cannot set, so a posted chord or a shifted character is unreachable by this path even where a plain character is not.",
+                     "invariantRelevance":  "Engineering Invariant #5 is about Chromium and UWP, and this row does not weaken it. It does remove the convenient generalisation that message posting never types anything: on classic Win32 controls it does, which is exactly why the Chromium row below has to be measured rather than inferred from the same mechanism."
+                 },
+                 {
+                     "target":  "chromium/electron (Obsidian, launched by this probe)",
+                     "stack":  "win32-PostMessage",
+                     "obsidianVersion":  "1.12.7",
+                     "topLevelClassName":  "Chrome_WidgetWin_1",
+                     "childWindowClasses":  "Chrome_RenderWidgetHostHWND",
+                     "renderWidgetChildFound":  true,
+                     "topLevelKeyDownPostResult":  "true",
+                     "topLevelKeyUpPostResult":  "true",
+                     "renderWidgetKeyDownPostResult":  "true",
+                     "renderWidgetKeyUpPostResult":  "true",
+                     "renderWidgetCharPostResult":  "true",
+                     "observable":  "a bounded RawView UIA walk of the Chromium top-level window (250 nodes, depth 10) reduced to a SHA-256 of the ControlType|Name stream. Only the derived booleans and node counts are recorded - neither the hash nor any Chromium Name value reaches the capture (R11), and the hash would in any case be run-varying and break the KTD9 twin.",
+                     "controlPass":  "the fingerprint is first polled every 2 s until two consecutive reads agree, so the measurement starts from a quiet tree rather than a loading one. A further idle fingerprint is then taken five seconds later with NO input at all, and only then are the messages posted. Without that control an Electron tree still growing on its own reads as a registered keystroke - which is exactly what the first run of this probe recorded before the control was added: 13 nodes to 15 with nothing posted.",
+                     "timingStabilizationPasses":  2,
+                     "nodesAtSettle":  15,
+                     "nodesAfterIdleWait":  15,
+                     "nodesAfterPostedKeys":  15,
+                     "treeChurnWithoutInput":  false,
+                     "treeChangedAfterPostedKeys":  false,
+                     "keystrokeRegistered":  false,
+                     "verdict":  "not registered - every PostMessage call returned success and the Chromium tree was byte-identical before and after, over the same window and the same bounded walk",
+                     "caveat":  "an unchanged fingerprint is evidence of no observable effect within the bounded walk, not a proof that no byte anywhere changed. It is recorded as such."
+                 }
+             ]
+}

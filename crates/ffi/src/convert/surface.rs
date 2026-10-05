@@ -18,6 +18,11 @@ pub(crate) fn exact_surface_info_to_c(surface: &SurfaceInfo) -> AdExactSurfaceIn
         size: crate::types::exact_surface_info::AD_EXACT_SURFACE_INFO_SIZE as u32,
         id: string_to_c_lossy(&surface.id),
         surface: surface_info_to_c(surface),
+        unclassified: if surface.unclassified.is_empty() {
+            ptr::null()
+        } else {
+            string_to_c_lossy(&surface.unclassified.join(","))
+        },
     }
 }
 
@@ -82,8 +87,10 @@ pub(crate) unsafe fn free_surface_info_fields(s: &mut AdSurfaceInfo) {
 pub(crate) unsafe fn free_exact_surface_info_fields(surface: &mut AdExactSurfaceInfo) {
     unsafe {
         free_c_string(surface.id as *mut c_char);
+        free_c_string(surface.unclassified as *mut c_char);
         free_surface_info_fields(&mut surface.surface);
         surface.id = ptr::null();
+        surface.unclassified = ptr::null();
     }
 }
 
@@ -99,6 +106,7 @@ mod tests {
             kind: "menu".into(),
             title: None,
             item_count: Some(3),
+            unclassified: Vec::new(),
         };
         let c = surface_info_to_c(&s);
         assert_eq!(unsafe { c_to_string(c.kind) }.as_deref(), Some("menu"));
@@ -115,6 +123,7 @@ mod tests {
             kind: "window".into(),
             title: Some("Preferences".into()),
             item_count: Some(8),
+            unclassified: Vec::new(),
         };
         let mut exact = exact_surface_info_to_c(&surface);
 
@@ -135,10 +144,30 @@ mod tests {
             Some("Preferences")
         );
 
+        assert!(exact.unclassified.is_null());
         unsafe { free_exact_surface_info_fields(&mut exact) };
         assert!(exact.id.is_null());
         assert!(exact.surface.kind.is_null());
         assert!(exact.surface.title.is_null());
+    }
+
+    #[test]
+    fn exact_surface_info_names_the_kinds_its_probe_could_not_read() {
+        let surface = SurfaceInfo {
+            id: "w-7".into(),
+            kind: "window".into(),
+            title: None,
+            item_count: None,
+            unclassified: vec!["sheet".into(), "menu".into()],
+        };
+        let mut exact = exact_surface_info_to_c(&surface);
+
+        assert_eq!(
+            unsafe { c_to_string(exact.unclassified) }.as_deref(),
+            Some("sheet,menu")
+        );
+        unsafe { free_exact_surface_info_fields(&mut exact) };
+        assert!(exact.unclassified.is_null());
     }
 
     #[test]
@@ -160,6 +189,7 @@ mod tests {
             kind: "menu".into(),
             title: None,
             item_count: None,
+            unclassified: Vec::new(),
         };
         let c = surface_info_to_c(&s);
         assert_eq!(c.item_count, -1);
@@ -174,6 +204,7 @@ mod tests {
             kind: "popover".into(),
             title: None,
             item_count: Some(0),
+            unclassified: Vec::new(),
         };
         let c = surface_info_to_c(&s);
         assert_eq!(
@@ -191,6 +222,7 @@ mod tests {
             kind: "sheet".into(),
             title: Some("Save Panel".into()),
             item_count: None,
+            unclassified: Vec::new(),
         };
         let c = surface_info_to_c(&s);
         assert!(!c.title.is_null());

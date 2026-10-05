@@ -11,9 +11,22 @@ const SKILL_DESKTOP_REF_SYSTEM: &str =
 const SKILL_DESKTOP_REF_WORKFLOWS: &str =
     include_str!("../../../../skills/agent-desktop/references/workflows.md");
 
-#[cfg(target_os = "macos")]
-const SKILL_DESKTOP_REF_MACOS: &str =
-    include_str!("../../../../skills/agent-desktop/references/macos.md");
+const SKILL_MACOS_MAIN: &str = include_str!("../../../../skills/agent-desktop-macos/SKILL.md");
+const SKILL_MACOS_REF_TROUBLESHOOTING: &str =
+    include_str!("../../../../skills/agent-desktop-macos/references/troubleshooting.md");
+
+const SKILL_WINDOWS_MAIN: &str = include_str!("../../../../skills/agent-desktop-windows/SKILL.md");
+const SKILL_WINDOWS_REF_PERMISSIONS: &str = include_str!(
+    "../../../../skills/agent-desktop-windows/references/permissions-and-elevation.md"
+);
+const SKILL_WINDOWS_REF_CHROMIUM: &str =
+    include_str!("../../../../skills/agent-desktop-windows/references/chromium-and-electron.md");
+const SKILL_WINDOWS_REF_TROUBLESHOOTING: &str =
+    include_str!("../../../../skills/agent-desktop-windows/references/troubleshooting.md");
+const SKILL_WINDOWS_REF_SHELL: &str =
+    include_str!("../../../../skills/agent-desktop-windows/references/shell-and-overlay.md");
+
+const SKILL_JEV_MAIN: &str = include_str!("../../../../skills/jev-desktop/SKILL.md");
 
 const SKILL_FFI_MAIN: &str = include_str!("../../../../skills/agent-desktop-ffi/SKILL.md");
 const SKILL_FFI_REF_BUILD: &str =
@@ -34,9 +47,20 @@ struct Skill {
     canonical: &'static str,
     aliases: &'static [&'static str],
     summary: &'static str,
+    platform: Option<&'static str>,
     main: &'static str,
-    refs: fn() -> &'static [SkillRef],
+    refs: &'static [SkillRef],
 }
+
+const PLATFORM_ALIAS: &str = "platform";
+
+const CURRENT_PLATFORM: Option<&str> = if cfg!(target_os = "macos") {
+    Some("macos")
+} else if cfg!(target_os = "windows") {
+    Some("windows")
+} else {
+    None
+};
 
 const SKILL_DESKTOP_REFS: &[SkillRef] = &[
     SkillRef {
@@ -55,16 +79,12 @@ const SKILL_DESKTOP_REFS: &[SkillRef] = &[
         rel_path: "references/workflows.md",
         body: SKILL_DESKTOP_REF_WORKFLOWS,
     },
-    #[cfg(target_os = "macos")]
-    SkillRef {
-        rel_path: "references/macos.md",
-        body: SKILL_DESKTOP_REF_MACOS,
-    },
 ];
 
-fn skill_desktop_refs() -> &'static [SkillRef] {
-    SKILL_DESKTOP_REFS
-}
+const SKILL_MACOS_REFS: &[SkillRef] = &[SkillRef {
+    rel_path: "references/troubleshooting.md",
+    body: SKILL_MACOS_REF_TROUBLESHOOTING,
+}];
 
 const SKILL_FFI_REFS: &[SkillRef] = &[
     SkillRef {
@@ -85,24 +105,65 @@ const SKILL_FFI_REFS: &[SkillRef] = &[
     },
 ];
 
-fn skill_ffi_refs() -> &'static [SkillRef] {
-    SKILL_FFI_REFS
-}
+const SKILL_WINDOWS_REFS: &[SkillRef] = &[
+    SkillRef {
+        rel_path: "references/permissions-and-elevation.md",
+        body: SKILL_WINDOWS_REF_PERMISSIONS,
+    },
+    SkillRef {
+        rel_path: "references/chromium-and-electron.md",
+        body: SKILL_WINDOWS_REF_CHROMIUM,
+    },
+    SkillRef {
+        rel_path: "references/troubleshooting.md",
+        body: SKILL_WINDOWS_REF_TROUBLESHOOTING,
+    },
+    SkillRef {
+        rel_path: "references/shell-and-overlay.md",
+        body: SKILL_WINDOWS_REF_SHELL,
+    },
+];
 
 const SKILLS: &[Skill] = &[
     Skill {
         canonical: "agent-desktop",
         aliases: &["desktop", "agent-desktop"],
-        summary: "Primary guide. Snapshot/ref loop, JSON envelope, 59 commands including session lifecycle, cursor overlay, observation, interaction, keyboard/mouse, app lifecycle, notifications, clipboard, wait.",
+        summary: "Core guide for every OS: the snapshot/ref loop, verification and retry rules, and when to open each reference. Load this first, then `skills get platform`.",
+        platform: None,
         main: SKILL_DESKTOP_MAIN,
-        refs: skill_desktop_refs,
+        refs: SKILL_DESKTOP_REFS,
+    },
+    Skill {
+        canonical: "agent-desktop-macos",
+        aliases: &["macos", "agent-desktop-macos"],
+        summary: "macOS platform guide: Accessibility and Screen Recording permissions, what differs on macOS, Notification Center, troubleshooting.",
+        platform: Some("macos"),
+        main: SKILL_MACOS_MAIN,
+        refs: SKILL_MACOS_REFS,
+    },
+    Skill {
+        canonical: "agent-desktop-windows",
+        aliases: &["windows", "agent-desktop-windows"],
+        summary: "Windows platform guide: capability table, PowerShell quoting, supported sessions, shell surfaces and Action Center, UIPI/elevation, Chromium/Electron, troubleshooting.",
+        platform: Some("windows"),
+        main: SKILL_WINDOWS_MAIN,
+        refs: SKILL_WINDOWS_REFS,
     },
     Skill {
         canonical: "agent-desktop-ffi",
         aliases: &["ffi", "agent-desktop-ffi"],
         summary: "Embedding agent-desktop in another process via the C ABI. Build/link, error propagation, handle ownership, threading rules.",
+        platform: None,
         main: SKILL_FFI_MAIN,
-        refs: skill_ffi_refs,
+        refs: SKILL_FFI_REFS,
+    },
+    Skill {
+        canonical: "jev-desktop",
+        aliases: &["jev", "jev-desktop"],
+        summary: "Driving a desktop app from a plain-language goal without reading the accessibility tree. run.mjs takes a whole goal, act.mjs takes one step.",
+        platform: None,
+        main: SKILL_JEV_MAIN,
+        refs: &[],
     },
 ];
 
@@ -116,12 +177,17 @@ pub fn list() -> Result<Value, AppError> {
     let entries: Vec<Value> = SKILLS
         .iter()
         .map(|s| {
-            json!({
+            let mut entry = json!({
                 "name": s.canonical,
                 "aliases": s.aliases,
                 "summary": s.summary,
-                "references": (s.refs)().iter().map(|r| r.rel_path).collect::<Vec<_>>(),
-            })
+                "references": s.refs.iter().map(|r| r.rel_path).collect::<Vec<_>>(),
+            });
+            if let Some(platform) = s.platform {
+                entry["platform"] = json!(platform);
+                entry["current"] = json!(CURRENT_PLATFORM == Some(platform));
+            }
+            entry
         })
         .collect();
     Ok(json!({ "skills": entries }))
@@ -131,7 +197,7 @@ pub fn get(args: GetArgs) -> Result<Value, AppError> {
     let skill = find_skill(&args.name)?;
 
     if let Some(rel) = args.reference {
-        let refs = (skill.refs)();
+        let refs = skill.refs;
         let r = refs
             .iter()
             .find(|r| matches_ref(r.rel_path, &rel))
@@ -173,6 +239,9 @@ pub fn path() -> Result<Value, AppError> {
 
 fn find_skill(name: &str) -> Result<&'static Skill, AppError> {
     let needle = name.trim();
+    if needle.eq_ignore_ascii_case(PLATFORM_ALIAS) {
+        return platform_skill();
+    }
     SKILLS
         .iter()
         .find(|s| s.aliases.iter().any(|a| a.eq_ignore_ascii_case(needle)))
@@ -188,20 +257,29 @@ fn find_skill(name: &str) -> Result<&'static Skill, AppError> {
         })
 }
 
+fn platform_skill() -> Result<&'static Skill, AppError> {
+    SKILLS
+        .iter()
+        .find(|s| s.platform.is_some() && s.platform == CURRENT_PLATFORM)
+        .ok_or_else(|| {
+            AppError::invalid_input_with_suggestion(
+                "This build's operating system has no platform skill yet",
+                "Use `agent-desktop skills get desktop`; it covers the loop on every OS",
+            )
+        })
+}
+
 fn matches_ref(rel_path: &str, query: &str) -> bool {
     if rel_path.eq_ignore_ascii_case(query) {
         return true;
     }
-    let stem = rel_path
-        .rsplit('/')
-        .next()
-        .and_then(|f| f.strip_suffix(".md").or(Some(f)))
-        .unwrap_or(rel_path);
-    stem.eq_ignore_ascii_case(query)
+    let file = rel_path.rsplit('/').next().unwrap_or(rel_path);
+    let stem = file.strip_suffix(".md").unwrap_or(file);
+    file.eq_ignore_ascii_case(query) || stem.eq_ignore_ascii_case(query)
 }
 
 fn render_full(skill: &Skill) -> String {
-    let refs = (skill.refs)();
+    let refs = skill.refs;
     let mut out = String::with_capacity(
         skill.main.len() + refs.iter().map(|r| r.body.len() + 64).sum::<usize>(),
     );

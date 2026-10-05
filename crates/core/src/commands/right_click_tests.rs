@@ -147,8 +147,7 @@ fn returns_action_success_without_a_synthetic_menu_probe() {
 
     let value = execute(
         RefArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             timeout_ms: None,
         },
         &ProbeFailingAdapter { tree_error: None },
@@ -167,8 +166,7 @@ fn right_click_result_does_not_depend_on_a_followup_tree_probe() {
 
     let value = execute(
         RefArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             timeout_ms: None,
         },
         &ProbeFailingAdapter {

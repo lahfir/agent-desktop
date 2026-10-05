@@ -159,7 +159,7 @@ pub(crate) fn wait_for_point_with_deadline<'a>(
         let lease = crate::InteractionLease::guarded(deadline, ())?;
         return resolve_point_from_ref_or_xy_with_context(args, adapter, context, deadline, &lease);
     };
-    let entry = load_ref_entry(ref_id, args.snapshot_id, context)?;
+    let entry = load_ref_entry(ref_id, context)?;
     let mut stability = Some(None);
     let mut last_report = None;
     loop {
@@ -223,7 +223,7 @@ pub(crate) fn focus_point_under_lease(
     let Some(ref_id) = args.ref_id else {
         return Ok(false);
     };
-    let entry = load_ref_entry(ref_id, args.snapshot_id, context)?;
+    let entry = load_ref_entry(ref_id, context)?;
     crate::commands::point_resolve::focus_for_physical_input(Some(&entry), adapter, context, lease)
 }
 
@@ -244,7 +244,7 @@ pub(crate) fn resolve_point_under_lease<'a>(
     let Some(ref_id) = args.ref_id else {
         return resolve_point_from_ref_or_xy_with_context(args, adapter, context, deadline, lease);
     };
-    let entry = load_ref_entry(ref_id, args.snapshot_id, context)?;
+    let entry = load_ref_entry(ref_id, context)?;
     resolve_point_from_entry(
         EntryPointResolve {
             ref_id,

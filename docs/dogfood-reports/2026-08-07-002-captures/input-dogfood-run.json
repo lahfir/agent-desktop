@@ -1,0 +1,499 @@
+{
+    "environment":  {
+                        "os_caption":  "Microsoft Windows Server 2019 Datacenter",
+                        "os_build":  "17763",
+                        "binary":  "agent-desktop.exe",
+                        "binary_bytes":  2138112,
+                        "generated":  "2026-08-07T23:21:42.6639381-06:00"
+                    },
+    "judgements":  [
+                       {
+                           "id":  "J1",
+                           "claim":  "Notepad type A4-1 payload matrix via physical headed path",
+                           "target":  "Notepad textfield",
+                           "result":  "pass",
+                           "verdict":  "all four payloads round-tripped via independent WM_GETTEXT SHA-256",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "type",
+                                                  "code":  null,
+                                                  "disposition_delivery":  "delivered_unverified",
+                                                  "disposition_retry":  "unsafe",
+                                                  "platform_detail_has_e_accessdenied":  null,
+                                                  "delivered_events":  null,
+                                                  "emergency_release_posted":  null,
+                                                  "steps":  [
+                                                                {
+                                                                    "label":  "SendInput.type_text",
+                                                                    "outcome":  "succeeded",
+                                                                    "mechanism":  "physical_synthetic",
+                                                                    "verified":  false
+                                                                }
+                                                            ],
+                                                  "clicked":  null,
+                                                  "hovered":  null,
+                                                  "dragged":  null
+                                              },
+                           "notes":  "ascii=pass utf16=14; cjk=pass utf16=3; astral=pass utf16=4; mixed=pass utf16=5"
+                       },
+                       {
+                           "id":  "J2",
+                           "claim":  "press ctrl+a / ctrl+c selects and copies",
+                           "target":  "Notepad textfield",
+                           "result":  "pass",
+                           "verdict":  "chord envelopes ok; clipboard SHA-256 matched marker (value not recorded)",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "press",
+                                                  "code":  null,
+                                                  "disposition_delivery":  "delivered_unverified",
+                                                  "disposition_retry":  "unsafe",
+                                                  "platform_detail_has_e_accessdenied":  null,
+                                                  "delivered_events":  null,
+                                                  "emergency_release_posted":  null,
+                                                  "steps":  [
+                                                                {
+                                                                    "label":  "SendInput.press_key",
+                                                                    "outcome":  "succeeded",
+                                                                    "mechanism":  "physical_synthetic",
+                                                                    "verified":  false
+                                                                }
+                                                            ],
+                                                  "clicked":  null,
+                                                  "hovered":  null,
+                                                  "dragged":  null
+                                              },
+                           "notes":  "clip_hash_match=True marker_utf16=14"
+                       },
+                       {
+                           "id":  "J5",
+                           "claim":  "right-click lands physical gesture with menu observed",
+                           "target":  "Notepad textfield",
+                           "result":  "pass",
+                           "verdict":  "context menu observed after right-click (independent find); envelope_ok=True",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "right-click",
+                                                  "code":  null,
+                                                  "disposition_delivery":  "delivered_unverified",
+                                                  "disposition_retry":  "unsafe",
+                                                  "platform_detail_has_e_accessdenied":  null,
+                                                  "delivered_events":  null,
+                                                  "emergency_release_posted":  null,
+                                                  "steps":  [
+                                                                {
+                                                                    "label":  "SendInput.click",
+                                                                    "outcome":  "succeeded",
+                                                                    "mechanism":  "physical_synthetic",
+                                                                    "verified":  false
+                                                                }
+                                                            ],
+                                                  "clicked":  null,
+                                                  "hovered":  null,
+                                                  "dragged":  null
+                                              },
+                           "notes":  "menuitem_count=5"
+                       },
+                       {
+                           "id":  "J8",
+                           "claim":  "Medium-\u003eHigh type reports PERM_DENIED when stageable",
+                           "target":  "Notepad (High) from Medium agent-desktop",
+                           "result":  "skipped",
+                           "verdict":  "Notepad not strictly above Medium on this host (A19-4/A20-2)",
+                           "envelope_shape":  null,
+                           "notes":  "notepad_sid=S-1-16-8192 medium_rid=8192 notepad_rid=8192"
+                       },
+                       {
+                           "id":  "J3",
+                           "claim":  "mouse-move / mouse-click / mouse-wheel drive real controls",
+                           "target":  "ScratchForms btnAction + pnlScroll",
+                           "result":  "pass",
+                           "verdict":  "btnAction status changed; scroll label changed after wheel",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "mouse-click",
+                                                  "code":  null,
+                                                  "disposition_delivery":  null,
+                                                  "disposition_retry":  null,
+                                                  "platform_detail_has_e_accessdenied":  null,
+                                                  "delivered_events":  null,
+                                                  "emergency_release_posted":  null,
+                                                  "steps":  [
+
+                                                            ],
+                                                  "clicked":  true,
+                                                  "hovered":  null,
+                                                  "dragged":  null
+                                              },
+                           "notes":  "scroll_before_shape=scroll:N"
+                       },
+                       {
+                           "id":  "J4",
+                           "claim":  "double-click lands gesture on ListBox sink",
+                           "target":  "ScratchForms btnDoubleClick",
+                           "result":  "pass",
+                           "verdict":  "lblDoubleClick counter advanced after headed double-click",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "double-click",
+                                                  "code":  null,
+                                                  "disposition_delivery":  "delivered_unverified",
+                                                  "disposition_retry":  "unsafe",
+                                                  "platform_detail_has_e_accessdenied":  null,
+                                                  "delivered_events":  null,
+                                                  "emergency_release_posted":  null,
+                                                  "steps":  [
+                                                                {
+                                                                    "label":  "SendInput.click",
+                                                                    "outcome":  "succeeded",
+                                                                    "mechanism":  "physical_synthetic",
+                                                                    "verified":  false
+                                                                }
+                                                            ],
+                                                  "clicked":  null,
+                                                  "hovered":  null,
+                                                  "dragged":  null
+                                              },
+                           "notes":  "before=dbl:N after=dbl:N"
+                       },
+                       {
+                           "id":  "J6",
+                           "claim":  "drag moves tbSlider monotonically",
+                           "target":  "ScratchForms tbSlider",
+                           "result":  "pass",
+                           "verdict":  "headed drag increased slider (native label or get re-read)",
+                           "envelope_shape":  {
+                                                  "ok":  true,
+                                                  "command":  "drag",
+                                                  "code":  null,
+                                                  "disposition_delivery":  null,
+                                                  "disposition_retry":  null,
+                                                  "platform_detail_has_e_accessdenied":  null,
+                                                  "delivered_events":  null,
+                                                  "emergency_release_posted":  null,
+                                                  "steps":  [
+
+                                                            ],
+                                                  "clicked":  null,
+                                                  "hovered":  null,
+                                                  "dragged":  true
+                                              },
+                           "notes":  ""
+                       },
+                       {
+                           "id":  "J7",
+                           "claim":  "interrupted drag leaves no button stuck (A20-3)",
+                           "target":  "ScratchForms tbSlider harness abort",
+                           "result":  "pass",
+                           "verdict":  "GetAsyncKeyState re-read: button up before exit (A20-3 corrective path)",
+                           "envelope_shape":  null,
+                           "notes":  "interference_rows=0"
+                       },
+                       {
+                           "id":  "J9",
+                           "claim":  "zero foreground-interference rows",
+                           "target":  "all harness injections",
+                           "result":  "pass",
+                           "verdict":  "every Assert-Foreground bracket passed; no PROBE-INTERFERENCE recorded",
+                           "envelope_shape":  null,
+                           "notes":  "interference_count=0"
+                       }
+                   ],
+    "envelopes":  [
+                      {
+                          "id":  "J1-type-ascii",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "type",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_unverified",
+                                        "disposition_retry":  "unsafe",
+                                        "platform_detail_has_e_accessdenied":  null,
+                                        "delivered_events":  null,
+                                        "emergency_release_posted":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "SendInput.type_text",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "physical_synthetic",
+                                                          "verified":  false
+                                                      }
+                                                  ],
+                                        "clicked":  null,
+                                        "hovered":  null,
+                                        "dragged":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "utf16Units=14"
+                      },
+                      {
+                          "id":  "J1-type-cjk",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "type",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_unverified",
+                                        "disposition_retry":  "unsafe",
+                                        "platform_detail_has_e_accessdenied":  null,
+                                        "delivered_events":  null,
+                                        "emergency_release_posted":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "SendInput.type_text",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "physical_synthetic",
+                                                          "verified":  false
+                                                      }
+                                                  ],
+                                        "clicked":  null,
+                                        "hovered":  null,
+                                        "dragged":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "utf16Units=3"
+                      },
+                      {
+                          "id":  "J1-type-astral",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "type",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_unverified",
+                                        "disposition_retry":  "unsafe",
+                                        "platform_detail_has_e_accessdenied":  null,
+                                        "delivered_events":  null,
+                                        "emergency_release_posted":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "SendInput.type_text",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "physical_synthetic",
+                                                          "verified":  false
+                                                      }
+                                                  ],
+                                        "clicked":  null,
+                                        "hovered":  null,
+                                        "dragged":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "utf16Units=4"
+                      },
+                      {
+                          "id":  "J1-type-mixed",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "type",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_unverified",
+                                        "disposition_retry":  "unsafe",
+                                        "platform_detail_has_e_accessdenied":  null,
+                                        "delivered_events":  null,
+                                        "emergency_release_posted":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "SendInput.type_text",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "physical_synthetic",
+                                                          "verified":  false
+                                                      }
+                                                  ],
+                                        "clicked":  null,
+                                        "hovered":  null,
+                                        "dragged":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  "utf16Units=5"
+                      },
+                      {
+                          "id":  "J2-ctrl-a",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "press",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_unverified",
+                                        "disposition_retry":  "unsafe",
+                                        "platform_detail_has_e_accessdenied":  null,
+                                        "delivered_events":  null,
+                                        "emergency_release_posted":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "SendInput.press_key",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "physical_synthetic",
+                                                          "verified":  false
+                                                      }
+                                                  ],
+                                        "clicked":  null,
+                                        "hovered":  null,
+                                        "dragged":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J2-ctrl-c",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "press",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_unverified",
+                                        "disposition_retry":  "unsafe",
+                                        "platform_detail_has_e_accessdenied":  null,
+                                        "delivered_events":  null,
+                                        "emergency_release_posted":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "SendInput.press_key",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "physical_synthetic",
+                                                          "verified":  false
+                                                      }
+                                                  ],
+                                        "clicked":  null,
+                                        "hovered":  null,
+                                        "dragged":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J5-right-click",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "right-click",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_unverified",
+                                        "disposition_retry":  "unsafe",
+                                        "platform_detail_has_e_accessdenied":  null,
+                                        "delivered_events":  null,
+                                        "emergency_release_posted":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "SendInput.click",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "physical_synthetic",
+                                                          "verified":  false
+                                                      }
+                                                  ],
+                                        "clicked":  null,
+                                        "hovered":  null,
+                                        "dragged":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J3-mouse-move",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "mouse-move",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "platform_detail_has_e_accessdenied":  null,
+                                        "delivered_events":  null,
+                                        "emergency_release_posted":  null,
+                                        "steps":  [
+
+                                                  ],
+                                        "clicked":  null,
+                                        "hovered":  null,
+                                        "dragged":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J3-mouse-click",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "mouse-click",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "platform_detail_has_e_accessdenied":  null,
+                                        "delivered_events":  null,
+                                        "emergency_release_posted":  null,
+                                        "steps":  [
+
+                                                  ],
+                                        "clicked":  true,
+                                        "hovered":  null,
+                                        "dragged":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J3-mouse-wheel",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "mouse-wheel",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "platform_detail_has_e_accessdenied":  null,
+                                        "delivered_events":  null,
+                                        "emergency_release_posted":  null,
+                                        "steps":  [
+
+                                                  ],
+                                        "clicked":  null,
+                                        "hovered":  null,
+                                        "dragged":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J4-double-click",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "double-click",
+                                        "code":  null,
+                                        "disposition_delivery":  "delivered_unverified",
+                                        "disposition_retry":  "unsafe",
+                                        "platform_detail_has_e_accessdenied":  null,
+                                        "delivered_events":  null,
+                                        "emergency_release_posted":  null,
+                                        "steps":  [
+                                                      {
+                                                          "label":  "SendInput.click",
+                                                          "outcome":  "succeeded",
+                                                          "mechanism":  "physical_synthetic",
+                                                          "verified":  false
+                                                      }
+                                                  ],
+                                        "clicked":  null,
+                                        "hovered":  null,
+                                        "dragged":  null
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      },
+                      {
+                          "id":  "J6-drag-slider",
+                          "shape":  {
+                                        "ok":  true,
+                                        "command":  "drag",
+                                        "code":  null,
+                                        "disposition_delivery":  null,
+                                        "disposition_retry":  null,
+                                        "platform_detail_has_e_accessdenied":  null,
+                                        "delivered_events":  null,
+                                        "emergency_release_posted":  null,
+                                        "steps":  [
+
+                                                  ],
+                                        "clicked":  null,
+                                        "hovered":  null,
+                                        "dragged":  true
+                                    },
+                          "raw_redacted_keys_only":  true,
+                          "note":  ""
+                      }
+                  ],
+    "interference":  [
+
+                     ]
+}

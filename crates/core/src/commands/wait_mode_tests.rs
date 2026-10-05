@@ -5,7 +5,6 @@ fn args(mode: WaitModeArgs) -> WaitArgs {
     WaitArgs {
         mode,
         predicate: WaitPredicateArgs {
-            snapshot_id: None,
             predicate: None,
             value: None,
             action: None,

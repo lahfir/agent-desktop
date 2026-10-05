@@ -11,35 +11,6 @@ use agent_desktop_core::{
 
 const MAX_REF_FIELD_BYTES: usize = 65_536;
 const MAX_REF_TOKEN_BYTES: usize = 256;
-/// # Safety
-///
-/// `adapter` must be a non-null pointer returned by `ad_adapter_create`.
-/// `entry` must be a non-null pointer to a valid `AdRefEntry`.
-/// `out` must be a non-null pointer to an `AdNativeHandle` to write the result into.
-///
-/// This legacy entrypoint lacks exact identity evidence and fails closed. Use ad_resolve_element_exact.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ad_resolve_element(
-    adapter: *const AdAdapter,
-    entry: *const AdRefEntry,
-    out: *mut AdNativeHandle,
-) -> AdResult {
-    trap_panic(|| unsafe {
-        crate::pointer_guard::guard_non_null!(out, c"out is null");
-        (*out).ptr = std::ptr::null();
-        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
-        crate::pointer_guard::guard_non_null!(entry, c"entry is null");
-        let entry = &*entry;
-        let core_entry = match core_ref_entry_from_ffi(entry) {
-            Ok(entry) => entry,
-            Err(err) => {
-                error::set_last_error(&err);
-                return error::last_error_code();
-            }
-        };
-        resolve_core_entry(adapter, &core_entry, out)
-    })
-}
 
 /// Resolves an element using process-generation and typed native-id evidence.
 ///
@@ -101,15 +72,6 @@ unsafe fn resolve_core_entry(
             error::last_error_code()
         }
     }
-}
-
-pub(crate) unsafe fn core_ref_entry_from_ffi(
-    _entry: &AdRefEntry,
-) -> Result<CoreRefEntry, AdapterError> {
-    Err(AdapterError::new(
-        ErrorCode::InvalidArgs,
-        "legacy AdRefEntry lacks process-generation and typed identifier evidence; use AdExactRefEntry",
-    ))
 }
 
 pub(crate) unsafe fn core_ref_entry_from_exact(

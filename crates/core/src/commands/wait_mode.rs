@@ -8,7 +8,6 @@ pub(crate) enum WaitMode {
     Sleep(u64),
     Element {
         ref_id: String,
-        snapshot_id: Option<String>,
         predicate: wait_predicate::ElementPredicate,
     },
     Window {
@@ -78,11 +77,7 @@ impl WaitMode {
                 args.predicate.value,
                 args.predicate.action.as_deref(),
             )?;
-            return Ok(Self::Element {
-                ref_id,
-                snapshot_id: args.predicate.snapshot_id,
-                predicate,
-            });
+            return Ok(Self::Element { ref_id, predicate });
         }
         if let Some(title) = args.mode.window {
             return Ok(Self::Window {

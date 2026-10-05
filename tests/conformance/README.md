@@ -14,13 +14,12 @@ adapter-provided refs.
 
 | Area | Required behavior |
 |------|-------------------|
-| Snapshot refs | Refs are depth-first, snapshot-scoped, and explicit snapshot IDs resolve directly |
+| Snapshot refs | Refs are depth-first, snapshot-qualified (`@<snapshot_id>:eN`), and a bare `@eN` is rejected with `INVALID_ARGS` |
 | Strict resolve | A ref resolves only when identity still matches; stale refs return `STALE_REF` |
 | Ambiguity | Multiple plausible matches return `AMBIGUOUS_TARGET`, never an arbitrary click |
 | Actionability | Ref actions check live visibility, stability, enabled state, supported action, policy, and editability before dispatch |
-| Wait recovery | `wait --element` can poll the latest session refmap when no snapshot is pinned, honors the caller timeout while resolving, and reports the last observed predicate state |
-| Session latest scope | Commands that omit `--snapshot` read and write only the active session's latest refmap |
-| Explicit snapshot scope | Passing `--snapshot <id>` resolves that pinned snapshot even when the caller omits the original session |
+| Wait recovery | `wait --element` polls the snapshot embedded in its qualified ref, honors the caller timeout while resolving, and reports the last observed predicate state |
+| Snapshot scope | A qualified ref resolves its own snapshot inside the selected session namespace and never searches other sessions |
 | Trace | With a `trace: on` session manifest (from `session start`), commands write per-process JSONL segments under the session directory; `--trace <path>` overrides to one file. Best-effort unless `--trace-strict`. |
 | Session lifecycle | `session start/end/list/gc` manage manifests, the current-session pointer, and trace directories |
 | FFI parity | FFI ref actions use strict resolve and actionability checks before adapter dispatch |

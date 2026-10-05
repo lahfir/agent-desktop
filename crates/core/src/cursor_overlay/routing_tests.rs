@@ -139,3 +139,16 @@ fn multi_agent_session_cancel_drag_routes_to_the_per_agent_socket() {
     assert!(cancel.is_hide());
     assert_eq!(cancel.agent_id(), Some("agent-a"));
 }
+
+#[test]
+fn a_control_whose_style_is_out_of_range_fails_its_own_validation() {
+    let mut style = CursorOverlayStyle::default();
+    style.set_size(100_000.0);
+    let control = CursorOverlayControl::enable("run-1".into(), style);
+    assert!(control.validate().is_err());
+    assert!(
+        CursorOverlayControl::enable("run-1".into(), CursorOverlayStyle::default())
+            .validate()
+            .is_ok()
+    );
+}

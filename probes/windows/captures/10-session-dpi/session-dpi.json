@@ -1,0 +1,224 @@
+{
+    "question":  "what bounds delta does DPI awareness produce between two processes reading the same element, and what scale can this environment actually apply",
+    "stack":  "managed UIA for BoundingRectangle; raw Win32 for awareness, DisplayConfig and metrics",
+    "scope":  "api-contract for the awareness APIs; app/provider and environment-specific for the achievable scale",
+    "session":  {
+                    "sessionId":  1,
+                    "activeConsoleSessionId":  1,
+                    "isRemoteSession":  false,
+                    "windowStation":  "Console",
+                    "note":  "RDP session-transition behavior is not measurable here (physical console session); it closes at sub-phase 2.12 runner registration"
+                },
+    "displays":  [
+                     {
+                         "primary":  true,
+                         "Left":  0,
+                         "Top":  0,
+                         "Width":  1639,
+                         "Height":  732
+                     }
+                 ],
+    "displayScaleCapability":  {
+                                   "displayConfigGetResult":  0,
+                                   "scaleRelMin":  0,
+                                   "scaleRelCurrent":  0,
+                                   "scaleRelMax":  0,
+                                   "monitorRegistryKeys":  [
+                                                               "NOEDID_15AD_0405_00000000_000F0000_0^20ED182961F2CFDB3A2D28C95A99744F"
+                                                           ],
+                                   "stepsAvailableAboveRecommended":  0
+                               },
+    "method":  "two sibling powershell children read the same probe-launched notepad window and its Edit child; the unaware arm is forced with __COMPAT_LAYER=DPIUNAWARE, the aware arm calls SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)",
+    "normalizationNote":  "raw rectangles are bucketed to 8px by the KTD9 normalizer; delta fields are named deltaLeft/deltaTop/deltaWidth/deltaHeight, which the bucketing regex does not match, so the measured delta survives the normalized twin verbatim",
+    "passes":  [
+                   {
+                       "pass":  "recommended",
+                       "requested":  "display recommended scale (100%)",
+                       "requestedScaleRel":  0,
+                       "displayConfigSetResult":  null,
+                       "scaleRelReportedAfterwards":  0,
+                       "registryDpiValueAfterwards":  0,
+                       "effectiveDpiSeenByAwareArm":  96,
+                       "scaleActuallyApplied":  false,
+                       "awareArm":  {
+                                        "mode":  "aware",
+                                        "processId":  6368,
+                                        "awarenessAtStartup":  "PROCESS_DPI_UNAWARE",
+                                        "setProcessDpiAwarenessContextPerMonitorV2":  "succeeded",
+                                        "awarenessEffective":  "PROCESS_PER_MONITOR_DPI_AWARE",
+                                        "monitorEffectiveDpiX":  96,
+                                        "monitorEffectiveDpiY":  96,
+                                        "logPixels":  96,
+                                        "screenMetricsCx":  1639,
+                                        "screenMetricsCy":  732,
+                                        "getWindowRect":  {
+                                                              "Left":  476,
+                                                              "Top":  100,
+                                                              "Right":  1244,
+                                                              "Bottom":  625
+                                                          },
+                                        "uiaBounds_window":  {
+                                                                 "className":  "Notepad",
+                                                                 "Left":  476,
+                                                                 "Top":  100,
+                                                                 "Width":  768,
+                                                                 "Height":  525
+                                                             },
+                                        "uiaBounds_editChild":  {
+                                                                    "className":  "Edit",
+                                                                    "Left":  484,
+                                                                    "Top":  151,
+                                                                    "Width":  752,
+                                                                    "Height":  443
+                                                                }
+                                    },
+                       "unawareArm":  {
+                                          "mode":  "unaware",
+                                          "processId":  8296,
+                                          "awarenessAtStartup":  "PROCESS_DPI_UNAWARE",
+                                          "setProcessDpiAwarenessContextPerMonitorV2":  "not attempted (unaware arm, forced with __COMPAT_LAYER=DPIUNAWARE)",
+                                          "awarenessEffective":  "PROCESS_DPI_UNAWARE",
+                                          "monitorEffectiveDpiX":  96,
+                                          "monitorEffectiveDpiY":  96,
+                                          "logPixels":  96,
+                                          "screenMetricsCx":  1639,
+                                          "screenMetricsCy":  732,
+                                          "getWindowRect":  {
+                                                                "Left":  476,
+                                                                "Top":  100,
+                                                                "Right":  1244,
+                                                                "Bottom":  625
+                                                            },
+                                          "uiaBounds_window":  {
+                                                                   "className":  "Notepad",
+                                                                   "Left":  476,
+                                                                   "Top":  100,
+                                                                   "Width":  768,
+                                                                   "Height":  525
+                                                               },
+                                          "uiaBounds_editChild":  {
+                                                                      "className":  "Edit",
+                                                                      "Left":  484,
+                                                                      "Top":  151,
+                                                                      "Width":  752,
+                                                                      "Height":  443
+                                                                  }
+                                      },
+                       "windowBoundsDelta":  {
+                                                 "measurable":  true,
+                                                 "deltaLeft":  0,
+                                                 "deltaTop":  0,
+                                                 "deltaWidth":  0,
+                                                 "deltaHeight":  0
+                                             },
+                       "editChildBoundsDelta":  {
+                                                    "measurable":  true,
+                                                    "deltaLeft":  0,
+                                                    "deltaTop":  0,
+                                                    "deltaWidth":  0,
+                                                    "deltaHeight":  0
+                                                }
+                   },
+                   {
+                       "pass":  "plus-one-step",
+                       "requested":  "one scale step above recommended (125%)",
+                       "requestedScaleRel":  1,
+                       "displayConfigSetResult":  0,
+                       "scaleRelReportedAfterwards":  1,
+                       "registryDpiValueAfterwards":  1,
+                       "effectiveDpiSeenByAwareArm":  96,
+                       "scaleActuallyApplied":  false,
+                       "awareArm":  {
+                                        "mode":  "aware",
+                                        "processId":  6664,
+                                        "awarenessAtStartup":  "PROCESS_DPI_UNAWARE",
+                                        "setProcessDpiAwarenessContextPerMonitorV2":  "succeeded",
+                                        "awarenessEffective":  "PROCESS_PER_MONITOR_DPI_AWARE",
+                                        "monitorEffectiveDpiX":  96,
+                                        "monitorEffectiveDpiY":  96,
+                                        "logPixels":  96,
+                                        "screenMetricsCx":  1639,
+                                        "screenMetricsCy":  732,
+                                        "getWindowRect":  {
+                                                              "Left":  476,
+                                                              "Top":  100,
+                                                              "Right":  1244,
+                                                              "Bottom":  625
+                                                          },
+                                        "uiaBounds_window":  {
+                                                                 "className":  "Notepad",
+                                                                 "Left":  476,
+                                                                 "Top":  100,
+                                                                 "Width":  768,
+                                                                 "Height":  525
+                                                             },
+                                        "uiaBounds_editChild":  {
+                                                                    "className":  "Edit",
+                                                                    "Left":  484,
+                                                                    "Top":  151,
+                                                                    "Width":  752,
+                                                                    "Height":  443
+                                                                }
+                                    },
+                       "unawareArm":  {
+                                          "mode":  "unaware",
+                                          "processId":  5132,
+                                          "awarenessAtStartup":  "PROCESS_DPI_UNAWARE",
+                                          "setProcessDpiAwarenessContextPerMonitorV2":  "not attempted (unaware arm, forced with __COMPAT_LAYER=DPIUNAWARE)",
+                                          "awarenessEffective":  "PROCESS_DPI_UNAWARE",
+                                          "monitorEffectiveDpiX":  96,
+                                          "monitorEffectiveDpiY":  96,
+                                          "logPixels":  96,
+                                          "screenMetricsCx":  1639,
+                                          "screenMetricsCy":  732,
+                                          "getWindowRect":  {
+                                                                "Left":  476,
+                                                                "Top":  100,
+                                                                "Right":  1244,
+                                                                "Bottom":  625
+                                                            },
+                                          "uiaBounds_window":  {
+                                                                   "className":  "Notepad",
+                                                                   "Left":  476,
+                                                                   "Top":  100,
+                                                                   "Width":  768,
+                                                                   "Height":  525
+                                                               },
+                                          "uiaBounds_editChild":  {
+                                                                      "className":  "Edit",
+                                                                      "Left":  484,
+                                                                      "Top":  151,
+                                                                      "Width":  752,
+                                                                      "Height":  443
+                                                                  }
+                                      },
+                       "windowBoundsDelta":  {
+                                                 "measurable":  true,
+                                                 "deltaLeft":  0,
+                                                 "deltaTop":  0,
+                                                 "deltaWidth":  0,
+                                                 "deltaHeight":  0
+                                             },
+                       "editChildBoundsDelta":  {
+                                                    "measurable":  true,
+                                                    "deltaLeft":  0,
+                                                    "deltaTop":  0,
+                                                    "deltaWidth":  0,
+                                                    "deltaHeight":  0
+                                                }
+                   }
+               ],
+    "teardown":  {
+                     "originalScaleRel":  0,
+                     "displayConfigSetResult":  0,
+                     "scaleRelReadBackAfterwards":  0,
+                     "registryDpiValueAfterwards":  0,
+                     "restored":  true
+                 },
+    "deferred":  {
+                     "row":  "multi-monitor and mixed-DPI bounds behavior, and any non-zero aware-vs-unaware delta",
+                     "reason":  "single display, and that display reports no EDID so Windows offers exactly one scale step (min=cur=max); the 125% request is accepted by DisplayConfigSetDeviceInfo and persisted to the registry but never takes effect",
+                     "closesAt":  "sub-phase 2.4 (owns list_displays and per-monitor scale_factor) on a runner with a scalable display",
+                     "neverLeaves":  "Phase 2"
+                 }
+}

@@ -116,12 +116,11 @@ fn ref_snapshot(pid: u32) -> String {
     store.save_new_snapshot(&refmap).unwrap()
 }
 
-fn ref_args(snapshot_id: &str) -> PointResolveArgs<'_> {
+fn ref_args(snapshot_id: &str) -> PointResolveArgs<'static> {
     PointResolveArgs {
-        ref_id: Some("@e1"),
+        ref_id: Some(Box::leak(format!("@{snapshot_id}:e1").into_boxed_str())),
         xy: None,
-        snapshot_id: Some(snapshot_id),
-        missing_input_message: "Provide a ref (@e1) or --xy x,y",
+        missing_input_message: "Provide a ref (@<snapshot_id>:e1) or --xy x,y",
         headed_requirement: crate::HeadedRequirement::None,
     }
 }
@@ -213,7 +212,7 @@ fn hit_test_probe_error_is_preserved_for_ref_targeted_resolution() {
     assert_eq!(err.code(), "INTERNAL");
 }
 
-/// Raw `--xy` input stays raw by design (KTD4): no ref means no occlusion
+/// Raw `--xy` input stays raw by design: no ref means no occlusion
 /// check, even against an adapter that would otherwise report occlusion.
 #[test]
 fn raw_xy_input_never_calls_hit_test() {
@@ -229,7 +228,6 @@ fn raw_xy_input_never_calls_hit_test() {
         PointResolveArgs {
             ref_id: None,
             xy: Some((5.0, 6.0)),
-            snapshot_id: None,
             missing_input_message: "Provide a ref (@e1) or --xy x,y",
             headed_requirement: crate::HeadedRequirement::None,
         },

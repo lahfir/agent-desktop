@@ -47,8 +47,7 @@ fn action_availability_makes_toggle_and_expand_applicable() {
     for property in [IsProperty::Checked, IsProperty::Expanded] {
         let result = execute(
             IsArgs {
-                ref_id: "@e1".into(),
-                snapshot_id: Some(snapshot_id.clone()),
+                ref_id: format!("@{}:e1", snapshot_id.clone()),
                 property,
             },
             &adapter,

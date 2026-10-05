@@ -87,7 +87,9 @@ A screen with more actionable elements than a choice can carry says so, in the
 request and in the turn it reports, and the policy is told to look inside a
 region rather than call the goal impossible.
 
-`--root @ref` starts inside a region when you already know which one.
+`--root @ref` starts inside a region when you already know which one. `--window-id <id>`
+reads one window when the app has several open and none is focused, such as a Settings window next to
+the main one while another app is in front. Every stop reports the window it read in `screen.window_id`.
 
 ## One step at a time
 
@@ -121,6 +123,7 @@ node scripts/jev/act.mjs --app TextEdit --execute \
 | Flag | Meaning |
 | --- | --- |
 | `--app <name>` | Required. |
+| `--window-id <id>` | Read one window of the app, by the id `agent-desktop list-windows --app <name>` reports. Needed only when the app has more than one visible window and none of them is focused, which otherwise fails with `AMBIGUOUS_TARGET`. The run stays on that window: a window the run opens elsewhere is not read, and if the window closes after an action, `run.mjs` reports that turn and stops with `window_closed`. `run.mjs` takes it too. |
 | `--execute` | Run the command when `decision` is `act`. Without it, nothing runs. |
 | `--text "…"` | Text the intent needs. Jev returns choices, never strings. |
 | `--root @ref` | Resolve inside one container instead of the whole window. |
@@ -219,9 +222,14 @@ is alpha and may change shape.
 
 ## Checks
 
+`WAIT` in `run.mjs` pauses 250 ms before the screen is read again. A failed operation stops the run at once as `action_failed`, keeping the error code and delivery state, and is never repeated. The CLI exits 0 only when the run stops at `done`; every other stop exits 1.
+
+Text falls back from a direct value write to a paste only when the write reports that nothing was delivered and a retry is safe. A failed clipboard write is reported as the stop reason. After a paste the field is read back; if it does not hold the requested text the run stops with `TEXT_VERIFICATION_FAILED` and does not type again. The read-back compares the exact string, so a field that normalizes text (trims, changes case or line endings) reports a failure even when the text landed; the read is retried until a short deadline before it fails.
+
 ```sh
 node scripts/jev/act.test.mjs
 node scripts/jev/run.test.mjs
+node scripts/jev/run.integration.test.mjs
 ```
 
 Turns retain native `steps`, `post_state` and `details` for the caller. A verified

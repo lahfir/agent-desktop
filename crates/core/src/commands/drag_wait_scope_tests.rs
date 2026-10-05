@@ -58,19 +58,7 @@ impl CrossAppWaitAdapter {
     }
 
     fn dropped_confirmation() -> AccessibilityNode {
-        AccessibilityNode {
-            ref_id: None,
-            role: "button".into(),
-            identity: crate::NodeIdentity {
-                retained_object: None,
-                name: Some("Dropped".into()),
-                ..Default::default()
-            },
-            presentation: Default::default(),
-            children_count: None,
-            subtree_truncated: false,
-            children: vec![],
-        }
+        crate::adapter::minimal_accessibility_node("button", "Dropped")
     }
 
     fn window_node(window: &WindowInfo) -> AccessibilityNode {
@@ -78,19 +66,9 @@ impl CrossAppWaitAdapter {
             .then(Self::dropped_confirmation)
             .into_iter()
             .collect();
-        AccessibilityNode {
-            ref_id: None,
-            role: "window".into(),
-            identity: crate::NodeIdentity {
-                retained_object: None,
-                name: Some(window.title.clone()),
-                ..Default::default()
-            },
-            presentation: Default::default(),
-            children_count: None,
-            subtree_truncated: false,
-            children,
-        }
+        let mut node = crate::adapter::minimal_accessibility_node("window", &window.title);
+        node.children = children;
+        node
     }
 }
 
@@ -161,14 +139,13 @@ impl SystemOps for CrossAppWaitAdapter {
 fn drag_args(snapshot_id: String, scope: WaitForScope) -> DragArgs {
     DragArgs {
         from: DragEndpoint {
-            ref_id: Some("@e1".into()),
+            ref_id: Some(format!("@{}:e1", snapshot_id)),
             xy: None,
         },
         to: DragEndpoint {
-            ref_id: Some("@e2".into()),
+            ref_id: Some(format!("@{}:e2", snapshot_id)),
             xy: None,
         },
-        snapshot_id: Some(snapshot_id),
         duration_ms: None,
         drop_delay_ms: None,
         timeout_ms: None,

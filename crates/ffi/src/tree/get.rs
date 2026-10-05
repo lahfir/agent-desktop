@@ -3,43 +3,8 @@ use crate::convert::surface::snapshot_surface_from_c;
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
 use crate::tree::flatten::flatten_tree;
-use crate::types::{AdExactWindowInfo, AdNodeTree, AdTreeOptions, AdWindowInfo};
+use crate::types::{AdExactWindowInfo, AdNodeTree, AdTreeOptions};
 use std::ptr;
-
-/// Legacy ABI compatibility entrypoint. `AdWindowInfo` cannot carry process
-/// generation, so this function fails closed with `AD_RESULT_ERR_INVALID_ARGS`.
-/// Use `ad_get_tree_exact`.
-///
-/// # Safety
-/// All pointers must be non-null and `out` must be writable.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ad_get_tree(
-    adapter: *const AdAdapter,
-    win: *const AdWindowInfo,
-    opts: *const AdTreeOptions,
-    out: *mut AdNodeTree,
-) -> AdResult {
-    trap_panic(|| {
-        crate::pointer_guard::guard_non_null!(out, c"out is null");
-        unsafe {
-            (*out).nodes = ptr::null_mut();
-            (*out).count = 0;
-        }
-        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
-        crate::pointer_guard::guard_non_null!(win, c"win is null");
-        crate::pointer_guard::guard_non_null!(opts, c"opts is null");
-
-        let opts_ref = unsafe { &*opts };
-        let core_win = match crate::windows::ad_window_to_core(unsafe { &*win }) {
-            Ok(w) => w,
-            Err(e) => {
-                set_last_error(&e);
-                return crate::error::last_error_code();
-            }
-        };
-        unsafe { get_core_tree(adapter, &core_win, opts_ref, out) }
-    })
-}
 
 /// Snapshots a generation-pinned window into the flat, owned, breadth-first C
 /// tree layout. Direct children are contiguous at
@@ -99,6 +64,7 @@ unsafe fn get_core_tree(
         compact: options.compact,
         surface,
         skeleton: false,
+        force_renderer_accessibility: false,
     };
     let adapter = crate::adapter::acquire_adapter!(adapter);
     let deadline = crate::operation::operation_deadline!();

@@ -1,10 +1,8 @@
 use crate::AdAdapter;
-use crate::convert::window::{
-    exact_window_info_to_c, validate_exact_window_info, window_info_to_c,
-};
+use crate::convert::window::{exact_window_info_to_c, validate_exact_window_info};
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
-use crate::types::{AdExactWindowInfo, AdWindowInfo};
+use crate::types::AdExactWindowInfo;
 use agent_desktop_core::{AdapterError, ErrorCode, WindowInfo, launch_result::LaunchResult};
 use std::os::raw::c_char;
 
@@ -21,78 +19,20 @@ fn launched_window(launched: LaunchResult) -> Result<WindowInfo, AdapterError> {
 }
 
 /// Launches the application identified by `id` (bundle id on macOS,
-/// executable path on other platforms) and, on success, writes the
-/// first window that becomes available into `*out`. Waits for the windows
-/// the launch itself produces, bounded by `timeout_ms`; zero means "no wait".
-/// An application that presents no window fails with `WINDOW_NOT_FOUND`.
+/// executable path on other platforms) and, on success, writes the first
+/// generation-pinned window that becomes available into `*out`. Waits for the
+/// windows the launch itself produces, bounded by `timeout_ms`; zero means
+/// "no wait". An application that presents no window fails with
+/// `WINDOW_NOT_FOUND`.
 ///
-/// The returned `AdWindowInfo` owns heap-allocated interior strings that
-/// must be released with `ad_release_window_fields` once done. On error
-/// the out-param is zero-initialized, so calling the release fn on it
-/// is a safe no-op.
+/// The returned `AdExactWindowInfo` owns heap-allocated interior strings that
+/// must be released with `ad_release_exact_window_fields` once done. On error
+/// the out-param is zero-initialized, so calling the release fn on it is a
+/// safe no-op.
 ///
 /// # Safety
 /// `adapter` must be non-null. `id` must be a non-null UTF-8 C string.
-/// `out` must be a non-null writable `*mut AdWindowInfo`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ad_launch_app(
-    adapter: *const AdAdapter,
-    id: *const c_char,
-    timeout_ms: u64,
-    out: *mut AdWindowInfo,
-) -> AdResult {
-    trap_panic(|| unsafe {
-        crate::pointer_guard::guard_non_null!(out, c"out is null");
-        *out = std::mem::zeroed();
-        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
-        let id_str = match super::decode_app_id(id) {
-            Ok(id) => id,
-            Err(err) => {
-                set_last_error(&err);
-                return crate::error::last_error_code();
-            }
-        };
-        let adapter = crate::adapter::acquire_adapter!(adapter);
-        let options = agent_desktop_core::launch_options::LaunchOptions {
-            timeout_ms,
-            ..Default::default()
-        };
-        let deadline = match launch_deadline(timeout_ms) {
-            Ok(deadline) => deadline,
-            Err(error) => {
-                set_last_error(&error);
-                return crate::error::last_error_code();
-            }
-        };
-        let lease = match adapter.inner.acquire_interaction_lease(deadline) {
-            Ok(lease) => lease,
-            Err(error) => {
-                set_last_error(&error);
-                return crate::error::last_error_code();
-            }
-        };
-        match adapter
-            .inner
-            .launch_app(&id_str, &options, &lease)
-            .and_then(launched_window)
-        {
-            Ok(win) => {
-                *out = window_info_to_c(&win);
-                AdResult::Ok
-            }
-            Err(e) => {
-                set_last_error(&e);
-                crate::error::last_error_code()
-            }
-        }
-    })
-}
-
-/// Launches an application and returns a generation-pinned exact window.
-///
-/// # Safety
-/// `adapter`, `id`, and `out` must satisfy the same requirements as
-/// `ad_launch_app`. Release the result with `ad_release_exact_window_fields`.
+/// `out` must be a non-null writable `*mut AdExactWindowInfo`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ad_launch_app_exact(
     adapter: *const AdAdapter,
@@ -243,17 +183,17 @@ mod tests {
         })
         .unwrap();
         let id = CString::new("Fixture").unwrap();
-        let mut out: AdWindowInfo = unsafe { std::mem::zeroed() };
+        let mut out: AdExactWindowInfo = unsafe { std::mem::zeroed() };
 
         assert_eq!(
-            unsafe { ad_launch_app(adapter, id.as_ptr(), 0, &mut out) },
+            unsafe { ad_launch_app_exact(adapter, id.as_ptr(), 0, &mut out) },
             AdResult::Ok
         );
         assert_eq!(probe.calls.load(Ordering::SeqCst), 1);
         assert_eq!(probe.timeout_ms.load(Ordering::SeqCst), 0);
 
         unsafe {
-            crate::windows::free_one::ad_release_window_fields(&mut out);
+            crate::windows::free_one::ad_release_exact_window_fields(&mut out);
             crate::adapter::ad_adapter_destroy(adapter);
         }
     }

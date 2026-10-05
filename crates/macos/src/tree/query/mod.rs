@@ -16,8 +16,8 @@ mod traversal;
 
 use crate::tree::AXElement;
 use agent_desktop_core::{
-    AdapterError, ErrorCode, ObservationRequest, ObservationRoot, ObservationSource, ObservedTree,
-    SnapshotSurface,
+    AdapterError, DeliverySemantics, ErrorCode, ObservationRequest, ObservationRoot,
+    ObservationSource, ObservedTree, SnapshotSurface,
 };
 use serde_json::json;
 
@@ -150,19 +150,30 @@ fn resolve_root(
 
 fn verify_entry_process(entry: &agent_desktop_core::RefEntry) -> Result<(), AdapterError> {
     let instance = entry.process.process_instance.as_deref().ok_or_else(|| {
-        AdapterError::stale_ref("Live locator root has no process instance identity")
+        stale_evidence_error("Live locator root has no process instance identity")
     })?;
     let pid = crate::system::process_identity::to_pid_t(entry.process.pid)?;
     match crate::system::process_identity::matches_instance(pid, instance) {
         Ok(true) => Ok(()),
-        Ok(false) => Err(AdapterError::stale_ref(
+        Ok(false) => Err(stale_evidence_error(
             "Live locator root process instance is no longer running",
         )),
-        Err(error) if error.code == ErrorCode::InvalidArgs => Err(AdapterError::stale_ref(
+        Err(error) if error.code == ErrorCode::InvalidArgs => Err(stale_evidence_error(
             "Live locator root has a malformed process instance identity",
         )),
         Err(error) => Err(error),
     }
+}
+
+/// Builds a `STALE_REF` directly from what was observed, rather than through
+/// `AdapterError::stale_ref`, whose parameter is a **ref id** it interpolates
+/// into `"{ref_id} not found in current RefMap"`. None of these three
+/// failures is a missing RefMap entry - the ref was found and read, and it
+/// was the live process evidence that refused it.
+fn stale_evidence_error(message: &str) -> AdapterError {
+    AdapterError::new(ErrorCode::StaleRef, message)
+        .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
+        .with_disposition(DeliverySemantics::not_delivered())
 }
 
 fn resolve_window_surface(
@@ -173,6 +184,16 @@ fn resolve_window_surface(
     crate::tree::locator_deadline::remaining(deadline)?;
     let pid = crate::system::process_identity::to_pid_t(window.pid)?;
     let element = match surface {
+        SnapshotSurface::Sheet | SnapshotSurface::Popover | SnapshotSurface::Alert => {
+            crate::tree::window_surface::surface_for_window(window, surface, deadline)?.ok_or_else(
+                || {
+                    AdapterError::new(
+                        ErrorCode::ElementNotFound,
+                        format!("No open {} in window {}", surface.as_str(), window.id),
+                    )
+                },
+            )?
+        }
         SnapshotSurface::Window => {
             crate::system::window_resolve::window_element_for_info_with_deadline(window, deadline)?
         }
@@ -182,12 +203,6 @@ fn resolve_window_surface(
             .ok_or_else(|| AdapterError::element_not_found("No open context menu"))?,
         SnapshotSurface::Menubar => crate::tree::surfaces::menubar_for_pid(pid, deadline)?
             .ok_or_else(|| AdapterError::element_not_found("No menu bar found"))?,
-        SnapshotSurface::Sheet => crate::tree::surfaces::sheet_for_pid(pid, deadline)?
-            .ok_or_else(|| AdapterError::element_not_found("No open sheet"))?,
-        SnapshotSurface::Popover => crate::tree::surfaces::popover_for_pid(pid, deadline)?
-            .ok_or_else(|| AdapterError::element_not_found("No visible popover"))?,
-        SnapshotSurface::Alert => crate::tree::surfaces::alert_for_pid(pid, deadline)?
-            .ok_or_else(|| AdapterError::element_not_found("No open alert or dialog"))?,
         _ => return Err(AdapterError::not_supported("snapshot surface")),
     };
     crate::tree::locator_deadline::remaining(deadline)?;

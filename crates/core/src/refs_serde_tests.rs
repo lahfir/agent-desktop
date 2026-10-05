@@ -150,6 +150,15 @@ fn snapshot_surface_serializes_to_snake_case_and_roundtrips() {
         (SnapshotSurface::StartMenu, "\"start_menu\""),
         (SnapshotSurface::ActionCenter, "\"action_center\""),
     ];
+    for (variant, _) in cases {
+        let token = serde_json::to_string(variant.as_str()).unwrap();
+        let parsed: SnapshotSurface = serde_json::from_str(&token)
+            .unwrap_or_else(|error| panic!("emitted token {token} must deserialize: {error}"));
+        assert_eq!(
+            parsed, variant,
+            "the token as_str emits must name {variant:?}"
+        );
+    }
     for (variant, expected_json) in cases {
         let serialized = serde_json::to_string(&variant).unwrap();
         assert_eq!(
@@ -206,4 +215,29 @@ fn ref_entry_full_roundtrip_preserves_all_fields() {
     let back: RefEntry = serde_json::from_str(&json).unwrap();
 
     assert_eq!(back, original);
+}
+
+#[test]
+fn refmap_round_trip_keeps_bounds_on_a_rounding_boundary() {
+    let bounds = crate::Rect {
+        x: 505.24,
+        y: 505.04499999999996,
+        width: 1168.09,
+        height: 25.024999999999977,
+    };
+    let mut entry = minimal_entry("button");
+    entry.geometry = crate::RefGeometry {
+        bounds: Some(bounds),
+        bounds_hash: bounds.bounds_hash(),
+    };
+    let mut map = RefMap::new();
+    let ref_id = map.try_allocate(entry).unwrap();
+
+    let json = map.serialize_with_size_check().unwrap();
+    assert!(json.contains("505.04499999999996"), "json={json}");
+    let restored: RefMap = serde_json::from_str(&json).unwrap();
+
+    restored.validate().unwrap();
+    let restored_bounds = restored.get(&ref_id).unwrap().geometry.bounds.unwrap();
+    assert_eq!(restored_bounds.y.to_bits(), bounds.y.to_bits());
 }

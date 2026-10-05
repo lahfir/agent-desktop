@@ -46,3 +46,25 @@ fn detached_recovery_budget_survives_an_expired_inherited_scope() {
     assert!(!cleanup.is_expired());
     assert!(cleanup.remaining() > Duration::from_millis(50));
 }
+
+#[test]
+fn extension_moves_the_expiry_and_keeps_the_timeout() {
+    let deadline = Deadline::after(1_000).unwrap();
+
+    let extended = deadline.extended_by(Duration::from_millis(500));
+
+    let longer = extended.remaining();
+    assert!(longer >= deadline.remaining() + Duration::from_millis(500));
+    assert_eq!(extended.timeout_ms(), 1_000);
+}
+
+#[test]
+fn extension_stays_inside_an_inherited_deadline() {
+    let inherited = Deadline::after(25).unwrap();
+    let _scope = super::enter_scope(Some(inherited));
+    let local = Deadline::after(20).unwrap();
+
+    let extended = local.extended_by(Duration::from_secs(5));
+
+    assert!(extended.remaining() <= Duration::from_millis(25));
+}

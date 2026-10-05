@@ -1,4 +1,4 @@
-/// Window-manager operation dispatched by `ad_window_op`.
+/// Window-manager operation dispatched by `ad_window_op_exact`.
 ///
 /// `kind` is stored as `int32_t` to keep the enum-discriminant check at
 /// the boundary — out-of-range values return

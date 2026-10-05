@@ -160,7 +160,7 @@ class MetricsIntegrityTests(unittest.TestCase):
             command_result({"property": "role", "value": "button"}),
         ]
         runner = types.SimpleNamespace(binary="agent-desktop", label="current", environment={})
-        sample_data = {"snapshot_id": "target", "ref_id": "@e1", "role": "button"}
+        sample_data = {"snapshot_id": "target", "ref_id": "@target:e1", "role": "button"}
 
         with patch("electron_metrics.run_bounded", side_effect=responses):
             self.assertTrue(
@@ -169,7 +169,7 @@ class MetricsIntegrityTests(unittest.TestCase):
 
     def test_exact_namespace_rejects_invalid_get_property_contract(self):
         runner = types.SimpleNamespace(binary="agent-desktop", label="current", environment={})
-        sample_data = {"snapshot_id": "target", "ref_id": "@e1", "role": "button"}
+        sample_data = {"snapshot_id": "target", "ref_id": "@target:e1", "role": "button"}
 
         for data in (
             {"role": "button"},
@@ -275,7 +275,7 @@ class RunSampleTests(unittest.TestCase):
         self.assertFalse(sample["correct"])
 
     def test_incomplete_traversal_marks_failure_even_when_reresolution_succeeds(self):
-        data = {"snapshot_id": "s-1", "match": {"ref_id": "@e1", "role": "button"}}
+        data = {"snapshot_id": "s-1", "match": {"ref_id": "@s-1:e1", "role": "button"}}
         result = timed_command_result(data)
         events = [{"event": "locator.resolve", "complete": False, "query_stats": {"nodes": 4}}]
         runner = sample_runner(require_stats=True)
@@ -293,7 +293,7 @@ class RunSampleTests(unittest.TestCase):
         self.assertEqual(runner.trace_offset, 42)
 
     def test_reresolution_branch_marks_failure_when_namespace_check_fails(self):
-        data = {"snapshot_id": "s-1", "match": {"ref_id": "@e1", "role": "button"}}
+        data = {"snapshot_id": "s-1", "match": {"ref_id": "@s-1:e1", "role": "button"}}
         result = timed_command_result(data)
         runner = sample_runner(require_stats=False)
 
@@ -308,7 +308,7 @@ class RunSampleTests(unittest.TestCase):
         self.assertEqual(sample["failure_kind"], "reresolution")
 
     def test_success_path_reports_correct_result_and_strips_identity_fields(self):
-        data = {"snapshot_id": "s-1", "match": {"ref_id": "@e1", "role": "button"}}
+        data = {"snapshot_id": "s-1", "match": {"ref_id": "@s-1:e1", "role": "button"}}
         result = timed_command_result(data)
         events = [{"event": "locator.resolve", "complete": True, "query_stats": {"nodes": 6}}]
         runner = sample_runner(require_stats=True)

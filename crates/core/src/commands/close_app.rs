@@ -39,7 +39,7 @@ pub fn execute(args: CloseAppArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
 fn protected_process_error(app: &str) -> AppError {
     AppError::invalid_input_with_suggestion(
         format!("'{app}' is a protected system process and cannot be closed"),
-        "Target a regular application; session-critical processes (loginwindow, WindowServer, Dock, Finder, launchd) are never closed.",
+        "Target a regular application; session-critical processes are never closed.",
     )
 }
 

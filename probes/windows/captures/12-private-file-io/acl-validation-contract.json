@@ -1,0 +1,491 @@
+{
+    "Experiment":  "DACL of a plain leaf vs a leaf under a protected parent, plus the full ancestor chain",
+    "Question":  "does the leaf alone or the ancestor chain carry the meaningful restriction",
+    "PlainLeaf":  {
+                      "Path":  "<localappdata>\\Temp\\agent-desktop-probe-12-3668\\plain-leaf.txt",
+                      "IsDirectory":  false,
+                      "OwnerSid":  "S-1-5-32-544",
+                      "OwnerAccount":  "BUILTIN\\Administradores",
+                      "InheritanceProtected":  false,
+                      "AceCount":  3,
+                      "InheritedAceCount":  3,
+                      "ExplicitAceCount":  0,
+                      "UntrustedWriteGrants":  [
+
+                                               ],
+                      "Sddl":  "O:BAG:S-1-5-21-<redacted>-513D:(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;FA;;;LA)",
+                      "Aces":  [
+                                   {
+                                       "IdentitySid":  "S-1-5-18",
+                                       "IdentityAccount":  "NT AUTHORITY\\SYSTEM",
+                                       "Rights":  "FullControl",
+                                       "RightsMask":  "0x001F01FF",
+                                       "AccessType":  "Allow",
+                                       "InheritedAce":  true,
+                                       "InheritanceFlags":  "None",
+                                       "PropagationFlags":  "None"
+                                   },
+                                   {
+                                       "IdentitySid":  "S-1-5-32-544",
+                                       "IdentityAccount":  "BUILTIN\\Administradores",
+                                       "Rights":  "FullControl",
+                                       "RightsMask":  "0x001F01FF",
+                                       "AccessType":  "Allow",
+                                       "InheritedAce":  true,
+                                       "InheritanceFlags":  "None",
+                                       "PropagationFlags":  "None"
+                                   },
+                                   {
+                                       "IdentitySid":  "S-1-5-21-<redacted>-500",
+                                       "IdentityAccount":  "<machine>\\<user>",
+                                       "Rights":  "FullControl",
+                                       "RightsMask":  "0x001F01FF",
+                                       "AccessType":  "Allow",
+                                       "InheritedAce":  true,
+                                       "InheritanceFlags":  "None",
+                                       "PropagationFlags":  "None"
+                                   }
+                               ]
+                  },
+    "PlainLeafAllAcesInherited":  true,
+    "PlainAncestorChain":  [
+                               {
+                                   "Path":  "<localappdata>\\Temp\\agent-desktop-probe-12-3668",
+                                   "IsDirectory":  true,
+                                   "OwnerSid":  "S-1-5-32-544",
+                                   "OwnerAccount":  "BUILTIN\\Administradores",
+                                   "InheritanceProtected":  false,
+                                   "AceCount":  3,
+                                   "InheritedAceCount":  3,
+                                   "ExplicitAceCount":  0,
+                                   "UntrustedWriteGrants":  [
+
+                                                            ],
+                                   "Sddl":  "O:BAG:S-1-5-21-<redacted>-513D:(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;LA)",
+                                   "Aces":  [
+                                                {
+                                                    "IdentitySid":  "S-1-5-18",
+                                                    "IdentityAccount":  "NT AUTHORITY\\SYSTEM",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  true,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-32-544",
+                                                    "IdentityAccount":  "BUILTIN\\Administradores",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  true,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-21-<redacted>-500",
+                                                    "IdentityAccount":  "<machine>\\<user>",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  true,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                }
+                                            ]
+                               },
+                               {
+                                   "Path":  "<localappdata>\\Temp",
+                                   "IsDirectory":  true,
+                                   "OwnerSid":  "S-1-5-32-544",
+                                   "OwnerAccount":  "BUILTIN\\Administradores",
+                                   "InheritanceProtected":  false,
+                                   "AceCount":  3,
+                                   "InheritedAceCount":  3,
+                                   "ExplicitAceCount":  0,
+                                   "UntrustedWriteGrants":  [
+
+                                                            ],
+                                   "Sddl":  "O:BAG:S-1-5-21-<redacted>-513D:(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;LA)",
+                                   "Aces":  [
+                                                {
+                                                    "IdentitySid":  "S-1-5-18",
+                                                    "IdentityAccount":  "NT AUTHORITY\\SYSTEM",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  true,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-32-544",
+                                                    "IdentityAccount":  "BUILTIN\\Administradores",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  true,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-21-<redacted>-500",
+                                                    "IdentityAccount":  "<machine>\\<user>",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  true,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                }
+                                            ]
+                               },
+                               {
+                                   "Path":  "<localappdata>",
+                                   "IsDirectory":  true,
+                                   "OwnerSid":  "S-1-5-32-544",
+                                   "OwnerAccount":  "BUILTIN\\Administradores",
+                                   "InheritanceProtected":  false,
+                                   "AceCount":  3,
+                                   "InheritedAceCount":  3,
+                                   "ExplicitAceCount":  0,
+                                   "UntrustedWriteGrants":  [
+
+                                                            ],
+                                   "Sddl":  "O:BAG:S-1-5-21-<redacted>-513D:(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;LA)",
+                                   "Aces":  [
+                                                {
+                                                    "IdentitySid":  "S-1-5-18",
+                                                    "IdentityAccount":  "NT AUTHORITY\\SYSTEM",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  true,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-32-544",
+                                                    "IdentityAccount":  "BUILTIN\\Administradores",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  true,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-21-<redacted>-500",
+                                                    "IdentityAccount":  "<machine>\\<user>",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  true,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                }
+                                            ]
+                               },
+                               {
+                                   "Path":  "<userprofile>\\AppData",
+                                   "IsDirectory":  true,
+                                   "OwnerSid":  "S-1-5-32-544",
+                                   "OwnerAccount":  "BUILTIN\\Administradores",
+                                   "InheritanceProtected":  false,
+                                   "AceCount":  3,
+                                   "InheritedAceCount":  3,
+                                   "ExplicitAceCount":  0,
+                                   "UntrustedWriteGrants":  [
+
+                                                            ],
+                                   "Sddl":  "O:BAG:S-1-5-21-<redacted>-513D:(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;LA)",
+                                   "Aces":  [
+                                                {
+                                                    "IdentitySid":  "S-1-5-18",
+                                                    "IdentityAccount":  "NT AUTHORITY\\SYSTEM",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  true,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-32-544",
+                                                    "IdentityAccount":  "BUILTIN\\Administradores",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  true,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-21-<redacted>-500",
+                                                    "IdentityAccount":  "<machine>\\<user>",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  true,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                }
+                                            ]
+                               },
+                               {
+                                   "Path":  "<userprofile>",
+                                   "IsDirectory":  true,
+                                   "OwnerSid":  "S-1-5-32-544",
+                                   "OwnerAccount":  "BUILTIN\\Administradores",
+                                   "InheritanceProtected":  true,
+                                   "AceCount":  3,
+                                   "InheritedAceCount":  0,
+                                   "ExplicitAceCount":  3,
+                                   "UntrustedWriteGrants":  [
+
+                                                            ],
+                                   "Sddl":  "O:BAG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;LA)",
+                                   "Aces":  [
+                                                {
+                                                    "IdentitySid":  "S-1-5-18",
+                                                    "IdentityAccount":  "NT AUTHORITY\\SYSTEM",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-32-544",
+                                                    "IdentityAccount":  "BUILTIN\\Administradores",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-21-<redacted>-500",
+                                                    "IdentityAccount":  "<machine>\\<user>",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                }
+                                            ]
+                               },
+                               {
+                                   "Path":  "C:\\Users",
+                                   "IsDirectory":  true,
+                                   "OwnerSid":  "S-1-5-18",
+                                   "OwnerAccount":  "NT AUTHORITY\\SYSTEM",
+                                   "InheritanceProtected":  true,
+                                   "AceCount":  6,
+                                   "InheritedAceCount":  0,
+                                   "ExplicitAceCount":  6,
+                                   "UntrustedWriteGrants":  [
+
+                                                            ],
+                                   "Sddl":  "O:SYG:SYD:PAI(A;OICIIO;GXGR;;;WD)(A;;0x1200a9;;;WD)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;;0x1200a9;;;BU)(A;OICIIO;GXGR;;;BU)",
+                                   "Aces":  [
+                                                {
+                                                    "IdentitySid":  "S-1-1-0",
+                                                    "IdentityAccount":  "Todos",
+                                                    "Rights":  "-1610612736",
+                                                    "RightsMask":  "0xA0000000",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "InheritOnly"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-1-0",
+                                                    "IdentityAccount":  "Todos",
+                                                    "Rights":  "ReadAndExecute, Synchronize",
+                                                    "RightsMask":  "0x001200A9",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "None",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-18",
+                                                    "IdentityAccount":  "NT AUTHORITY\\SYSTEM",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-32-544",
+                                                    "IdentityAccount":  "BUILTIN\\Administradores",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-32-545",
+                                                    "IdentityAccount":  "BUILTIN\\Usuarios",
+                                                    "Rights":  "ReadAndExecute, Synchronize",
+                                                    "RightsMask":  "0x001200A9",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "None",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-32-545",
+                                                    "IdentityAccount":  "BUILTIN\\Usuarios",
+                                                    "Rights":  "-1610612736",
+                                                    "RightsMask":  "0xA0000000",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "InheritOnly"
+                                                }
+                                            ]
+                               },
+                               {
+                                   "Path":  "C:\\",
+                                   "IsDirectory":  true,
+                                   "OwnerSid":  "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+                                   "OwnerAccount":  "NT SERVICE\\TrustedInstaller",
+                                   "InheritanceProtected":  true,
+                                   "AceCount":  6,
+                                   "InheritedAceCount":  0,
+                                   "ExplicitAceCount":  6,
+                                   "UntrustedWriteGrants":  [
+                                                                "BUILTIN\\Usuarios"
+                                                            ],
+                                   "Sddl":  "O:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464G:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464D:PAI(A;OICIIO;GA;;;CO)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;CI;LC;;;BU)(A;CIIO;DC;;;BU)(A;OICI;0x1200a9;;;BU)",
+                                   "Aces":  [
+                                                {
+                                                    "IdentitySid":  "S-1-3-0",
+                                                    "IdentityAccount":  "CREATOR OWNER",
+                                                    "Rights":  "268435456",
+                                                    "RightsMask":  "0x10000000",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "InheritOnly"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-18",
+                                                    "IdentityAccount":  "NT AUTHORITY\\SYSTEM",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-32-544",
+                                                    "IdentityAccount":  "BUILTIN\\Administradores",
+                                                    "Rights":  "FullControl",
+                                                    "RightsMask":  "0x001F01FF",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-32-545",
+                                                    "IdentityAccount":  "BUILTIN\\Usuarios",
+                                                    "Rights":  "AppendData",
+                                                    "RightsMask":  "0x00000004",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "ContainerInherit",
+                                                    "PropagationFlags":  "None"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-32-545",
+                                                    "IdentityAccount":  "BUILTIN\\Usuarios",
+                                                    "Rights":  "CreateFiles",
+                                                    "RightsMask":  "0x00000002",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "ContainerInherit",
+                                                    "PropagationFlags":  "InheritOnly"
+                                                },
+                                                {
+                                                    "IdentitySid":  "S-1-5-32-545",
+                                                    "IdentityAccount":  "BUILTIN\\Usuarios",
+                                                    "Rights":  "ReadAndExecute, Synchronize",
+                                                    "RightsMask":  "0x001200A9",
+                                                    "AccessType":  "Allow",
+                                                    "InheritedAce":  false,
+                                                    "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                                    "PropagationFlags":  "None"
+                                                }
+                                            ]
+                               }
+                           ],
+    "PermissiveAncestors":  [
+                                "C:\\ -\u003e BUILTIN\\Usuarios"
+                            ],
+    "ProtectedParent":  {
+                            "Path":  "<localappdata>\\Temp\\agent-desktop-probe-12-3668\\protected-parent",
+                            "IsDirectory":  true,
+                            "OwnerSid":  "S-1-5-32-544",
+                            "OwnerAccount":  "BUILTIN\\Administradores",
+                            "InheritanceProtected":  true,
+                            "AceCount":  1,
+                            "InheritedAceCount":  0,
+                            "ExplicitAceCount":  1,
+                            "UntrustedWriteGrants":  [
+
+                                                     ],
+                            "Sddl":  "O:BAG:S-1-5-21-<redacted>-513D:PAI(A;OICI;FA;;;LA)",
+                            "Aces":  [
+                                         {
+                                             "IdentitySid":  "S-1-5-21-<redacted>-500",
+                                             "IdentityAccount":  "<machine>\\<user>",
+                                             "Rights":  "FullControl",
+                                             "RightsMask":  "0x001F01FF",
+                                             "AccessType":  "Allow",
+                                             "InheritedAce":  false,
+                                             "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                                             "PropagationFlags":  "None"
+                                         }
+                                     ]
+                        },
+    "ProtectedLeaf":  {
+                          "Path":  "<localappdata>\\Temp\\agent-desktop-probe-12-3668\\protected-parent\\protected-leaf.txt",
+                          "IsDirectory":  false,
+                          "OwnerSid":  "S-1-5-32-544",
+                          "OwnerAccount":  "BUILTIN\\Administradores",
+                          "InheritanceProtected":  false,
+                          "AceCount":  1,
+                          "InheritedAceCount":  1,
+                          "ExplicitAceCount":  0,
+                          "UntrustedWriteGrants":  [
+
+                                                   ],
+                          "Sddl":  "O:BAG:S-1-5-21-<redacted>-513D:AI(A;ID;FA;;;LA)",
+                          "Aces":  [
+                                       {
+                                           "IdentitySid":  "S-1-5-21-<redacted>-500",
+                                           "IdentityAccount":  "<machine>\\<user>",
+                                           "Rights":  "FullControl",
+                                           "RightsMask":  "0x001F01FF",
+                                           "AccessType":  "Allow",
+                                           "InheritedAce":  true,
+                                           "InheritanceFlags":  "None",
+                                           "PropagationFlags":  "None"
+                                       }
+                                   ]
+                      },
+    "ProtectedLeafAllAcesInherited":  true
+}

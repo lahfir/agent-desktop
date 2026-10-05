@@ -80,14 +80,7 @@ fn stale_ref_returns_ok_false_error_envelope() {
         let action = default_action();
         let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
 
-        let rc = ad_execute_by_ref(
-            adapter,
-            ref_id.as_ptr(),
-            std::ptr::null(),
-            &action,
-            0,
-            &mut out,
-        );
+        let rc = ad_execute_by_ref(adapter, ref_id.as_ptr(), &action, 0, &mut out);
 
         let rc_i32 = rc as i32;
         assert!(
@@ -141,8 +134,8 @@ fn stale_ref_returns_ok_false_error_envelope() {
 ///
 /// **Deferred CI proof**: the full-loop proof — real `ad_snapshot` producing
 /// `@e` refs consumed by `ad_execute_by_ref` against a live app at the C
-/// boundary — is tracked as plan unit U9 / Phase B: an external-consumer smoke
-/// harness (Python ctypes) that runs in the macOS E2E environment.
+/// boundary — is deferred to an external-consumer smoke harness (Python
+/// ctypes) that runs in the macOS E2E environment.
 ///
 /// **Manual execution** (requires AX permission + a running target app):
 /// ```text
@@ -184,14 +177,7 @@ fn snapshot_execute_by_ref_live_roundtrip() {
         let action = default_action();
         let mut exec_out: *mut std::os::raw::c_char = std::ptr::null_mut();
 
-        let exec_rc = ad_execute_by_ref(
-            adapter,
-            ref_cstr.as_ptr(),
-            std::ptr::null(),
-            &action,
-            0,
-            &mut exec_out,
-        );
+        let exec_rc = ad_execute_by_ref(adapter, ref_cstr.as_ptr(), &action, 0, &mut exec_out);
 
         assert!(
             !exec_out.is_null(),
@@ -221,36 +207,11 @@ fn snapshot_execute_by_ref_live_roundtrip() {
 }
 
 fn find_first_ref_in_tree(snap: &serde_json::Value) -> Option<String> {
-    search_refs(snap)
-}
-
-fn search_refs(val: &serde_json::Value) -> Option<String> {
-    match val {
-        serde_json::Value::Object(map) => {
-            if let Some(r) = map.get("ref") {
-                if let Some(s) = r.as_str() {
-                    if s.starts_with("@e") || (s.starts_with("@s") && s.contains(":e")) {
-                        return Some(s.to_owned());
-                    }
-                }
-            }
-            for v in map.values() {
-                if let Some(found) = search_refs(v) {
-                    return Some(found);
-                }
-            }
-            None
-        }
-        serde_json::Value::Array(arr) => {
-            for v in arr {
-                if let Some(found) = search_refs(v) {
-                    return Some(found);
-                }
-            }
-            None
-        }
-        _ => None,
-    }
+    let mut searched = 0usize;
+    common::find_ref_in_tree(snap, &mut searched, &|value| {
+        let s = value.get("ref")?.as_str()?;
+        (s.starts_with("@e") || (s.starts_with("@s") && s.contains(":e"))).then(|| s.to_owned())
+    })
 }
 
 fn with_adapter_raw<F: FnOnce(*mut common::AdAdapter)>(body: F) {

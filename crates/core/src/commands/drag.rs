@@ -35,7 +35,6 @@ pub enum WaitForScope {
 pub struct DragArgs {
     pub from: DragEndpoint,
     pub to: DragEndpoint,
-    pub snapshot_id: Option<String>,
     pub duration_ms: Option<u64>,
     pub drop_delay_ms: Option<u64>,
     pub timeout_ms: Option<u64>,
@@ -53,14 +52,12 @@ pub fn execute(
     let from_args = PointResolveArgs {
         ref_id: args.from.ref_id.as_deref(),
         xy: args.from.xy,
-        snapshot_id: args.snapshot_id.as_deref(),
         missing_input_message: "Provide --from <ref> or --from-xy x,y",
         headed_requirement: crate::HeadedRequirement::FocusedWindowAndCursor,
     };
     let to_args = PointResolveArgs {
         ref_id: args.to.ref_id.as_deref(),
         xy: args.to.xy,
-        snapshot_id: args.snapshot_id.as_deref(),
         missing_input_message: "Provide --to <ref> or --to-xy x,y",
         headed_requirement: crate::HeadedRequirement::None,
     };

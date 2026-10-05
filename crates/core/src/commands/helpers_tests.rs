@@ -159,8 +159,7 @@ fn resolved_native_handle_drops_payload_once() {
 
     {
         let (_entry, handle) = resolve_ref_with_context(
-            "@e1",
-            Some(&snapshot_id),
+            &format!("@{snapshot_id}:e1"),
             &adapter,
             &CommandContext::default(),
         )
@@ -186,8 +185,7 @@ fn explicit_session_snapshot_resolves_with_matching_session_context() {
     };
 
     let (_entry, handle) = resolve_ref_with_context(
-        "@e1",
-        Some(&snapshot_id),
+        &format!("@{snapshot_id}:e1"),
         &adapter,
         &CommandContext::new(Some("agent-a".into()), None, false).unwrap(),
     )
@@ -204,12 +202,7 @@ fn missing_snapshot_keeps_snapshot_not_found_error() {
         drops: Arc::new(AtomicU32::new(0)),
     };
 
-    let err = match resolve_ref_with_context(
-        "@e1",
-        Some("smissing"),
-        &adapter,
-        &CommandContext::default(),
-    ) {
+    let err = match resolve_ref_with_context("@smissing:e1", &adapter, &CommandContext::default()) {
         Ok(_) => panic!("expected missing snapshot to fail"),
         Err(err) => err,
     };

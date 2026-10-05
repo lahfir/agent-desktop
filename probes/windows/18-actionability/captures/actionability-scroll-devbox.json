@@ -1,0 +1,208 @@
+{
+    "scroll":  {
+                   "already_visible":  {
+                                           "bounds_after":  "62,210,399,20",
+                                           "bounds_before":  "62,210,399,20",
+                                           "case":  "already_visible",
+                                           "geometry_moved":  false,
+                                           "invoke":  {
+                                                          "ok":  true
+                                                      },
+                                           "is_offscreen_after":  false,
+                                           "is_offscreen_before":  false,
+                                           "present_in_walk":  true,
+                                           "present_via_findall":  true,
+                                           "realization":  null,
+                                           "scroll_item_available":  true,
+                                           "target":  {
+                                                          "automation_id_digest":  "bb06bd9624d9af2c",
+                                                          "automation_id_len":  15,
+                                                          "bounds":  "62,210,399,20",
+                                                          "control_type":  50007,
+                                                          "has_area":  true,
+                                                          "is_offscreen":  false,
+                                                          "native_hwnd_nonzero":  false,
+                                                          "scroll_item_available":  true
+                                                      },
+                                           "virtualization_note":  "WPF ListBox default VirtualizingStackPanel Recycling"
+                                       },
+                   "below_fold":  {
+                                      "bounds_after":  "62,310,399,20",
+                                      "bounds_before":  "62,350,399,20",
+                                      "case":  "below_fold",
+                                      "geometry_moved":  true,
+                                      "invoke":  {
+                                                     "ok":  true
+                                                 },
+                                      "is_offscreen_after":  false,
+                                      "is_offscreen_before":  true,
+                                      "present_in_walk":  true,
+                                      "present_via_findall":  true,
+                                      "realization":  {
+                                                          "at_scroll_top_present":  false,
+                                                          "scroll_to_realize":  {
+                                                                                    "ok":  true,
+                                                                                    "vertical_percent":  70.0
+                                                                                }
+                                                      },
+                                      "scroll_item_available":  true,
+                                      "target":  {
+                                                     "automation_id_digest":  "bb10cf9624e22247",
+                                                     "automation_id_len":  15,
+                                                     "bounds":  "62,310,399,20",
+                                                     "control_type":  50007,
+                                                     "has_area":  true,
+                                                     "is_offscreen":  false,
+                                                     "native_hwnd_nonzero":  false,
+                                                     "scroll_item_available":  true
+                                                 },
+                                      "virtualization_note":  "WPF ListBox default VirtualizingStackPanel Recycling"
+                                  },
+                   "fixture":  "ScratchWpf tall ListBox",
+                   "killed_provider":  {
+                                           "note":  "killed-provider staged by orchestrator after this capture",
+                                           "staged_here":  false
+                                       },
+                   "minimized_window":  {
+                                            "bounds_after":  "-31986,-31861,399,20",
+                                            "bounds_before":  "-31986,-32080,399,19",
+                                            "case":  "minimized_window",
+                                            "geometry_moved":  true,
+                                            "invoke":  {
+                                                           "ok":  true
+                                                       },
+                                            "is_offscreen_after":  false,
+                                            "is_offscreen_before":  true,
+                                            "present_in_walk":  true,
+                                            "present_via_findall":  true,
+                                            "realization":  null,
+                                            "scroll_item_available":  true,
+                                            "target":  {
+                                                           "automation_id_digest":  "bb06be9624d9b0df",
+                                                           "automation_id_len":  15,
+                                                           "bounds":  "-31986,-31861,399,20",
+                                                           "control_type":  50007,
+                                                           "has_area":  true,
+                                                           "is_offscreen":  false,
+                                                           "native_hwnd_nonzero":  false,
+                                                           "scroll_item_available":  true
+                                                       },
+                                            "virtualization_note":  "WPF ListBox default VirtualizingStackPanel Recycling"
+                                        },
+                   "stack":  "uia3-com-product-CUIAutomation8",
+                   "straddling":  {
+                                      "automation_id_digest":  "bb0a3f9624dcc1e9",
+                                      "bounding_rectangle_equals_intersection":  false,
+                                      "intersection":  "62,208,399,2",
+                                      "item_bounds":  "62,190,399,20",
+                                      "ktd4_branch":  "provider_rect_extends_outside_viewport",
+                                      "list_bounds":  "60,208,420,140",
+                                      "out_of_viewport_candidate_hits":  [
+                                                                             {
+                                                                                 "hit":  {
+                                                                                             "hit":  {
+                                                                                                         "automation_id_digest":  "85687fa0833f6adb",
+                                                                                                         "automation_id_len":  24,
+                                                                                                         "bounds":  "60,179,246,36",
+                                                                                                         "control_type":  50007,
+                                                                                                         "has_area":  true,
+                                                                                                         "is_offscreen":  false,
+                                                                                                         "native_hwnd_nonzero":  false,
+                                                                                                         "scroll_item_available":  true
+                                                                                                     },
+                                                                                             "ok":  true
+                                                                                         },
+                                                                                 "point":  "261,200"
+                                                                             },
+                                                                             {
+                                                                                 "hit":  {
+                                                                                             "hit":  {
+                                                                                                         "automation_id_digest":  "85687fa0833f6adb",
+                                                                                                         "automation_id_len":  24,
+                                                                                                         "bounds":  "60,179,246,36",
+                                                                                                         "control_type":  50007,
+                                                                                                         "has_area":  true,
+                                                                                                         "is_offscreen":  false,
+                                                                                                         "native_hwnd_nonzero":  false,
+                                                                                                         "scroll_item_available":  true
+                                                                                                     },
+                                                                                             "ok":  true
+                                                                                         },
+                                                                                 "point":  "161,195"
+                                                                             },
+                                                                             {
+                                                                                 "hit":  {
+                                                                                             "hit":  {
+                                                                                                         "automation_id_digest":  "0d91734c28229d19",
+                                                                                                         "automation_id_len":  63,
+                                                                                                         "bounds":  "324,149,100,100",
+                                                                                                         "control_type":  50007,
+                                                                                                         "has_area":  true,
+                                                                                                         "is_offscreen":  false,
+                                                                                                         "native_hwnd_nonzero":  false,
+                                                                                                         "scroll_item_available":  true
+                                                                                                     },
+                                                                                             "ok":  true
+                                                                                         },
+                                                                                 "point":  "361,195"
+                                                                             },
+                                                                             {
+                                                                                 "hit":  {
+                                                                                             "hit":  {
+                                                                                                         "automation_id_digest":  "85687fa0833f6adb",
+                                                                                                         "automation_id_len":  24,
+                                                                                                         "bounds":  "60,179,246,36",
+                                                                                                         "control_type":  50007,
+                                                                                                         "has_area":  true,
+                                                                                                         "is_offscreen":  false,
+                                                                                                         "native_hwnd_nonzero":  false,
+                                                                                                         "scroll_item_available":  true
+                                                                                                     },
+                                                                                             "ok":  true
+                                                                                         },
+                                                                                 "point":  "161,205"
+                                                                             },
+                                                                             {
+                                                                                 "hit":  {
+                                                                                             "hit":  {
+                                                                                                         "automation_id_digest":  "0d91734c28229d19",
+                                                                                                         "automation_id_len":  63,
+                                                                                                         "bounds":  "324,149,100,100",
+                                                                                                         "control_type":  50007,
+                                                                                                         "has_area":  true,
+                                                                                                         "is_offscreen":  false,
+                                                                                                         "native_hwnd_nonzero":  false,
+                                                                                                         "scroll_item_available":  true
+                                                                                                     },
+                                                                                             "ok":  true
+                                                                                         },
+                                                                                 "point":  "361,205"
+                                                                             }
+                                                                         ],
+                                      "provider_rect_extends_outside_viewport":  true,
+                                      "straddler_found":  true
+                                  }
+               },
+    "killed_provider":  {
+                            "bounds_before":  "522,370,399,20",
+                            "element_from_point_after_kill":  {
+                                                                  "ok":  true
+                                                              },
+                            "invoke_after_kill":  {
+                                                      "failure":  {
+                                                                      "code":  -2147220991,
+                                                                      "result_hex":  "0x80040201"
+                                                                  },
+                                                      "ok":  false
+                                                  },
+                            "is_offscreen_after_kill":  null,
+                            "ktd5_arm":  "delivered_unverified",
+                            "observation_after_kill":  {
+                                                           "ok":  false,
+                                                           "read_failed":  true
+                                                       },
+                            "observation_branch":  "errored_observation",
+                            "present_in_walk":  true,
+                            "scroll_item_available_before_kill":  true
+                        }
+}

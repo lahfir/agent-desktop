@@ -42,6 +42,7 @@ mod resolve_errors;
 mod resolve_read_context;
 mod resolve_roots;
 mod resolve_search;
+mod resolve_source_app;
 pub(crate) mod retained;
 mod retained_store;
 pub(crate) mod roles;
@@ -50,6 +51,7 @@ pub(crate) mod surface_inventory;
 pub(crate) mod surface_read;
 pub(crate) mod surfaces;
 pub(crate) mod text_attributes;
+pub(crate) mod window_surface;
 
 pub(crate) use attributes::{copy_bool_attr, copy_value_typed};
 pub(crate) use ax_element::AXElement;

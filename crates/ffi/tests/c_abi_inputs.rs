@@ -1,17 +1,17 @@
 mod common;
 
 use common::{
-    AdNativeHandle, AdResult, AdWindowInfo, AdWindowList, CStr, ad_last_error_message,
-    ad_launch_app, ad_list_windows, ad_resolve_element, ad_resolve_element_exact, c_char,
-    default_exact_ref_entry, default_ref_entry, with_adapter,
+    AdExactWindowInfo, AdExactWindowList, AdNativeHandle, AdResult, CStr, ad_last_error_message,
+    ad_launch_app_exact, ad_list_windows_exact, ad_resolve_element_exact, c_char,
+    default_exact_ref_entry, with_adapter,
 };
 
 #[test]
 fn invalid_utf8_filter_rejected_not_silently_widened() {
     with_adapter(|adapter| unsafe {
         let bad: [u8; 2] = [0xC3, 0x00];
-        let mut list: *mut AdWindowList = std::ptr::null_mut();
-        let rc = ad_list_windows(adapter, bad.as_ptr() as *const c_char, false, &mut list);
+        let mut list: *mut AdExactWindowList = std::ptr::null_mut();
+        let rc = ad_list_windows_exact(adapter, bad.as_ptr() as *const c_char, false, &mut list);
         assert_eq!(rc, AdResult::ErrInvalidArgs);
         assert!(list.is_null());
     });
@@ -21,23 +21,9 @@ fn invalid_utf8_filter_rejected_not_silently_widened() {
 fn invalid_utf8_app_id_rejected() {
     with_adapter(|adapter| unsafe {
         let bad: [u8; 2] = [0xC3, 0];
-        let mut out: AdWindowInfo = std::mem::zeroed();
-        let rc = ad_launch_app(adapter, bad.as_ptr() as *const c_char, 0, &mut out);
+        let mut out: AdExactWindowInfo = std::mem::zeroed();
+        let rc = ad_launch_app_exact(adapter, bad.as_ptr() as *const c_char, 0, &mut out);
         assert_eq!(rc, AdResult::ErrInvalidArgs);
-    });
-}
-
-#[test]
-fn legacy_resolve_fails_closed_before_role_validation() {
-    with_adapter(|adapter| unsafe {
-        let mut out = AdNativeHandle {
-            ptr: std::ptr::null(),
-        };
-        let rc = ad_resolve_element(adapter, &default_ref_entry(), &mut out);
-        assert_eq!(rc, AdResult::ErrInvalidArgs);
-        assert!(out.ptr.is_null());
-        let message = CStr::from_ptr(ad_last_error_message()).to_string_lossy();
-        assert!(message.contains("legacy AdRefEntry lacks"));
     });
 }
 

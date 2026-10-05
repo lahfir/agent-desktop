@@ -59,7 +59,6 @@ pub(super) fn type_text(
     type_text_command::execute(
         type_text_command::TypeArgs {
             ref_id: args.ref_id,
-            snapshot_id: args.snapshot,
             text: args.text,
             timeout_ms: helpers::normalize_action_timeout_ms(args.timeout_ms),
         },
@@ -76,7 +75,6 @@ pub(super) fn set_value(
     set_value_command::execute(
         set_value_command::SetValueArgs {
             ref_id: args.ref_id,
-            snapshot_id: args.snapshot,
             value: args.value,
             timeout_ms: helpers::normalize_action_timeout_ms(args.timeout_ms),
         },
@@ -149,7 +147,6 @@ pub(super) fn select(
     select_command::execute(
         select_command::SelectArgs {
             ref_id: args.ref_id,
-            snapshot_id: args.snapshot,
             value: args.value,
             timeout_ms: helpers::normalize_action_timeout_ms(args.timeout_ms),
         },
@@ -166,7 +163,6 @@ pub(super) fn scroll(
     scroll_command::execute(
         scroll_command::ScrollArgs {
             ref_id: args.ref_id,
-            snapshot_id: args.snapshot,
             direction: parse_direction(&args.direction)?,
             amount: args.amount,
             timeout_ms: helpers::normalize_action_timeout_ms(args.timeout_ms),
@@ -187,7 +183,6 @@ pub(super) fn scroll_to(
 fn ref_args(args: RefArgs) -> helpers::RefArgs {
     helpers::RefArgs {
         ref_id: args.ref_id,
-        snapshot_id: args.snapshot_id,
         timeout_ms: helpers::normalize_action_timeout_ms(args.timeout_ms),
     }
 }

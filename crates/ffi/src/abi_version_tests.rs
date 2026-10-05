@@ -1,8 +1,8 @@
 use super::*;
 
 #[test]
-fn abi_major_covers_the_exact_window_layout() {
-    assert_eq!(AD_ABI_VERSION_MAJOR, 4);
+fn abi_major_covers_the_removal_of_the_legacy_entrypoints() {
+    assert_eq!(AD_ABI_VERSION_MAJOR, 5);
 }
 
 #[test]

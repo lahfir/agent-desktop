@@ -316,7 +316,11 @@ fn adapter_contract_wait_element_uses_session_snapshot() {
         ref_action_contract::run_wait_element_command(&adapter, entry(bounds), &context).unwrap();
 
     assert_eq!(result["found"], true);
-    assert_eq!(result["ref"], "@e1");
+    assert!(
+        result["ref"]
+            .as_str()
+            .is_some_and(|ref_id| ref_id.starts_with("@s") && ref_id.ends_with(":e1"))
+    );
     assert_eq!(result["predicate"], "exists");
 }
 

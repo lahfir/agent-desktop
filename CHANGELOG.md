@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes
+
+* Preserve macOS applications with missing localized display names in the complete inventory, using their executable name or bundle identifier. Such applications no longer block unrelated app-scoped snapshots, window lists, and screenshots.
+
 ## [0.9.4](https://github.com/lahfir/agent-desktop/compare/v0.9.3...v0.9.4) (2026-09-23)
 
 

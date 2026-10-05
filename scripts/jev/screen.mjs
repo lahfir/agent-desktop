@@ -20,6 +20,11 @@ export const collect = (tree) => {
 
 /** A sheet, menu or alert owns input while it is up, and the window tree marks
  *  its elements offscreen. Reading the surface is the only way to act on it. */
+export const outsideWindow = (data, windowId) => {
+  const ids = [data?.window?.id, data?.surface?.window_id].filter((id) => id !== undefined && id !== null);
+  return ids.length === 0 || ids.some((id) => id !== windowId);
+};
+
 export const overlayRole = (tree) => {
   let found = null;
   const walk = (n) => {

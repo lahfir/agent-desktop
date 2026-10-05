@@ -2,22 +2,6 @@ use crate::convert::string::{optional_adapter_string, required_adapter_string};
 use crate::types::{AdExactWindowInfo, AdWindowInfo};
 use agent_desktop_core::{AdapterError, Rect, WindowInfo};
 
-/// Converts an `AdWindowInfo` from C into the core `WindowInfo`.
-///
-/// The `id` and `title` fields are mandatory in the ABI contract — null
-/// or non-UTF-8 inputs would silently coerce to an empty string and
-/// match the wrong window. The function returns `InvalidArgs` so the
-/// caller can propagate the error to the consumer instead.
-///
-/// `app_name` is allowed to be empty (some Electron apps report blank
-/// window owners) and is filled in from the platform adapter as needed.
-pub(crate) fn ad_window_to_core(_w: &AdWindowInfo) -> Result<WindowInfo, AdapterError> {
-    Err(AdapterError::new(
-        agent_desktop_core::ErrorCode::InvalidArgs,
-        "legacy AdWindowInfo lacks process-generation evidence; use AdExactWindowInfo",
-    ))
-}
-
 pub(crate) fn ad_exact_window_to_core(
     exact: &AdExactWindowInfo,
 ) -> Result<WindowInfo, AdapterError> {
@@ -114,15 +98,6 @@ mod tests {
 
         assert_eq!(err.code, ErrorCode::InvalidArgs);
         assert!(err.message.contains("window app_name is not valid UTF-8"));
-    }
-
-    #[test]
-    fn legacy_window_fails_closed_without_process_generation() {
-        let window = unsafe { std::mem::zeroed::<AdWindowInfo>() };
-        let error = ad_window_to_core(&window).unwrap_err();
-
-        assert_eq!(error.code, ErrorCode::InvalidArgs);
-        assert!(error.message.contains("AdExactWindowInfo"));
     }
 
     #[test]

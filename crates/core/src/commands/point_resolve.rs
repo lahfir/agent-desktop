@@ -7,7 +7,6 @@ use crate::{
 pub(crate) struct PointResolveArgs<'a> {
     pub ref_id: Option<&'a str>,
     pub xy: Option<(f64, f64)>,
-    pub snapshot_id: Option<&'a str>,
     pub missing_input_message: &'a str,
     pub headed_requirement: crate::HeadedRequirement,
 }
@@ -42,7 +41,7 @@ pub(crate) fn resolve_point_from_ref_or_xy_with_context(
     _lease: &crate::InteractionLease,
 ) -> Result<ResolvedPoint, AppError> {
     if let Some(ref_id) = args.ref_id {
-        let (entry, handle) = resolve_ref_with_context(ref_id, args.snapshot_id, adapter, context)?;
+        let (entry, handle) = resolve_ref_with_context(ref_id, adapter, context)?;
         let bounds = adapter
             .get_element_bounds(&handle, deadline)?
             .ok_or_else(|| AppError::invalid_input(format!("Element {ref_id} has no bounds")))?;

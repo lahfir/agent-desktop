@@ -18,7 +18,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { collect, describe, label, offerable, overlayRole } from "./screen.mjs";
+import { collect, describe, label, offerable, outsideWindow, overlayRole } from "./screen.mjs";
 import { NO_MATCH, resolveModel, typesafeApi, route } from "./policy.mjs";
 
 export { collect, describe, label, offerable, overlayRole, route };
@@ -199,12 +199,19 @@ const fail = (message, extra = {}) => {
 const main = async (argv) => {
   const flag = (n) => {
     const i = argv.indexOf(`--${n}`);
-    return i === -1 ? null : argv[i + 1];
+    if (i === -1) return null;
+    const value = argv[i + 1];
+    if (value === undefined || value.startsWith("--")) {
+      console.error(`--${n} needs a value`);
+      process.exit(2);
+    }
+    return value;
   };
   const bools = new Set(["--execute", "--raw"]);
   const app = flag("app");
   const text = flag("text");
   const root = flag("root");
+  const windowId = flag("window-id");
   const execute = argv.includes("--execute");
   const bin = flag("bin") ?? (existsSync(join(REPO, "target/release/agent-desktop"))
     ? join(REPO, "target/release/agent-desktop")
@@ -214,24 +221,32 @@ const main = async (argv) => {
     .join(" ");
 
   if (!app || !intent) {
-    console.error('usage: act.mjs --app <name> [--text "…"] [--root @ref] [--execute] "<intent>"');
+    console.error('usage: act.mjs --app <name> [--window-id <id>] [--text "…"] [--root @ref] [--execute] "<intent>"');
     process.exit(2);
   }
   if (!process.env.TYPESAFE_API_KEY) fail("TYPESAFE_API_KEY unset");
 
-  const base = ["snapshot", "--app", app, "-i", "--compact", "--include-bounds"];
+  const scope = windowId ? ["--app", app, "--window-id", windowId] : ["--app", app];
+  const base = ["snapshot", ...scope, "-i", "--compact", "--include-bounds"];
   let snap = run(bin, root ? [...base, "--root", root] : base);
   if (!snap.ok) fail(`snapshot failed: ${snap.error?.code}`, { detail: snap.error?.message });
+  if (root && windowId && outsideWindow(snap.data, windowId)) {
+    fail("root_outside_window", { detail: `the region is not in window ${windowId}` });
+  }
 
   const overlay = overlayRole(snap.data.tree);
   if (overlay && !root) {
-    const surfaceSnap = run(bin, ["snapshot", "--app", app, "--surface", overlay, "-i", "--compact", "--include-bounds"]);
+    const surfaceSnap = run(bin, ["snapshot", ...scope, "--surface", overlay, "-i", "--compact", "--include-bounds"]);
+    if (surfaceSnap.ok && windowId && outsideWindow(surfaceSnap.data, windowId)) {
+      fail("surface_outside_window", { detail: `the ${overlay} is not in window ${windowId}` });
+    }
     if (surfaceSnap.ok) snap = surfaceSnap;
   }
 
   const surface = {
     app: snap.data.app ?? app,
     window: snap.data.window?.title ?? null,
+    window_id: snap.data.window?.id ?? windowId,
     overlay,
   };
   let candidates = offerable(collect(snap.data.tree));
@@ -275,6 +290,7 @@ const main = async (argv) => {
     intent,
     app: surface.app,
     window: surface.window,
+    window_id: surface.window_id,
     surface: overlay ?? "window",
     element: node
       ? { ref: node.ref_id, role: node.role, name: node.name ?? node.description ?? null, where: node.path.join(" > ") }

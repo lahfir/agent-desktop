@@ -1,167 +1,36 @@
-OBSERVATION
-  snapshot                   Accessibility tree as JSON with @ref IDs
-  screenshot                 PNG screenshot of an application window
-  find                       Search elements by role, name, value, or text (--limit defaults to 50)
-  get <ref> --property <p>   Read element property: text, value, title, bounds, role, states
-  is <ref> --property <p>    Check state: visible, enabled, checked, focused, expanded, selected
-  list-surfaces              Available surfaces for an app
+THE LOOP
+  agent-desktop snapshot --app Finder --skeleton -i --compact
+  agent-desktop snapshot --root @s8f3k2p9:e3 -i --compact
+  agent-desktop click @s8f3k2p9:e5
+  agent-desktop wait --element @s8f3k2p9:e9 --predicate actionable --timeout 5000
+  Observe, act on a ref, then observe again to verify. Use `wait` instead of
+  sleeping, and `wait --event <kind>` for window, app, focus or surface changes.
 
-INTERACTION
-  click <ref>                Click element (kAXPress)
-  double-click <ref>         Physical double-click; requires --headed
-  triple-click <ref>         Triple-click element; POLICY_DENIED if physical input is disabled
-  right-click <ref>          Right-click; includes menu when verified
-  type <ref> <text>          Insert text; may use focus fallback only for explicit policy paths
-  set-value <ref> <value>    Set value attribute directly
-  clear <ref>                Clear element value to empty string
-  focus <ref>                Set keyboard focus
-  select <ref> <value>       Select option in list or dropdown
-  toggle <ref>               Toggle checkbox or switch
-  check <ref>                Set checkbox/switch to checked (idempotent)
-  uncheck <ref>              Set checkbox/switch to unchecked (idempotent)
-  expand <ref>               Expand disclosure triangle or tree item
-  collapse <ref>             Collapse disclosure triangle or tree item
-  scroll <ref>               Scroll element (--direction, --amount)
-  scroll-to <ref>            Scroll element into visible area
+REF IDs
+  snapshot emits qualified refs such as @s8f3k2p9:e1 in depth-first order; they
+  embed their snapshot ID, and a bare @eN is rejected.
+  Refs go stale when the UI changes: STALE_REF and AMBIGUOUS_TARGET mean
+  snapshot again and pick a fresh ref. A ref action never guesses between
+  candidates. `session start` returns an ID but does not activate later
+  processes: pass it with --session or AGENT_DESKTOP_SESSION.
+  On Windows, quote every ref in PowerShell ('@s8f3k2p9:e1'): a bare @token
+  is its splatting operator and the argument disappears.
 
-KEYBOARD
-  press <combo>              Key combo: return, escape, cmd+c, shift+tab ...
-  key-down <combo>           Hold a key or modifier down
-  key-up <combo>             Release a held key or modifier
+RESULTS AND RETRIES
+  Every response is one JSON envelope with ok and data, or ok and error. An
+  action reports data.disposition, or error.disposition when it fails; read
+  disposition.delivery and disposition.retry before acting again, and repeat
+  an action only when retry is "safe". Ref actions are headless by default;
+  --headed allows focus changes and real pointer and keyboard input.
 
-MOUSE
-  hover <ref|--xy>           Move cursor to element or coordinates (requires --headed)
-  drag                       Drag between points; live cursor trail fades after release (requires --headed)
-  mouse-move --xy x,y        Move cursor to absolute coordinates (requires --headed)
-  mouse-click --xy x,y       Click at coordinates (--button, --count; requires --headed)
-  mouse-down --xy x,y        Press mouse button at coordinates (requires --headed)
-  mouse-up --xy x,y          Release mouse button at coordinates (requires --headed)
-  mouse-wheel --x X --y Y    Post wheel deltas at coordinates (--dx, --dy; requires --headed)
-
-APP & WINDOW
-  launch <app>               Launch app and wait until window is visible
-  close-app <app>            Quit app gracefully (--force to terminate)
-  list-windows               All visible windows (--app to filter)
-  list-displays              Displays and screenshot indices
-  list-apps                  All running GUI applications (--app substring filter)
-  focus-window               Bring window to front and confirm focus
-  resize-window              Resize window (--width, --height)
-  move-window                Move window (--x, --y)
-  minimize                   Minimize window
-  maximize                   Maximize/zoom window
-  restore                    Restore minimized/maximized window
-
-NOTIFICATIONS
-  list-notifications         List notifications from Notification Center
-  dismiss-notification <n>   Dismiss notification by index
-  dismiss-all-notifications  Dismiss all notifications
-  notification-action <n> <action>  Click action button on notification
-
-CLIPBOARD
-  clipboard-get              Read text, image, or file URLs (--format; --out for binary data)
-  clipboard-set [text]       Write text, --image PATH, or repeatable --file-url URL
-  clipboard-clear            Clear the clipboard
-
-WAIT
-  wait [ms]                  Pause for N milliseconds
-  wait --element <ref>       Block until element appears (--timeout ms)
-  wait --element <ref> --predicate actionable  Block until element is actionable
-  wait --element <ref> --predicate value --value <text>  Block until value matches
-  wait --element <ref> --snapshot <snapshot_id>  Wait against a specific snapshot refmap
-  wait --window <title>      Block until window appears
-  wait --text <text>         Block until text appears in app
-  wait --menu --app <app>    Block until a menu surface is open
-  wait --menu-closed --app <app>  Block until a menu surface is dismissed
-  wait --notification        Block until a new notification arrives (--text filters it)
-  wait --event <kind>        Block on a baseline diff: window/app/focus/surface lifecycle
-
-SYSTEM
-  status                     Adapter health, platform, permission, session, tracing, and state_root
-  permissions                Check nested permission states: {state,...}
-  version                    Show version, target architecture, and OS
-  skills                     Bundled skill docs for AI agents (list, get, path)
-  session start              Create a trace-enabled session; pass its returned ID explicitly
-  session start --screenshots  Opt in to screenshot/refmap replay artifacts (requires tracing)
-  session start --cursor    Create the session and show the default visual cursor
-  session start --cursor --multi-agent  One cursor per harness subagent in headless/headed mode; desktop UI actions require --agent-id
-  session end                  Seal a manifest (ID from argument, --session, or environment)
-  session list                 List session manifests
-  session gc                   Remove ended or provably-stale sessions
-  cursor-overlay enable       Enable/style the session cursor, or the selected --agent-id cursor
-  cursor-overlay disable      Stop every cursor in the selected session
+KEY COMBOS
+  Keys: return, escape, tab, space, delete, up, down, left, right, f1-f12
+  Modifiers: cmd, ctrl, alt, shift. Use cmd+c on macOS and ctrl+c on Windows,
+  where cmd and meta map to the Windows key.
 
 ENVIRONMENT
   AGENT_DESKTOP_SESSION      Session ID fallback when --session is not passed
-  AGENT_DESKTOP_AGENT_ID     Stable subagent ID fallback when --agent-id is not passed
-                             (1-64 letters, digits, hyphen or underscore; scoped by session)
-  AGENT_DESKTOP_HOME         Relocates the state root; the value is the root itself
-                             (absolute path; default ~/.agent-desktop). Applies to every
-                             command; an invalid value fails with INVALID_ARGS before
-                             dispatch. `status` reports the resolved root as state_root.
-
-TRACE
-  trace show                 Merge session trace segments into a bounded JSON timeline (--limit defaults to 500; 0 = all)
-  trace export               Export a self-contained HTML trace viewer (--limit defaults to 5000; 0 = all)
-
-BATCH
-  batch <json>               Run a bounded, sequential, non-atomic JSON command batch
-  batch items may set "session": "id" to override the inherited --session
-
-REF IDs
-  snapshot emits qualified refs such as @s8f3k2p9:e1 in depth-first order.
-  Qualified refs embed their snapshot ID and need no --snapshot flag. Legacy
-  bare @eN input requires an explicit --snapshot <snapshot_id>. Snapshot lookup
-  stays inside the selected namespace: pass the same --session <id> or set
-  AGENT_DESKTOP_SESSION when the snapshot belongs to a session. Explicit
-  --session overrides the environment; with neither, commands use the global
-  non-session namespace. `session start` returns an ID but does not activate
-  later processes. Run snapshot again after UI changes.
-  Ref actions use strict resolution: stale targets return STALE_REF; duplicate
-  plausible targets return AMBIGUOUS_TARGET instead of choosing arbitrarily.
-  Ref actions run actionability checks before dispatch. Use --trace <path> to
-  override the session trace sink; --trace-strict fails on trace setup and
-  pre-action writes. Post-action success traces are best-effort.
-
-KEY COMBOS
-  Single keys:               return, escape, tab, space, delete, up, down, left, right
-  Function keys:             f1 - f12
-  With modifiers:            cmd+c, cmd+v, cmd+z, cmd+shift+z, ctrl+a, shift+tab
-  Modifiers:                 cmd, ctrl, alt, shift
-
-EXAMPLES
-  agent-desktop skills get desktop --full        Load the primary skill (start here)
-  agent-desktop --session task-1 snapshot --app "System Settings" -i
-  agent-desktop find --role button --name "OK"
-  agent-desktop find --role button --limit 20
-  agent-desktop click @e5 --snapshot <snapshot_id>
-  agent-desktop check @e3 --snapshot <snapshot_id>
-  agent-desktop type @e2 --snapshot <snapshot_id> "hello@example.com"
-  agent-desktop press cmd+z
-  agent-desktop --headed drag --from @s8f3k2p9:e1 --to @s8f3k2p9:e5
-  agent-desktop --headed hover @s8f3k2p9:e5
-  agent-desktop minimize --app TextEdit
-  agent-desktop resize-window --app TextEdit --width 800 --height 600
-  agent-desktop move-window --window-id w-4521 --x 100 --y 100
-  agent-desktop --headed mouse-click --xy 500,300
-  agent-desktop wait --text "Loading complete" --app Safari --timeout 5000
-  agent-desktop wait --element @s8f3k2p9:e5 --predicate actionable --timeout 5000
-  agent-desktop snapshot --app Finder -w "button:OK"
-  agent-desktop click @s8f3k2p9:e5 -w ":Saved!"
-  agent-desktop session start --name run-a       # note data.session_id
-  agent-desktop session start --cursor --multi-agent
-  agent-desktop --session <session_id> --agent-id researcher cursor-overlay enable --label "Checking details"
-  agent-desktop --session <session_id> --agent-id researcher click @s8f3k2p9:e5
-  agent-desktop --session <session_id> cursor-overlay enable --label "Opening menu" --accent "#4299FF"
-  agent-desktop --session <session_id> click @s8f3k2p9:e5
-  agent-desktop batch '[{"command":"click","args":{"ref_id":"@e1","snapshot":"<snapshot_id>"}}]'
-  agent-desktop --session run-b batch '[{"command":"status","session":"run-b","args":{}}]'
-
-AGENT LOOP
-  1. Use `skills get desktop --full` when you need detailed guidance.
-  2. Run `session start`, then pass its returned ID via --session or AGENT_DESKTOP_SESSION.
-  3. Observe with `snapshot -i` or `snapshot --skeleton -i --compact`.
-  4. Keep `snapshot_id`; pass it to every ref-consuming action.
-  5. Use `wait --predicate actionable`, `wait --text`, or `wait --window`
-     instead of sleeping blindly.
-  6. On STALE_REF or AMBIGUOUS_TARGET, snapshot again and choose a fresh ref.
-  7. Check `status` for `tracing: true`, or add `--trace <path>` to override.
+  AGENT_DESKTOP_AGENT_ID     Subagent ID fallback when --agent-id is not passed
+                             (1-64 letters, digits, hyphen or underscore)
+  AGENT_DESKTOP_HOME         Relocates the state root (absolute path; default
+                             ~/.agent-desktop); `status` reports it as state_root

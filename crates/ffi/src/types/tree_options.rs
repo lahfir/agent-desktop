@@ -1,4 +1,4 @@
-/// Options for `ad_get_tree`.
+/// Options for `ad_get_tree_exact`.
 ///
 /// `surface` is stored as `int32_t` so foreign callers cannot write
 /// an invalid discriminant into a Rust enum slot. Valid values are the

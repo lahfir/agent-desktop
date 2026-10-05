@@ -3,7 +3,7 @@ use crate::actions::conversion::action_from_c;
 use crate::commands::app_error_to_adapter;
 use crate::commands::envelope_out::write_command_envelope;
 use crate::commands::timeout::decode_ref_action_timeout;
-use crate::convert::string::{optional_adapter_string, required_adapter_string};
+use crate::convert::string::required_adapter_string;
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
 use crate::pointer_guard::guard_non_null;
@@ -24,7 +24,6 @@ use std::ptr;
 pub unsafe extern "C" fn ad_execute_by_ref_timeout(
     adapter: *const AdAdapter,
     ref_id: *const c_char,
-    snapshot_id: *const c_char,
     action: *const AdAction,
     policy: i32,
     timeout_ms: i64,
@@ -55,21 +54,6 @@ pub unsafe extern "C" fn ad_execute_by_ref_timeout(
             let ae = app_error_to_adapter(app_err);
             set_last_error(&ae);
             return crate::error::last_error_code();
-        }
-
-        let snapshot_str = match optional_adapter_string(snapshot_id, "snapshot_id") {
-            Ok(opt) => opt,
-            Err(e) => {
-                set_last_error(&e);
-                return AdResult::ErrInvalidArgs;
-            }
-        };
-        if ref_str.starts_with("@e") && snapshot_str.is_none() {
-            set_last_error(&AdapterError::new(
-                ErrorCode::InvalidArgs,
-                "Bare refs require an explicit snapshot_id",
-            ));
-            return AdResult::ErrInvalidArgs;
         }
 
         let caller_policy = match AdPolicyKind::from_c(policy) {
@@ -108,7 +92,6 @@ pub unsafe extern "C" fn ad_execute_by_ref_timeout(
         let result = agent_desktop_core::commands::execute_by_ref::execute_with_timeout(
             agent_desktop_core::commands::execute_by_ref::ExecuteByRefArgs {
                 ref_id: &ref_str,
-                snapshot_id: snapshot_str.as_deref(),
                 action: core_action,
                 caller_policy: caller_ip,
             },

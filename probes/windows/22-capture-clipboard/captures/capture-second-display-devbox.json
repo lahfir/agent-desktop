@@ -1,0 +1,19 @@
+{
+    "probe":  "22-capture-clipboard",
+    "question":  "can a software/virtual second display be manufactured",
+    "display_count":  1,
+    "manufacturable":  false,
+    "branch":  "no_virtual_display_adapter_available",
+    "attempts":  [
+                     {
+                         "method":  "inbox_virtual_display",
+                         "available":  false
+                     },
+                     {
+                         "method":  "custom_driver",
+                         "available":  false,
+                         "skipped":  true,
+                         "reason":  "no_signed_driver_in_corpus"
+                     }
+                 ]
+}

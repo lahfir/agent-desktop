@@ -1,42 +1,9 @@
 use crate::AdAdapter;
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
-use crate::types::{AdExactWindowInfo, AdWindowInfo, AdWindowOp, AdWindowOpKind};
-use crate::windows::to_core::{ad_exact_window_to_core, ad_window_to_core};
+use crate::types::{AdExactWindowInfo, AdWindowOp, AdWindowOpKind};
+use crate::windows::to_core::ad_exact_window_to_core;
 use agent_desktop_core::WindowOp;
-
-/// Legacy ABI compatibility entrypoint. `AdWindowInfo` cannot carry process
-/// generation, so this function fails closed with `AD_RESULT_ERR_INVALID_ARGS`.
-/// Use `ad_window_op_exact`.
-///
-/// # Safety
-/// `adapter` and `win` must be non-null pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ad_window_op(
-    adapter: *const AdAdapter,
-    win: *const AdWindowInfo,
-    op: AdWindowOp,
-) -> AdResult {
-    trap_panic(|| unsafe {
-        crate::pointer_guard::guard_non_null!(adapter, c"adapter is null");
-        crate::pointer_guard::guard_non_null!(win, c"win is null");
-        let core_win = match ad_window_to_core(&*win) {
-            Ok(w) => w,
-            Err(e) => {
-                set_last_error(&e);
-                return crate::error::last_error_code();
-            }
-        };
-        let core_op = match decode_window_op(op) {
-            Ok(op) => op,
-            Err(error) => {
-                set_last_error(&error);
-                return crate::error::last_error_code();
-            }
-        };
-        perform_window_op(adapter, &core_win, core_op)
-    })
-}
 
 /// Performs a window-manager operation against an exact generation-pinned
 /// window identity.

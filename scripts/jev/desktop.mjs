@@ -7,8 +7,9 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { setTimeout as sleep } from "node:timers/promises";
 
-import { collect, offerable, overlayRole } from "./screen.mjs";
+import { collect, offerable, outsideWindow, overlayRole } from "./screen.mjs";
 import { ARGV } from "./policy.mjs";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -53,21 +54,31 @@ export const stopCursor = () => cli("cursor-overlay", "disable");
  * which is what makes it worth drilling into. A sheet or menu owns the screen
  * while it is up, so it is read instead of the window behind it.
  */
-export const observe = (app, root) => {
-  const base = ["snapshot", "--app", app, "-i", "--compact", "--include-bounds"];
+export const observe = (app, root, windowId = null) => {
+  const scope = windowId ? ["--app", app, "--window-id", windowId] : ["--app", app];
+  const base = ["snapshot", ...scope, "-i", "--compact", "--include-bounds"];
+  const unreadable = (what, error) => Object.assign(new Error(`${what} could not be read: ${error?.code}`),
+    { code: error?.code ?? null });
   let snap = root ? cli(...base, "--root", root) : cli(...base, "--skeleton");
-  if (!snap.ok && root) throw new Error(`that region could not be read: ${snap.error?.code}`);
-  if (!snap.ok) snap = cli(...base, "--max-depth", "4");
-  if (!snap.ok) throw new Error(`the screen could not be read: ${snap.error?.code}`);
+  if (!snap.ok && root) throw unreadable("that region", snap.error);
+  if (snap.ok && root && windowId && outsideWindow(snap.data, windowId)) {
+    throw Object.assign(new Error(`that region is not in window ${windowId}`), { code: "ROOT_OUTSIDE_WINDOW" });
+  }
+  if (!snap.ok && snap.error?.code !== "WINDOW_NOT_FOUND") snap = cli(...base, "--max-depth", "4");
+  if (!snap.ok) throw unreadable("the screen", snap.error);
   const surface = root ? null : overlayRole(snap.data.tree);
   if (surface) {
-    const scoped = cli("snapshot", "--app", app, "--surface", surface, "-i", "--compact", "--include-bounds");
+    const scoped = cli("snapshot", ...scope, "--surface", surface, "-i", "--compact", "--include-bounds");
+    if (scoped.ok && windowId && outsideWindow(scoped.data, windowId)) {
+      throw Object.assign(new Error(`the ${surface} is not in window ${windowId}`), { code: "SURFACE_OUTSIDE_WINDOW" });
+    }
     if (scoped.ok) snap = scoped;
   }
   const nodes = offerable(collect(snap.data.tree));
   return {
     nodes,
-    screen: { app, window: snap.data.window?.title ?? null, surface: surface ?? "window", root },
+    screen: { app, window: snap.data.window?.title ?? null, window_id: snap.data.window?.id ?? windowId,
+      surface: surface ?? "window", root },
   };
 };
 
@@ -95,42 +106,86 @@ export const clipboardGuard = () => {
   };
 };
 
+const verifyWindowMs = (raw) => {
+  const value = Number(raw ?? 2000);
+  if (!Number.isFinite(value) || value < 0 || value > 60000) {
+    throw new Error(`JEV_VERIFY_MS must be a number of milliseconds from 0 to 60000, not ${JSON.stringify(raw)}`);
+  }
+  return value;
+};
+const VERIFY_MS = verifyWindowMs(process.env.JEV_VERIFY_MS);
+const VERIFY_INTERVAL_MS = 100;
+
+const awaitFieldText = async (ref, text) => {
+  const deadline = Date.now() + VERIFY_MS;
+  for (;;) {
+    const observed = cli("get", ref, "--property", "value");
+    if (observed.ok && observed.data?.value === text) return { held: true, observed };
+    if (Date.now() >= deadline) return { held: false, observed };
+    await sleep(VERIFY_INTERVAL_MS);
+  }
+};
+
+const verificationFailure = (observed) => ({
+  code: "TEXT_VERIFICATION_FAILED",
+  message: "after the paste the field does not hold the requested text",
+  disposition: { delivery: "delivered_unverified", retry: "unsafe" },
+  ...(observed.ok ? {} : { details: { read_error: observed.error ?? null } }),
+});
+
 /**
  * Text goes in through whichever route the application accepts. A direct value
  * write is one verified call, and the applications that refuse it report that
  * refusal, so the paste path runs only when it is needed. A paste arrives whole
  * where one key press per character loses characters and capitals.
  */
-export const enterText = (app, node, text, clipboard) => {
+export const enterText = async ({ app, windowId = null }, node, text, clipboard) => {
   const written = cli("set-value", node.ref_id, text);
   if (written.ok) return { route: "set-value", result: written };
+  const failure = written.error;
+  if (failure && failure.code !== "SPAWN_FAILED" && !failure.disposition) {
+    return { route: "set-value", result: { ok: false, error: {
+      code: "BINARY_TOO_OLD",
+      message: "this agent-desktop binary reports no error disposition; the paste fallback needs a binary whose failed set-value says whether a retry is safe",
+      details: { cause: failure },
+    } } };
+  }
+  if (failure?.disposition?.retry !== "safe") return { route: "set-value", result: written };
   const focused = cli("focus", node.ref_id);
-  if (!focused.ok) return { route: "set-value", result: written };
+  if (!focused.ok) return { route: "paste", result: focused };
   clipboard.borrow();
-  cli("clipboard-set", text);
-  return { route: "paste", result: cli("press", "cmd+v", "--app", app) };
+  const copied = cli("clipboard-set", text);
+  if (!copied.ok) return { route: "paste", result: copied };
+  const pasted = cli("press", "cmd+v", "--app", app, ...(windowId ? ["--window-id", windowId] : []));
+  if (!pasted.ok) return { route: "paste", result: pasted };
+  const { held, observed } = await awaitFieldText(node.ref_id, text);
+  if (!held) return { route: "paste", result: { ok: false, error: verificationFailure(observed) } };
+  return { route: "paste", result: { ...pasted, data: {
+    ...pasted.data, disposition: { delivery: "delivered_verified", retry: "unsafe" },
+  } } };
 };
 
-export const execute = (app, operation, node, text, clipboard) => {
-  if (operation === "WAIT") return { ok: true, delivery: "waited" };
+export const execute = async (target, operation, node, text, clipboard) => {
+  if (operation === "WAIT") {
+    await sleep(250);
+    return { ok: true, delivery: "waited" };
+  }
   if (operation === "DRILL") return { ok: true, delivery: "looked", root: node.ref_id };
   if (operation === "WIDEN") return { ok: true, delivery: "looked", root: null };
   if (operation === "TYPE_TEXT") {
-    const { route, result } = enterText(app, node, text, clipboard);
+    const { route, result } = await enterText(target, node, text, clipboard);
     return { ...deliveryEvidence(result), route };
   }
   const result = cli(...ARGV[operation](node.ref_id));
   return deliveryEvidence(result);
 };
 
-
-/** Preserve platform verification evidence even when a postcondition failure nests the executed action. */
 export const deliveryEvidence = (result) => {
   const details = result.data?.details ?? result.error?.details ?? null;
   const after = result.error?.details?.after_action;
   return {
     ok: result.ok,
-    delivery: result.data?.disposition?.delivery ?? result.error?.code ?? result.error?.disposition?.delivery ?? null,
+    delivery: result.data?.disposition?.delivery ?? result.error?.disposition?.delivery ?? null,
     error: result.error ?? null,
     steps: result.data?.steps ?? after?.steps ?? [],
     post_state: result.data?.post_state ?? details?.post_state ?? after?.post_state ?? null,

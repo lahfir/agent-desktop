@@ -21,6 +21,9 @@ struct TerminateResult {
 #[repr(C)]
 struct BytesResult {
     status: u8,
+    failure_field: *const std::ffi::c_char,
+    failure_index: i32,
+    failure_pid: i32,
     bytes: *mut u8,
     length: usize,
 }
@@ -65,7 +68,7 @@ pub(crate) fn workspace_snapshot_json() -> Result<Vec<u8>, AdapterError> {
     let result = unsafe { agent_desktop_copy_workspace_snapshot_json() };
     let bytes = BridgeBytes(result.bytes);
     if result.status != 0 {
-        return Err(bridge_error("workspace_snapshot", result.status, false));
+        return Err(workspace_snapshot_error(&result));
     }
     if result.length > MAX_BRIDGE_BYTES || (result.length > 0 && bytes.0.is_null()) {
         return Err(bridge_error("workspace_snapshot", u8::MAX, false));
@@ -74,6 +77,32 @@ pub(crate) fn workspace_snapshot_json() -> Result<Vec<u8>, AdapterError> {
         return Ok(Vec::new());
     }
     Ok(unsafe { std::slice::from_raw_parts(bytes.0, result.length) }.to_vec())
+}
+
+#[cfg(target_os = "macos")]
+fn workspace_snapshot_error(result: &BytesResult) -> AdapterError {
+    let field = if result.failure_field.is_null() {
+        None
+    } else {
+        Some(
+            unsafe { std::ffi::CStr::from_ptr(result.failure_field) }
+                .to_string_lossy()
+                .into_owned(),
+        )
+    };
+    let mut details = serde_json::json!({
+        "kind": "appkit_bridge",
+        "operation": "workspace_snapshot",
+        "status": result.status,
+        "failure_field": field,
+        "failure_index": (result.failure_index >= 0).then_some(result.failure_index),
+        "failure_pid": (result.failure_pid > 0).then_some(result.failure_pid),
+        "retryable": true,
+    });
+    if let Some(fields) = details.as_object_mut() {
+        fields.retain(|_, value| !value.is_null());
+    }
+    bridge_error("workspace_snapshot", result.status, false).with_details(details)
 }
 
 #[cfg(target_os = "macos")]
@@ -194,6 +223,48 @@ mod tests {
         assert_eq!(details["operation"], "workspace_snapshot");
         assert_eq!(details["status"], 2);
         assert_eq!(details["retryable"], true);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn workspace_snapshot_failure_identifies_field_without_exposing_application_name() {
+        let field = b"application_name\0";
+        let result = BytesResult {
+            status: 2,
+            failure_field: field.as_ptr().cast(),
+            failure_index: 7,
+            failure_pid: 123,
+            bytes: std::ptr::null_mut(),
+            length: 0,
+        };
+
+        let details = workspace_snapshot_error(&result).details.unwrap();
+        assert_eq!(details["kind"], "appkit_bridge");
+        assert_eq!(details["operation"], "workspace_snapshot");
+        assert_eq!(details["status"], 2);
+        assert_eq!(details["failure_field"], "application_name");
+        assert_eq!(details["failure_index"], 7);
+        assert_eq!(details["failure_pid"], 123);
+        assert_eq!(details["retryable"], true);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn workspace_snapshot_failure_without_context_omits_the_unset_fields() {
+        let result = BytesResult {
+            status: 1,
+            failure_field: std::ptr::null(),
+            failure_index: -1,
+            failure_pid: 0,
+            bytes: std::ptr::null_mut(),
+            length: 0,
+        };
+
+        let details = workspace_snapshot_error(&result).details.unwrap();
+        for key in ["failure_field", "failure_index", "failure_pid"] {
+            assert!(details.get(key).is_none(), "{key} is omitted, not null");
+        }
+        assert_eq!(details["status"], 1);
     }
 
     #[cfg(target_os = "macos")]

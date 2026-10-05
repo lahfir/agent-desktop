@@ -195,19 +195,19 @@ run_mutation() {
 run_simple_action() {
     local expectation="$1" action="$2" target="$3"
     run_mutation "$expectation" "$action" "$(target_ref "$target")" \
-        --snapshot "$(target_snapshot "$target")" --timeout-ms 1500
+        --timeout-ms 1500
 }
 
 run_set_value() {
     local target="$1" value="$2"
     run_mutation changed set-value "$(target_ref "$target")" "$value" \
-        --snapshot "$(target_snapshot "$target")" --timeout-ms 1500
+        --timeout-ms 1500
 }
 
 run_type() {
     local target="$1" value="$2"
     run_mutation changed type "$(target_ref "$target")" "$value" \
-        --snapshot "$(target_snapshot "$target")" --timeout-ms 1500
+        --timeout-ms 1500
 }
 
 await_status() {

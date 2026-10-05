@@ -10,7 +10,7 @@ use std::sync::Mutex;
 
 static HTML_TEST_LOCK: Mutex<()> = Mutex::new(());
 
-fn html_test_guard() -> std::sync::MutexGuard<'static, ()> {
+pub(super) fn html_test_guard() -> std::sync::MutexGuard<'static, ()> {
     HTML_TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())

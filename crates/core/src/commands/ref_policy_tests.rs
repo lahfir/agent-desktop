@@ -180,8 +180,7 @@ fn snapshot_id() -> String {
 
 fn ref_args(snapshot_id: &str) -> RefArgs {
     RefArgs {
-        ref_id: "@e1".into(),
-        snapshot_id: Some(snapshot_id.to_owned()),
+        ref_id: format!("@{}:e1", snapshot_id.to_owned()),
         timeout_ms: None,
     }
 }
@@ -219,8 +218,7 @@ fn default_ref_commands_use_least_permissive_supported_policy() {
     scroll_to::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
     set_value::execute(
         set_value::SetValueArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id.clone()),
+            ref_id: format!("@{}:e1", snapshot_id.clone()),
             value: "value".into(),
             timeout_ms: None,
         },
@@ -230,8 +228,7 @@ fn default_ref_commands_use_least_permissive_supported_policy() {
     .unwrap();
     select::execute(
         select::SelectArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id.clone()),
+            ref_id: format!("@{}:e1", snapshot_id.clone()),
             value: "choice".into(),
             timeout_ms: None,
         },
@@ -242,8 +239,7 @@ fn default_ref_commands_use_least_permissive_supported_policy() {
     let before_type = adapter.requests.lock().unwrap().len();
     type_text::execute(
         type_text::TypeArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id.clone()),
+            ref_id: format!("@{}:e1", snapshot_id.clone()),
             text: "text".into(),
             timeout_ms: None,
         },
@@ -255,8 +251,7 @@ fn default_ref_commands_use_least_permissive_supported_policy() {
     assert_eq!(type_request.policy, InteractionPolicy::headless());
     scroll::execute(
         scroll::ScrollArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             direction: Direction::Down,
             amount: 1,
             timeout_ms: None,
@@ -305,8 +300,7 @@ fn headed_context_reaches_every_ref_action_without_policy_downgrade() {
     focus::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
     set_value::execute(
         set_value::SetValueArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id.clone()),
+            ref_id: format!("@{}:e1", snapshot_id.clone()),
             value: "value".into(),
             timeout_ms: None,
         },
@@ -316,8 +310,7 @@ fn headed_context_reaches_every_ref_action_without_policy_downgrade() {
     .unwrap();
     select::execute(
         select::SelectArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id.clone()),
+            ref_id: format!("@{}:e1", snapshot_id.clone()),
             value: "choice".into(),
             timeout_ms: None,
         },
@@ -327,8 +320,7 @@ fn headed_context_reaches_every_ref_action_without_policy_downgrade() {
     .unwrap();
     type_text::execute(
         type_text::TypeArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id.clone()),
+            ref_id: format!("@{}:e1", snapshot_id.clone()),
             text: "text".into(),
             timeout_ms: None,
         },
@@ -338,8 +330,7 @@ fn headed_context_reaches_every_ref_action_without_policy_downgrade() {
     .unwrap();
     scroll::execute(
         scroll::ScrollArgs {
-            ref_id: "@e1".into(),
-            snapshot_id: Some(snapshot_id),
+            ref_id: format!("@{}:e1", snapshot_id),
             direction: Direction::Down,
             amount: 1,
             timeout_ms: None,

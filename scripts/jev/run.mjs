@@ -55,10 +55,18 @@ export const decide = (goal, screen, space, history, values) =>
 export const rateRisk = (goal, screen, operation, node, values) =>
   post(typesafeApi(), process.env.TYPESAFE_API_KEY, riskRequest(goal, screen, operation, node, { values }));
 
+const WINDOW_STOPS = {
+  WINDOW_NOT_FOUND: "window_closed",
+  SURFACE_OUTSIDE_WINDOW: "surface_outside_window",
+  ROOT_OUTSIDE_WINDOW: "root_outside_window",
+};
+
+const windowStop = (error, windowId) => (windowId ? WINDOW_STOPS[error.code] ?? null : null);
+
 export const run = async function* (
   goal,
   app,
-  { root = null, text = null, cursor = false, values = true } = {},
+  { root = null, windowId = null, text = null, cursor = false, values = true } = {},
 ) {
   if (!process.env.TYPESAFE_API_KEY) throw new Error("TYPESAFE_API_KEY unset");
   const supply = textSupply(text);
@@ -66,8 +74,19 @@ export const run = async function* (
   const clipboard = clipboardGuard();
   const state = { steps: 0, calls: 0, history: [], operation: null, root };
   try {
+    let last = null;
     for (;;) {
-      const { nodes, screen } = observe(app, state.root);
+      let seen;
+      try {
+        seen = observe(app, state.root, windowId);
+      } catch (error) {
+        const stop = windowStop(error, windowId);
+        if (!stop) throw error;
+        yield { stop, screen: last, history: state.history };
+        return;
+      }
+      const { nodes, screen } = seen;
+      last = screen;
       const before = fingerprint(nodes);
       const space = actionSpace(nodes, { drillable: !state.root, typable: supply.available(), values });
       if (!space.elements.length) {
@@ -133,7 +152,7 @@ export const run = async function* (
           return;
         }
       }
-      const outcome = execute(app, state.operation, node, value, clipboard);
+      const outcome = await execute({ app, windowId }, state.operation, node, value, clipboard);
       state.steps += 1;
       const turn = {
         step: state.steps,
@@ -147,13 +166,30 @@ export const run = async function* (
         steps: outcome.steps ?? [],
         post_state: outcome.post_state ?? null,
         details: outcome.details ?? null,
+        error: outcome.error ?? null,
         route: outcome.route ?? null,
         truncated: space.truncated,
         changed: null,
       };
       state.history.push(turn);
+      if (!outcome.ok) {
+        yield { turn, screen };
+        yield { stop: "action_failed", screen, error: outcome.error, history: state.history };
+        return;
+      }
       if ("root" in outcome) state.root = outcome.root;
-      turn.changed = "root" in outcome || fingerprint(observe(app, state.root).nodes) !== before;
+      let after;
+      try {
+        after = "root" in outcome ? null : observe(app, state.root, windowId);
+      } catch (error) {
+        const stop = windowStop(error, windowId);
+        if (!stop) throw error;
+        turn.changed = true;
+        yield { turn, screen };
+        yield { stop, screen, history: state.history };
+        return;
+      }
+      turn.changed = "root" in outcome || fingerprint(after.nodes) !== before;
       yield { turn, screen };
       const settled = shouldStop(state);
       if (settled) {
@@ -170,10 +206,17 @@ export const run = async function* (
 const main = async (argv) => {
   const flag = (name) => {
     const at = argv.indexOf(`--${name}`);
-    return at === -1 ? null : argv[at + 1];
+    if (at === -1) return null;
+    const value = argv[at + 1];
+    if (value === undefined || value.startsWith("--")) {
+      console.error(`--${name} needs a value`);
+      process.exit(2);
+    }
+    return value;
   };
   const app = flag("app");
   const root = flag("root");
+  const windowId = flag("window-id");
   const text = argv.flatMap((a, i) => (argv[i - 1] === "--text" ? [a] : []));
   const cursor = argv.includes("--cursor");
   const values = !argv.includes("--no-values");
@@ -182,11 +225,14 @@ const main = async (argv) => {
     .join(" ");
   if (!app || !goal) {
     console.error(
-      'usage: run.mjs --app <name> [--cursor] [--no-values] [--root @ref] [--text "value"]... "<goal>"',
+      'usage: run.mjs --app <name> [--window-id <id>] [--cursor] [--no-values] [--root @ref] [--text "value"]... "<goal>"',
     );
     process.exit(2);
   }
-  for await (const event of run(goal, app, { root, text, cursor, values })) console.log(JSON.stringify(event));
+  for await (const event of run(goal, app, { root, windowId, text, cursor, values })) {
+    console.log(JSON.stringify(event));
+    if (event.stop && event.stop !== "done") process.exitCode = 1;
+  }
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

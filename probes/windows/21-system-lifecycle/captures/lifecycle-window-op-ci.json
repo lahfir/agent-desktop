@@ -1,0 +1,41 @@
+{
+    "probe":  "21-system-lifecycle",
+    "question":  "SetWindowPos/ShowWindow round-trip; -32000 sentinel; re-read delta tolerance",
+    "foundation_cites":  [
+                             "A1-2",
+                             "A5-3",
+                             "A14-8"
+                         ],
+    "move_resize":  {
+                        "trials":  3,
+                        "immediate_deltas_px":  [
+                                                    0,
+                                                    0,
+                                                    0
+                                                ],
+                        "waited_80ms_deltas_px":  [
+                                                      0,
+                                                      0,
+                                                      0
+                                                  ],
+                        "max_immediate_delta_px":  0,
+                        "max_waited_delta_px":  0,
+                        "recommended_tolerance_px":  8,
+                        "wait_then_reread_ms":  80
+                    },
+    "minimize":  {
+                     "show_cmd":  2,
+                     "minimized_sentinel":  false,
+                     "show_cmd_is_minimized":  true
+                 },
+    "maximize":  {
+                     "show_cmd":  3,
+                     "show_cmd_is_maximized":  true
+                 },
+    "restore":  {
+                    "show_cmd":  1,
+                    "show_cmd_is_normal":  true,
+                    "sentinel_cleared":  true
+                },
+    "branch":  "placement_round_trip_measured"
+}

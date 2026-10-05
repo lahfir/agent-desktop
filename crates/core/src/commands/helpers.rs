@@ -20,7 +20,6 @@ pub(crate) use super::window_target::{
 
 pub struct RefArgs {
     pub ref_id: String,
-    pub snapshot_id: Option<String>,
     pub timeout_ms: Option<u64>,
 }
 
@@ -36,33 +35,24 @@ pub fn normalize_action_timeout_ms(raw: u64) -> Option<u64> {
 
 pub(crate) fn resolve_ref_with_context(
     ref_id: &str,
-    snapshot_id: Option<&str>,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<(RefEntry, crate::adapter::NativeHandle), AppError> {
-    resolve_ref_within_deadline(
-        ref_id,
-        snapshot_id,
-        crate::Deadline::standard()?,
-        adapter,
-        context,
-    )
+    resolve_ref_within_deadline(ref_id, crate::Deadline::standard()?, adapter, context)
 }
 
 /// Resolves a saved ref under the caller deadline and records resolution traces.
 fn resolve_ref_within_deadline(
     ref_id: &str,
-    snapshot_id: Option<&str>,
     deadline: crate::Deadline,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<(RefEntry, crate::adapter::NativeHandle), AppError> {
-    let entry = load_ref_entry(ref_id, snapshot_id, context)?;
+    let entry = load_ref_entry(ref_id, context)?;
     let handle = resolve_handle_within_deadline(adapter, &entry, deadline).inspect_err(|err| {
         let _ = context.trace_lazy("ref.resolve.error", || {
             json!({
                 "ref": ref_id,
-                "snapshot_id": snapshot_id,
                 "code": err.code.as_str(),
                 "message": err.message.clone(),
                 "details": err.details.clone()
@@ -94,7 +84,7 @@ pub(crate) fn execute_ref_action_with_context(
 ) -> Result<Value, AppError> {
     let request = request.with_timeout_ms(args.timeout_ms);
     validate_post_action_wait(context)?;
-    let entry = load_ref_entry(&args.ref_id, args.snapshot_id.as_deref(), context)?;
+    let entry = load_ref_entry(&args.ref_id, context)?;
     let (result, lease, pre, deadline, lease_started) =
         crate::ref_action_wait::execute_with_auto_wait_and_lease(
             RefActionWaitContext {
@@ -263,7 +253,8 @@ pub(crate) fn execute_ref_action_result_with_context(
     request: ActionRequest,
     context: &CommandContext,
 ) -> Result<(RefEntry, crate::ActionResult), AppError> {
-    let entry = load_ref_entry(ref_id, snapshot_id, context)?;
+    let ref_id = &crate::ref_token::qualify_for_test(ref_id, snapshot_id);
+    let entry = load_ref_entry(ref_id, context)?;
     let result = crate::ref_action_wait::execute_with_auto_wait(
         RefActionWaitContext {
             adapter,
@@ -285,13 +276,8 @@ pub(crate) fn execute_ref_action_result_with_context(
 /// stale ref emits identical telemetry regardless of caller.
 /// [`resolve_ref_within_deadline`] builds handle resolution and the
 /// `ref.resolve.ok` event on top of the entry this returns.
-pub(crate) fn load_ref_entry(
-    ref_id: &str,
-    snapshot_id: Option<&str>,
-    context: &CommandContext,
-) -> Result<RefEntry, AppError> {
-    let (resolved_snapshot_id, local_ref) =
-        crate::ref_token::resolve_ref_target(ref_id, snapshot_id)?;
+pub(crate) fn load_ref_entry(ref_id: &str, context: &CommandContext) -> Result<RefEntry, AppError> {
+    let (resolved_snapshot_id, local_ref) = crate::ref_token::resolve_ref_target(ref_id)?;
     let store = RefStore::for_session(context.session_id())?;
     context.trace_lazy(
         "ref.resolve.start",

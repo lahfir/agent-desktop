@@ -8,7 +8,7 @@ fn default_max_depth() -> u8 {
 #[derive(Args, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SnapshotTreeArgs {
-    #[arg(long, default_value = "10", help = "Maximum tree depth")]
+    #[arg(long, default_value = "10", help = "Maximum tree depth (1-50)")]
     #[serde(default = "default_max_depth")]
     pub max_depth: u8,
     #[arg(long, help = "Include element bounds (x, y, width, height)")]

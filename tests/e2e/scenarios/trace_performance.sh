@@ -3,7 +3,7 @@ trace_file="$(mktemp -t agentdesk-e2e-trace.XXXXXX)"
 cleanup_files+=("$trace_file")
 require_target trace_text textfield text-input
 trace_type="$("$bin" --headed --trace "$trace_file" type "$(target_ref "$trace_text")" \
-    --snapshot "$(target_snapshot "$trace_text")" "sup3r-secret-trace" 2>&1)"
+    "sup3r-secret-trace" 2>&1)"
 sleep 0.2
 require_value trace_echo text-echo
 assert "headed trace typing reaches the target field" \
@@ -38,10 +38,9 @@ trace_text="$(trace_target textfield text-input)"
 if [ -z "$trace_primary" ] || [ -z "$trace_text" ]; then
     abort_suite "trace session targets are missing"
 fi
-trace_click="$("$bin" --session "$trace_session" click "$(target_ref "$trace_primary")" \
-    --snapshot "$(target_snapshot "$trace_primary")" 2>&1)"
+trace_click="$("$bin" --session "$trace_session" click "$(target_ref "$trace_primary")" 2>&1)"
 trace_session_type="$("$bin" --headed --session "$trace_session" type "$(target_ref "$trace_text")" \
-    --snapshot "$(target_snapshot "$trace_text")" trace-e2e 2>&1)"
+    trace-e2e 2>&1)"
 sleep 0.5
 trace_show="$("$bin" --session "$trace_session" trace show --limit 0 2>/dev/null)"
 trace_events="$(printf '%s' "$trace_show" | python3 -c '
@@ -106,13 +105,12 @@ record_timing "snapshot full depth 30" "$bin" snapshot --app "$app" --max-depth 
 record_timing "snapshot skeleton" "$bin" snapshot --app "$app" --skeleton
 record_timing "find role and name" "$bin" find --app "$app" --role button --name primary-button --first
 record_timing "get exact ref" "$bin" get "$(target_ref "$perf_primary")" \
-    --snapshot "$(target_snapshot "$perf_primary")" --property role
-record_timing "click AX press" "$bin" click "$(target_ref "$perf_primary")" \
-    --snapshot "$(target_snapshot "$perf_primary")"
+    --property role
+record_timing "click AX press" "$bin" click "$(target_ref "$perf_primary")"
 record_timing "set text value" "$bin" set-value "$(target_ref "$perf_text")" \
-    --snapshot "$(target_snapshot "$perf_text")" perf-probe
+    perf-probe
 record_timing "type text" "$bin" --headed type "$(target_ref "$perf_text")" \
-    --snapshot "$(target_snapshot "$perf_text")" perf
+    perf
 
 awk -F'\t' '{printf "  %-26s %9.1f ms\n",$1,$2; n++; s+=$2}
     END{if(n) printf "  %-26s %9.1f ms (mean of %d ops)\n","[mean]",s/n,n}' "$performance_file"

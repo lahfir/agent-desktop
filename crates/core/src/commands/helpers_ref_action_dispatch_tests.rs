@@ -131,8 +131,7 @@ fn execute_ref_action_preserves_action_and_policy() {
         request: Mutex::new(None),
     };
     let args = RefArgs {
-        ref_id: "@e1".into(),
-        snapshot_id: Some(snapshot_id),
+        ref_id: format!("@{}:e1", snapshot_id),
         timeout_ms: None,
     };
 
@@ -159,8 +158,7 @@ fn execute_ref_action_does_not_dispatch_ambiguous_target() {
         executed: AtomicU32::new(0),
     };
     let args = RefArgs {
-        ref_id: "@e1".into(),
-        snapshot_id: Some(snapshot_id),
+        ref_id: format!("@{}:e1", snapshot_id),
         timeout_ms: None,
     };
 
@@ -194,8 +192,7 @@ fn ref_action_trace_includes_ambiguous_details_without_candidate_names() {
     ));
     let context = CommandContext::new(None, Some(trace_path.clone()), true).unwrap();
     let args = RefArgs {
-        ref_id: "@e1".into(),
-        snapshot_id: Some(snapshot_id),
+        ref_id: format!("@{}:e1", snapshot_id),
         timeout_ms: None,
     };
 
@@ -232,8 +229,7 @@ fn ref_action_trace_does_not_include_typed_text_payload() {
     ));
     let context = CommandContext::new(None, Some(trace_path.clone()), true).unwrap();
     let args = RefArgs {
-        ref_id: "@e1".into(),
-        snapshot_id: Some(snapshot_id),
+        ref_id: format!("@{}:e1", snapshot_id),
         timeout_ms: None,
     };
 

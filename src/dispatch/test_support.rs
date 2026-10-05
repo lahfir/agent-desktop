@@ -7,6 +7,10 @@ use agent_desktop_core::{ActionOps, AdapterError, ErrorCode, InputOps, Observati
 static HOME_LOCK: Mutex<()> = Mutex::new(());
 static HOME_ID: AtomicU64 = AtomicU64::new(1);
 
+/// Takes the lock back from a poisoned mutex rather than panicking on it.
+/// A test that fails while holding this would otherwise decide every later
+/// test in the process: they would report a poisoned lock instead of their
+/// own result, and the first failure's cause would be the only one visible.
 pub(crate) struct HomeGuard {
     lock: Option<std::sync::MutexGuard<'static, ()>>,
     previous: Option<std::ffi::OsString>,
@@ -15,7 +19,9 @@ pub(crate) struct HomeGuard {
 
 impl HomeGuard {
     pub(crate) fn new() -> Self {
-        let lock = HOME_LOCK.lock().unwrap();
+        let lock = HOME_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let path = std::env::temp_dir().join(format!(
             "agent-desktop-dispatch-test-{}-{}",
             std::process::id(),
@@ -44,6 +50,26 @@ impl Drop for HomeGuard {
         }
         self.lock.take();
     }
+}
+
+/// Starts a session with tracing off and enables the cursor overlay on it,
+/// the fixed setup every overlay-lifecycle test builds on before it varies
+/// the one thing the test actually checks.
+pub(crate) fn started_overlay_session() -> agent_desktop_core::session::SessionManifest {
+    let manifest = agent_desktop_core::session::start_session(
+        agent_desktop_core::session::StartSessionOptions {
+            trace: agent_desktop_core::session::SessionTraceMode::Off,
+            artifacts: agent_desktop_core::session::ArtifactsMode::Events,
+            name: None,
+        },
+    )
+    .unwrap();
+    agent_desktop_core::session::set_cursor_overlay(
+        &manifest.id,
+        agent_desktop_core::CursorOverlayConfig::enabled(None, 6).unwrap(),
+    )
+    .unwrap();
+    manifest
 }
 
 pub(crate) struct FailingOverlayAdapter;
