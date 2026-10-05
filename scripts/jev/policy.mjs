@@ -183,7 +183,7 @@ export const buildRequest = (goal, screen, space, history, { values = true } = {
       element_count: space.elements.length,
       truncated: space.truncated,
       elements: space.elements,
-      recent_actions: history.slice(-8),
+      recent_actions: history.slice(-8).map(({ steps: _steps, post_state: _post, details: _details, ...turn }) => turn),
     },
     questions,
   };
