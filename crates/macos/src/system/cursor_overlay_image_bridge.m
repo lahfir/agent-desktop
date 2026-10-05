@@ -6,7 +6,7 @@
 #import <unistd.h>
 
 static const off_t ADImageMaxBytes = 2 * 1024 * 1024;
-static const uint32_t ADImageMaxPixels = 8192;
+static const uint32_t ADImageMaxPixels = 1024;
 static const uint8_t ADImageSlots = 2;
 static const uint8_t ADArrowSlot = 0;
 static const uint8_t ADPointerSlot = 1;

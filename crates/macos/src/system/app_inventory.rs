@@ -7,6 +7,22 @@ pub(crate) fn list_apps_complete_until(deadline: Instant) -> Result<Vec<AppInfo>
     stabilize_apps_until(deadline, || capture_complete_apps(deadline))
 }
 
+pub(crate) fn list_apps_inventory_until(
+    deadline: Instant,
+) -> Result<agent_desktop_core::AppInventory, AdapterError> {
+    let mut skipped = Vec::new();
+    let apps = stabilize_apps_until(deadline, || {
+        let inventory = workspace_apps::list_apps_inventory_until(deadline)?;
+        skipped = inventory.skipped;
+        let apps = complete_apps_from_sources(
+            Ok(inventory.apps),
+            process_apps::list_apps_until(deadline),
+        )?;
+        validate_app_instances(apps)
+    })?;
+    Ok(agent_desktop_core::AppInventory { apps, skipped })
+}
+
 pub(crate) fn list_apps_scoped_until(
     name: &str,
     bundle_id: Option<&str>,
@@ -17,10 +33,10 @@ pub(crate) fn list_apps_scoped_until(
 
 fn capture_complete_apps(deadline: Instant) -> Result<Vec<AppInfo>, AdapterError> {
     ensure_before_deadline(deadline)?;
-    let apps = complete_apps_from_sources(
-        workspace_apps::list_apps_until(deadline),
-        process_apps::list_apps_until(deadline),
-    )?;
+    let inventory = workspace_apps::list_apps_inventory_until(deadline)?;
+    workspace_apps::require_complete(&inventory.skipped)?;
+    let apps =
+        complete_apps_from_sources(Ok(inventory.apps), process_apps::list_apps_until(deadline))?;
     ensure_before_deadline(deadline)?;
     validate_app_instances(apps)
 }
@@ -36,7 +52,7 @@ fn capture_scoped_apps(
     } else {
         Ok(Vec::new())
     };
-    let apps = complete_apps_from_sources(
+    let apps = scoped_apps_from_sources(
         workspace_apps::list_apps_scoped_until(name, bundle_id, deadline),
         process,
     )?;
@@ -44,7 +60,19 @@ fn capture_scoped_apps(
     validate_app_instances(apps)
 }
 
-fn stabilize_apps_until(
+pub(super) fn scoped_apps_from_sources(
+    workspace: Result<agent_desktop_core::AppInventory, AdapterError>,
+    process: Result<Vec<AppInfo>, AdapterError>,
+) -> Result<Vec<AppInfo>, AdapterError> {
+    let workspace = workspace?;
+    let apps = complete_apps_from_sources(Ok(workspace.apps), process)?;
+    if apps.is_empty() {
+        workspace_apps::require_complete(&workspace.skipped)?;
+    }
+    Ok(apps)
+}
+
+pub(super) fn stabilize_apps_until(
     deadline: Instant,
     mut capture: impl FnMut() -> Result<Vec<AppInfo>, AdapterError>,
 ) -> Result<Vec<AppInfo>, AdapterError> {
@@ -76,6 +104,13 @@ fn stabilize_apps_until(
             Err(error) if retryable_inventory_error(&error) => {
                 previous = None;
                 last_failure = Some(error);
+            }
+            Err(error) if error.code == ErrorCode::Timeout && last_failure.is_some() => {
+                return Err(unstable_apps_error(
+                    attempts,
+                    churn_events,
+                    last_failure.as_ref(),
+                ));
             }
             Err(error) => return Err(error),
         }
@@ -272,3 +307,7 @@ fn matching_pids(apps: &[AppInfo], app_name: &str) -> Vec<ProcessId> {
 #[cfg(test)]
 #[path = "app_inventory_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "app_inventory_adapter_tests.rs"]
+pub(crate) mod adapter_tests;

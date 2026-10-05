@@ -254,7 +254,7 @@ fn worst_case_image_present_fits_the_renderer_transport_limit() {
 #[test]
 fn png_pixel_dimensions_are_bounded_before_decoding() {
     let dir = TempDir::new("pixels");
-    let max = MAX_CURSOR_IMAGE_PIXELS;
+    let max = 1024;
     for (width, height, ok) in [
         (max, max, true),
         (1, 1, true),

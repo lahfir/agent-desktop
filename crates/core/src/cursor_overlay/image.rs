@@ -8,7 +8,7 @@ use std::path::Path;
 pub const MAX_CURSOR_IMAGE_PATH_BYTES: usize = 1024;
 pub const MAX_CURSOR_IMAGE_BYTES: u64 = 2 * 1024 * 1024;
 /// Largest PNG pixel width or height the renderer will decode.
-pub const MAX_CURSOR_IMAGE_PIXELS: u32 = 8192;
+pub const MAX_CURSOR_IMAGE_PIXELS: u32 = 1024;
 const PNG_HEADER_BYTES: usize = 24;
 const MAX_HOTSPOT: f64 = 512.0;
 const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";

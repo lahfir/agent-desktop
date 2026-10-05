@@ -1,8 +1,7 @@
+use crate::system::{cg_window::WindowRecord, window_ax_state::WindowAxState};
 use agent_desktop_core::{AdapterError, ErrorCode, WindowInfo};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::time::Instant;
-
-use crate::system::{cg_window::WindowRecord, window_ax_state::WindowAxState};
 
 impl OwnerSnapshotView for crate::system::workspace_apps::WindowOwnerSnapshot {
     fn eligible_pids(&self) -> FxHashSet<i32> {
@@ -210,6 +209,9 @@ pub(super) fn stabilize_global_with(
             Err(error) if retryable_global_error(&error) => {
                 last_error = Some(error);
             }
+            Err(error) if error.code == ErrorCode::Timeout && last_error.is_some() => {
+                return Err(global_timeout(attempts, last_error.as_ref()));
+            }
             Err(error) => return Err(error),
         }
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -369,27 +371,9 @@ fn retryable_global_error(error: &AdapterError) -> bool {
     error.code == ErrorCode::AppUnresponsive && error.is_explicitly_retryable()
 }
 
-fn global_timeout(attempts: u64, last_error: Option<&AdapterError>) -> AdapterError {
-    let last = |key: &str| last_error.and_then(|error| error.details.as_ref()?.get(key).cloned());
-    let mut details = serde_json::json!({
-            "kind": "global_window_inventory_unstable",
-            "attempts": attempts,
-            "last_code": last_error.map(|error| error.code.as_str()),
-            "last_kind": last("kind"),
-            "last_operation": last("operation"),
-            "last_status": last("status"),
-            "last_failure_field": last("failure_field"),
-            "last_failure_index": last("failure_index"),
-            "last_failure_pid": last("failure_pid"),
-            "complete": false,
-            "retryable": true,
-    });
-    if let Some(fields) = details.as_object_mut() {
-        fields.retain(|_, value| !value.is_null());
-    }
-    AdapterError::timeout("Global application window inventory did not stabilize before deadline")
-        .with_details(details)
-}
+#[path = "window_inventory_global_timeout.rs"]
+mod timeout;
+use timeout::global_timeout;
 
 #[cfg(test)]
 #[path = "window_inventory_global_timeout_tests.rs"]

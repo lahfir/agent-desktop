@@ -113,3 +113,49 @@ fn skipped_records_survive_an_expired_inventory_deadline() {
         assert_eq!(error.details.unwrap()["skipped"][0]["pid"], 11);
     }
 }
+
+#[test]
+fn skipped_records_preserve_matching_apps_and_retry_missing_names() {
+    let bytes = serde_json::to_vec(&json!({
+        "applications":[{"pid":10,"name":"Finder","launch_time":100.0,"activation_policy":"regular"}],
+        "frontmost_pid":0,"frontmost_launch_time":null,
+        "skipped":[{"pid":11,"field":"application_name"}],
+    })).unwrap();
+    let capture = |name: &str| {
+        apps_inventory_from_json_with(
+            &bytes,
+            deadline(),
+            |app| app.name == name,
+            false,
+            |_| Ok(Some("instance-10".into())),
+        )
+    };
+    let apps =
+        crate::system::app_inventory::scoped_apps_from_sources(capture("Finder"), Ok(Vec::new()))
+            .unwrap();
+    assert_eq!(apps[0].name, "Finder");
+    let mut attempts = 0;
+    let error = crate::system::app_inventory::stabilize_apps_until(
+        Instant::now() + std::time::Duration::from_millis(500),
+        || {
+            attempts += 1;
+            crate::system::app_inventory::scoped_apps_from_sources(
+                capture("Missing"),
+                Ok(Vec::new()),
+            )
+        },
+    )
+    .unwrap_err();
+    assert!(attempts > 1);
+    assert_eq!(error.code, ErrorCode::Timeout);
+    assert!(error.is_explicitly_retryable());
+    assert_eq!(
+        error.details.unwrap()["last_failure_details"]["skipped"][0],
+        json!({"pid":11,"field":"application_name"})
+    );
+    let owners = window_owner_snapshot_from_json(&bytes, deadline()).unwrap();
+    owners.require_match("Finder").unwrap();
+    let error = owners.require_match("Missing").unwrap_err();
+    assert_eq!(error.code, ErrorCode::AppUnresponsive);
+    assert_eq!(error.details.unwrap()["skipped"][0]["pid"], 11);
+}

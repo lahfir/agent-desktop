@@ -62,6 +62,19 @@ pub(crate) fn capture_signal_baseline_impl(
 
 #[cfg(target_os = "macos")]
 fn matching_apps(filter: &SignalFilter, deadline: Instant) -> Result<Vec<AppInfo>, AdapterError> {
+    if let Some(name) = &filter.app {
+        return crate::system::app_inventory::list_apps_scoped_until(name, None, deadline);
+    }
+    if filter.process.is_some() {
+        return crate::system::app_inventory::stabilize_apps_until(deadline, || {
+            let inventory = crate::system::app_inventory::list_apps_inventory_until(deadline)?;
+            let apps = filter_apps(filter, inventory.apps);
+            if apps.is_empty() {
+                crate::system::workspace_apps::require_complete(&inventory.skipped)?;
+            }
+            Ok(apps)
+        });
+    }
     let all = crate::system::app_inventory::list_apps_complete_until(deadline)?;
     ensure_before_deadline(deadline)?;
     Ok(filter_apps(filter, all))

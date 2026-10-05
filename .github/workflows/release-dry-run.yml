@@ -1,8 +1,5 @@
 name: Release Dry Run
 
-# Builds release artifacts for review without cache-poisoning the real release.
-# Proves binary starts and archives contain expected entries; cannot prove GitHub-Release upload.
-# pull_request trigger on artifact-shape paths lets this run pre-merge for the PRs that need it.
 on:
   workflow_dispatch:
     inputs:
@@ -137,9 +134,6 @@ jobs:
           cargo build --locked --profile release-ffi
           -p agent-desktop-ffi --target ${{ matrix.target }}
 
-      # The import library is what an MSVC-linking consumer needs and what the
-      # release archive omitted until this sub-phase; assert it exists here
-      # rather than discovering its absence from a published zip.
       - name: Stage and verify archive contents
         shell: pwsh
         env:

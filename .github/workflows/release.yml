@@ -205,9 +205,6 @@ jobs:
             exit 1
           }
 
-      # A binary that cannot start is not a release artifact, and on ARM64 this
-      # smoke is the only place that can be observed. Run before archiving on
-      # every leg so the step stays uniform rather than special-cased.
       - name: Smoke-run the built binary (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -257,8 +254,6 @@ jobs:
           $tarball = "agent-desktop-v${env:VERSION}-${{ matrix.target }}.tar.gz"
           & tar -czf $tarball -C "target/${{ matrix.target }}/release" agent-desktop.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # The outer @() matters: a one-element pipeline assigns a scalar
-          # string, whose .Count is its character length.
           $listing = @(@(& tar -tzf $tarball) | Sort-Object)
           if (($listing.Count -ne 1) -or ($listing[0] -ne 'agent-desktop.exe')) {
             Write-Host "FAIL: Windows archive listing must equal exactly one entry, agent-desktop.exe; got:"
@@ -448,8 +443,6 @@ jobs:
           } finally {
             $zip.Dispose()
           }
-          # Compress-Archive records '\' separators inside the archive on
-          # Windows, so the comparison normalizes both sides before matching.
           $names = @($entries) | ForEach-Object { $_.Replace('\', '/') }
           $importLib = "${env:STAGE}/lib/agent_desktop_ffi.dll.lib"
           if ($names -notcontains $importLib) {
@@ -614,15 +607,6 @@ jobs:
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
           ALLOW_REPUBLISH: ${{ needs.release-please.outputs.allow_republish }}
         run: |
-          # A re-dispatch of an already-shipped version would otherwise replace
-          # its assets in place: --clobber overwrites them and the asset-count
-          # assertion then passes over whatever survived, so every gate stays
-          # green while users' downloads change underneath them.
-          #
-          # Existence is the wrong discriminator - release-please creates the
-          # release itself when it merges the release PR, so a normal run finds
-          # one already there. What distinguishes a first upload from a
-          # re-dispatch is whether assets have been attached yet.
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             ATTACHED=$(gh release view "$TAG_NAME" --json assets --jq '.assets | length')
             if [ "${ATTACHED}" -gt 0 ] && [ "${ALLOW_REPUBLISH}" != "true" ]; then
@@ -640,8 +624,6 @@ jobs:
             ./*.tar.gz ./*.zip checksums.txt \
             --clobber
 
-      # Asset count: 4 CLI tarballs + 4 FFI tarballs + 2 FFI zips + checksums.txt = 11.
-      # Mismatch here fails check-npm-package.js first; this runs after upload to count the release.
       - name: Assert the release's exact asset set
         env:
           GH_TOKEN: ${{ github.token }}

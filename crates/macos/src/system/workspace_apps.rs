@@ -1,4 +1,4 @@
-use agent_desktop_core::{AdapterError, AppInfo, ErrorCode};
+use agent_desktop_core::{AdapterError, AppInfo, AppInventory, ErrorCode};
 use serde::Deserialize;
 use std::time::Instant;
 
@@ -59,6 +59,7 @@ pub(crate) struct WindowOwner {
 pub(crate) struct WindowOwnerSnapshot {
     owners: Vec<WindowOwner>,
     frontmost_pid: Option<i32>,
+    skipped: Vec<serde_json::Value>,
 }
 
 impl WindowOwnerSnapshot {
@@ -80,6 +81,13 @@ impl WindowOwnerSnapshot {
             .collect()
     }
 
+    pub(crate) fn require_match(&self, identifier: &str) -> Result<(), AdapterError> {
+        if self.matching_pids(identifier).is_empty() {
+            require_complete(&self.skipped)?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn owner(&self, pid: i32) -> Option<&WindowOwner> {
         self.owners.iter().find(|owner| owner.pid == pid)
     }
@@ -93,15 +101,29 @@ impl WindowOwnerSnapshot {
     }
 }
 
-pub(crate) fn list_apps_until(deadline: Instant) -> Result<Vec<AppInfo>, AdapterError> {
+pub(crate) fn list_apps_inventory_until(deadline: Instant) -> Result<AppInventory, AdapterError> {
+    #[cfg(test)]
+    if let Some(inventory) = crate::system::app_inventory::adapter_tests::workspace_inventory() {
+        return Ok(inventory);
+    }
     list_apps_with(deadline, |_| true, true)
+}
+
+pub(crate) fn require_complete(skipped: &[serde_json::Value]) -> Result<(), AdapterError> {
+    if skipped.is_empty() {
+        return Ok(());
+    }
+    Err(records::with_skipped(
+        inventory_error("AppKit application inventory skipped records"),
+        skipped,
+    ))
 }
 
 pub(crate) fn list_apps_scoped_until(
     name: &str,
     bundle_id: Option<&str>,
     deadline: Instant,
-) -> Result<Vec<AppInfo>, AdapterError> {
+) -> Result<AppInventory, AdapterError> {
     list_apps_with(
         deadline,
         |app| {
@@ -135,12 +157,12 @@ fn list_apps_with(
     deadline: Instant,
     include: impl Fn(&BridgedApplication) -> bool,
     skip_cross_uid: bool,
-) -> Result<Vec<AppInfo>, AdapterError> {
+) -> Result<AppInventory, AdapterError> {
     ensure_before_deadline(deadline)?;
     crate::system::cocoa_runtime::ensure_cocoa_multithreaded()?;
     let bytes = crate::system::appkit_bridge::workspace_snapshot_json()?;
     ensure_before_deadline(deadline)?;
-    apps_from_json_with(
+    apps_inventory_from_json_with(
         &bytes,
         deadline,
         include,
@@ -160,13 +182,24 @@ fn apps_from_json(bytes: &[u8], deadline: Instant) -> Result<Vec<AppInfo>, Adapt
     )
 }
 
+#[cfg(test)]
 fn apps_from_json_with(
     bytes: &[u8],
     deadline: Instant,
     include: impl Fn(&BridgedApplication) -> bool,
     skip_cross_uid: bool,
-    mut resolve: impl FnMut(i32) -> Result<Option<String>, AdapterError>,
+    resolve: impl FnMut(i32) -> Result<Option<String>, AdapterError>,
 ) -> Result<Vec<AppInfo>, AdapterError> {
+    Ok(apps_inventory_from_json_with(bytes, deadline, include, skip_cross_uid, resolve)?.apps)
+}
+
+fn apps_inventory_from_json_with(
+    bytes: &[u8],
+    deadline: Instant,
+    include: impl Fn(&BridgedApplication) -> bool,
+    skip_cross_uid: bool,
+    mut resolve: impl FnMut(i32) -> Result<Option<String>, AdapterError>,
+) -> Result<AppInventory, AdapterError> {
     let bridged = bridged_snapshot(bytes)?;
     let mut apps = Vec::with_capacity(bridged.applications.len());
     for app in bridged
@@ -203,7 +236,10 @@ fn apps_from_json_with(
     }
     ensure_before_deadline(deadline)
         .map_err(|error| records::with_skipped(error, &bridged.skipped))?;
-    Ok(apps)
+    Ok(AppInventory {
+        apps,
+        skipped: bridged.skipped,
+    })
 }
 
 fn presentation_of(policy: ActivationPolicy) -> agent_desktop_core::AppPresentation {
@@ -265,6 +301,7 @@ fn window_owner_snapshot_from_json(
     Ok(WindowOwnerSnapshot {
         owners,
         frontmost_pid,
+        skipped: bridged.skipped,
     })
 }
 
@@ -319,6 +356,7 @@ fn inventory_error(message: &str) -> AdapterError {
         .with_details(serde_json::json!({
             "kind": "inventory_source",
             "source": "ns_workspace",
+            "complete": false,
             "retryable": true,
         }))
 }

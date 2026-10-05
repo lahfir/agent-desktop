@@ -252,12 +252,14 @@ fn validate_launched_target(
 #[cfg(target_os = "macos")]
 fn matching_apps(id: &str, deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
     ensure_launch_budget(deadline, id)?;
-    Ok(
-        crate::system::workspace_apps::list_apps_until(deadline_instant(deadline)?)?
-            .into_iter()
-            .filter(|app| app.matches_identifier(id))
-            .collect(),
-    )
+    let until = deadline_instant(deadline)?;
+    crate::system::app_inventory::stabilize_apps_until(until, || {
+        let inventory = crate::system::workspace_apps::list_apps_scoped_until(id, None, until)?;
+        if inventory.apps.is_empty() {
+            crate::system::workspace_apps::require_complete(&inventory.skipped)?;
+        }
+        Ok(inventory.apps)
+    })
 }
 
 #[cfg(target_os = "macos")]

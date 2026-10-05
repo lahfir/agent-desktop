@@ -22,24 +22,12 @@ fi
 
 cd "$(git rev-parse --show-toplevel)"
 
-# `grep -q` stops reading at its first match, which leaves the producer writing
-# into a closed pipe. The producer dies of SIGPIPE, and under `set -o pipefail`
-# that non-zero producer status becomes the whole pipeline's status - so a
-# match, the very thing being looked for, made the `if` read false. Once the
-# staged name list outgrew the pipe buffer this hook announced "no Rust or FFI
-# changes staged", skipped every gate below and exited 0. Letting grep consume
-# all of its input removes the race, and reading the list once removes the
-# second `git` call with it.
 staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
 
 staged_matches() {
     printf '%s\n' "$2" | grep -E "$1" >/dev/null
 }
 
-# Both directions are driven against a list far larger than any pipe buffer,
-# because the failure this guards against announced itself as success. The
-# fixture calls the same `staged_matches` the decision below calls, so it
-# cannot drift away from the rule it is testing.
 selftest_haystack="$(
     printf 'crates/core/src/lib.rs\n'
     awk 'BEGIN { for (i = 0; i < 20000; i++) print "docs/filler/note-" i ".md" }'
@@ -72,17 +60,6 @@ if [ "$HAS_RUST_CHANGES" -eq 0 ] && [ "$HAS_FFI_CHANGES" -eq 0 ]; then
     exit 0
 fi
 
-# A cargo invocation with no `-p` resolves through the workspace's
-# default-members, which names every platform crate. agent-desktop-macos cannot
-# build off macOS, so the unscoped `clippy` and `test` below failed on every
-# Windows and Linux clone - and a hook that always fails is a hook everyone
-# bypasses with SKIP_PRECOMMIT, which is how a formatting break and a
-# comment-rule violation reached CI. The sets below mirror the per-OS lanes in
-# .github/workflows/ci.yml: `test` (macOS), `test-windows`, `test-linux`. macOS
-# additionally keeps agent-desktop-linux, which is still a stub and compiles
-# anywhere. agent-desktop-windows left that class the moment it gained a real UI
-# Automation adapter - it builds on Windows alone - so the macOS set no longer
-# names it, and the lane that covers it is `test-windows`.
 HOST_KERNEL="$(uname -s)"
 case "$HOST_KERNEL" in
     Darwin*)
@@ -101,10 +78,6 @@ case "$HOST_KERNEL" in
         ;;
 esac
 
-# The defect being fixed was an unbuildable crate sitting in the package set, so
-# the selection asserts it never names one again. The first version of this guard
-# named agent-desktop-macos alone, and agent-desktop-windows walked straight past
-# it once that crate stopped being a stub, so the rule is stated per host now.
 case "$HOST_KERNEL" in
     Darwin*)
         UNBUILDABLE_HERE=(agent-desktop-windows)

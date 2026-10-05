@@ -48,6 +48,13 @@ pub trait ObservationOps: Send + Sync {
         Err(AdapterError::not_supported("list_apps"))
     }
 
+    fn list_apps_inventory(&self, deadline: Deadline) -> Result<crate::AppInventory, AdapterError> {
+        Ok(crate::AppInventory {
+            apps: self.list_apps(deadline)?,
+            skipped: Vec::new(),
+        })
+    }
+
     fn list_apps_scoped(
         &self,
         name: &str,

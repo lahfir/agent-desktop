@@ -166,17 +166,28 @@ int main(void) {
         [[NSFileManager defaultManager] removeItemAtPath:hand error:nil];
         ADPointerImageApply(window, pointer);
         require(!pointer.hidden, "a deleted pointer image must fall back to the arrow");
+        NSString *limit = writePNG(@"ad-cursor-limit", 1024, 32);
+        require(ADImagePixelsFit([NSData dataWithContentsOfFile:limit]),
+                "1024-pixel-wide IHDR must pass the native bound");
+        agent_desktop_cursor_overlay_image(0, limit.fileSystemRepresentation, 0.0, 0.0);
+        ADPointerImageSelect(window, pointer, false);
+        ADPointerImageApply(window, pointer);
+        require(pointer.hidden && ADImageLayer.superlayer != nil,
+                "a 1024-pixel-wide PNG must be accepted");
+        [[NSFileManager defaultManager] removeItemAtPath:limit error:nil];
         NSString *bomb = [NSTemporaryDirectory()
             stringByAppendingPathComponent:[NSString stringWithFormat:@"ad-cursor-bomb-%d.png", getpid()]];
         const uint8_t header[24] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 13,
-                                    'I', 'H', 'D', 'R', 0, 0, 0x4e, 0x20, 0, 0, 0x4e, 0x20};
+                                    'I', 'H', 'D', 'R', 0, 0, 4, 1, 0, 0, 0, 32};
+        require(!ADImagePixelsFit([NSData dataWithBytes:header length:sizeof(header)]),
+                "1025-pixel-wide IHDR must fail the native bound");
         require([[NSData dataWithBytes:header length:sizeof(header)] writeToFile:bomb atomically:YES],
                 "oversized fixture must be written");
         agent_desktop_cursor_overlay_image(0, bomb.fileSystemRepresentation, 0.0, 0.0);
         ADPointerImageSelect(window, pointer, false);
         ADPointerImageApply(window, pointer);
         require(!pointer.hidden && ADImageLayer.superlayer == nil,
-                "a PNG declaring more than 8192 pixels per side must fall back to the arrow");
+                "a PNG declaring 1025 pixels wide must fall back to the arrow");
         NSMutableData *broken = [NSMutableData dataWithBytes:header length:sizeof(header)];
         uint8_t *bytes = broken.mutableBytes;
         bytes[18] = bytes[22] = 0;

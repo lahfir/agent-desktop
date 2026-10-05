@@ -59,7 +59,7 @@ Read the core skill first (`agent-desktop skills get desktop`) for the observe, 
 
 **Keys.** The primary modifier is `cmd`: `press cmd+c`, `press cmd+s`. Quit shortcuts such as `cmd+q`, `cmd+shift+q`, `cmd+alt+esc`, `ctrl+cmd+q` and `cmd+shift+delete` return `POLICY_DENIED` unless you pass `--force`. To quit an app, use `close-app`. Punctuation keys work in combos, as the symbol (`,` `.` `/` `;` `'` `[` `]` `\` `-` `=` `` ` ``) or by name (`comma`, `period`, `slash`, `semicolon`, `quote`, `leftbracket`, `rightbracket`, `backslash`, `minus`, `equal`, `grave`). Each one is sent with the key that types it in the active keyboard layout, so `press cmd+,` opens Settings on ANSI and JIS keyboards alike.
 
-**Cursor overlay.** `cursor-overlay enable` draws an agent cursor in a click-through window. It does not move the OS pointer, activate an app or change how a command is delivered. It honours Reduce Motion. `--image` and `--pointer-image` accept PNG only, up to 2 MiB and 8192 pixels per side. `--size` scales images at the display backing scale; missing or invalid images fall back to the arrow.
+**Cursor overlay.** `cursor-overlay enable` draws an agent cursor in a click-through window. It does not move the OS pointer, activate an app or change how a command is delivered. It honours Reduce Motion. `--image` and `--pointer-image` accept PNG only, up to 2 MiB and 1024 pixels per side. `--size` scales images at the display backing scale; missing or invalid images fall back to the arrow.
 
 ## Next step
 

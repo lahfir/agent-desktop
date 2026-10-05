@@ -2,8 +2,12 @@ use super::*;
 
 fn temp_dir(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
-        "agent-desktop-artifact-budget-{name}-{}",
-        std::process::id()
+        "agent-desktop-artifact-budget-{name}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
     ))
 }
 
@@ -194,16 +198,19 @@ fn separate_session_directories_have_independent_budgets() {
     crate::trace::ensure_trace_dir(&second.join("screens")).unwrap();
     set_test_limits(100, 1, 100);
 
-    assert!(write_screenshot(&first, &first.join("screens/a.png"), &[1], test_deadline(),).is_ok());
-    assert!(
+    past_lock_contention(|| {
+        write_screenshot(&first, &first.join("screens/a.png"), &[1], test_deadline())
+    })
+    .unwrap();
+    past_lock_contention(|| {
         write_screenshot(
             &second,
             &second.join("screens/a.png"),
             &[1],
             test_deadline(),
         )
-        .is_ok()
-    );
+    })
+    .unwrap();
 
     clear_test_limits();
     std::fs::remove_dir_all(first).unwrap();

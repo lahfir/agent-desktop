@@ -89,3 +89,48 @@ fn listing_timeout_reaches_both_adapter_deadlines() {
         .unwrap();
     }
 }
+
+struct IncompleteAdapter;
+impl ObservationOps for IncompleteAdapter {
+    fn list_apps_inventory(
+        &self,
+        deadline: crate::Deadline,
+    ) -> Result<crate::AppInventory, AdapterError> {
+        Ok(crate::AppInventory {
+            apps: AppsAdapter.list_apps(deadline)?,
+            skipped: vec![json!({"pid":11,"field":"application_name"})],
+        })
+    }
+}
+impl ActionOps for IncompleteAdapter {}
+impl InputOps for IncompleteAdapter {}
+impl SystemOps for IncompleteAdapter {}
+
+#[test]
+fn list_apps_marks_skipped_records_even_when_filtered_to_no_matches() {
+    for app in [None, Some("Missing".into())] {
+        let value = execute(
+            ListAppsArgs {
+                app,
+                timeout_ms: None,
+            },
+            &IncompleteAdapter,
+        )
+        .unwrap();
+        assert_eq!(value["complete"], false);
+        assert_eq!(
+            value["skipped"],
+            json!([{"pid":11,"field":"application_name"}])
+        );
+    }
+    let value = execute(
+        ListAppsArgs {
+            app: None,
+            timeout_ms: None,
+        },
+        &AppsAdapter,
+    )
+    .unwrap();
+    assert!(value.get("complete").is_none());
+    assert!(value.get("skipped").is_none());
+}
