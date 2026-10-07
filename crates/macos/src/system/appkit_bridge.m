@@ -154,6 +154,13 @@ AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(void) {
                     continue;
                 }
                 int32_t pid = app.processIdentifier;
+                // AppKit documents -1 for applications without a process. They
+                // cannot own a process-addressed AX window; skip only that
+                // sentinel; malformed records and frontmost identity checks
+                // stay fail-closed.
+                if (pid == -1) {
+                    continue;
+                }
                 NSString *name = app.localizedName;
                 if (pid <= 0 || name == nil || name.length == 0 ||
                     [name lengthOfBytesUsingEncoding:NSUTF8StringEncoding] > 16384) {
