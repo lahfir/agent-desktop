@@ -393,3 +393,37 @@ fn scoped_lookup_still_reports_cross_uid_denial_of_the_selected_app() {
 
     assert_eq!(error.code, ErrorCode::PermDenied);
 }
+
+#[test]
+fn complete_inventory_skips_an_app_whose_process_is_gone() {
+    let bytes = br#"{
+        "applications":[
+            {"name":"Finder","pid":10,"launch_time":100.25,"activation_policy":"regular"},
+            {"name":"Preview","pid":14192,"launch_time":null,"activation_policy":"regular"},
+            {"name":"Safari","pid":12,"launch_time":102.75,"activation_policy":"regular"}
+        ],
+        "frontmost_pid":10,
+        "frontmost_launch_time":100.25
+    }"#;
+    let apps = apps_from_json_with(
+        bytes,
+        deadline(),
+        |_| true,
+        true,
+        |pid| Ok((pid != 14192).then(|| format!("instance-{pid}"))),
+    )
+    .unwrap();
+
+    let pids: Vec<u32> = apps.iter().map(|app| u32::from(app.pid)).collect();
+    assert_eq!(pids, [10, 12]);
+}
+
+#[test]
+fn scoped_lookup_still_reports_a_selected_app_whose_process_is_gone() {
+    let bytes = br#"{
+        "applications":[{"name":"Preview","pid":14192,"launch_time":null,"activation_policy":"regular"}],
+        "frontmost_pid":0,
+        "frontmost_launch_time":null
+    }"#;
+    assert!(apps_from_json_with(bytes, deadline(), |_| true, false, |_| Ok(None)).is_err());
+}
