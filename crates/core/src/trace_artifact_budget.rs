@@ -11,10 +11,10 @@ const USAGE_LEDGER_MAX_BYTES: u64 = 256;
 const ARTIFACT_LOCK_FILE: &str = ".artifact-budget.lock";
 
 #[derive(Clone, Copy)]
-struct ArtifactLimits {
-    screenshot_bytes: u64,
-    screenshot_count: u32,
-    refmap_bytes: u64,
+pub(crate) struct ArtifactLimits {
+    pub(crate) screenshot_bytes: u64,
+    pub(crate) screenshot_count: u32,
+    pub(crate) refmap_bytes: u64,
 }
 
 #[cfg(test)]
@@ -177,7 +177,7 @@ fn directory_usage(dir: &Path) -> Result<(u64, u32), &'static str> {
     Ok((bytes, count))
 }
 
-fn limits() -> ArtifactLimits {
+pub(crate) fn limits() -> ArtifactLimits {
     #[cfg(test)]
     if let Some(limits) = TEST_LIMITS.with(std::cell::Cell::get) {
         return limits;

@@ -86,13 +86,17 @@ pub(crate) fn capture_action_screenshot(
     else {
         return ArtifactOutcome::Skipped("exact_target_unavailable".into());
     };
-    let Some(trace_dir) = session_trace_dir(context) else {
-        return ArtifactOutcome::Skipped("no_session".into());
+    let trace_dir = if context.native_trace_sink() {
+        None
+    } else {
+        let Some(dir) = session_trace_dir(context) else {
+            return ArtifactOutcome::Skipped("no_session".into());
+        };
+        if let Err(err) = ensure_trace_dir(&screens_dir(&dir)) {
+            return ArtifactOutcome::Skipped(format!("dir: {err}"));
+        }
+        Some(dir)
     };
-    let screens = screens_dir(&trace_dir);
-    if let Err(err) = ensure_trace_dir(&screens) {
-        return ArtifactOutcome::Skipped(format!("dir: {err}"));
-    }
 
     let target = crate::WindowInfo {
         id: window_id.into(),
@@ -120,7 +124,21 @@ pub(crate) fn capture_action_screenshot(
         seq,
         phase
     );
-    let path = screens.join(&filename);
+    if let Some(result) = context.trace_artifact(crate::TraceArtifact {
+        kind: crate::TraceArtifactKind::Screenshot,
+        name: &filename,
+        bytes: &buf.data,
+        deadline,
+    }) {
+        return match result {
+            Ok(reference) => ArtifactOutcome::Captured(reference),
+            Err(_) => ArtifactOutcome::Skipped("sink_failed".into()),
+        };
+    }
+    let Some(trace_dir) = trace_dir else {
+        return ArtifactOutcome::Skipped("sink_unavailable".into());
+    };
+    let path = screens_dir(&trace_dir).join(&filename);
     if let Err(reason) =
         crate::trace_artifact_budget::write_screenshot(&trace_dir, &path, &buf.data, deadline)
     {
@@ -136,6 +154,33 @@ pub(crate) fn copy_refmap_if_full(
     refmap: &RefMap,
 ) -> Result<(), AppError> {
     if !artifacts_enabled(context) {
+        return Ok(());
+    }
+    if context.native_trace_sink() {
+        let json = match refmap.serialize_with_size_check() {
+            Ok(json) => json,
+            Err(_) => {
+                tracing::warn!("native trace refmap serialization failed");
+                return Ok(());
+            }
+        };
+        let filename = format!("{snapshot_id}.json");
+        let Some(result) = context.trace_artifact(crate::TraceArtifact {
+            kind: crate::TraceArtifactKind::RefMap,
+            name: &filename,
+            bytes: json.as_bytes(),
+            deadline: crate::Deadline::standard()?,
+        }) else {
+            return Err(AppError::Internal(
+                "Native artifact sink unavailable".into(),
+            ));
+        };
+        if result.is_err() {
+            let _ = context.trace(
+                "action.artifacts.refmap_skipped",
+                json!({ "snapshot_id": snapshot_id }),
+            );
+        }
         return Ok(());
     }
     let trace_dir = store.trace_dir();

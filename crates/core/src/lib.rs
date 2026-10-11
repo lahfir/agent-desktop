@@ -141,6 +141,7 @@ mod trace_artifact_budget;
 pub(crate) mod trace_artifacts;
 pub mod trace_read;
 pub mod trace_sanitize;
+mod trace_sink;
 mod trace_state;
 pub mod tree_options;
 mod ui_event;
@@ -277,3 +278,5 @@ pub use window_filter::WindowFilter;
 pub use window_info::WindowInfo;
 pub use window_op::WindowOp;
 pub use window_state::WindowState;
+
+pub use trace_sink::{TraceArtifact, TraceArtifactKind, TraceArtifactLimits, TraceSink};
