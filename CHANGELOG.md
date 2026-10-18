@@ -6,6 +6,13 @@
 
 * Preserve macOS applications with missing localized display names in the complete inventory, using their executable name or bundle identifier. Such applications no longer block unrelated app-scoped snapshots, window lists, and screenshots.
 
+## [0.10.1](https://github.com/lahfir/agent-desktop/compare/v0.10.0...v0.10.1) (2026-10-18)
+
+
+### Bug Fixes
+
+* **windows:** let launch take a bare name without .exe ([#276](https://github.com/lahfir/agent-desktop/issues/276)) ([483427e](https://github.com/lahfir/agent-desktop/commit/483427eb84821a9d0ebc79eb56dd689c04cb15be))
+
 ## [0.10.0](https://github.com/lahfir/agent-desktop/compare/v0.9.4...v0.10.0) (2026-10-18)
 
 
