@@ -6,6 +6,49 @@
 
 * Preserve macOS applications with missing localized display names in the complete inventory, using their executable name or bundle identifier. Such applications no longer block unrelated app-scoped snapshots, window lists, and screenshots.
 
+## [0.10.0](https://github.com/lahfir/agent-desktop/compare/v0.9.4...v0.10.0) (2026-10-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* the release carries these contract changes.
+    - The C ABI major version is 5. The legacy entrypoints that each have an
+      *_exact replacement are removed: ad_list_surfaces, ad_surface_list_count,
+      ad_surface_list_get, ad_surface_list_free, ad_list_windows,
+      ad_window_list_count, ad_window_list_get, ad_window_list_free,
+      ad_launch_app, ad_release_window_fields, ad_get_tree, ad_find, ad_is,
+      ad_focus_window, ad_window_op, ad_resolve_element and
+      ad_execute_ref_action_with_policy, with the AdSurfaceList and AdWindowList
+      handles. AdScreenshotKind loses WINDOW (FULL_SCREEN keeps 2 and 1 is
+      rejected); AdScreenshotTarget loses pid; AdExactSurfaceInfo is version 2,
+      48 bytes, with a trailing unclassified field; the snapshot_id argument of
+      ad_execute_by_ref and ad_execute_by_ref_timeout and the
+      AdWaitPredicate.snapshot_id field are removed, so AdWaitPredicate is 40
+      bytes and AdWaitArgs 104. Consumers must rebuild against the regenerated
+      header.
+    - Bare @eN ref input is removed from every ref-taking CLI command, wait
+      --element, snapshot --root, find --root, drag --from/--to, batch entries
+      and the FFI. Only the snapshot-qualified @<snapshot_id>:eN is accepted, and
+      a bare ref fails with INVALID_ARGS. The --snapshot flag that only qualified
+      a bare ref is removed from every command, and batch entries carrying a
+      snapshot or snapshot_id field are rejected as unknown fields.
+    - get --property text no longer returns the same value as --property value.
+      It prefers the value for textfield, combobox, listbox, datefield and
+      timefield and falls back to the accessible name; every other role prefers
+      the accessible name and falls back to the value. Blank strings count as
+      absent. Ask for --property value explicitly to keep the previous answer.
+    - An io error whose kind is PermissionDenied answers PERM_DENIED instead of
+      INTERNAL, in the CLI envelope and in the FFI envelope, return code and
+      last error alike.
+    - A ref action whose element is gone no longer ends in TIMEOUT. A
+      non-retryable resolution failure answers at once; a retryable one keeps
+      polling, and if no later resolution succeeds the action answers the
+      recorded STALE_REF or AMBIGUOUS_TARGET at the deadline.
+
+### Features
+
+* support Windows 10 1809+ and Windows Server 2019+ on x64 and ARM64 ([483a31d](https://github.com/lahfir/agent-desktop/commit/483a31d036175f54c34ce1fbd2cea762560ab78c))
+
 ## [0.9.4](https://github.com/lahfir/agent-desktop/compare/v0.9.3...v0.9.4) (2026-09-23)
 
 
