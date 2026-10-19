@@ -20,9 +20,73 @@ static EVENT_SEQ: AtomicU64 = AtomicU64::new(0);
 pub struct TraceConfig {
     strict: bool,
     state: Arc<TraceState>,
+    native: Option<Arc<NativeTrace>>,
+}
+
+struct NativeTrace {
+    sink: Arc<dyn crate::TraceSink>,
+    meta_written: Mutex<bool>,
+}
+
+impl std::fmt::Debug for NativeTrace {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NativeTrace")
+            .finish_non_exhaustive()
+    }
 }
 
 impl TraceConfig {
+    pub(crate) fn with_sink(sink: Arc<dyn crate::TraceSink>, strict: bool) -> Self {
+        Self {
+            strict,
+            state: Arc::new(TraceState::default()),
+            native: Some(Arc::new(NativeTrace {
+                sink,
+                meta_written: Mutex::new(false),
+            })),
+        }
+    }
+
+    pub(crate) fn is_native(&self) -> bool {
+        self.native.is_some()
+    }
+
+    pub(crate) fn artifact(
+        &self,
+        artifact: crate::TraceArtifact<'_>,
+    ) -> Option<Result<String, AppError>> {
+        self.native.as_ref().map(|native| {
+            let limits = crate::trace_artifact_budget::limits();
+            let maximum = match artifact.kind {
+                crate::TraceArtifactKind::Screenshot => limits.screenshot_bytes,
+                crate::TraceArtifactKind::RefMap => limits.refmap_bytes,
+            };
+            if artifact.deadline.is_expired() || artifact.bytes.len() as u64 > maximum {
+                return Err(AppError::invalid_input(
+                    "Trace artifact exceeds its budget or deadline",
+                ));
+            }
+            let reference = native.sink.store_artifact(
+                artifact,
+                crate::TraceArtifactLimits {
+                    screenshot_bytes: limits.screenshot_bytes,
+                    screenshot_count: limits.screenshot_count,
+                    refmap_bytes: limits.refmap_bytes,
+                },
+            )?;
+            if reference.is_empty()
+                || reference.len() > 4096
+                || reference.chars().any(char::is_control)
+            {
+                return Err(AppError::invalid_input(
+                    "Trace sink returned an invalid artifact reference",
+                ));
+            }
+            Ok(reference)
+        })
+    }
+
     pub fn build(
         explicit_path: Option<PathBuf>,
         session_segment_dir: Option<PathBuf>,
@@ -52,6 +116,7 @@ impl TraceConfig {
             },
         };
         Ok(Self {
+            native: None,
             strict,
             state: Arc::new(TraceState {
                 pending,
@@ -76,6 +141,34 @@ impl TraceConfig {
         session_id: Option<&str>,
         fields: impl FnOnce() -> Value,
     ) -> Result<(), AppError> {
+        if let Some(native) = &self.native {
+            let result = (|| {
+                let mut meta = native
+                    .meta_written
+                    .lock()
+                    .map_err(|_| AppError::Internal("trace sink lock poisoned".into()))?;
+                if !*meta {
+                    native.sink.append(
+                        &prepare_event("trace.meta", session_id, meta_fields())?,
+                        crate::Deadline::standard()?,
+                        MAX_TRACE_FILE_BYTES,
+                    )?;
+                    *meta = true;
+                }
+                native.sink.append(
+                    &prepare_event(event, session_id, fields())?,
+                    crate::Deadline::standard()?,
+                    MAX_TRACE_FILE_BYTES,
+                )
+            })();
+            return match result {
+                Err(error) if !self.strict => {
+                    tracing::warn!(code = error.code(), "native trace append failed");
+                    Ok(())
+                }
+                other => other,
+            };
+        }
         let writer = match self.ensure_writer()? {
             Some(writer) => writer,
             None => return Ok(()),
@@ -134,6 +227,9 @@ impl TraceConfig {
     }
 
     pub(crate) fn has_sink(&self) -> bool {
+        if self.is_native() {
+            return true;
+        }
         if matches!(self.state.pending, TracePending::None) {
             return false;
         }
@@ -154,13 +250,14 @@ impl TraceConfig {
         &self,
         session_segment_dir: Option<PathBuf>,
     ) -> Result<Self, AppError> {
-        if self.pending_file_path().is_some() && self.has_sink() {
+        if self.is_native() || (self.pending_file_path().is_some() && self.has_sink()) {
             return Ok(self.clone());
         }
         match session_segment_dir {
             Some(dir) => Self::build(None, Some(dir), self.strict),
             None => Ok(Self {
                 strict: self.strict,
+                native: None,
                 state: Arc::new(TraceState::default()),
             }),
         }
@@ -188,18 +285,13 @@ fn write_meta_header_locked(
     file: &mut std::fs::File,
     session_id: Option<&str>,
 ) -> Result<(), AppError> {
-    write_event_locked(
-        file,
-        "trace.meta",
-        session_id,
-        json!({
-            "schema": 1,
-            "version": env!("CARGO_PKG_VERSION"),
-            "os": std::env::consts::OS,
-            "pid": std::process::id(),
-            "proc_start_ms": process_start_ms(),
-        }),
-    )
+    write_event_locked(file, "trace.meta", session_id, meta_fields())
+}
+
+fn meta_fields() -> Value {
+    json!({ "schema": 1, "version": env!("CARGO_PKG_VERSION"),
+        "os": std::env::consts::OS, "pid": std::process::id(),
+        "proc_start_ms": process_start_ms() })
 }
 
 #[cfg(test)]
@@ -214,12 +306,7 @@ fn write_event(
     })
 }
 
-fn write_event_locked(
-    file: &mut std::fs::File,
-    event: &str,
-    session_id: Option<&str>,
-    fields: Value,
-) -> Result<(), AppError> {
+fn prepare_event(event: &str, session_id: Option<&str>, fields: Value) -> Result<Value, AppError> {
     let envelope_bytes = event
         .len()
         .saturating_mul(6)
@@ -259,8 +346,18 @@ fn write_event_locked(
     if let Some(sid) = session_id {
         body.insert("session_id".to_string(), json!(sid));
     }
+    Ok(Value::Object(body))
+}
+
+fn write_event_locked(
+    file: &mut std::fs::File,
+    event: &str,
+    session_id: Option<&str>,
+    fields: Value,
+) -> Result<(), AppError> {
+    let body = prepare_event(event, session_id, fields)?;
     let mut line = Vec::new();
-    serde_json::to_writer(&mut line, &Value::Object(body))?;
+    serde_json::to_writer(&mut line, &body)?;
     line.push(b'\n');
     reject_oversized_trace(file, line.len() as u64)?;
     file.write_all(&line).map_err(AppError::from)
