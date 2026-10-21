@@ -187,7 +187,7 @@ pub(crate) fn states_are_complete(state: &ElementState, expanded_observed: bool)
             .and_then(crate::tree::state_reader::parse_checked_value)
             .is_some();
     let expand_ready = !crate::tree::roles::is_expandable_role(&state.role) || expanded_observed;
-    toggle_ready && expand_ready
+    toggle_ready && expand_ready && state.hidden.is_some() && state.offscreen.is_some()
 }
 
 fn element_state_from_attrs(

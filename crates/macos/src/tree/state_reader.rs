@@ -116,9 +116,14 @@ fn value_is_indeterminate(value: Option<&str>) -> bool {
 /// both the canonical state list and the live element read must share it.
 pub(crate) fn offscreen(bounds: Option<Rect>, window_bounds: Option<Rect>) -> Option<bool> {
     let (el, win) = bounds.zip(window_bounds)?;
+    if el.validate().is_err() || win.validate().is_err() {
+        return None;
+    }
     Some(
         win.width <= 0.0
             || win.height <= 0.0
+            || el.width <= 0.0
+            || el.height <= 0.0
             || el.x + el.width <= win.x
             || el.x >= win.x + win.width
             || el.y + el.height <= win.y

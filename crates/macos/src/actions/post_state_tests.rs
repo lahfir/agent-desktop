@@ -221,4 +221,12 @@ fn an_unread_expanded_attribute_is_not_complete_state_evidence() {
     assert!(states_are_complete(&element("disclosure"), true));
     assert!(states_are_complete(&element("button"), false));
     assert!(!states_are_complete(&element("checkbox"), true));
+
+    let mut missing_hidden = element("button");
+    missing_hidden.hidden = None;
+    assert!(!states_are_complete(&missing_hidden, false));
+
+    let mut missing_viewport = element("button");
+    missing_viewport.offscreen = None;
+    assert!(!states_are_complete(&missing_viewport, false));
 }

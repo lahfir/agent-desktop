@@ -80,6 +80,28 @@ fn clipped_bounds_emit_offscreen() {
 }
 
 #[test]
+fn invalid_or_missing_geometry_cannot_establish_on_screen_state() {
+    let valid = Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 50.0,
+        height: 50.0,
+    };
+    let invalid = Rect {
+        x: f64::NAN,
+        ..valid
+    };
+    let empty = Rect {
+        width: 0.0,
+        ..valid
+    };
+    assert_eq!(offscreen(Some(valid), None), None);
+    assert_eq!(offscreen(Some(invalid), Some(valid)), None);
+    assert_eq!(offscreen(Some(valid), Some(invalid)), None);
+    assert_eq!(offscreen(Some(valid), Some(empty)), Some(true));
+}
+
+#[test]
 fn emitted_tokens_over_representative_inputs_are_vocabulary_members() {
     let el = AXElement(std::ptr::null_mut());
     let window = Rect {

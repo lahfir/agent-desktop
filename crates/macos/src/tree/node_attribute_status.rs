@@ -52,7 +52,11 @@ impl NodeAttributeStatus {
     }
 
     pub(crate) fn record_native_slot_error(&mut self, index: usize, error: i32) {
-        if !crate::tree::ax_absence::is_absent_attribute_error(error) {
+        // AXFailure is ambiguous for AXHidden. An unsuccessful visibility read
+        // must not become affirmative non-hidden evidence.
+        if (index == HIDDEN && error == accessibility_sys::kAXErrorFailure)
+            || !crate::tree::ax_absence::is_absent_attribute_error(error)
+        {
             self.record_slot_error(index, error);
         }
     }
@@ -214,6 +218,18 @@ mod tests {
             assert_eq!(status.invalid_element, error == kAXErrorInvalidUIElement);
             assert_eq!(status.api_disabled, error == kAXErrorAPIDisabled);
         }
+    }
+
+    #[test]
+    fn native_hidden_failure_is_unknown_but_unsupported_is_absent() {
+        let mut failed = NodeAttributeStatus::default();
+        failed.record_native_slot_error(HIDDEN, accessibility_sys::kAXErrorFailure);
+        assert!(failed.field_unknown(HIDDEN));
+        assert!(failed.states_unknown());
+
+        let mut absent = NodeAttributeStatus::default();
+        absent.record_native_slot_error(HIDDEN, kAXErrorAttributeUnsupported);
+        assert!(!absent.states_unknown());
     }
 
     #[test]
