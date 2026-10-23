@@ -1,6 +1,6 @@
 ---
 name: agent-desktop-macos
-version: 0.10.1 # x-release-please-version
+version: 0.10.2 # x-release-please-version
 tags: macos-automation, accessibility, ax, tcc, ai-agent, gui-automation, cli
 requirements:
   - agent-desktop

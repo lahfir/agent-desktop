@@ -6,6 +6,18 @@
 
 * Preserve macOS applications with missing localized display names in the complete inventory, using their executable name or bundle identifier. Such applications no longer block unrelated app-scoped snapshots, window lists, and screenshots.
 
+## [0.10.2](https://github.com/lahfir/agent-desktop/compare/v0.10.1...v0.10.2) (2026-10-23)
+
+
+### Features
+
+* add an on-screen permission guide for macOS onboarding ([#299](https://github.com/lahfir/agent-desktop/issues/299)) ([02afee6](https://github.com/lahfir/agent-desktop/commit/02afee6700eca91575ed887c9806122cd22e4f0f))
+
+
+### Bug Fixes
+
+* **npm:** link the bin entry to the native binary so the command starts without Node ([#300](https://github.com/lahfir/agent-desktop/issues/300)) ([5f35032](https://github.com/lahfir/agent-desktop/commit/5f35032403cf283d11ca3f90c71367d092998b7d))
+
 ## [0.10.1](https://github.com/lahfir/agent-desktop/compare/v0.10.0...v0.10.1) (2026-10-18)
 
 
