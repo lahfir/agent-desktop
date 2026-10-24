@@ -3,18 +3,17 @@ use crate::{
     adapter::{PlatformAdapter, TreeOptions},
     commands::{query, snapshot as snapshot_cmd, wait_timeout},
     context::CommandContext,
-    live_locator::{
+    locator::live_locator::{
         LocatorMaterialization, LocatorResolveRequest, LocatorSelection, ObservationRoot,
         resolve_query,
     },
-    refs_store::RefStore,
+    refs::refs_store::RefStore,
     snapshot::{self, emit_snapshot_saved},
-    trace_artifacts,
+    trace::trace_artifacts,
 };
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
-const SELECTOR_POLL_INTERVAL: Duration = Duration::from_millis(75);
 const DIAGNOSTIC_SNAPSHOT_BUDGET: Duration = Duration::from_millis(600);
 
 pub struct WaitSelectorInput {
@@ -35,6 +34,14 @@ pub fn execute(
 
     let start = Instant::now();
     let deadline = crate::Deadline::at(start, input.timeout_ms)?;
+    let mut scheduler = super::wait_scheduler::WaitScheduler::new(
+        adapter,
+        &crate::SignalFilter {
+            app: input.app.clone(),
+            process: None,
+        },
+        deadline,
+    );
     let mut last_error = None;
     let mut last_built = None;
 
@@ -101,7 +108,10 @@ pub fn execute(
         }
 
         let mut remaining = deadline.remaining();
-        if !remaining.is_zero() && remaining <= SELECTOR_POLL_INTERVAL && last_built.is_none() {
+        if !remaining.is_zero()
+            && remaining <= super::wait_scheduler::POLL_INTERVAL
+            && last_built.is_none()
+        {
             match snapshot::build(
                 adapter,
                 &input.opts,
@@ -118,7 +128,7 @@ pub fn execute(
             return timeout_response(adapter, &input, context, last_built, last_error);
         }
 
-        std::thread::sleep(remaining.min(SELECTOR_POLL_INTERVAL));
+        scheduler.wait(deadline);
     }
 }
 

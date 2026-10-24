@@ -26,46 +26,70 @@ own `ok:true`.
 | `ChromiumStage.psm1` | Chromium content staging. |
 | `CursorOverlaySupport.psm1` | Support helpers for the cursor-overlay scenario. |
 | `Run-E2E.ps1` | The one process-terminating call in the whole tree. Scenario files (`scenarios/*.ps1`) return; only this script exits. |
+| `scenarios/*.ps1` | One scenario per file, dot-sourced and run by `Run-E2E.ps1` in this order: Preconditions, Observation, NonInterference, Interaction, Acceptance, Reliability, Surfaces, ShellSurfaces, TracePerformance, Chromium, SplitIntegrity, CursorOverlay. Nothing is auto-discovered: a scenario file that `Run-E2E.ps1` does not dot-source and list in `Invoke-ScenarioSequence` never runs. |
+| `AcceptanceContendedFocus.ps1`, `InteractionHeaded.ps1`, `InteractionPress.ps1` | Legs dot-sourced by `scenarios/Acceptance.ps1` and `scenarios/Interaction.ps1`. They sit outside `scenarios/` because the contract gate treats every file there as a top-level scenario entry point. |
+| `selftest/` | Self-tests for the harness itself (see Running). |
 
-`Harness.psm1`/`Native.psm1` and their self-tests were split (and `DesktopLease.psm1`/`NativeTypes.psm1`/`NativeDesktop.psm1` introduced) purely to keep every file under the 400-line structural cap `scripts/check-e2e-windows-contract.ps1` enforces (rule 13); no exported function moved, only which file owns it. Every `selftest/*.ps1` entry point is likewise paired with a `*Cases*.ps1` file it dot-sources for the same reason.
+Every file stays under the 400-line cap that `scripts/check-e2e-windows-contract.ps1` enforces (rule 13), so large modules and self-tests are split by responsibility: each `selftest/Invoke-*SelfTests.ps1` entry point owns the process exit and dot-sources its `*SelfTestCases*.ps1` files.
 
 ## Data files
 
 - `skip-allowlist.psd1` - every capability token a scenario may pass to
   `Add-Skip`, with a reason. An undeclared token fails the run (a skip must
   never read as a pass).
-- `latency-baseline.psd1` - the committed per-leg p99 store `Assert-NoEffect`'s
-  window is derived from. Starts with four whole-CLI cost entries taken from
-  `probes/windows/24-fixture-e2e/captures/cost-baseline-devbox.json` and a
-  conservative `BootstrapP99Ms` fallback; the per-leg cost run replaces them
-  with one entry per positive `Assert-Effect` leg.
+- `latency-baseline.psd1` - the committed p99 store. `Initialize-NoEffectWindow`
+  checks the pinned `Assert-NoEffect` window against it: the run refuses to start
+  when that window is below 1.5x the largest recorded p99. It holds four
+  whole-CLI cost entries taken from
+  `probes/windows/24-fixture-e2e/captures/cost-baseline-devbox.json`; no
+  per-leg entries have been measured, and `BootstrapP99Ms` applies only while
+  `Legs` is empty.
+- `fixture-inventory.psd1` - the `Resident` and `Staged` `AutomationId`s the
+  fixture must expose. The Preconditions scenario compares it in both
+  directions with the manifest the fixture writes
+  (`tests/fixture-app-windows/README.md`).
 
 ## Running
 
 ```powershell
-# U7's self-tests: no desktop, no fixture, no staged binary - hosted-runner-runnable.
+# Lib.psm1 self-tests (targets, assertions, lock ordering, verdict ledger), run
+# against Stub-AgentDesktop.ps1: no desktop, no fixture, no staged binary.
+# CI runs them through scripts\check-e2e-windows-contract.ps1 -SelfTest.
 powershell -NoProfile -File tests\e2e-windows\selftest\Invoke-U7SelfTests.ps1
 
-# U6's self-tests: needs a real desktop and target\release\agent-desktop.exe already
-# built - acquires the real desktop lease, not hosted-runner-runnable.
+# Harness-core self-tests (isolation, immutable staging, bounded spawn, lease
+# adoption): needs a real desktop and a built target\release\agent-desktop.exe
+# (or -AgentDesktopBinary <path>); acquires the real desktop lease, so it
+# cannot run on a hosted runner.
 powershell -NoProfile -File tests\e2e-windows\selftest\Invoke-U6SelfTests.ps1
 
 # The seeded-failure entry path (proves a failing leg reaches a non-zero
 # process exit code, run on the hosted CI lane on every PR):
 powershell -NoProfile -File tests\e2e-windows\Run-E2E.ps1 -SelfTestSeedFailure
 
-# The live suite (local box only - acquires the desktop-exclusivity lease):
+# The live suite (local box only - acquires the desktop-exclusivity lease).
+# Build both artifacts first; -AgentDesktopBinary and -FixtureBinary override
+# the default paths target\release\agent-desktop.exe and
+# tests\fixture-app-windows\build\AgentDeskFixture.exe.
+cargo build --locked --release -p agent-desktop
+powershell -NoProfile -File tests\fixture-app-windows\build.ps1
 powershell -NoProfile -File tests\e2e-windows\Run-E2E.ps1
 ```
+
+`scripts\run-windows-e2e-ci.ps1` is the operator entry point that does all of
+that under one desktop lease: it builds the release binary and the fixture, runs
+the cursor-overlay teardown tests and frame budgets, the harness-core
+self-tests, and then `Run-E2E.ps1`. It refuses to run off Windows or without
+`AGENT_DESKTOP_NATIVE_E2E_RUNNER=1`, and no CI workflow invokes it.
 
 ## Conventions a scenario file must follow
 
 - Every ref is a target object from `Find-Target`/`Find-TargetById`, carrying
   both `RefId` and `SnapshotId`. No helper accepts or returns a bare `@eN`.
 - Effect assertions go through `Assert-Effect`/`Assert-NoEffect`; envelope
-  assertions go through `Assert-Envelope`. Dotted access to `.ok`/`.error`/
-  `.disposition`/`.data` on a command result is a `Lib.psm1`/`LibEnvelope.psm1`-only
-  privilege (rule 5 gates dotted member access only; bracket indexing is not gated).
+  assertions go through `Assert-Envelope`. Only `Lib.psm1` and `LibEnvelope.psm1` may use
+  dotted access to `.ok`/`.error`/`.disposition`/`.data` on a command result
+  (rule 5 gates dotted member access only; bracket indexing is not gated).
 - Every desktop-touching leg is lexically wrapped in `Enter-Stage`, declaring
   locks in the fixed order `DesktopLease` -> `ForegroundStage` -> `MenuStage`.
 - Every scenario calls `Register-Legs` with its leg names up front; every

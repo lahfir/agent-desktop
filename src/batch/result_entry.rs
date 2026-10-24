@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     AdapterError, AppError, DeliverySemantics, ErrorCode,
-    output::{ENVELOPE_VERSION, ErrorPayload},
+    response::output::{ENVELOPE_VERSION, ErrorPayload},
 };
 use serde_json::{Value, json};
 

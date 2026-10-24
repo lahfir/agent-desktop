@@ -1,8 +1,8 @@
 use agent_desktop_core::{LocatorField, Role};
 
 use super::properties::ElementProperties;
-use super::property_ids::TreeProperty;
-use super::property_outcome::{PropertyOutcome, PropertyValue};
+use super::properties::property_ids::TreeProperty;
+use super::properties::property_outcome::{PropertyOutcome, PropertyValue};
 
 /// Resolves a canonical role from the read set.
 ///

@@ -1,8 +1,8 @@
-use agent_desktop_core::{LocatorField, capability};
+use agent_desktop_core::{LocatorField, actions::capability};
 
 use super::properties::ElementProperties;
-use super::property_ids::TreeProperty;
-use super::property_outcome::PropertyOutcome;
+use super::properties::property_ids::TreeProperty;
+use super::properties::property_outcome::PropertyOutcome;
 
 /// The pattern-availability properties this module reads to decide whether
 /// the read set as a whole succeeded.

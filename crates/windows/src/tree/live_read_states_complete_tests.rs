@@ -8,9 +8,9 @@
 //! and run on every target.
 
 use super::{LiveRead, live_element};
-use crate::tree::element_properties::ElementProperties;
-use crate::tree::property_ids::TreeProperty;
-use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
+use crate::tree::properties::element_properties::ElementProperties;
+use crate::tree::properties::property_ids::TreeProperty;
+use crate::tree::properties::property_outcome::{PropertyOutcome, PropertyValue};
 use agent_desktop_core::{
     IdentifierEvidence, LocatorEvidence, LocatorField, LocatorRefEvidence, NodeDescriptor,
 };
@@ -45,6 +45,7 @@ fn read_with(role: &str, reads: Vec<(TreeProperty, PropertyOutcome)>) -> LiveRea
             identifiers: IdentifierEvidence::absent(),
             states: LocatorField::Known(Vec::new()),
             ref_evidence: LocatorRefEvidence {
+                window_bounds: LocatorField::Absent,
                 bounds: LocatorField::Absent,
                 available_actions: LocatorField::Known(Vec::new()),
                 descriptors: NodeDescriptor::default(),

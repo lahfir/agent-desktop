@@ -11,7 +11,7 @@
 use super::*;
 
 use crate::adapter::WindowsAdapter;
-use crate::tree::walker_fake::deadline;
+use crate::tree::walk::walker_fake::deadline;
 use agent_desktop_core::{ProcessId, SystemOps, WindowInfo};
 
 /// The kinds the Windows `surface_root` match resolves, enumerated by hand
@@ -56,7 +56,7 @@ fn every_surface_root_resolvable_kind_is_advertised() {
 /// `snapshot --surface` refuses.
 #[test]
 fn every_signal_emittable_surface_kind_is_advertised() {
-    use crate::system::signal_surfaces::SIGNAL_SURFACE_KINDS;
+    use crate::system::signal::signal_surfaces::SIGNAL_SURFACE_KINDS;
 
     let advertised = WindowsAdapter::new().supported_surfaces();
     for kind in SIGNAL_SURFACE_KINDS {

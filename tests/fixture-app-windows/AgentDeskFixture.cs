@@ -33,26 +33,6 @@ namespace AgentDeskFixtureApp
         }
 
         /// <summary>
-        /// Same contract as <see cref="Assign(Control,string)"/> for a
-        /// <see cref="ToolStripItem"/>. Neither <c>menu-fire-item</c> nor
-        /// <c>menu-disclosure</c> uses it: both shipped as real Buttons
-        /// wearing override hosts, because <c>ToolStripItem.Name</c> does not
-        /// surface as <c>AutomationId</c> the way <c>Control.Name</c> does (see
-        /// README.md). Nothing in this fixture relies on this overload for
-        /// resolvability.
-        /// </summary>
-        public static void Assign(ToolStripItem item, string automationId)
-        {
-            if (string.IsNullOrEmpty(automationId))
-            {
-                throw new ArgumentException(
-                    "every fixture control must carry a non-empty AutomationId");
-            }
-            item.Name = automationId;
-            RegisteredIds.Add(automationId);
-        }
-
-        /// <summary>
         /// Writes every id assigned so far, deduplicated and sorted, one per
         /// line, to AgentDeskFixture.ids.txt beside the running exe. The
         /// harness diffs this against its own declared inventory as a

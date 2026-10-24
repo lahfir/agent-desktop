@@ -41,7 +41,7 @@ fn ad_version_returns_ok_with_valid_json_envelope() {
             .expect("version field must exist");
         assert_eq!(
             envelope_version,
-            agent_desktop_core::output::ENVELOPE_VERSION,
+            agent_desktop_core::response::output::ENVELOPE_VERSION,
             "envelope version must match ENVELOPE_VERSION constant"
         );
 
@@ -140,7 +140,7 @@ fn status_returns_ok_envelope_with_required_fields() {
 
         assert_eq!(
             val["version"].as_str(),
-            Some(agent_desktop_core::output::ENVELOPE_VERSION),
+            Some(agent_desktop_core::response::output::ENVELOPE_VERSION),
             "envelope version must match ENVELOPE_VERSION constant"
         );
         assert_eq!(val["ok"].as_bool(), Some(true), "ok must be true");
@@ -161,17 +161,6 @@ fn status_returns_ok_envelope_with_required_fields() {
             "data.permissions must be present"
         );
 
-        ad_free_string(out);
-    });
-}
-
-#[test]
-fn status_free_string_cleans_up() {
-    with_adapter(|adapter| unsafe {
-        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
-        let rc = ad_status(adapter, &mut out);
-        assert_eq!(rc, AdResult::Ok);
-        assert!(!out.is_null());
         ad_free_string(out);
     });
 }

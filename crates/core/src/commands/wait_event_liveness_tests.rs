@@ -1,5 +1,6 @@
 use super::*;
-use crate::process_state::ProcessState;
+use crate::SignalFilter;
+use crate::system::process_state::ProcessState;
 
 struct LivenessAdapter {
     snapshots: Vec<SignalBaseline>,

@@ -1,13 +1,13 @@
 use super::{live_actions, live_bounds, live_element, live_state, live_value, read_live_element};
 use crate::tree::automation::root_from_hwnd;
 use crate::tree::element::UIAElement;
+use crate::tree::fixture::fixture_window::SECURE_MARKER;
 use crate::tree::fixture::{HostedFixture, ensure_test_apartment};
-use crate::tree::fixture_window::SECURE_MARKER;
 use crate::tree::name_evidence::{LabelOutcome, read_label};
+use crate::tree::properties::property_ids::TreeProperty;
 use crate::tree::properties::{PropertyOutcome, PropertyValue, read_one};
-use crate::tree::property_ids::TreeProperty;
-use crate::tree::walker::TreeSource;
-use crate::tree::walker_fake::deadline;
+use crate::tree::walk::walker::TreeSource;
+use crate::tree::walk::walker_fake::deadline;
 use agent_desktop_core::{AdapterError, ErrorCode, NativeHandle, ProcessId, RefEntry};
 
 fn fixture_pid(fixture: &HostedFixture) -> u32 {
@@ -178,7 +178,7 @@ fn an_expired_deadline_truncates_the_bounded_property_read_before_any_call() {
     let (properties, errors) = crate::tree::properties::read_live_bounded(&root, expired);
 
     assert_eq!(
-        properties.get(crate::tree::property_ids::TreeProperty::ClassName),
+        properties.get(crate::tree::properties::property_ids::TreeProperty::ClassName),
         crate::tree::properties::PropertyOutcome::Unknown,
         "a deadline expired before the first property call must leave it unread"
     );
@@ -217,9 +217,10 @@ fn the_payload_type_round_trips_through_a_native_handle() {
 fn blank_secure_entry(fixture: &HostedFixture) -> RefEntry {
     let deadline = deadline();
     let root = root_from_hwnd(fixture.handle(), deadline).expect("a fixture root");
-    let source = crate::tree::walker_source::UiaTreeSource::for_root(&root).expect("a tree source");
+    let source =
+        crate::tree::walk::walker_source::UiaTreeSource::for_root(&root).expect("a tree source");
     let prepared = source.prepare_root(&root).expect("a prepared root");
-    let budget = crate::tree::walker::WalkBudget::new(10, deadline);
+    let budget = crate::tree::walk::walker::WalkBudget::new(10, deadline);
     let mut prefix = Vec::new();
     let found = find_secure(&source, &prepared, 0, &budget, &mut prefix)
         .expect("the fixture walk succeeds")
@@ -249,6 +250,7 @@ fn blank_secure_entry(fixture: &HostedFixture) -> RefEntry {
             native_id: None,
         },
         geometry: agent_desktop_core::RefGeometry {
+            bounds_space: None,
             bounds: Some(*rect),
             bounds_hash: Some(hash),
         },
@@ -272,10 +274,10 @@ fn blank_secure_entry(fixture: &HostedFixture) -> RefEntry {
 }
 
 fn find_secure(
-    source: &crate::tree::walker_source::UiaTreeSource,
+    source: &crate::tree::walk::walker_source::UiaTreeSource,
     element: &UIAElement,
     depth: u8,
-    budget: &crate::tree::walker::WalkBudget,
+    budget: &crate::tree::walk::walker::WalkBudget,
     prefix: &mut Vec<usize>,
 ) -> Result<
     Option<(
@@ -296,8 +298,12 @@ fn find_secure(
         return Ok(Some((path, properties, node_evidence, failed)));
     }
     let mut ignored = false;
-    let children =
-        crate::tree::resolve_search::enumerate_children(source, element, budget, &mut ignored)?;
+    let children = crate::tree::resolve::resolve_search::enumerate_children(
+        source,
+        element,
+        budget,
+        &mut ignored,
+    )?;
     for (index, child) in children.iter().enumerate() {
         prefix.push(index);
         if let Some(found) = find_secure(source, child, depth + 1, budget, prefix)? {

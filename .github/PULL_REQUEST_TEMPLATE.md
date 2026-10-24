@@ -23,11 +23,11 @@ Closes #
 <!-- Check every gate you ran. $HOST_PKGS is the package set for your OS, as listed in CONTRIBUTING.md. -->
 
 - [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy $HOST_PKGS --all-targets -- -D warnings`
-- [ ] `cargo test $HOST_PKGS --lib`
+- [ ] `cargo clippy "${HOST_PKGS[@]}" --all-targets -- -D warnings`
+- [ ] `cargo test "${HOST_PKGS[@]}" --lib`
 - [ ] `cargo test -p agent-desktop`
 - [ ] `cargo test -p agent-desktop-ffi --tests`
-- [ ] `bash tests/e2e/run.sh` (requires `--release` build + AX permission; run when behavior changes)
+- [ ] `AGENT_DESKTOP_E2E_EXCLUSIVE=1 bash tests/e2e/run.sh` (requires `--release` build + AX permission; run when behavior changes)
 
 ## Checklist
 
@@ -37,5 +37,5 @@ Closes #
 - [ ] No `unwrap()` added in non-test code
 - [ ] No inline comments added (only `///` doc-comments on public items)
 - [ ] All modified files are within the 400 LOC limit
-- [ ] Skill docs updated if a command, flag, or JSON output changed (`skills/agent-desktop/` or the platform skill under `skills/agent-desktop-macos/` or `skills/agent-desktop-windows/`)
+- [ ] Skill docs updated if a command, flag, or JSON output changed (`skills/agent-desktop/` or the platform skill under `skills/agent-desktop-macos/`, `skills/agent-desktop-windows/` or `skills/agent-desktop-linux/`)
 - [ ] README / other docs updated if the public interface changed

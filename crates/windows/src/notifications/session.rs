@@ -2,8 +2,8 @@ use agent_desktop_core::{
     AdapterError, Deadline, ErrorCode, InteractionPolicy, SnapshotSurface, WindowInfo,
 };
 
-use crate::system::shell_surface::resolve_surface;
-use crate::system::shell_surface_open::{close_surface, open_surface};
+use crate::system::shell::shell_surface::resolve_surface;
+use crate::system::shell::shell_surface_open::{close_surface, open_surface};
 
 const CLEANUP_TIMEOUT_MS: u64 = 2_000;
 

@@ -62,8 +62,8 @@
     remain responsible for prose review; nothing here substitutes for it.
 
 .PARAMETER Path
-    Override the default capture roots (used by windows-e2e.yml to point
-    at the live run's own capture directory instead). The allowlist below
+    Override the default capture roots, for a caller that points at a live
+    run's own capture directory instead. The allowlist below
     applies only to the default (derived) scan; an explicit -Path is
     scanned in full.
 #>
@@ -98,10 +98,6 @@ function Add-RedactionGateFailure {
     the code that wrote it, not in this list.
 #>
 $script:PreexistingUnredactedAllowlist = @(
-    'docs/dogfood-reports/2026-08-03-001-captures/live-dogfood-run.json',
-    'docs/dogfood-reports/2026-08-06-001-captures/actionability-dogfood-run.json',
-    'docs/dogfood-reports/2026-08-07-001-captures/semantic-dogfood-run.json',
-    'docs/dogfood-reports/2026-08-15-001-captures/signals-wait-parity-dogfood-run.json',
     'probes/windows/21-system-lifecycle/captures/lifecycle-manifest-ci.json',
     'probes/windows/21-system-lifecycle/captures/lifecycle-manifest-devbox.json',
     'probes/windows/22-capture-clipboard/captures/capture-manifest-devbox.json',
@@ -324,7 +320,7 @@ if ($reportsScanned -eq 0) {
     Zero scanned is only suspicious against the default, always-populated
     corpus roots - it is how a capture added later without ever being
     wired into this gate would go undetected. An explicit -Path override
-    (windows-e2e.yml pointing at a live run's own capture directory) may
+    (a caller pointing at a live run's own capture directory) may
     legitimately not exist yet on a run that produced no captures, and
     upload-artifact's own if-no-files-found already handles that case; this
     gate must not invent a failure a caller who asked for a specific,

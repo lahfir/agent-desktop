@@ -5,16 +5,17 @@
 //! arms immediately before the first committed injection (mouse-down) and
 //! disarms only after the final release posts; its `Drop` is the sole place
 //! that posts corrective input, and it always targets the **origin**, never
-//! the destination, per
-//! docs/solutions/best-practices/abort-state-guidance-multi-step-physical-input.md.
+//! the destination.
 //! Cleanup is best-effort like every other post here: `SendInput`'s return
 //! value is never treated as delivery evidence (A9-3), so an abort reports
 //! `emergency_release_posted` without claiming the OS acknowledged it.
 
 use agent_desktop_core::AdapterError;
 
-use crate::input::mouse_coord::NormalizedPoint;
-use crate::input::mouse_send::{MOUSEEVENTF_LEFTUP, button_input, move_input, post_mouse_inputs};
+use crate::input::mouse::mouse_coord::NormalizedPoint;
+use crate::input::mouse::mouse_send::{
+    MOUSEEVENTF_LEFTUP, button_input, move_input, post_mouse_inputs,
+};
 use crate::input::release_state::ReleaseState;
 
 const SUGGESTION: &str = "Inspect the source and destination before retrying; the emergency release was posted without an OS acknowledgement";

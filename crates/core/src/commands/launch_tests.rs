@@ -1,6 +1,6 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
-use crate::launch_options::LaunchOptions;
+use crate::system::launch_options::LaunchOptions;
 use crate::{AdapterError, AppInfo, InteractionLease, ProcessId, WindowInfo, WindowState};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
@@ -33,8 +33,8 @@ impl SystemOps for LaunchAdapter {
         _id: &str,
         _options: &LaunchOptions,
         _lease: &InteractionLease,
-    ) -> Result<crate::launch_result::LaunchResult, AdapterError> {
-        Ok(crate::launch_result::LaunchResult {
+    ) -> Result<crate::system::launch_result::LaunchResult, AdapterError> {
+        Ok(crate::system::launch_result::LaunchResult {
             app: "Fixture".into(),
             pid: ProcessId::new(42),
             process_instance: Some("42:1".into()),

@@ -5,7 +5,7 @@ use crate::system::private_file::owner::{
     file_owner_sid, process_owner_eligible_sids, process_token_owner_sid,
     process_token_user_sid_for_tests, require_owned_by_eligible_principal,
 };
-use crate::system::token_sid::SidBuffer;
+use crate::system::runtime::token_sid::SidBuffer;
 use agent_desktop_core::PrivateFileOps;
 use std::io::ErrorKind;
 use std::os::windows::io::AsRawHandle;

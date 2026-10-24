@@ -26,7 +26,7 @@ assert_actionability_timeout() {
 
 note "AE1: zero-sized element is not visible"
 require_target zero_target button zero-bounds-button
-zero_visible="$(is_target "$zero_target" visible 2>&1)"
+zero_visible="$(is_target "$zero_target" visible 2>/dev/null)"
 assert "AE1 qualified zero-bounds ref reports visible false" \
     "$([ "$(json_field "$zero_visible" ok)" = "True" ] && \
         [ "$(json_field "$zero_visible" data.applicable)" = "True" ] && \
@@ -64,7 +64,7 @@ for mode in headless headed; do
         "exit=$RUN_EXIT elapsed_ms=$RUN_MS code=$(json_field "$RUN_JSON" error.code) checks=${zero_checks:0:100}"
 
     require_target reset_delayed button reset-delayed-button
-    reset_output="$(act_target "$reset_delayed" click 2>&1)"
+    reset_output="$(act_target "$reset_delayed" click 2>/dev/null)"
     sleep 0.25
     require_value reset_count delayed-action-status
     require_value reset_state delayed-text
@@ -87,7 +87,7 @@ for mode in headless headed; do
 done
 
 note "AE2: native release FFI consumer preserves wait and namespace semantics"
-ffi_default="$(guard_agent_wrapper_exec 20 4194304 python3 "$here/ffi_live.py" default 2>&1)"
+ffi_default="$(guard_agent_wrapper_exec 20 4194304 python3 "$here/ffi_live.py" default 2>/dev/null)"
 ffi_default_exit=$?
 sleep 0.2
 require_value ffi_default_count delayed-action-status
@@ -95,7 +95,7 @@ assert "AE2 release FFI default wait dispatches exactly once" \
     "$([ "$ffi_default_exit" -eq 0 ] && [ "$(json_field "$ffi_default" ok)" = "True" ] && \
         [ "$ffi_default_count" = "1" ] && echo 1 || echo 0)" \
     "exit=$ffi_default_exit elapsed_ms=$(json_field "$ffi_default" elapsed_ms) count=$ffi_default_count error=$(json_field "$ffi_default" error)"
-ffi_zero="$(guard_agent_wrapper_exec 20 4194304 python3 "$here/ffi_live.py" zero 2>&1)"
+ffi_zero="$(guard_agent_wrapper_exec 20 4194304 python3 "$here/ffi_live.py" zero 2>/dev/null)"
 ffi_zero_exit=$?
 require_value ffi_zero_count delayed-action-status
 assert "AE2 release FFI timeout zero performs one check without a late effect" \
@@ -105,18 +105,18 @@ assert "AE2 release FFI timeout zero performs one check without a late effect" \
 
 note "AE4: duplicate-title windows honor exact window id"
 require_target open_duplicates button open-duplicate-windows
-open_output="$(act_target "$open_duplicates" click 2>&1)"
+open_output="$(act_target "$open_duplicates" click 2>/dev/null)"
 sleep 0.8
-windows_json="$("$bin" list-windows --app "$app" 2>&1)"
+windows_json="$("$bin" list-windows --app "$app" 2>/dev/null)"
 duplicate_ids="$(printf '%s' "$windows_json" | python3 "$json_tool" duplicate-ids "Duplicate Window" 2>/dev/null)" || duplicate_ids=""
 if [ -z "$duplicate_ids" ]; then
     abort_suite "AE4 fixture did not expose exactly two distinct Duplicate Window ids"
 fi
 first_duplicate="${duplicate_ids%%$'\t'*}"
 second_duplicate="${duplicate_ids#*$'\t'}"
-focus_output="$("$bin" focus-window --window-id "$second_duplicate" 2>&1)"
+focus_output="$("$bin" focus-window --window-id "$second_duplicate" 2>/dev/null)"
 sleep 0.3
-focused_windows="$("$bin" list-windows --app "$app" 2>&1)"
+focused_windows="$("$bin" list-windows --app "$app" 2>/dev/null)"
 second_focused="$(printf '%s' "$focused_windows" | python3 "$json_tool" window-focused "$second_duplicate" 2>/dev/null)" || second_focused=""
 assert "AE4 exact second window id is focused despite duplicate titles" \
     "$([ "$(json_field "$open_output" ok)" = "True" ] && \
@@ -127,28 +127,28 @@ require_target close_duplicates button close-duplicate-windows
 act_target "$close_duplicates" click >/dev/null 2>&1
 
 note "AE5: deterministic and native denied-permission contracts"
-permission_contract="$(guard_exec 620 4194304 bash "$here/permission-contract.sh" 2>&1)"
+permission_contract="$(guard_exec 620 4194304 bash "$here/permission-contract.sh" 2>/dev/null)"
 permission_exit=$?
 assert "AE5 permission prompts are isolated and Automation probing never prompts" \
     "$([ "$permission_exit" -eq 0 ] && [ "$(json_field "$permission_contract" ok)" = "True" ] && echo 1 || echo 0)" \
     "exit=$permission_exit kind=$(json_field "$permission_contract" data.kind) error=$(json_field "$permission_contract" error.code)"
 
-permission_json="$("$bin" permissions 2>&1)"
+permission_json="$("$bin" permissions 2>/dev/null)"
 automation_state="$(json_field "$permission_json" data.automation.state)"
 if [ "$(json_field "$permission_json" ok)" != "True" ] || [ -z "$automation_state" ]; then
     badmsg "AE5 native permission state could not be read"
 elif [ "$automation_state" = "denied" ]; then
-    nc_probe="$("$bin" list-notifications 2>&1)"
+    nc_probe="$("$bin" list-notifications 2>/dev/null)"
     if [ "$(json_field "$nc_probe" ok)" = "True" ]; then
         "$bin" focus-window --app NotificationCenter >/dev/null 2>&1 || true
         "$bin" --headed press escape >/dev/null 2>&1 || true
         sleep 0.3
-        nc_probe="$("$bin" list-notifications 2>&1)"
+        nc_probe="$("$bin" list-notifications 2>/dev/null)"
     fi
     if [ "$(json_field "$nc_probe" error.code)" != "POLICY_DENIED" ]; then
         skipmsg "AE5 native denied-Automation path unavailable: Notification Center could not be proven closed after best-effort preparation; deterministic contract still ran"
     else
-        denied_output="$("$bin" --headed list-notifications 2>&1)"
+        denied_output="$("$bin" --headed list-notifications 2>/dev/null)"
         denied_code="$(json_field "$denied_output" error.code)"
         denied_suggestion="$(json_field "$denied_output" error.suggestion)"
         suggestion_has_automation=0
@@ -171,7 +171,7 @@ if [ -z "$open_sheet_ref" ] || [ -z "$open_sheet_snapshot" ]; then
     abort_suite "initial fixture snapshot omitted the open-sheet ref"
 fi
 open_sheet="${open_sheet_ref}"$'\t'"${open_sheet_snapshot}"
-sheet_scroll_output="$(act_target "$open_sheet" scroll-to 2>&1)"
+sheet_scroll_output="$(act_target "$open_sheet" scroll-to 2>/dev/null)"
 batch_payload="$(python3 - "$(target_ref "$open_sheet")" <<'PY'
 import json, sys
 print(json.dumps([
@@ -180,14 +180,15 @@ print(json.dumps([
 ]))
 PY
 )"
-surface_batch="$("$bin" batch "$batch_payload" --stop-on-error 2>&1)"
+surface_batch="$("$bin" batch "$batch_payload" --stop-on-error 2>/dev/null)"
 surface_kind="$(json_field "$surface_batch" data.results.1.data.event.kind)"
 surface_type="$(json_field "$surface_batch" data.results.1.data.event.surface)"
 assert "AE6 synchronous click reports the newly appeared unnamed surface" \
     "$([ "$(json_field "$surface_batch" ok)" = "True" ] && \
         [ "$(json_field "$surface_batch" data.results.0.ok)" = "True" ] && \
         [ "$(json_field "$surface_batch" data.results.1.ok)" = "True" ] && \
-        [ "$surface_kind" = "surface_appeared" ] && echo 1 || echo 0)" \
+        [ "$surface_kind" = "surface_appeared" ] && \
+        [ "$surface_type" = "sheet" ] && echo 1 || echo 0)" \
     "kind=$surface_kind surface=$surface_type app=$(json_field "$surface_batch" data.results.1.data.event.app) scrollto_ok=$(json_field "$sheet_scroll_output" ok) scrollto_code=$(json_field "$sheet_scroll_output" error.code) batch_ok=$(json_field "$surface_batch" ok) r0_ok=$(json_field "$surface_batch" data.results.0.ok) r0_code=$(json_field "$surface_batch" data.results.0.error.code) r1_ok=$(json_field "$surface_batch" data.results.1.ok) r1_code=$(json_field "$surface_batch" data.results.1.error.code) batch_err=$(json_field "$surface_batch" error.code)"
 require_target cancel_sheet button cancel-sheet
 act_target "$cancel_sheet" click >/dev/null 2>&1

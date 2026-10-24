@@ -4,10 +4,17 @@ use agent_desktop_core::{
     AdapterError, Deadline, DeliverySemantics, ErrorCode, ProcessId, ProcessIdentity,
 };
 
-use super::menu_state::menu_is_open;
+use super::menu::menu_state::menu_is_open;
 use super::process_identity;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
+
+/// How long a predicate error waits on the target's process handle for an exit
+/// to land before the error is reported as the target's own. A window that
+/// stopped pumping because its process is closing is observed before the
+/// process object is signaled, so a single liveness check cannot tell that
+/// teardown from a target that is merely unresponsive; the handle wait can.
+const EXIT_CONFIRMATION_SLICE: Duration = Duration::from_millis(1_000);
 
 /// Polls the [`menu_is_open`] predicate until the target process's
 /// menu-open state equals `open`, then returns `Ok(())`.
@@ -43,9 +50,13 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 ///
 /// The same precedence covers a non-`Timeout` predicate error: `menu_state`
 /// reports a target that vanished mid-read as a transient `AppUnresponsive`,
-/// so the loop re-checks liveness before that error leaves the method and a
-/// gone target surfaces as `StaleRef`, while a live-but-unresponsive target
-/// still propagates the predicate's own error unchanged.
+/// and a target mid-teardown reports it while its process object is not yet
+/// signaled. So before that error leaves the method the loop re-checks
+/// liveness and then waits on the target's process handle, capped by both
+/// [`EXIT_CONFIRMATION_SLICE`] and the caller's deadline: a target that exits
+/// inside that window surfaces as `StaleRef`, while a live-but-unresponsive
+/// target still propagates the predicate's own error unchanged once the
+/// window passes.
 pub(crate) fn wait_for_menu(
     process: ProcessIdentity,
     open: bool,
@@ -61,10 +72,7 @@ pub(crate) fn wait_for_menu(
             }
             Ok(_) => state_never_read = false,
             Err(error) if error.code == ErrorCode::Timeout => {}
-            Err(error) => {
-                verify_process_alive(&process)?;
-                return Err(error);
-            }
+            Err(error) => return Err(settle_predicate_error(&process, error, deadline)),
         }
         if deadline.is_expired() {
             return Err(deadline
@@ -112,6 +120,34 @@ fn evaluate_menu_state(pid: ProcessId, deadline: Deadline) -> Result<bool, Adapt
         return Err(error);
     }
     menu_is_open(pid, deadline)
+}
+
+/// Decides what a non-`Timeout` predicate error means once it has been read: a
+/// target that is gone, or that exits within the bounded confirmation window on
+/// its process handle, is `StaleRef`; a target still alive after the window
+/// keeps the predicate's own error. The window is capped by the caller's
+/// deadline, so confirmation never extends the wait.
+fn settle_predicate_error(
+    process: &ProcessIdentity,
+    error: AdapterError,
+    deadline: Deadline,
+) -> AdapterError {
+    if let Err(gone) = verify_process_alive(process) {
+        return gone;
+    }
+    let window = deadline.remaining().min(EXIT_CONFIRMATION_SLICE);
+    if exited_within(process, window) {
+        return stale_process_error(process);
+    }
+    error
+}
+
+fn exited_within(process: &ProcessIdentity, window: Duration) -> bool {
+    #[cfg(test)]
+    if forced_process_death::take() {
+        return true;
+    }
+    process_identity::wait_for_exit(process.pid, window)
 }
 
 fn verify_process_alive(process: &ProcessIdentity) -> Result<(), AdapterError> {
@@ -162,11 +198,11 @@ pub(super) mod poll_calls {
     }
 
     pub(super) fn record() {
-        crate::system::call_counter::record(&COUNT);
+        crate::system::fixture::call_counter::record(&COUNT);
     }
 
     pub(super) fn take() -> usize {
-        crate::system::call_counter::take(&COUNT)
+        crate::system::fixture::call_counter::take(&COUNT)
     }
 }
 
@@ -194,11 +230,13 @@ pub(super) mod forced_predicate_error {
     }
 }
 
-/// Forces the process-liveness check to report the target gone after a chosen
-/// number of successful checks, so a test can stage the race where a process
-/// exits between the loop's pre-read liveness check and the predicate read -
-/// `forced_predicate_error` supplies the intervening evaluation failure -
-/// without racing a real termination.
+/// Forces the process-liveness consultations to report the target gone after a
+/// chosen number of successful ones, so a test can stage the race where a
+/// process exits between the loop's pre-read liveness check and the predicate
+/// read, or only after the in-arm re-check while its exit confirmation is
+/// still pending - `forced_predicate_error` supplies the intervening
+/// evaluation failure - without racing a real termination. `verify_process_alive`
+/// and `exited_within` each count as one consultation.
 #[cfg(test)]
 pub(super) mod forced_process_death {
     use std::cell::Cell;

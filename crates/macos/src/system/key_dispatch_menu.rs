@@ -2,7 +2,7 @@ use agent_desktop_core::{AdapterError, Deadline, ErrorCode, KeyCombo, Modifier};
 use std::collections::VecDeque;
 use std::time::Instant;
 
-use super::{element_attribute, ensure_budget, read_error};
+use super::{element_attribute, read_error};
 use crate::tree::AXElement;
 
 const MAX_MENU_NODES: usize = 2_048;
@@ -29,7 +29,7 @@ pub(super) fn try_menu_bar_shortcut(
     let mut visited = 0_usize;
 
     while let Some((element, depth)) = queue.pop_front() {
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         visited += 1;
         if visited > MAX_MENU_NODES {
             return Err(incomplete_menu_error("node_limit"));
@@ -63,7 +63,7 @@ fn children(element: &AXElement, deadline: Deadline) -> Result<Vec<AXElement>, A
         MAX_MENU_CHILDREN,
         instant(deadline)?,
     );
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     validate_menu_children(read)
 }
 
@@ -74,7 +74,7 @@ fn has_children(element: &AXElement, deadline: Deadline) -> Result<bool, Adapter
         0,
         instant(deadline)?,
     );
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     validate_child_status(&read)?;
     Ok(read.total_count > 0)
 }
@@ -125,8 +125,9 @@ fn read_string(
     attribute: &str,
     deadline: Deadline,
 ) -> Result<Option<String>, AdapterError> {
-    let result = crate::tree::attributes::copy_string_attr_result(element, attribute, deadline);
-    ensure_budget(deadline)?;
+    let result =
+        crate::tree::properties::attributes::copy_string_attr_result(element, attribute, deadline);
+    deadline.ensure_remaining()?;
     result.map_err(|error| read_error(attribute, error))
 }
 
@@ -138,12 +139,12 @@ fn read_menu_item_modifiers(
     use core_foundation::{base::TCFType, string::CFString};
 
     let attribute = CFString::new("AXMenuItemCmdModifiers");
-    let (error, value) = crate::tree::ax_ipc::copy_attribute_value(
+    let (error, value) = crate::tree::properties::ax_ipc::copy_attribute_value(
         element,
         attribute.as_concrete_TypeRef(),
         deadline,
     );
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     if error != kAXErrorSuccess {
         return if error == accessibility_sys::kAXErrorNoValue
             || error == accessibility_sys::kAXErrorAttributeUnsupported
@@ -157,14 +158,14 @@ fn read_menu_item_modifiers(
         return Err(malformed_menu_modifiers());
     }
     let value = unsafe { core_foundation::base::CFType::wrap_under_create_rule(value) };
-    let number = crate::cf_type::borrowed_cf_number(value.as_concrete_TypeRef())
+    let number = crate::tree::properties::cf_type::borrowed_cf_number(value.as_concrete_TypeRef())
         .and_then(|number| number.to_i64())
         .ok_or_else(malformed_menu_modifiers)?;
     normalize_menu_modifiers(number).map(Some)
 }
 
 fn single_uppercase_character(key: &str) -> Option<String> {
-    if let Some(symbol) = crate::input::keyboard_map::punctuation(key) {
+    if let Some(symbol) = crate::input::keyboard::keyboard_map::punctuation(key) {
         return Some(symbol.to_string());
     }
     (key.chars().count() == 1).then(|| key.to_uppercase())

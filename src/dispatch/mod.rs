@@ -1,10 +1,12 @@
 mod app_window;
 mod clipboard;
 mod cursor_overlay;
+mod disposition;
 mod interaction;
 mod keyboard_mouse;
 mod notifications;
 mod observation;
+mod overlay_skipped;
 mod parse;
 mod session;
 mod system;
@@ -15,6 +17,9 @@ mod test_support;
 
 #[cfg(test)]
 mod cursor_overlay_lifecycle_tests;
+
+#[cfg(test)]
+mod disposition_tests;
 
 use agent_desktop_core::{
     AppError, CursorOverlayControl, PermissionReport, PlatformAdapter, commands,
@@ -30,6 +35,17 @@ pub(crate) fn dispatch(
     permission_report: &PermissionReport,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    let read_only = !cmd.is_mutating();
+    dispatch_command(cmd, adapter, permission_report, context)
+        .map_err(|error| disposition::settle_unknown_delivery(error, read_only))
+}
+
+fn dispatch_command(
+    cmd: Commands,
+    adapter: &dyn PlatformAdapter,
+    permission_report: &PermissionReport,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
     tracing::debug!("dispatch: {}", cmd.name());
     let overlay_session =
         if cmd.is_mutating() && context.is_headed() && context.cursor_overlay().is_enabled() {
@@ -37,7 +53,11 @@ pub(crate) fn dispatch(
         } else {
             None
         };
-    let scope = if cmd.is_mutating() {
+    let scope = if matches!(&cmd, Commands::Session(args)
+        if matches!(&args.action, crate::cli_args::session::SessionAction::End(_)))
+    {
+        context.session_end_scope()?
+    } else if cmd.is_mutating() {
         context.mutating_command_scope(cmd.name())?
     } else {
         context.command_scope(cmd.name())?

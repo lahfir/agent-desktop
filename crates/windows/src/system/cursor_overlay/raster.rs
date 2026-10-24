@@ -31,6 +31,9 @@ pub(crate) struct Surface {
     pub(crate) pixels: Vec<u32>,
 }
 
+/// shortcut: 16,777,216 pixels, raise only after measuring allocation and frame cost on supported displays.
+const MAX_SURFACE_PIXELS: usize = 16_777_216;
+
 #[derive(Clone, Copy)]
 pub(super) struct Paint {
     pub(super) rgb: [f64; 3],
@@ -38,12 +41,27 @@ pub(super) struct Paint {
 }
 
 impl Surface {
-    pub(crate) fn transparent(width: i32, height: i32) -> Self {
-        let count = (width.max(0) as usize) * (height.max(0) as usize);
+    pub(crate) fn try_transparent(width: i32, height: i32) -> Option<Self> {
+        let (width, height) = (usize::try_from(width).ok()?, usize::try_from(height).ok()?);
+        let count = width.checked_mul(height)?;
+        if count > MAX_SURFACE_PIXELS {
+            return None;
+        }
+        let mut pixels = Vec::new();
+        pixels.try_reserve_exact(count).ok()?;
+        pixels.resize(count, 0);
+        Some(Self {
+            width: i32::try_from(width).ok()?,
+            height: i32::try_from(height).ok()?,
+            pixels,
+        })
+    }
+
+    pub(crate) fn empty() -> Self {
         Self {
-            width,
-            height,
-            pixels: vec![0; count],
+            width: 0,
+            height: 0,
+            pixels: Vec::new(),
         }
     }
 

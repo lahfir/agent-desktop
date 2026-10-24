@@ -49,6 +49,26 @@ fn nested_viewport_requires_scrolling_even_inside_window() {
 }
 
 #[test]
+fn scroll_area_target_seeds_viewport_search_at_parent() {
+    assert!(matches!(
+        super::imp::viewport_seed(true),
+        super::imp::ViewportSeed::Parent
+    ));
+    assert!(matches!(
+        super::imp::viewport_seed(false),
+        super::imp::ViewportSeed::Target
+    ));
+
+    let target_bounds = rect(360.0, 700.0, 200.0, 150.0);
+    let enclosing_bounds = rect(350.0, 100.0, 500.0, 620.0);
+    assert!(direction_for_visibility(target_bounds, target_bounds).is_none());
+    assert!(matches!(
+        direction_for_visibility(target_bounds, enclosing_bounds),
+        Some(Direction::Down)
+    ));
+}
+
+#[test]
 fn final_scroll_read_timeout_does_not_claim_safe_non_delivery() {
     let error = agent_desktop_core::AdapterError::timeout("final bounds read")
         .with_disposition(agent_desktop_core::DeliverySemantics::not_delivered());

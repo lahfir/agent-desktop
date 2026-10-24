@@ -3,12 +3,12 @@ use crate::adapter::TreeOptions;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     AdapterError, ErrorCode, WindowInfo,
-    action_request::ActionRequest,
-    action_result::ActionResult,
+    actions::action_request::ActionRequest,
+    actions::action_result::ActionResult,
     adapter::{NativeHandle, WindowFilter},
+    refs::refs_store::RefStore,
+    refs::refs_test_support::HomeGuard,
     refs::{RefEntry, RefMap},
-    refs_store::RefStore,
-    refs_test_support::HomeGuard,
 };
 
 struct ProbeFailingAdapter {
@@ -75,7 +75,11 @@ impl ObservationOps for ProbeFailingAdapter {
         })
     }
 
-    crate::adapter::complete_live_observation!("button", "Open", [crate::capability::RIGHT_CLICK]);
+    crate::adapter::complete_live_observation!(
+        "button",
+        "Open",
+        [crate::actions::capability::RIGHT_CLICK]
+    );
 }
 
 impl ActionOps for ProbeFailingAdapter {
@@ -117,6 +121,7 @@ fn save_refmap(source_app: Option<String>) -> String {
             native_id: None,
         },
         geometry: crate::RefGeometry {
+            bounds_space: None,
             bounds: Some(bounds),
             bounds_hash: bounds.bounds_hash(),
         },

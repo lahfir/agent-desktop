@@ -55,7 +55,7 @@ fn the_refusal_names_the_build_and_the_missing_landmark() {
 #[cfg(target_os = "windows")]
 mod classification {
     use super::super::{classify_find, classify_find_all, gate_landmarks};
-    use crate::system::hresult::{UIA_E_ELEMENTNOTAVAILABLE, UIA_E_TIMEOUT};
+    use crate::system::runtime::hresult::{UIA_E_ELEMENTNOTAVAILABLE, UIA_E_TIMEOUT};
     use crate::tree::automation::{ERR_NOTFOUND, ERR_TIMEOUT};
     use agent_desktop_core::ErrorCode;
     use uiautomation::Error;
@@ -137,10 +137,10 @@ mod live {
     use super::super::{find_by_id, read_entries};
     use crate::notifications::session::ActionCenterSession;
     use crate::notifications::toast_support;
-    use crate::system::raise_oracle::{responded_since, witness_desktop};
-    use crate::system::shell_surface_kinds::{EMPTY_CENTER_LANDMARKS, MAIN_LIST_VIEW};
-    use crate::system::test_support::{SHELL_SURFACE_LOCK, or_skip_shell};
-    use crate::system::test_time::{deadline, headed};
+    use crate::system::fixture::test_support::{SHELL_SURFACE_LOCK, or_skip_shell};
+    use crate::system::fixture::test_time::{deadline, headed};
+    use crate::system::shell::raise_oracle::{responded_since, witness_desktop};
+    use crate::system::shell::shell_surface_kinds::{EMPTY_CENTER_LANDMARKS, MAIN_LIST_VIEW};
     use crate::tree::element::UIAElement;
 
     /// Counts the list's items with an independent query - a control-type
@@ -256,7 +256,7 @@ mod fixture_backed {
     use super::super::{MAX_WALK_DEPTH, walk};
     use crate::tree::fixture::{HostedFixture, bootstrap};
 
-    use crate::system::test_time::deadline;
+    use crate::system::fixture::test_time::deadline;
 
     /// `walk` checks its depth cap before it ever touches `element`'s
     /// children, so a real but otherwise ordinary fixture element proves the

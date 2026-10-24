@@ -2,7 +2,7 @@ use super::*;
 use crate::AdapterError;
 use crate::LocatorQuery;
 use crate::context::CommandContext;
-use crate::refs_test_support::HomeGuard;
+use crate::refs::refs_test_support::HomeGuard;
 
 fn node(name: Option<&str>, value: Option<&str>, description: Option<&str>) -> AccessibilityNode {
     AccessibilityNode {
@@ -58,44 +58,46 @@ fn no_selection() -> FindSelectionArgs {
     }
 }
 
+fn serialized_match(name: &str, value: Option<&str>, states: &[&str]) -> Value {
+    serde_json::to_value(crate::locator::live_locator::LocatorMatchData {
+        ref_id: Some("@e1".into()),
+        role: "textfield".into(),
+        name: name.into(),
+        value: value.map(String::from),
+        states: states.iter().map(|state| (*state).to_owned()).collect(),
+        interactive: true,
+        path: vec![],
+    })
+    .expect("a match serializes")
+}
+
 #[test]
 fn unnamed_match_keeps_value_separate_from_name() {
-    let root = node(None, Some("current value"), Some("help text"));
-    let query = LocatorQuery::default();
-    let mut matches = Vec::new();
+    let unnamed = serialized_match("", Some("current value"), &[]);
 
-    search_tree(&root, &query, &mut Vec::new(), &mut matches, None);
-
-    assert!(matches[0].get("name").is_none());
-    assert_eq!(matches[0]["value"], "current value");
+    assert!(unnamed.get("name").is_none());
+    assert_eq!(unnamed["value"], "current value");
 }
 
 #[test]
-fn search_tree_match_uses_ref_id_contract_and_includes_states() {
-    let mut root = node(Some("Save"), None, None);
-    root.presentation.states = vec!["enabled".into()];
-    let query = LocatorQuery::default();
-    let mut matches = Vec::new();
+fn match_serializes_ref_id_contract_and_includes_states() {
+    let saved = serialized_match("Save", None, &["enabled"]);
 
-    search_tree(&root, &query, &mut Vec::new(), &mut matches, None);
-
-    assert_eq!(matches[0]["ref_id"], "@e1");
-    assert!(matches[0].get("ref").is_none());
-    assert_eq!(matches[0]["states"], serde_json::json!(["enabled"]));
+    assert_eq!(saved["name"], "Save");
+    assert_eq!(saved["ref_id"], "@e1");
+    assert!(saved.get("ref").is_none());
+    assert_eq!(saved["states"], serde_json::json!(["enabled"]));
 }
 
 #[test]
-fn search_tree_matches_text_across_fields() {
+fn text_query_matches_across_name_value_and_description() {
     let root = node(None, Some("Primary"), Some("Secondary"));
     let query = LocatorQuery {
         has_text: Some(search_text::normalize("secondary")),
         ..LocatorQuery::default()
     };
-    let mut matches = Vec::new();
 
-    search_tree(&root, &query, &mut Vec::new(), &mut matches, None);
-
-    assert_eq!(matches.len(), 1);
+    assert!(crate::accessibility_node_matches(&root, &query));
 }
 
 #[test]
@@ -149,28 +151,6 @@ fn limit_conflicts_with_single_result_modes_for_batch_too() {
     assert_eq!(err.code(), "INVALID_ARGS");
 }
 
-#[test]
-fn count_matches_does_not_build_result_json() {
-    let root = AccessibilityNode {
-        ref_id: None,
-        role: "window".into(),
-        identity: Default::default(),
-        presentation: Default::default(),
-        children_count: None,
-        subtree_truncated: false,
-        children: vec![
-            node(Some("Save"), None, None),
-            node(Some("Cancel"), None, None),
-        ],
-    };
-    let query = LocatorQuery {
-        has_text: Some(search_text::normalize("a")),
-        ..LocatorQuery::default()
-    };
-
-    assert_eq!(count_matches(&root, &query), 3);
-}
-
 fn role_node(role: &str, name: Option<&str>) -> AccessibilityNode {
     let mut n = node(name, None, None);
     n.role = role.into();
@@ -196,9 +176,7 @@ fn role_alias_is_preserved_until_live_validation() {
     assert_eq!(query.identity.role.as_deref(), Some("textarea"));
 
     let root = node(None, Some("doc body"), None);
-    let mut matches = Vec::new();
-    search_tree(&root, &query, &mut Vec::new(), &mut matches, None);
-    assert_eq!(matches.len(), 1);
+    assert!(crate::accessibility_node_matches(&root, &query));
 }
 
 #[test]
@@ -220,66 +198,44 @@ fn unknown_role_is_preserved_until_validation() {
     assert_eq!(query.identity.role.as_deref(), Some("navbar"));
 
     let root = role_node("textfield", Some("body"));
-    let mut matches = Vec::new();
-    search_tree(&root, &query, &mut Vec::new(), &mut matches, None);
-    assert!(matches.is_empty());
-}
-
-#[test]
-fn empty_role_filtered_result_reports_roles_present_from_tree() {
-    let mut root = role_node("window", Some("Save"));
-    root.children = vec![
-        role_node("button", Some("OK")),
-        role_node("textfield", None),
-    ];
-
-    let query = query_from_args(&FindArgs {
-        app: None,
-        window_id: None,
-        root: None,
-        surface: crate::SnapshotSurface::Window,
-        filter: FindFilterArgs {
-            role: Some("navbar".into()),
-            ..no_filter()
-        },
-        states: vec![],
-        timeout_ms: None,
-        selection: no_selection(),
-    });
-    let response = single_match_response(None, &query, &root);
-
-    let present = response["roles_present"].as_array().unwrap();
-    let names: Vec<&str> = present.iter().filter_map(|v| v.as_str()).collect();
-    assert!(names.contains(&"button"));
-    assert!(names.contains(&"textfield"));
-    assert!(names.contains(&"window"));
-    assert!(!names.contains(&"navbar"));
+    assert!(!crate::accessibility_node_matches(&root, &query));
 }
 
 #[test]
 fn roles_present_hint_is_omitted_when_a_match_is_found() {
-    let root = role_node("textfield", Some("body"));
-    let query = query_from_args(&FindArgs {
-        app: None,
-        window_id: None,
-        root: None,
-        surface: crate::SnapshotSurface::Window,
-        filter: FindFilterArgs {
-            role: Some("textfield".into()),
-            ..no_filter()
-        },
-        states: vec![],
-        timeout_ms: None,
-        selection: no_selection(),
-    });
+    let _guard = HomeGuard::new();
+    let adapter = super::test_support::LiveFindAdapter::complete();
+    let first = FindSelectionArgs {
+        first: true,
+        ..no_selection()
+    };
 
-    let mut matches = Vec::new();
-    search_tree(&root, &query, &mut Vec::new(), &mut matches, None);
-    let mut response = json!({ "matches": matches });
-    let is_empty = response["matches"].as_array().unwrap().is_empty();
-    attach_roles_present_hint(&mut response, is_empty, &query, &root);
+    for selection in [no_selection(), first] {
+        let response = execute(
+            FindArgs {
+                app: None,
+                window_id: Some("w-1".into()),
+                root: None,
+                surface: crate::SnapshotSurface::Window,
+                filter: FindFilterArgs {
+                    role: Some("button".into()),
+                    ..no_filter()
+                },
+                states: vec![],
+                timeout_ms: None,
+                selection,
+            },
+            &adapter,
+            &CommandContext::default(),
+        )
+        .expect("a role query that matches should succeed");
 
-    assert!(response.get("roles_present").is_none());
+        let found = response["matches"]
+            .as_array()
+            .map_or(!response["match"].is_null(), |matches| !matches.is_empty());
+        assert!(found, "the button in w-1 must be found: {response}");
+        assert!(response.get("roles_present").is_none());
+    }
 }
 
 fn find_args_scoped_to_window(window_id: &str) -> FindArgs {

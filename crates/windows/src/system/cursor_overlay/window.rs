@@ -31,9 +31,10 @@ use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, HWND_TOPMOST, MSG, PM_REMOVE,
-    PeekMessageW, RegisterClassExW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SetWindowPos, ShowWindow, TranslateMessage, ULW_ALPHA, UpdateLayeredWindow, WNDCLASSEXW,
-    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    PeekMessageW, RegisterClassExW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE,
+    SWP_NOSIZE, SetWindowPos, ShowWindow, TranslateMessage, ULW_ALPHA, UpdateLayeredWindow,
+    WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 #[cfg(target_os = "windows")]
@@ -129,6 +130,7 @@ impl OverlayWindow {
         pixels: &[u32],
     ) -> Result<(), AdapterError> {
         if width <= 0 || height <= 0 || pixels.len() < (width as usize) * (height as usize) {
+            unsafe { ShowWindow(self.handle, SW_HIDE) };
             return Ok(());
         }
         let Some(mut dib) = Dib::create(width, height) else {
@@ -167,6 +169,7 @@ impl OverlayWindow {
         if updated == 0 {
             Err(win32_error("The overlay could not be painted"))
         } else {
+            unsafe { ShowWindow(self.handle, SW_SHOWNOACTIVATE) };
             Ok(())
         }
     }
@@ -192,5 +195,32 @@ impl OverlayWindow {
 impl Drop for OverlayWindow {
     fn drop(&mut self) {
         unsafe { DestroyWindow(self.handle) };
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::*;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GWL_STYLE, GetWindowLongPtrW, WS_VISIBLE};
+
+    #[test]
+    fn empty_frame_hides_previous_overlay_and_next_frame_restores_it() {
+        let window = OverlayWindow::create().unwrap();
+        unsafe { ShowWindow(window.handle, SW_SHOWNOACTIVATE) };
+        window.present(0, 0, 1, 1, &[0xffffffff]).unwrap();
+        assert_ne!(
+            unsafe { GetWindowLongPtrW(window.handle, GWL_STYLE) } as u32 & WS_VISIBLE,
+            0
+        );
+        window.present(0, 0, 0, 0, &[]).unwrap();
+        assert_eq!(
+            unsafe { GetWindowLongPtrW(window.handle, GWL_STYLE) } as u32 & WS_VISIBLE,
+            0
+        );
+        window.present(0, 0, 1, 1, &[0xffffffff]).unwrap();
+        assert_ne!(
+            unsafe { GetWindowLongPtrW(window.handle, GWL_STYLE) } as u32 & WS_VISIBLE,
+            0
+        );
     }
 }

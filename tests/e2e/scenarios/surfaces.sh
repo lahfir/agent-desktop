@@ -6,7 +6,7 @@ act_target "$open_sheet" scroll-to >/dev/null 2>&1
 require_target open_sheet button open-sheet
 act_target "$open_sheet" click >/dev/null 2>&1
 sleep 0.6
-surface_list="$("$bin" list-surfaces --app "$app" 2>&1)"
+surface_list="$("$bin" list-surfaces --app "$app" 2>/dev/null)"
 surface_has_sheet="$(printf '%s' "$surface_list" | grep -q '"type":"sheet"' && echo 1 || echo 0)"
 assert "list-surfaces reports the opened sheet" "$surface_has_sheet" \
     "surfaces=$(json_field "$surface_list" data.surfaces)"
@@ -24,7 +24,7 @@ require_value context_before right-status
 require_target context_target button context-target
 act_target "$context_target" scroll-to >/dev/null 2>&1
 require_target context_target button context-target
-context_output="$(act_target "$context_target" right-click 2>&1)"
+context_output="$(act_target "$context_target" right-click 2>/dev/null)"
 sleep 0.5
 require_target context_choice menuitem context-choice
 act_target "$context_choice" click >/dev/null 2>&1
@@ -61,7 +61,7 @@ if [ -n "$drag_anchor" ]; then
     act_target "$drag_anchor" scroll-to >/dev/null 2>&1
     sleep 0.3
 fi
-drag_focus="$("$bin" focus-window --app "$app" 2>&1)"
+drag_focus="$("$bin" focus-window --app "$app" 2>/dev/null)"
 if [ "$(json_field "$drag_focus" ok)" != "True" ]; then
     abort_suite "drag fixture focus failed: $(json_field "$drag_focus" error.code)"
 fi
@@ -73,7 +73,7 @@ fi
 drag_from="${drag_points%% *}"
 drag_to="${drag_points#* }"
 drag_output="$("$bin" --headed drag --from-xy "$drag_from" --to-xy "$drag_to" \
-    --duration 400 --drop-delay 300 2>&1)"
+    --duration 400 --drop-delay 300 2>/dev/null)"
 sleep 0.4
 require_value drag_after drag-canvas-status
 drag_effect="$(printf '%s' "$drag_after" | grep -q '^dragged-' && echo 1 || echo 0)"
@@ -99,7 +99,7 @@ initially_hidden="$(disclosed_present)"
 assert "disclosure starts with its child hidden" "$([ "$initially_hidden" = "0" ] && echo 1 || echo 0)" \
     "content_present=$initially_hidden"
 MODE_FLAG="--headed"
-first_expand_output="$(act_target "$disclosure" expand 2>&1)"
+first_expand_output="$(act_target "$disclosure" expand 2>/dev/null)"
 MODE_FLAG=""
 sleep 0.4
 expanded_before="$(disclosed_present)"
@@ -108,13 +108,13 @@ assert "expand reveals the initially hidden disclosure content" \
     "content_present=$expanded_before error=$(json_field "$first_expand_output" error.code)"
 require_target disclosure disclosure disclosure-section
 MODE_FLAG="--headed"
-collapse_output="$(act_target "$disclosure" collapse 2>&1)"
+collapse_output="$(act_target "$disclosure" collapse 2>/dev/null)"
 MODE_FLAG=""
 sleep 0.4
 collapsed_hidden="$(disclosed_present)"
 require_target disclosure disclosure disclosure-section
 MODE_FLAG="--headed"
-expand_output="$(act_target "$disclosure" expand 2>&1)"
+expand_output="$(act_target "$disclosure" expand 2>/dev/null)"
 MODE_FLAG=""
 sleep 0.4
 expanded_shown="$(disclosed_present)"

@@ -24,7 +24,8 @@ struct HighlightCase {
 
 impl HighlightCase {
     fn paint(&self, painter: impl Fn(&mut Surface, &SurfaceMapping, &Rect, f64)) -> Surface {
-        let mut surface = Surface::transparent(self.surface.0, self.surface.1);
+        let mut surface =
+            Surface::try_transparent(self.surface.0, self.surface.1).expect("bounded test surface");
         let mapping = SurfaceMapping {
             origin: self.origin.clone(),
             scale: self.scale,

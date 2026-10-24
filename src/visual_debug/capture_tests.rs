@@ -118,7 +118,7 @@ fn visual_debug_capture_rejects_window_motion() {
 
 #[test]
 fn saved_snapshot_and_click_capture_use_exact_source_evidence() {
-    if std::env::var_os("INSPECTOR_CAPTURE_TEST_CHILD").is_none() {
+    if std::env::var_os("VISUAL_DEBUG_CAPTURE_TEST_CHILD").is_none() {
         let home = std::env::temp_dir().join(format!(
             "debug-capture-{}-{}",
             std::process::id(),
@@ -135,11 +135,17 @@ fn saved_snapshot_and_click_capture_use_exact_source_evidence() {
         }
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "visual_debug::capture::tests::saved_snapshot_and_click_capture_use_exact_source_evidence", "--nocapture"])
-            .env("INSPECTOR_CAPTURE_TEST_CHILD", "1").env("AGENT_DESKTOP_HOME", &home).output().unwrap();
+            .env("VISUAL_DEBUG_CAPTURE_TEST_CHILD", "1").env("AGENT_DESKTOP_HOME", &home).output().unwrap();
         std::fs::remove_dir_all(home).unwrap();
         assert!(
             output.status.success(),
             "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("1 passed; 0 failed"),
+            "the child must execute exactly one test: stdout={} stderr={}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );

@@ -1,6 +1,6 @@
 use super::*;
-use crate::input::mouse_send::mouse_send_fake_sink as sink;
-use crate::input::mouse_send::{MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE};
+use crate::input::mouse::mouse_send::mouse_send_fake_sink as sink;
+use crate::input::mouse::mouse_send::{MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE};
 use agent_desktop_core::{Deadline, Point};
 
 fn drag_params(duration_ms: Option<u64>, drop_delay_ms: Option<u64>) -> DragParams {
@@ -21,19 +21,34 @@ fn base_params() -> DragParams {
 }
 
 #[test]
-fn drag_limits_reject_unbounded_work() {
+fn drag_limits_reject_unbounded_work_and_accept_the_limits_themselves() {
     let too_long = DragParams {
         duration_ms: Some(MAX_DRAG_MS + 1),
         ..base_params()
     };
-    assert!(validate_drag(&too_long).is_err());
+    let error = validate_drag(&too_long).expect_err("a duration past the limit is refused");
+    assert_eq!(error.code, ErrorCode::InvalidArgs);
 
     let too_slow_to_release = DragParams {
         duration_ms: None,
         drop_delay_ms: Some(MAX_DROP_DELAY_MS + 1),
         ..base_params()
     };
-    assert!(validate_drag(&too_slow_to_release).is_err());
+    let error =
+        validate_drag(&too_slow_to_release).expect_err("a drop delay past the limit is refused");
+    assert_eq!(error.code, ErrorCode::InvalidArgs);
+
+    let at_the_duration_limit = DragParams {
+        duration_ms: Some(MAX_DRAG_MS),
+        ..base_params()
+    };
+    assert!(validate_drag(&at_the_duration_limit).is_ok());
+
+    let at_the_drop_delay_limit = DragParams {
+        drop_delay_ms: Some(MAX_DROP_DELAY_MS),
+        ..base_params()
+    };
+    assert!(validate_drag(&at_the_drop_delay_limit).is_ok());
 }
 
 #[test]
@@ -60,7 +75,7 @@ fn impossible_drag_deadline_fails_before_mouse_down() {
 /// Counts the moves posted while the button is down: everything between
 /// the mouse-down and the release. Travel and dwell both post moves, so a
 /// zero dwell is visible as the absence of the extra ones.
-fn moves_while_button_held(events: &[crate::input::mouse_send::MouseInputEvent]) -> usize {
+fn moves_while_button_held(events: &[crate::input::mouse::mouse_send::MouseInputEvent]) -> usize {
     let down = events
         .iter()
         .position(|event| event.flags == MOUSEEVENTF_LEFTDOWN);

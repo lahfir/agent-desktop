@@ -6,5 +6,5 @@ use crate::{
 use serde_json::Value;
 
 pub fn execute(args: AppArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
-    window_op_command(args, adapter, WindowOp::Minimize, "minimized")
+    window_op_command(args, adapter, WindowOp::Minimize)
 }

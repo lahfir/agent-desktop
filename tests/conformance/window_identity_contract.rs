@@ -1,15 +1,13 @@
 use agent_desktop_core::{
-    ActionOps, AdapterError, Deadline, ErrorCode, InputOps, InteractionLease, ObservationOps,
-    SystemOps, WindowInfo, WindowOp, WindowState,
+    ActionOps, AdapterError, Deadline, ErrorCode, InputOps, ObservationOps, SystemOps, WindowInfo,
+    WindowState,
 };
-use std::sync::Mutex;
 
 #[path = "../support/noop_ops.rs"]
 mod noop_ops;
 
 struct WindowIdentityAdapter {
     windows: Vec<WindowInfo>,
-    last_window_op_id: Mutex<Option<String>>,
 }
 
 impl ObservationOps for WindowIdentityAdapter {}
@@ -19,13 +17,6 @@ impl ActionOps for WindowIdentityAdapter {}
 impl InputOps for WindowIdentityAdapter {}
 
 impl SystemOps for WindowIdentityAdapter {
-    fn acquire_interaction_lease(
-        &self,
-        deadline: Deadline,
-    ) -> Result<InteractionLease, AdapterError> {
-        InteractionLease::guarded(deadline, ())
-    }
-
     fn resolve_window_strict(
         &self,
         win: &WindowInfo,
@@ -56,17 +47,6 @@ impl SystemOps for WindowIdentityAdapter {
         }
         Ok(live)
     }
-
-    fn window_op(
-        &self,
-        win: &WindowInfo,
-        _op: WindowOp,
-        lease: &InteractionLease,
-    ) -> Result<(), AdapterError> {
-        let resolved = self.resolve_window_strict(win, lease.deadline())?;
-        *self.last_window_op_id.lock().unwrap() = Some(resolved.id);
-        Ok(())
-    }
 }
 
 fn untitled(id: &str, pid: u32) -> WindowInfo {
@@ -81,61 +61,12 @@ fn untitled(id: &str, pid: u32) -> WindowInfo {
     }
 }
 
-fn lease() -> InteractionLease {
-    InteractionLease::guarded(Deadline::standard().unwrap(), ()).unwrap()
-}
-
-#[test]
-fn id_addressed_window_op_targets_matching_id_not_first_title_match() {
-    let adapter = WindowIdentityAdapter {
-        windows: vec![untitled("w-1", 10), untitled("w-2", 10)],
-        last_window_op_id: Mutex::new(None),
-    };
-    let target = untitled("w-2", 10);
-
-    SystemOps::window_op(&adapter, &target, WindowOp::Minimize, &lease()).unwrap();
-
-    assert_eq!(
-        *adapter.last_window_op_id.lock().unwrap(),
-        Some("w-2".into())
-    );
-}
-
-#[test]
-fn missing_id_returns_window_not_found() {
-    let adapter = WindowIdentityAdapter {
-        windows: vec![untitled("w-1", 10)],
-        last_window_op_id: Mutex::new(None),
-    };
-    let target = untitled("w-999", 10);
-
-    let err = SystemOps::window_op(&adapter, &target, WindowOp::Minimize, &lease()).unwrap_err();
-
-    assert_eq!(err.code, ErrorCode::WindowNotFound);
-}
-
-#[test]
-fn recycled_id_with_wrong_pid_fails_closed() {
-    let adapter = WindowIdentityAdapter {
-        windows: vec![untitled("w-100", 99)],
-        last_window_op_id: Mutex::new(None),
-    };
-    let target = untitled("w-100", 10);
-
-    let err = adapter
-        .resolve_window_strict(&target, Deadline::standard().unwrap())
-        .unwrap_err();
-
-    assert_eq!(err.code, ErrorCode::WindowNotFound);
-}
-
 #[test]
 fn recycled_id_with_same_pid_and_new_process_instance_fails_closed() {
     let mut live = untitled("w-100", 10);
     live.process_instance = Some("replacement-process".into());
     let adapter = WindowIdentityAdapter {
         windows: vec![live],
-        last_window_op_id: Mutex::new(None),
     };
     let target = untitled("w-100", 10);
 

@@ -141,6 +141,7 @@ fn node_evidence(node: &FixtureNode, requirements: EvidenceRequirements) -> Loca
             LocatorField::Unknown
         },
         ref_evidence: LocatorRefEvidence {
+            window_bounds: LocatorField::Absent,
             bounds: if requirements.ref_evidence.bounds {
                 LocatorField::Known(node.bounds)
             } else {

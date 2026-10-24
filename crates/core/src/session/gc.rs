@@ -2,13 +2,16 @@ use super::{SessionManifest, TRACE_LIVENESS_WINDOW, list_sessions, now_millis, r
 use crate::{
     AppError,
     context::validate_session_id,
-    refs_lock::{RefStoreLock, lock_holder_is_live},
-    refs_store::RefStore,
+    refs::refs_lock::{RefStoreLock, lock_holder_is_live},
+    refs::refs_store::RefStore,
 };
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub struct GcOptions {
+    /// Consider only sessions that have ended. An ended session takes no new
+    /// writes except from commands that already hold a liveness lease, so
+    /// recent trace or snapshot activity does not keep it.
     pub ended_only: bool,
     pub older_than: Option<Duration>,
 }
@@ -19,6 +22,10 @@ pub struct GcReport {
 }
 
 pub fn is_live(session_id: &str) -> Result<bool, AppError> {
+    is_live_by(session_id, true)
+}
+
+fn is_live_by(session_id: &str, activity_counts: bool) -> Result<bool, AppError> {
     validate_session_id(session_id)?;
     let store = RefStore::for_session(Some(session_id))?;
     if lock_holder_is_live(&store.base_dir().join("refstore.lock")) {
@@ -26,6 +33,9 @@ pub fn is_live(session_id: &str) -> Result<bool, AppError> {
     }
     if super::liveness::any_held(store.base_dir()) {
         return Ok(true);
+    }
+    if !activity_counts {
+        return Ok(false);
     }
     let manifest = read_manifest(session_id)?;
     Ok(has_recent_activity(&store, manifest.as_ref()))
@@ -46,7 +56,8 @@ fn has_recent_activity(store: &RefStore, manifest: Option<&SessionManifest>) -> 
 pub fn gc(options: GcOptions) -> Result<GcReport, AppError> {
     let mut removed = Vec::new();
     for manifest in list_sessions()? {
-        if is_live(&manifest.id)? {
+        let activity_counts = !(options.ended_only && manifest.ended_at.is_some());
+        if is_live_by(&manifest.id, activity_counts)? {
             continue;
         }
         if options.ended_only && manifest.ended_at.is_none() {
@@ -67,7 +78,9 @@ pub fn gc(options: GcOptions) -> Result<GcReport, AppError> {
             Ok(lock) => lock,
             Err(_) => continue,
         };
-        if super::liveness::any_held(&dir) || has_recent_activity(&store, Some(&manifest)) {
+        if super::liveness::any_held(&dir)
+            || (activity_counts && has_recent_activity(&store, Some(&manifest)))
+        {
             drop(lock);
             continue;
         }

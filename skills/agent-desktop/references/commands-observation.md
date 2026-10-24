@@ -4,7 +4,7 @@ Commands that read UI state and never change it. Run `agent-desktop <command> --
 
 ## snapshot
 
-Captures the accessibility tree as JSON. Interactive elements get qualified refs (`@s8f3k2p9:e1`) that embed the snapshot id. Pass them to later commands as they are. A bare `@eN` fails with `INVALID_ARGS`; always use the qualified form.
+Captures the accessibility tree as JSON. Interactive elements get qualified refs (`@s8f3k2p9:e1`) that embed the snapshot id. A bare `@eN` fails with `INVALID_ARGS`.
 
 ```bash
 agent-desktop snapshot --app "System Settings" -i --compact
@@ -33,6 +33,7 @@ Choose the scope:
 - `--root <REF>` starts from a ref found earlier. Re-drilling a root replaces only the refs from that root's previous drill. Other regions and the skeleton keep their refs. `--root` cannot combine with `--surface` or `--wait-for`.
 - `--max-depth` (default 10) limits depth. Reach deeper subtrees with `--root`.
 - Use `--include-bounds` only when you need coordinates.
+- With `--app` and no `--window-id`, `snapshot` and `find` take the app's only visible window, else its only focused window, and answer `AMBIGUOUS_TARGET` with the candidates when neither settles it. Pass `--window-id` when an app has several windows.
 
 ### Partial trees
 
@@ -63,6 +64,7 @@ agent-desktop find --app "App" --role button --count
 
 - Scope before you widen. `--root` searches one ref's subtree. `--surface` searches an overlay. Both cost a few hundred bytes instead of a full dump. They cannot combine.
 - `--name` and `--text` match fuzzily. Add `--exact` for case-insensitive equality. Use `--limit 2` before a mutation when you need to know the match is unique.
+- `--text` also matches ancestors whose subtree text contains the text. Use `--name` to match the node itself.
 - `--role` is case-insensitive; `textarea`, `textbox` and `searchfield` fold to `textfield`. When a role filter matches nothing, `data.roles_present` lists the roles in the searched tree. Use it to tell a wrong role name from an empty screen.
 - Unnamed elements omit `name`. Their content is in `value`, so search it with `--value`.
 - A large tree, such as a file dialog, can pass the 5000 ms default `--timeout-ms`. Raise it or narrow the search. A timeout here does not mean the app hangs.
@@ -83,8 +85,8 @@ Reads one property of a ref: `text` (default), `value`, `title`, `bounds`, `role
 - `title` is the accessible name. It answers "what does this button say".
 - `text` is what a person reads. It is the content for `textfield`, `combobox`, `listbox`, `datefield` and `timefield`, and the name everywhere else. If the preferred half is empty, the other half answers. A checkbox answers its label, not `1`.
 - `value` is the raw value regardless of role (text, slider position).
-- `text`, `value`, `bounds` and `states` read live state when the adapter can. A missing live value or bounds returns `null`. When an optional live read is unavailable, `get` can fall back to the saved ref entry's value, name, bounds or states. Only `bounds` reports `data.live`, so check it.
-- `bounds` carries a sibling `live` boolean. When it is `false`, the rectangle came from the snapshot and may be out of date. Check it before you pass bounds to `mouse-click`.
+- `text`, `value`, `bounds` and `states` read live state when the adapter can. A missing live value or bounds returns `null`. When an optional live read is unavailable, `get` can fall back to the saved ref entry's value, name, bounds or states.
+- Only `bounds` reports whether it is live, in `data.live`. When it is `false`, the rectangle came from the snapshot and may be out of date. Check it before you pass bounds to `mouse-click`.
 
 ## is
 

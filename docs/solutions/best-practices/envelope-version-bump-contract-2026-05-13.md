@@ -23,75 +23,30 @@ tags:
 
 # Bump envelope version when top-level response contracts change
 
-## Context
-
-Phase 1 moved CLI and batch through one typed command path and changed several
-machine-visible contracts at the same time: permissions became a nested
-`PermissionReport`, snapshot refs became snapshot-scoped, new error codes became
-observable, and command outputs started sharing the same envelope version.
-
-The response envelope is how clients decide which parser branch to use. If the
-envelope remains unchanged while top-level fields or error semantics change,
-pinned clients cannot distinguish an old response from a new one.
-
 ## Guidance
 
-Keep `ENVELOPE_VERSION` in `crates/core/src/output.rs` as the single source of
-truth. Bump it whenever a client that already parses successful JSON needs a
-different parser branch for the same command name.
+Keep `ENVELOPE_VERSION` in `crates/core/src/response/output.rs` as the single source of truth. The envelope is how clients pick a parser branch. If it stays the same while top-level fields or error semantics change, pinned clients cannot tell an old response from a new one.
 
-Bump the envelope version for:
+Bump it whenever a client that already parses successful JSON needs a different parser branch for the same command name. That covers:
 
-- top-level response shape changes
-- nested shape changes in always-present fields such as permissions/status
+- top-level response shape changes, and nested shape changes in always-present fields such as permissions or status
 - command success becoming a structured error for a previously successful path
-- a structured error becoming a success, where the condition the error signalled
-  now has to be read from a field — a snapshot that exhausts its budget returns
-  `ok: true` with `complete: false` instead of `TIMEOUT`, so a caller that
-  branched on the error code to detect an oversized tree silently stops
-  detecting it
-- new required fields in success payloads, including a field that is always
-  present but only meaningful in one state, such as `complete`
+- a structured error becoming a success whose condition now has to be read from a field. A snapshot that exhausts its budget returns `ok: true` with `complete: false` instead of `TIMEOUT`, so a caller that branched on the error code to detect an oversized tree silently stops detecting it. `docs/json-output.md` shows this case.
+- new required fields in success payloads, including an always-present field that is only meaningful in one state, such as `complete`
 - error-code changes that callers reasonably branch on
 
-Do not bump it for additive optional fields, new commands, new flags, or more
-specific human-readable messages.
+Do not bump it for additive optional fields, new commands, new flags, or more specific human-readable messages.
 
 ## Blast Radius
 
-`ENVELOPE_VERSION` is the single source of truth for the *value*, but the value
-and the semantics behind it are restated by hand across non-test surfaces, and
-none of them is generated from the constant. A bump is not landed until each one
-is checked and, where it is wrong, corrected in the same change:
+`ENVELOPE_VERSION` owns the value, but the value and its semantics are restated by hand in non-test surfaces, and none of them is generated from the constant. Check each one in the same change and correct it where it is wrong: `docs/json-output.md`, the JSON placeholder in `.github/ISSUE_TEMPLATE/bug_report.yml`, the envelope examples and error prose in `CLAUDE.md`, and the rustdoc example in `crates/ffi/src/commands/snapshot.rs`. The header `crates/ffi/include/agent_desktop.h` is regenerated, not hand-edited.
 
-- `docs/json-output.md` — envelope examples plus the prose that explains what the
-  current version changed for consumers
-- `.github/ISSUE_TEMPLATE/bug_report.yml` — the JSON output placeholder a
-  reporter is asked to imitate
-- `CLAUDE.md` — success and error envelope examples and the error-object prose
-- `docs/phases.md` — the typed-contract objective row, the `output.rs` line in
-  the source-tree map, the envelope examples, and the error-object prose
-- `crates/ffi/src/commands/snapshot.rs` — the rustdoc envelope example, and
-  `crates/ffi/include/agent_desktop.h`, which carries the same example and is
-  regenerated rather than hand-edited
-
-`src/cli/doc_literal_drift_tests.rs` fails when a literal in `CLAUDE.md`,
-`docs/json-output.md`, `docs/phases.md` or the bug template disagrees with
-`ENVELOPE_VERSION`; the prose around each literal still needs a person.
-
-A surface that is bumped to the new number while still explaining only the old
-one is the failure this checklist exists to catch: the literal and the prose
-drift apart, and only the literal is easy to grep for.
+`src/cli/doc_literal_drift_tests.rs` fails when a version literal in those files disagrees with `ENVELOPE_VERSION`. It does not check the prose around the literal, so a person still has to. A surface bumped to the new number while it still explains the old one is the failure this checklist exists to catch.
 
 ## Release Notes
 
-Every envelope bump must have a `BREAKING CHANGE:` footer in the commit body.
-When CHANGELOG output is generated by release-please, do not hand-edit
-`CHANGELOG.md`; make the footer precise enough for release-please to generate
-the release note.
+Every envelope bump needs a `BREAKING CHANGE:` footer in the commit body. Do not hand-edit `CHANGELOG.md`. Make the footer precise enough for release-please to generate the note.
 
 ## Tests
 
-Tests should assert the version through `ENVELOPE_VERSION`, not string literals,
-so `main`, `batch`, FFI JSON-command tests, and unit-level envelope tests stay
-aligned after a bump.
+Assert the version through `ENVELOPE_VERSION`, not string literals, so `main`, `batch`, the FFI JSON-command tests and the unit-level envelope tests stay aligned after a bump.

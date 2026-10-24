@@ -183,7 +183,8 @@ function Start-StagedIntegrityProcess {
         deadline passed before end-of-stream), RestrictedTokenIntegritySid,
         LiveProcessIntegritySid, LiveProcessIntegrityReadOk,
         IntegrityConfirmedNonHigh, HarnessInheritableHandlesBeforeSpawn,
-        ExpectedInheritableHandles, BoundedExtraHandleCount.
+        ExpectedInheritableHandles, BoundedExtraHandleCount, and under
+        -ReportOwnHandles ChildReportedInheritableHandles ($null: no report).
     #>
     [CmdletBinding()]
     param(
@@ -318,15 +319,16 @@ function Start-StagedIntegrityProcess {
         $childReportedHandles = $null
         if ($ReportOwnHandles) {
             <# ConvertFrom-AgentJson returns an array as-is and a bare scalar
-               as a scalar. The parsed value is used unwrapped so a real
-               leaked handle is found by -contains; a null result becomes an
-               empty array and a scalar is normalized to a one-element array. #>
+               as a scalar, normalized here to a one-element array. Empty
+               stdout, a crash, non-JSON and an empty JSON array all leave the
+               report $null, never @(): "no report" must stay distinguishable
+               from "no handles" (a live child always owns its stdio handles). #>
             try {
                 $parsed = ConvertFrom-AgentJson -Json $stdoutText
-                if ($null -eq $parsed) { $childReportedHandles = @() }
+                if ($null -eq $parsed) { $childReportedHandles = $null }
                 elseif ($parsed -is [array]) { $childReportedHandles = $parsed }
                 else { $childReportedHandles = , $parsed }
-            } catch { $childReportedHandles = @() }
+            } catch { $childReportedHandles = $null }
         }
 
         return [pscustomobject]@{

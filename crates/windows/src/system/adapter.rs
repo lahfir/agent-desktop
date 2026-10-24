@@ -2,12 +2,17 @@ use agent_desktop_core::{
     ActionResult, AdapterError, AdapterSession, AppInfo, Deadline, DismissAllNotificationsRequest,
     DismissNotificationRequest, DisplayInfo, ImageBuffer, InteractionLease, InteractionPolicy,
     KeyCombo, NotificationActionRequest, NotificationFilter, NotificationInfo, ObservationOps,
-    PermissionReport, ProcessIdentity, ScreenshotTarget, SessionAffinity, SignalBaseline,
-    SignalFilter, SnapshotSurface, SystemOps, WindowFilter, WindowInfo, WindowOp,
-    launch_options::LaunchOptions, process_state::ProcessState,
+    OperationReport, PermissionReport, ProcessIdentity, ScreenshotTarget, SessionAffinity,
+    SignalBaseline, SignalFilter, SnapshotSurface, SystemOps, WindowFilter, WindowInfo, WindowOp,
+    system::launch_options::LaunchOptions, system::process_state::ProcessState,
 };
 
 use crate::adapter::WindowsAdapter;
+use crate::system::close_outcome::CloseOutcome;
+
+#[cfg(target_os = "windows")]
+#[path = "tcp_listener.rs"]
+pub(crate) mod tcp_listener;
 
 impl SystemOps for WindowsAdapter {
     fn update_cursor_overlay(
@@ -136,7 +141,7 @@ impl SystemOps for WindowsAdapter {
         policy: InteractionPolicy,
         lease: &InteractionLease,
     ) -> Result<WindowInfo, AdapterError> {
-        crate::system::shell_surface_open::open_surface(surface, policy, lease.deadline())
+        crate::system::shell::shell_surface_open::open_surface(surface, policy, lease.deadline())
     }
 
     /// The focused window is the focused-only filter's first result, composed
@@ -175,8 +180,17 @@ impl SystemOps for WindowsAdapter {
         id: &str,
         options: &LaunchOptions,
         lease: &InteractionLease,
-    ) -> Result<agent_desktop_core::launch_result::LaunchResult, AdapterError> {
+    ) -> Result<agent_desktop_core::system::launch_result::LaunchResult, AdapterError> {
         crate::system::launch::launch_app_impl(id, options, lease.deadline())
+    }
+
+    fn process_owns_tcp_listener(
+        &self,
+        process: ProcessIdentity,
+        port: u16,
+        deadline: Deadline,
+    ) -> Result<bool, AdapterError> {
+        tcp_listener::owns_listener(&process, port, deadline)
     }
 
     /// Verified termination: `Ok(())` only after the process is observed gone
@@ -186,8 +200,10 @@ impl SystemOps for WindowsAdapter {
         app: &AppInfo,
         force: bool,
         lease: &InteractionLease,
-    ) -> Result<(), AdapterError> {
-        crate::system::close::close_app_impl(app, force, lease.deadline())
+    ) -> Result<OperationReport, AdapterError> {
+        let dispatched = crate::system::close::close_app_impl(app, force, lease.deadline())
+            .map(|outcome| outcome == CloseOutcome::Exited);
+        OperationReport::from_close_dispatch(app, dispatched)
     }
 
     /// `SetWindowPos`/`ShowWindow` with Win32 placement re-read verification
@@ -197,8 +213,11 @@ impl SystemOps for WindowsAdapter {
         win: &WindowInfo,
         op: WindowOp,
         lease: &InteractionLease,
-    ) -> Result<(), AdapterError> {
-        crate::system::window_op::window_op_impl(win, op, lease.deadline())
+    ) -> Result<OperationReport, AdapterError> {
+        let readback = crate::system::window::window_op_readback::window_readback(&op);
+        let dispatched =
+            crate::system::window::window_op::window_op_impl(win, op.clone(), lease.deadline());
+        OperationReport::from_window_dispatch(win, &op, readback, dispatched)
     }
 
     fn resolve_window_strict(
@@ -206,11 +225,11 @@ impl SystemOps for WindowsAdapter {
         win: &WindowInfo,
         deadline: Deadline,
     ) -> Result<WindowInfo, AdapterError> {
-        crate::system::window_resolve::resolve_window_strict(win, deadline)
+        crate::system::window::window_resolve::resolve_window_strict(win, deadline)
     }
 
     fn focus_window(&self, win: &WindowInfo, lease: &InteractionLease) -> Result<(), AdapterError> {
-        crate::system::window_activate::focus_window(win, lease)
+        crate::system::window::window_activate::focus_window(win, lease)
     }
 
     fn list_displays(&self, deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
@@ -223,7 +242,7 @@ impl SystemOps for WindowsAdapter {
         target: ScreenshotTarget,
         deadline: Deadline,
     ) -> Result<ImageBuffer, AdapterError> {
-        crate::system::screenshot::screenshot(target, deadline)
+        crate::system::capture::screenshot::screenshot(target, deadline)
     }
 
     #[cfg(target_os = "windows")]
@@ -232,7 +251,7 @@ impl SystemOps for WindowsAdapter {
         window: &WindowInfo,
         deadline: Deadline,
     ) -> Result<ImageBuffer, AdapterError> {
-        crate::system::screenshot::capture_window(window, deadline)
+        crate::system::capture::screenshot::capture_window(window, deadline)
     }
 
     /// Verify-only composition over the keyboard primitive. Core's headed
@@ -260,7 +279,7 @@ impl SystemOps for WindowsAdapter {
         _affinity: &SessionAffinity,
         deadline: Deadline,
     ) -> Result<Box<dyn AdapterSession>, AdapterError> {
-        Ok(Box::new(crate::system::session::open(deadline)?))
+        Ok(Box::new(crate::system::runtime::session::open(deadline)?))
     }
 
     /// The other half of `wait`'s menu surface: a bounded poll over the
@@ -284,7 +303,7 @@ impl SystemOps for WindowsAdapter {
         filter: &SignalFilter,
         deadline: Deadline,
     ) -> Result<SignalBaseline, AdapterError> {
-        crate::system::signals::capture_signal_baseline_impl(filter, deadline)
+        crate::system::signal::signals::capture_signal_baseline_impl(filter, deadline)
     }
 
     /// Listing carries the same lease-consistency check the macOS adapter

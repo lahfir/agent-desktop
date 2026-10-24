@@ -12,7 +12,7 @@ use crate::tree::fixture::{HostedFixture, ensure_test_apartment};
 use crate::tree::resolve::resolve_element_strict;
 
 fn entry_for(fixture: &HostedFixture, token: String, window_handle: isize) -> RefEntry {
-    let mut entry = crate::tree::walker_fake::ref_entry("button");
+    let mut entry = crate::tree::walk::walker_fake::ref_entry("button");
     entry.process = agent_desktop_core::RefProcess {
         pid: ProcessId::from(fixture.process_id()),
         process_instance: Some(token),

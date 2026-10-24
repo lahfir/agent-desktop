@@ -3,8 +3,8 @@ use agent_desktop_core::{
 };
 
 use super::properties::ElementProperties;
-use super::property_ids::TreeProperty;
-use super::property_outcome::PropertyOutcome;
+use super::properties::property_ids::TreeProperty;
+use super::properties::property_outcome::PropertyOutcome;
 
 /// What reading an element's `LabeledBy` relation produced.
 ///
@@ -209,7 +209,7 @@ fn secure_from_read(read: Result<bool, ()>) -> bool {
 mod imp {
     use super::{LabelOutcome, label_from_target, secure_from_read};
     use crate::tree::element::UIAElement;
-    use crate::tree::property_ids::{TreeProperty, uia_property};
+    use crate::tree::properties::property_ids::{TreeProperty, uia_property};
     use uiautomation::UIElement;
     use uiautomation::variants::{Value, Variant};
 

@@ -15,6 +15,7 @@ from electron_metrics import (
     read_trace_events,
     run_sample,
     verify_exact_namespace,
+    write_report,
 )
 from electron_metrics_report import build_report, paired_summary, summarize_run
 from electron_metrics_state import target_window_id
@@ -154,6 +155,28 @@ class MetricsSchemaTests(unittest.TestCase):
 
 
 class MetricsIntegrityTests(unittest.TestCase):
+    def test_report_write_does_not_follow_a_predictable_temp_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "report.json")
+            victim = os.path.join(directory, "victim.txt")
+            predictable_temp = f"{path}.tmp-{os.getpid()}"
+            with open(victim, "w", encoding="utf-8") as output:
+                output.write("keep")
+            try:
+                os.symlink(victim, predictable_temp)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+
+            try:
+                write_report(path, {"ok": True})
+                with open(victim, encoding="utf-8") as output:
+                    self.assertEqual(output.read(), "keep")
+                with open(path, encoding="utf-8") as output:
+                    self.assertEqual(json.load(output), {"ok": True})
+                self.assertTrue(os.path.islink(predictable_temp))
+            finally:
+                os.unlink(predictable_temp)
+
     def test_exact_namespace_accepts_get_property_contract(self):
         responses = [
             command_result({"snapshot_id": "noise"}),

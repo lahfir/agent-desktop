@@ -177,18 +177,17 @@ impl Drop for NcSession {
 
 #[cfg(target_os = "macos")]
 fn frontmost_app(deadline: Deadline) -> Result<Option<ProcessIdentity>, AdapterError> {
-    let snapshot = crate::system::workspace_apps::window_owner_snapshot_until(operation_deadline(
-        deadline,
-        std::time::Duration::from_secs(2),
-    )?)?;
+    let snapshot = crate::system::app::workspace_apps::window_owner_snapshot_until(
+        operation_deadline(deadline, std::time::Duration::from_secs(2))?,
+    )?;
     let Some(owner) = snapshot.frontmost() else {
         return Ok(None);
     };
-    let Some(instance) = crate::system::process_identity::token_for_pid(owner.pid)? else {
+    let Some(instance) = crate::system::process::process_identity::token_for_pid(owner.pid)? else {
         return Ok(None);
     };
     Ok(Some(ProcessIdentity::new(
-        crate::system::process_identity::from_pid_t(owner.pid)?,
+        crate::system::process::process_identity::from_pid_t(owner.pid)?,
         instance,
     )))
 }
@@ -200,8 +199,8 @@ fn frontmost_app(_deadline: Deadline) -> Result<Option<ProcessIdentity>, Adapter
 
 #[cfg(target_os = "macos")]
 fn reactivate_app(app: &ProcessIdentity, deadline: Deadline) -> Result<(), AdapterError> {
-    let pid = crate::system::process_identity::to_pid_t(app.pid)?;
-    if !crate::system::process_identity::matches_instance(pid, &app.instance)? {
+    let pid = crate::system::process::process_identity::to_pid_t(app.pid)?;
+    if !crate::system::process::process_identity::matches_instance(pid, &app.instance)? {
         return Ok(());
     }
     crate::system::focus::ensure_app_focused(pid, deadline)

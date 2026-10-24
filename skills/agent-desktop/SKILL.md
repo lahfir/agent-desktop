@@ -5,7 +5,7 @@ tags: computer-use, desktop-automation, accessibility, ai-agent, gui-automation,
 requirements:
   - agent-desktop
 description: >
-  Operate desktop applications on macOS and Windows through native accessibility trees,
+  Operate desktop applications on macOS, Windows and Linux through native accessibility trees,
   using the agent-desktop CLI. Use when an AI agent must see or act on a desktop GUI:
   click buttons, fill forms, read UI state, navigate menus, toggle checkboxes, scroll,
   drag, type text, press shortcuts, take screenshots, manage windows, use the clipboard,
@@ -13,7 +13,7 @@ description: >
   Triggers on: "click button", "fill form", "open app", "read UI", "computer use",
   "operate desktop", "accessibility tree", "snapshot app", "type into field", "navigate menu",
   "toggle checkbox", "take screenshot", "desktop automation", "agent-desktop",
-  or any desktop GUI task on macOS or Windows.
+  or any desktop GUI task on macOS, Windows or Linux.
 ---
 
 # agent-desktop
@@ -27,7 +27,7 @@ Examples use a POSIX shell. In PowerShell, quote every ref (`'@s8f3k2p9:e1'`), b
 ## First run
 
 1. Run `agent-desktop status`. It reports the platform, permissions and `supported_surfaces`.
-2. Run `agent-desktop skills get platform`. It loads the skill for the OS the binary runs on (macOS or Windows). Linux has no platform skill yet.
+2. Run `agent-desktop skills get platform`. It loads the skill for the OS the binary runs on (macOS, Windows or Linux).
 3. For flags and syntax, run `agent-desktop <command> --help`. This skill does not repeat flag lists.
 
 ## The loop
@@ -57,7 +57,7 @@ agent-desktop snapshot --root @s8f3k2p9:e3 -i --compact        # verify: re-read
 
 ## Delivery and retry
 
-Action results carry `data.disposition` and errors carry `error.disposition`, each with `delivery` and `retry`. Observation commands such as `snapshot` have none.
+Action results carry `data.disposition` and errors carry `error.disposition`, each with `delivery` and `retry`. Observation commands such as `snapshot` have none on success; their errors, and every `INVALID_ARGS` refusal, carry `not_delivered` and `retry: safe`.
 
 - Retry or substitute an action only when `disposition.retry` is `safe`. Only `not_delivered` is safe.
 - Any other delivery value means the action may have landed. A repeat can click, type or submit twice, and `toggle` can undo itself.
@@ -67,7 +67,7 @@ Action results carry `data.disposition` and errors carry `error.disposition`, ea
 
 ## Headless and headed
 
-Ref actions are headless by default. They use semantic accessibility calls and do not take focus, move the cursor or synthesize keys. If no semantic path exists, the action fails closed. Add the global `--headed` flag only when you intend physical input, such as double-click, hover, drag, or focus. Raw coordinates (`--xy`) never imply focus. Which actions need `--headed` differs by OS: read the platform skill.
+Ref actions are headless by default. They use semantic accessibility calls and do not take focus, move the cursor, synthesize keys or use the clipboard. If no semantic path exists, the action fails closed. Use the global `--headed` flag only when the user explicitly permits physical input, such as double-click, hover, drag, or focus. Never switch to headed mode to recover from a headless failure. Raw coordinates (`--xy`) never imply focus. Which actions need `--headed` differs by OS: read the platform skill.
 
 ## References
 

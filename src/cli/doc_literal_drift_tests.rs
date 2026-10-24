@@ -6,7 +6,6 @@ const ENVELOPE_DOCS: &[(&str, &str)] = &[
         "docs/json-output.md",
         include_str!("../../docs/json-output.md"),
     ),
-    ("docs/phases.md", include_str!("../../docs/phases.md")),
     (
         ".github/ISSUE_TEMPLATE/bug_report.yml",
         include_str!("../../.github/ISSUE_TEMPLATE/bug_report.yml"),
@@ -15,7 +14,6 @@ const ENVELOPE_DOCS: &[(&str, &str)] = &[
 
 const ABI_DOCS: &[(&str, &str)] = &[
     ("README.md", include_str!("../../README.md")),
-    ("docs/phases.md", include_str!("../../docs/phases.md")),
     (
         "skills/agent-desktop-ffi/references/build-and-link.md",
         include_str!("../../skills/agent-desktop-ffi/references/build-and-link.md"),
@@ -65,7 +63,7 @@ fn documented_envelope_versions_match_the_code_constant() {
         for version in found {
             assert_eq!(
                 version,
-                agent_desktop_core::output::ENVELOPE_VERSION,
+                agent_desktop_core::response::output::ENVELOPE_VERSION,
                 "{path} documents envelope version {version}"
             );
         }

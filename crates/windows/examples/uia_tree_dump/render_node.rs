@@ -3,10 +3,10 @@
 //! Split from `render.rs` so the renderer sits beside the test that proves it
 //! withholds target-authored text, and so neither file lives at the size cap.
 
-use agent_desktop_windows::tree::element_properties::ResolvedVocabulary;
 use agent_desktop_windows::tree::name_evidence::LabelOutcome;
+use agent_desktop_windows::tree::properties::element_properties::ResolvedVocabulary;
+use agent_desktop_windows::tree::properties::property_ids::TreeProperty;
 use agent_desktop_windows::tree::properties::{ElementProperties, PropertyOutcome};
-use agent_desktop_windows::tree::property_ids::TreeProperty;
 use serde_json::{Value, json};
 
 use super::render_slots::{field_list, field_presence, role_of, slot, text_presence};

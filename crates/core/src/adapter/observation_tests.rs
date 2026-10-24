@@ -18,25 +18,6 @@ impl ObservationOps for TimedResolver {
 }
 
 #[test]
-fn untimed_convenience_delegates_to_the_deadline_aware_primitive() {
-    let resolver = TimedResolver {
-        observed: Mutex::new(None),
-    };
-
-    resolver
-        .resolve_element_strict(&entry(), crate::Deadline::standard().unwrap())
-        .expect("timed resolver should serve the convenience call");
-
-    assert!(
-        resolver
-            .observed
-            .lock()
-            .expect("capture lock")
-            .is_some_and(|duration| duration <= Duration::from_secs(5))
-    );
-}
-
-#[test]
 fn locator_anchor_never_falls_back_to_the_public_strict_resolver() {
     let resolver = TimedResolver {
         observed: Mutex::new(None),
@@ -66,6 +47,7 @@ fn entry() -> RefEntry {
             native_id: None,
         },
         geometry: crate::RefGeometry {
+            bounds_space: None,
             bounds: None,
             bounds_hash: None,
         },

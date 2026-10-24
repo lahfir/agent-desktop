@@ -8,7 +8,7 @@ use super::*;
 #[cfg(target_os = "windows")]
 #[test]
 fn keyboard_focus_never_verified_times_out_without_synthesis() {
-    let _stage = crate::tree::fixture_window::on_screen_stage();
+    let _stage = crate::tree::fixture::fixture_window::on_screen_stage();
     let (fixture, identity) = staged_hosted_target();
     if !stage_as_foreground(&fixture) {
         assert_press_fails_closed_without_synthesis(identity, InteractionPolicy::headed());

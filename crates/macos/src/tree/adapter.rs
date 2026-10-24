@@ -48,14 +48,14 @@ impl ObservationOps for MacOSAdapter {
         filter: &WindowFilter,
         deadline: Deadline,
     ) -> Result<Vec<WindowInfo>, AdapterError> {
-        crate::system::app_inventory::list_windows_until(
+        crate::system::app::app_inventory::list_windows_until(
             filter,
             crate::tree::locator_deadline::from_operation(deadline)?,
         )
     }
 
     fn list_apps(&self, deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
-        crate::system::app_inventory::list_apps_complete_until(
+        crate::system::app::app_inventory::list_apps_complete_until(
             crate::tree::locator_deadline::from_operation(deadline)?,
         )
     }
@@ -64,7 +64,7 @@ impl ObservationOps for MacOSAdapter {
         &self,
         deadline: Deadline,
     ) -> Result<agent_desktop_core::AppInventory, AdapterError> {
-        crate::system::app_inventory::list_apps_inventory_until(
+        crate::system::app::app_inventory::list_apps_inventory_until(
             crate::tree::locator_deadline::from_operation(deadline)?,
         )
     }
@@ -75,7 +75,7 @@ impl ObservationOps for MacOSAdapter {
         bundle_id: Option<&str>,
         deadline: Deadline,
     ) -> Result<Vec<AppInfo>, AdapterError> {
-        crate::system::app_inventory::list_apps_scoped_until(
+        crate::system::app::app_inventory::list_apps_scoped_until(
             name,
             bundle_id,
             crate::tree::locator_deadline::from_operation(deadline)?,
@@ -87,12 +87,12 @@ impl ObservationOps for MacOSAdapter {
         process: agent_desktop_core::ProcessIdentity,
         deadline: Deadline,
     ) -> Result<Vec<SurfaceInfo>, AdapterError> {
-        let identity = crate::system::process_identity::require_core(&process)?;
+        let identity = crate::system::process::process_identity::require_core(&process)?;
         let surfaces = crate::tree::surface_inventory::list_surfaces_for_pid(
             identity.pid(),
             crate::tree::locator_deadline::from_operation(deadline)?,
         )?;
-        crate::system::process_identity::require_core(&process)?;
+        crate::system::process::process_identity::require_core(&process)?;
         Ok(surfaces)
     }
 
@@ -101,7 +101,7 @@ impl ObservationOps for MacOSAdapter {
         handle: &NativeHandle,
         point: agent_desktop_core::Point,
         deadline: Deadline,
-    ) -> Result<agent_desktop_core::hit_test::HitTestResult, AdapterError> {
+    ) -> Result<agent_desktop_core::adapter::hit_test::HitTestResult, AdapterError> {
         crate::tree::hit_test::hit_test_impl(handle, point, deadline)
     }
 
@@ -144,7 +144,7 @@ impl ObservationOps for MacOSAdapter {
     ) -> Result<Option<std::ops::Range<usize>>, AdapterError> {
         #[cfg(target_os = "macos")]
         {
-            Ok(crate::tree::attributes::selected_text_range(
+            Ok(crate::tree::properties::attributes::selected_text_range(
                 ax_element(handle)?,
                 deadline,
             ))

@@ -15,7 +15,7 @@ use super::*;
 #[cfg(target_os = "windows")]
 #[test]
 fn a_malformed_window_id_is_rejected_before_the_platform_is_reached() {
-    let error = window_hwnd("not-a-window").expect_err("must reject");
+    let error = parse_window_id("not-a-window").expect_err("must reject");
     assert_eq!(error.code, ErrorCode::InvalidArgs);
 }
 
@@ -42,7 +42,7 @@ fn an_absent_window_modal_read_is_not_a_sheet() {
 #[test]
 fn a_live_non_modal_window_is_not_classified_as_a_sheet() {
     use super::super::fixture::{HostedFixture, ensure_test_apartment};
-    use super::super::walker_fake::deadline;
+    use super::super::walk::walker_fake::deadline;
 
     ensure_test_apartment();
     let fixture = HostedFixture::spawn().expect("the fixture spawns");
@@ -60,19 +60,19 @@ fn a_live_non_modal_window_is_not_classified_as_a_sheet() {
 mod shell_surfaces {
     use super::*;
 
+    use super::super::super::fixture::fixture_modal::ModalFixture;
     use super::super::super::fixture::{HostedFixture, bootstrap};
-    use super::super::super::fixture_modal::ModalFixture;
-    use super::super::super::walker_fake::deadline;
+    use super::super::super::walk::walker_fake::deadline;
     use crate::adapter::WindowsAdapter;
-    use crate::system::raise_oracle::{responded_since, witness_desktop};
-    use crate::system::shell_surface::resolve_surface;
-    use crate::system::shell_surface_open::{close_surface, open_surface};
-    use crate::system::test_support::{
+    use crate::system::fixture::test_support::{
         SHELL_SURFACE_LOCK, or_skip_shell, shell_declined_the_surface, stage_foreground,
         wait_for_foreground_to_settle,
     };
-    use crate::tree::fixture_menu::MenuFixture;
-    use crate::tree::fixture_window;
+    use crate::system::shell::raise_oracle::{responded_since, witness_desktop};
+    use crate::system::shell::shell_surface::resolve_surface;
+    use crate::system::shell::shell_surface_open::{close_surface, open_surface};
+    use crate::tree::fixture::fixture_menu::MenuFixture;
+    use crate::tree::fixture::fixture_window;
     use crate::tree::test_support::rooted_child_count;
     use agent_desktop_core::{InteractionPolicy, ObservationOps, ProcessId, SystemOps, WindowInfo};
     use std::time::Duration;
@@ -229,7 +229,7 @@ mod shell_surfaces {
     #[test]
     fn every_advertised_surface_resolves_to_a_rootable_element_when_present() {
         bootstrap();
-        let _fixture_scope = crate::system::test_support::FIXTURE_APP_NAME_LOCK
+        let _fixture_scope = crate::system::fixture::test_support::FIXTURE_APP_NAME_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let _lock = SHELL_SURFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner());

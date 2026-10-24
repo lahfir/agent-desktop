@@ -26,8 +26,8 @@ cleanup() {
         contaminated=1
     fi
     if [ "$contaminated" -ne 0 ] && [ "$report_started" -eq 1 ] && [ -n "$out" ]; then
-        if trash_recoverably "$out"; then
-            echo "measurement was contaminated; report moved to recoverable Trash" >&2
+        if remove_artifact "$out"; then
+            echo "measurement was contaminated; report removed" >&2
         else
             echo "measurement was contaminated; retained report must not be used: $out" >&2
         fi
@@ -123,6 +123,10 @@ fi
 if [ -z "$out" ]; then
     slug="$(printf '%s' "$app" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9._-')"
     out="/tmp/agent-desktop-electron-${slug}-$(date -u +%Y%m%dT%H%M%SZ).json"
+fi
+if [ -e "$out" ] || [ -L "$out" ]; then
+    echo "refusing to overwrite an existing report: $out" >&2
+    exit 2
 fi
 
 baseline_args=()

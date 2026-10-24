@@ -175,7 +175,7 @@ pub(super) fn mouse_wheel(
         mouse_wheel_command::MouseWheelArgs {
             x: args.x,
             y: args.y,
-            dy: args.dy,
+            dy: args.vertical_lines(),
             dx: args.dx,
             modifiers: parse_modifiers(&args.modifiers)?,
         },

@@ -1,6 +1,6 @@
 use crate::{
     AppError, MouseButton, MouseEvent, MouseEventKind, Point, adapter::PlatformAdapter,
-    context::CommandContext,
+    commands::operation_response::operation_response, context::CommandContext,
 };
 use serde_json::{Value, json};
 
@@ -18,6 +18,7 @@ pub fn execute(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     crate::commands::point_resolve::require_cursor_policy(context, "mouse-wheel")?;
+    crate::commands::point_resolve::require_pointer_capability(adapter)?;
     if !args.x.is_finite() || !args.y.is_finite() || !args.dx.is_finite() || !args.dy.is_finite() {
         return Err(AppError::invalid_input(
             "mouse-wheel coordinates and line deltas must be finite numbers",
@@ -44,8 +45,7 @@ pub fn execute(
         false,
         &lease,
     );
-    result?;
-    Ok(json!({ "scrolled": true, "dy": args.dy, "dx": args.dx }))
+    operation_response(&result?, json!({ "dy": args.dy, "dx": args.dx }))
 }
 
 #[cfg(test)]

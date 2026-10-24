@@ -7,7 +7,7 @@
 
 use agent_desktop_core::{
     Action, ActionResult, ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode,
-    InteractionPolicy, StepMechanism, action_request::ActionRequest,
+    InteractionPolicy, StepMechanism, actions::action_request::ActionRequest,
 };
 
 #[cfg(target_os = "windows")]
@@ -17,12 +17,11 @@ mod imp {
         ErrorCode, InteractionPolicy, StepMechanism,
     };
     use crate::actions::mutation::{classify_mutation, classify_success};
-    use crate::system::permissions::ensure_budget;
     use crate::tree::automation::{automation_client, failure_of};
     use crate::tree::element::UIAElement;
+    use crate::tree::properties::property_ids::TreeProperty;
     use crate::tree::properties::read_one;
-    use crate::tree::property_ids::TreeProperty;
-    use crate::tree::walker_source::same_element;
+    use crate::tree::walk::walker_source::same_element;
 
     const SET_FOCUS_API: &str = "UIElement.SetFocus";
     const SET_FOCUS_OP: &str = "SetFocus";
@@ -35,7 +34,7 @@ mod imp {
         if !request.policy.is_headed() {
             return Err(headless_denied(request.policy));
         }
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         let delivered = invoke_focus(element)?;
         focus_from_delivery(
             request.policy,

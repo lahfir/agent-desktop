@@ -16,6 +16,15 @@ impl ActionOps for NotificationErrorAdapter {}
 impl InputOps for NotificationErrorAdapter {}
 
 impl SystemOps for NotificationErrorAdapter {
+    fn check_notification_support(&self, deadline: crate::Deadline) -> Result<(), AdapterError> {
+        assert!(!deadline.is_expired());
+        Err(AdapterError::new(
+            ErrorCode::PlatformNotSupported,
+            "No notification service is running in this session",
+        )
+        .with_details(json!({ "daemon": "absent" })))
+    }
+
     fn list_notifications(
         &self,
         _filter: &NotificationFilter,
@@ -23,10 +32,7 @@ impl SystemOps for NotificationErrorAdapter {
         _deadline: crate::Deadline,
         _lease: Option<&crate::InteractionLease>,
     ) -> Result<Vec<NotificationInfo>, AdapterError> {
-        Err(AdapterError::new(
-            ErrorCode::PlatformNotSupported,
-            "notifications unavailable",
-        ))
+        panic!("an unavailable notification service must refuse before reading")
     }
 }
 
@@ -175,21 +181,20 @@ impl InputOps for WindowErrorAdapter {}
 impl SystemOps for WindowErrorAdapter {}
 
 #[test]
-fn notification_wait_propagates_adapter_error() {
-    let err = execute(
-        WaitArgs {
-            mode: WaitModeArgs {
-                surface: Some(SurfaceWait::Notification),
-                ..wait_args().mode
-            },
-            ..wait_args()
-        },
-        &NotificationErrorAdapter,
-        &CommandContext::default(),
-    )
-    .unwrap_err();
-
-    assert_eq!(err.code(), "PLATFORM_NOT_SUPPORTED");
+fn unavailable_notifications_refuse_before_polling_at_any_timeout() {
+    for timeout_ms in [0, 150] {
+        let err = execute(
+            notification_wait_args(timeout_ms),
+            &NotificationErrorAdapter,
+            &CommandContext::default(),
+        )
+        .unwrap_err();
+        assert_eq!(err.code(), "PLATFORM_NOT_SUPPORTED");
+        let AppError::Adapter(error) = err else {
+            panic!("expected the prerequisite error")
+        };
+        assert_eq!(error.details.unwrap()["daemon"], "absent");
+    }
 }
 
 #[test]
@@ -239,18 +244,18 @@ fn headed_notification_wait_leases_each_poll_without_holding_across_sleep() {
 
 #[test]
 fn notification_wait_fingerprint_ignores_reindexed_existing_notification() {
-    let baseline = notification_counts(&[notification(0, "old")]);
+    let baseline = wait_notification::notification_counts(&[notification(0, "old")]);
     let current = vec![notification(4, "old")];
 
-    assert!(first_new_notification(&current, &baseline).is_none());
+    assert!(wait_notification::first_new_notification(&current, &baseline).is_none());
 }
 
 #[test]
 fn notification_wait_fingerprint_detects_duplicate_new_notification() {
-    let baseline = notification_counts(&[notification(0, "same")]);
+    let baseline = wait_notification::notification_counts(&[notification(0, "same")]);
     let current = vec![notification(4, "same"), notification(5, "same")];
 
-    let found = first_new_notification(&current, &baseline).unwrap();
+    let found = wait_notification::first_new_notification(&current, &baseline).unwrap();
 
     assert_eq!(found.index, 5);
 }

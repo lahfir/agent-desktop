@@ -8,9 +8,9 @@ struct TextlessTreeAdapter;
 impl ObservationOps for TextlessTreeAdapter {
     fn observe_tree(
         &self,
-        root: crate::live_locator::ObservationRoot<'_>,
-        _request: &crate::live_locator::ObservationRequest,
-    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+        root: crate::locator::live_locator::ObservationRoot<'_>,
+        _request: &crate::locator::live_locator::ObservationRequest,
+    ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
         crate::adapter::observed_tree(
             &root,
             crate::AccessibilityNode {
@@ -98,6 +98,46 @@ impl InputOps for WindowWaitAdapter {}
 impl SystemOps for WindowWaitAdapter {}
 
 #[test]
+fn ambiguous_text_wait_suggests_window_wait_and_snapshot_recovery() {
+    let mut first = TextlessTreeAdapter
+        .list_windows(
+            &WindowFilter::default(),
+            crate::Deadline::standard().unwrap(),
+        )
+        .unwrap()
+        .remove(0);
+    first.state.is_focused = false;
+    let mut second = first.clone();
+    second.id = "w-2".into();
+    second.title = "Keyboard Shortcuts".into();
+    let error = execute(
+        WaitArgs {
+            mode: WaitModeArgs {
+                text: Some("Search Shortcuts".into()),
+                ..wait_args().mode
+            },
+            timeout_ms: 5_000,
+            app: Some("TestApp".into()),
+            ..wait_args()
+        },
+        &WindowWaitAdapter(vec![first, second]),
+        &CommandContext::default(),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code(), "AMBIGUOUS_TARGET");
+    match error {
+        AppError::Adapter(adapter_error) => {
+            let suggestion = adapter_error.suggestion.unwrap();
+            assert!(suggestion.contains("wait --window"), "{suggestion}");
+            assert!(suggestion.contains("snapshot --window-id"), "{suggestion}");
+            assert!(!suggestion.contains("wait --window-id"), "{suggestion}");
+        }
+        _ => panic!("expected adapter error"),
+    }
+}
+
+#[test]
 fn window_wait_scopes_matches_and_missing_window_diagnostics_to_the_app() {
     let mut project = TextlessTreeAdapter
         .list_windows(
@@ -158,7 +198,7 @@ fn missing_window_diagnostics_bound_count_and_unicode_title_length() {
 
 #[test]
 fn text_wait_with_count_zero_detects_absence() {
-    let _guard = crate::refs_test_support::HomeGuard::new();
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
 
     let value = execute(
         WaitArgs {
@@ -180,4 +220,56 @@ fn text_wait_with_count_zero_detects_absence() {
 
     assert_eq!(value["found"], true);
     assert_eq!(value["count"], 0);
+}
+
+struct LoadingPanel(std::sync::atomic::AtomicUsize);
+
+impl ObservationOps for LoadingPanel {
+    fn list_windows(
+        &self,
+        filter: &WindowFilter,
+        deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
+        if self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+            return Err(AdapterError::new(
+                ErrorCode::WindowNotFound,
+                "The panel is replacing its window",
+            ));
+        }
+        TextlessTreeAdapter.list_windows(filter, deadline)
+    }
+
+    fn observe_tree(
+        &self,
+        root: crate::locator::live_locator::ObservationRoot<'_>,
+        request: &crate::locator::live_locator::ObservationRequest,
+    ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
+        TextlessTreeAdapter.observe_tree(root, request)
+    }
+}
+
+impl ActionOps for LoadingPanel {}
+impl InputOps for LoadingPanel {}
+impl SystemOps for LoadingPanel {}
+
+#[test]
+fn text_wait_survives_a_temporarily_missing_panel_window() {
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
+    let adapter = LoadingPanel(std::sync::atomic::AtomicUsize::new(0));
+    let result = execute(
+        WaitArgs {
+            mode: WaitModeArgs {
+                text: Some("Doc".into()),
+                ..wait_args().mode
+            },
+            timeout_ms: 5_000,
+            app: Some("TestApp".into()),
+            ..wait_args()
+        },
+        &adapter,
+        &CommandContext::default(),
+    )
+    .unwrap();
+    assert_eq!(result["found"], true);
+    assert!(adapter.0.load(std::sync::atomic::Ordering::SeqCst) >= 2);
 }

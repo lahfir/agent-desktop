@@ -140,6 +140,7 @@ mod tests {
         assert!(AdMouseButton::from_c(0).is_some());
         assert!(AdMouseButton::from_c(2).is_some());
         assert!(AdMouseButton::from_c(3).is_none());
+        assert!(AdMouseButton::from_c(-5).is_none());
     }
 
     #[test]
@@ -147,6 +148,7 @@ mod tests {
         assert!(AdMouseEventKind::from_c(0).is_some());
         assert!(AdMouseEventKind::from_c(3).is_some());
         assert!(AdMouseEventKind::from_c(4).is_none());
+        assert!(AdMouseEventKind::from_c(999).is_none());
     }
 
     #[test]
@@ -173,21 +175,6 @@ mod tests {
         assert_eq!(raw, 12);
         let back = AdActionKind::from_c(raw).unwrap();
         assert!(matches!(back, AdActionKind::Scroll));
-    }
-
-    #[test]
-    fn fuzz_arbitrary_bit_patterns_never_panic_across_all_enums() {
-        for raw in [-1_000_000_i32, -1, 0, 1, 20, 21, 999, i32::MAX, i32::MIN] {
-            let _ = AdActionKind::from_c(raw);
-            let _ = AdDirection::from_c(raw);
-            let _ = AdPolicyKind::from_c(raw);
-            let _ = AdModifier::from_c(raw);
-            let _ = AdMouseButton::from_c(raw);
-            let _ = AdMouseEventKind::from_c(raw);
-            let _ = AdWindowOpKind::from_c(raw);
-            let _ = AdScreenshotKind::from_c(raw);
-            let _ = AdSnapshotSurface::from_c(raw);
-        }
     }
 
     #[test]
@@ -218,12 +205,20 @@ mod tests {
     fn mouse_button_boundary_discriminants_map_to_exact_variants() {
         assert_eq!(AdMouseButton::from_c(0), Some(AdMouseButton::Left));
         assert_eq!(AdMouseButton::from_c(2), Some(AdMouseButton::Middle));
+        assert_eq!(
+            AdMouseButton::from_c(AdMouseButton::Left as i32),
+            Some(AdMouseButton::Left)
+        );
     }
 
     #[test]
     fn mouse_event_kind_boundary_discriminants_map_to_exact_variants() {
         assert_eq!(AdMouseEventKind::from_c(0), Some(AdMouseEventKind::Move));
         assert_eq!(AdMouseEventKind::from_c(3), Some(AdMouseEventKind::Click));
+        assert_eq!(
+            AdMouseEventKind::from_c(AdMouseEventKind::Click as i32),
+            Some(AdMouseEventKind::Click)
+        );
     }
 
     #[test]

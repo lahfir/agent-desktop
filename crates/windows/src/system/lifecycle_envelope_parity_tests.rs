@@ -1,9 +1,7 @@
-use crate::input::elevation::activation_elevation_denied;
 use crate::system::close::close_app_impl;
 use crate::system::launch::launch_app_impl;
-use crate::system::window_activate::{budget_exhausted, focus_window};
-use agent_desktop_core::launch_options::LaunchOptions;
-use agent_desktop_core::process_state::ProcessState;
+use crate::system::window::window_activate::{budget_exhausted, focus_window};
+use agent_desktop_core::system::launch_options::LaunchOptions;
 use agent_desktop_core::{
     AdapterError, AppError, AppInfo, Deadline, DeliverySemantics, ErrorCode, ErrorPayload,
     InteractionLease, ProcessId, WindowInfo, WindowState,
@@ -13,8 +11,7 @@ use serde_json::Value;
 /// Split from this file, which sits at the per-file line cap: `shared` owns
 /// the class-(a) pins - conditions both platforms can reach for the same
 /// event - while this file keeps the class-(b) (platform-only) pins, the
-/// fail-closed budget-exhaustion split, `ProcessState`'s wire shape, and the
-/// hot-path cost baseline.
+/// fail-closed budget-exhaustion split, and the hot-path cost baseline.
 #[path = "lifecycle_envelope_parity_shared_tests.rs"]
 mod shared;
 
@@ -33,66 +30,20 @@ fn assert_disposition_wire(error: &AdapterError, expected: DeliverySemantics) {
     assert_eq!(wire["disposition"], projected, "disposition wire shape");
 }
 
-fn assert_existing_error_code(error: &AdapterError) {
-    let wire = error.code.as_str();
-    assert_eq!(
-        error_wire(error)["code"],
-        wire,
-        "platform-only failures must serialize an existing ErrorCode"
-    );
-    assert!(
-        matches!(
-            error.code,
-            ErrorCode::PermDenied
-                | ErrorCode::ElementNotFound
-                | ErrorCode::AppNotFound
-                | ErrorCode::ActionFailed
-                | ErrorCode::ActionNotSupported
-                | ErrorCode::StaleRef
-                | ErrorCode::AmbiguousTarget
-                | ErrorCode::WindowNotFound
-                | ErrorCode::PlatformNotSupported
-                | ErrorCode::Timeout
-                | ErrorCode::InvalidArgs
-                | ErrorCode::NotificationNotFound
-                | ErrorCode::SnapshotNotFound
-                | ErrorCode::PolicyDenied
-                | ErrorCode::AppUnresponsive
-                | ErrorCode::Internal
-        ),
-        "platform-only failures must use an existing ErrorCode variant"
-    );
-}
-
 fn assert_class_b_envelope(error: &AdapterError, code: ErrorCode, expected: DeliverySemantics) {
-    assert_existing_error_code(error);
     assert_code_wire(error, code);
     assert_disposition_wire(error, expected);
 }
 
+#[cfg(target_os = "windows")]
 #[test]
 fn class_b_windowless_close_escalation_is_action_failed_not_delivered() {
-    let error = AdapterError::new(
-        ErrorCode::ActionFailed,
-        "Process 42 has no top-level windows to receive WM_CLOSE",
-    )
-    .with_details(serde_json::json!({ "pid": 42 }))
-    .with_suggestion("Retry with --force to terminate pid 42 without WM_CLOSE")
-    .with_disposition(DeliverySemantics::not_delivered());
+    let live = windowless_close_live_error();
     assert_class_b_envelope(
-        &error,
+        &live,
         ErrorCode::ActionFailed,
         DeliverySemantics::not_delivered(),
     );
-    #[cfg(target_os = "windows")]
-    {
-        let live = windowless_close_live_error();
-        assert_class_b_envelope(
-            &live,
-            ErrorCode::ActionFailed,
-            DeliverySemantics::not_delivered(),
-        );
-    }
 }
 
 #[cfg(target_os = "windows")]
@@ -107,24 +58,6 @@ fn windowless_close_live_error() -> AdapterError {
     };
     close_app_impl(&app, false, Deadline::after(5_000).expect("deadline"))
         .expect_err("windowless alive")
-}
-
-#[test]
-fn class_b_uipi_activation_refusal_is_perm_denied_not_delivered() {
-    let error = activation_elevation_denied();
-    assert_class_b_envelope(
-        &error,
-        ErrorCode::PermDenied,
-        DeliverySemantics::not_delivered(),
-    );
-    assert!(
-        error.message.contains("window activation"),
-        "activation-worded denial"
-    );
-    assert_eq!(
-        error_wire(&error)["details"]["physical_delivery_started"],
-        false
-    );
 }
 
 #[test]
@@ -163,32 +96,6 @@ fn fail_closed_equal_integrity_budget_exhaustion_is_action_failed_not_started() 
         error_wire(&error)["details"]["physical_delivery_started"],
         false
     );
-}
-
-#[test]
-fn process_state_serializes_with_tagged_snake_case_shape() {
-    assert_eq!(
-        serde_json::to_value(ProcessState::Running).expect("ser"),
-        serde_json::json!({ "state": "running" })
-    );
-    assert_eq!(
-        serde_json::to_value(ProcessState::Unresponsive).expect("ser"),
-        serde_json::json!({ "state": "unresponsive" })
-    );
-    assert_eq!(
-        serde_json::to_value(ProcessState::Exited { code: None }).expect("ser"),
-        serde_json::json!({ "state": "exited" })
-    );
-    assert_eq!(
-        serde_json::to_value(ProcessState::Exited { code: Some(0) }).expect("ser"),
-        serde_json::json!({ "state": "exited", "code": 0 })
-    );
-    let crashed = ProcessState::Crashed {
-        signal_or_code: 0xC000_0005u32 as i32,
-    };
-    let value = serde_json::to_value(crashed).expect("ser");
-    assert_eq!(value["state"], "crashed");
-    assert_eq!(value["signal_or_code"], 0xC000_0005u32 as i32);
 }
 
 #[test]

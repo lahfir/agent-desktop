@@ -96,8 +96,8 @@ CLI, batch and FFI must retain the same resolution and action contracts.
    or release without the applicable user authorization.
 
 Report per-task successes/attempts and unmet coverage separately. Unsupported,
-blocked and unrun tasks cannot earn completion credit. The plan's weighted score
-is uncomputed until its denominators and observations exist. Any wrong-target
+blocked and unrun tasks cannot earn completion credit. No aggregate score is
+computed until every task's denominator and observations exist. Any wrong-target
 write, duplicate effect, false verification or prohibited input/focus effect
 fails qualification regardless of the aggregate. No 9/10 or 10/10 from code
 volume, fixture counts, a few successful probes, or an incomplete denominator.

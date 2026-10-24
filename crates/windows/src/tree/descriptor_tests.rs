@@ -1,7 +1,7 @@
 use super::{descriptors, placeholder_of};
 use crate::tree::properties::ElementProperties;
-use crate::tree::property_ids::TreeProperty;
-use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
+use crate::tree::properties::property_ids::TreeProperty;
+use crate::tree::properties::property_outcome::{PropertyOutcome, PropertyValue};
 use crate::tree::test_support::text;
 
 fn from_reads(reads: &[(TreeProperty, PropertyOutcome)]) -> ElementProperties {
@@ -9,7 +9,8 @@ fn from_reads(reads: &[(TreeProperty, PropertyOutcome)]) -> ElementProperties {
 }
 
 /// A node with no descriptor sources produces an all-absent group: every slot
-/// is None and `dom_classes` is empty.
+/// is None and `dom_classes` is empty. `dom_classes` has no producer on the
+/// pinned stack, so it stays empty for any read set.
 #[test]
 fn no_sources_produce_an_empty_descriptor_group() {
     let properties = from_reads(&[]);
@@ -112,14 +113,6 @@ fn placeholder_absent_when_description_source_failed() {
     ]);
 
     assert_eq!(descriptors(&properties).placeholder, None);
-}
-
-/// `dom_classes` has no producer on the pinned stack: it is always empty, the
-/// schema-only landing the descriptor branch settled.
-#[test]
-fn dom_classes_is_always_empty_from_this_producer() {
-    let properties = from_reads(&[]);
-    assert!(descriptors(&properties).dom_classes.is_empty());
 }
 
 /// The secure gate reaches the descriptor sources: a secure element's

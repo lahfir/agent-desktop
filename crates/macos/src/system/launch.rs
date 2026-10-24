@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     AdapterError, AppInfo, Deadline, DeliverySemantics, ErrorCode, WindowInfo,
-    launch_options::LaunchOptions, launch_result::LaunchResult,
+    system::launch_options::LaunchOptions, system::launch_result::LaunchResult,
 };
 use std::time::{Duration, Instant};
 
@@ -32,7 +32,7 @@ pub(crate) fn launch_app_impl(
     if options.attach_if_running && initial.len() == 1 && !options.activate {
         let app = initial[0].clone();
         let instance = required_instance(&app).map_err(before_launch)?;
-        let pid = crate::system::process_identity::to_pid_t(app.pid).map_err(before_launch)?;
+        let pid = super::process::process_identity::to_pid_t(app.pid).map_err(before_launch)?;
         let window = exact_window(pid, &instance, deadline).map_err(before_launch)?;
         return Ok(result_from_app(&app, window));
     }
@@ -103,7 +103,7 @@ fn startup_finished(pid: i32, process_instance: &str) -> Result<bool, AdapterErr
         StartupState::Starting => Ok(false),
         StartupState::Finished => Ok(true),
         StartupState::NoRecord => {
-            if crate::system::process_identity::matches_instance(pid, process_instance)? {
+            if super::process::process_identity::matches_instance(pid, process_instance)? {
                 Ok(true)
             } else {
                 Err(launch_target_gone(pid))
@@ -142,7 +142,7 @@ fn launched_display_name(window: Option<&WindowInfo>, id: &str) -> String {
 
 #[cfg(target_os = "macos")]
 fn result_from_app(app: &AppInfo, window: Option<WindowInfo>) -> LaunchResult {
-    let renderer = crate::system::process_identity::to_pid_t(app.pid)
+    let renderer = super::process::process_identity::to_pid_t(app.pid)
         .ok()
         .and_then(crate::system::renderer_kind::detect_chromium);
     LaunchResult {
@@ -196,7 +196,7 @@ fn launch_target(
         if let Some(app) = initial.pop() {
             let process_instance = required_instance(&app)?;
             return Ok(LaunchTarget::Existing {
-                pid: crate::system::process_identity::to_pid_t(app.pid)?,
+                pid: super::process::process_identity::to_pid_t(app.pid)?,
                 process_instance,
             });
         }
@@ -253,10 +253,10 @@ fn validate_launched_target(
 fn matching_apps(id: &str, deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
     ensure_launch_budget(deadline, id)?;
     let until = deadline_instant(deadline)?;
-    crate::system::app_inventory::stabilize_apps_until(until, || {
-        let inventory = crate::system::workspace_apps::list_apps_scoped_until(id, None, until)?;
+    crate::system::app::app_inventory::stabilize_apps_until(until, || {
+        let inventory = super::app::workspace_apps::list_apps_scoped_until(id, None, until)?;
         if inventory.apps.is_empty() {
-            crate::system::workspace_apps::require_complete(&inventory.skipped)?;
+            super::app::workspace_apps::require_complete(&inventory.skipped)?;
         }
         Ok(inventory.apps)
     })
@@ -287,7 +287,7 @@ fn exact_window(
     process_instance: &str,
     deadline: Deadline,
 ) -> Result<Option<WindowInfo>, AdapterError> {
-    let window = match crate::system::window_inventory::exact_window_for_pid_until(
+    let window = match crate::system::window::window_inventory::exact_window_for_pid_until(
         pid,
         deadline_instant(deadline)?,
     ) {

@@ -12,7 +12,6 @@ use crate::actions::physical_target::{
     ensure_keyboard_delivery_ready, ensure_keyboard_policy, focus_lost_before_delivery,
 };
 use crate::input::keyboard::{preflight_text, synthesize_key, synthesize_text};
-use crate::system::permissions::ensure_budget;
 use crate::tree::element::UIAElement;
 
 const TYPE_TEXT_LABEL: &str = "SendInput.type_text";
@@ -43,7 +42,7 @@ pub(crate) fn press_key_element_steps(
     deadline: Deadline,
 ) -> Result<Vec<ActionStep>, AdapterError> {
     ensure_keyboard_policy(policy)?;
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     let focus_ready = ensure_keyboard_delivery_ready(element, deadline)?;
     press_key_from_gate(combo, focus_ready, deadline).map(|step| vec![step])
 }
@@ -52,7 +51,7 @@ pub(crate) fn press_key_global(
     combo: &KeyCombo,
     deadline: Deadline,
 ) -> Result<ActionResult, AdapterError> {
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     synthesize_key(combo, deadline)?;
     Ok(ActionResult::from_execution(
         &Action::PressKey(combo.clone()),

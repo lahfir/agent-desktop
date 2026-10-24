@@ -6,7 +6,7 @@
         'menu-disclosure', 'menu-fire-item', 'menu-status', 'move-twins', 'multiline-input', 'occluded-button',
         'occlusion-status', 'open-duplicate-windows', 'open-occluder', 'open-sheet', 'option-picker', 'outline-child-a',
         'outline-child-b', 'outline-parent', 'outline-tree', 'permanently-disabled', 'picker-status', 'primary-button',
-        'radio-one', 'radio-status', 'radio-three', 'radio-two', 'removable-row', 'remove-row',
+        'radio-one', 'radio-status', 'radio-three', 'radio-two', 'removable-row', 'removable-status', 'remove-row',
         'reset-appeared-text', 'reset-delayed-button', 'reset-removable', 'scroll-area', 'scroll-offset', 'scroll-row-1',
         'scroll-row-10', 'scroll-row-11', 'scroll-row-12', 'scroll-row-13', 'scroll-row-14', 'scroll-row-15',
         'scroll-row-16', 'scroll-row-17', 'scroll-row-18', 'scroll-row-19', 'scroll-row-2', 'scroll-row-20',

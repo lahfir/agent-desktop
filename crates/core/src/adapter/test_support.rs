@@ -89,8 +89,8 @@ macro_rules! complete_live_observation {
             _handle: &$crate::adapter::NativeHandle,
             _point: $crate::Point,
             _deadline: $crate::Deadline,
-        ) -> Result<$crate::hit_test::HitTestResult, $crate::AdapterError> {
-            Ok($crate::hit_test::HitTestResult::ReachesTarget)
+        ) -> Result<$crate::adapter::hit_test::HitTestResult, $crate::AdapterError> {
+            Ok($crate::adapter::hit_test::HitTestResult::ReachesTarget)
         }
     };
 }
@@ -151,6 +151,7 @@ pub(crate) fn minimal_ref_entry(role: &str, name: Option<&str>) -> crate::RefEnt
             native_id: None,
         },
         geometry: crate::RefGeometry {
+            bounds_space: None,
             bounds: None,
             bounds_hash: None,
         },
@@ -217,10 +218,10 @@ pub(crate) fn recorded_action_state(requests: &[crate::ActionRequest]) -> crate:
     }
     let mut states = Vec::new();
     if checked {
-        states.push(crate::state::CHECKED.into());
+        states.push(crate::tree::state::CHECKED.into());
     }
     if expanded {
-        states.push(crate::state::EXPANDED.into());
+        states.push(crate::tree::state::EXPANDED.into());
     }
     crate::ElementState {
         role: "textfield".into(),
@@ -233,10 +234,10 @@ pub(crate) fn recorded_action_state(requests: &[crate::ActionRequest]) -> crate:
 }
 
 pub(crate) fn observed_tree(
-    root: &crate::live_locator::ObservationRoot<'_>,
+    root: &crate::locator::live_locator::ObservationRoot<'_>,
     node: crate::AccessibilityNode,
-) -> Result<crate::live_locator::ObservedTree, crate::AdapterError> {
-    use crate::live_locator::{
+) -> Result<crate::locator::live_locator::ObservedTree, crate::AdapterError> {
+    use crate::locator::live_locator::{
         IdentifierEvidence, LocatorEvidence, LocatorField, LocatorRefEvidence, LocatorStats,
         ObservationSource, ObservedSubtree, ObservedTree,
     };
@@ -257,6 +258,7 @@ pub(crate) fn observed_tree(
             identifiers: IdentifierEvidence::typed(native_id, Some(0), true),
             states: LocatorField::Known(node.presentation.states),
             ref_evidence: LocatorRefEvidence {
+                window_bounds: LocatorField::Absent,
                 bounds: node
                     .presentation
                     .bounds
@@ -281,4 +283,8 @@ pub(crate) fn observed_tree(
         LocatorStats::default(),
         true,
     )
+}
+
+pub(crate) fn test_report() -> crate::OperationReport {
+    crate::OperationReport::delivered_unverified("test", crate::OperationTarget::Clipboard)
 }

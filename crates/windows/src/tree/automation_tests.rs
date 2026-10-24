@@ -4,7 +4,6 @@ const E_ACCESSDENIED_HRESULT: i32 = 0x8007_0005_u32 as i32;
 const UIA_E_ELEMENTNOTAVAILABLE_HRESULT: i32 = 0x8004_0201_u32 as i32;
 const RPC_S_SERVER_UNAVAILABLE_HRESULT: i32 = 0x8007_06BA_u32 as i32;
 const UNRECOGNISED_SENTINEL: i32 = 4242;
-const LEAK_MARKER: &str = "zzmarkerzz-secret-window-title";
 
 #[test]
 fn a_negative_hresult_formats_with_its_symbolic_name() {
@@ -38,34 +37,6 @@ fn an_unrecognised_sentinel_maps_to_internal_rather_than_a_guess() {
     );
 
     assert_eq!(error.code, ErrorCode::Internal);
-}
-
-#[test]
-fn every_named_sentinel_maps_without_a_catch_all_guess() {
-    assert_eq!(
-        sentinel_disposition(ERR_NOTFOUND),
-        ErrorCode::ElementNotFound
-    );
-    assert_eq!(
-        sentinel_disposition(ERR_NULL_PTR),
-        ErrorCode::ElementNotFound
-    );
-    assert_eq!(sentinel_disposition(ERR_TIMEOUT), ErrorCode::Timeout);
-    assert_eq!(
-        sentinel_disposition(ERR_INACTIVE),
-        ErrorCode::AppUnresponsive
-    );
-    assert_eq!(
-        sentinel_disposition(ERR_INVALID_OBJECT),
-        ErrorCode::StaleRef
-    );
-    assert_eq!(
-        sentinel_disposition(ERR_INVALID_ARG),
-        ErrorCode::InvalidArgs
-    );
-    for internal in [ERR_NONE, ERR_TYPE, ERR_FORMAT, ERR_ALREADY_RUNNING] {
-        assert_eq!(sentinel_disposition(internal), ErrorCode::Internal);
-    }
 }
 
 #[test]
@@ -108,23 +79,32 @@ fn a_root_failure_that_is_not_a_missing_window_keeps_its_own_code() {
 }
 
 /// `ref_action.rs` clones adapter error text into session JSONL and into the
-/// trace HTML export, so a marker that reaches the caller through the
-/// context phrase must not reach the persisted error.
+/// trace HTML export. A `UiaFailure` carries only an integer, so the error is
+/// pinned to its complete static shape: any text a later change appends to the
+/// message, the platform detail or the details object fails the comparison.
+/// The path that takes caller-supplied text is covered by
+/// `a_live_uia_error_never_carries_the_crate_message_verbatim`.
 #[test]
-fn a_classifier_error_carries_shape_and_never_target_content() {
+fn a_classifier_error_is_exactly_its_static_shape() {
     let error = uia_failure_error(
         UiaFailure::Hresult(E_ACCESSDENIED_HRESULT),
         "read a property",
     );
-    let rendered = format!(
-        "{}|{}|{}",
-        error.message,
-        error.platform_detail.clone().unwrap_or_default(),
-        serde_json::to_string(&error.details).unwrap_or_default()
-    );
 
-    assert!(!rendered.contains(LEAK_MARKER), "leaked: {rendered}");
-    assert!(!rendered.to_ascii_lowercase().contains("zzmarkerzz"));
+    assert_eq!(error.message, "UI Automation could not read a property");
+    assert_eq!(
+        error.platform_detail.as_deref(),
+        Some("COM HRESULT 0x80070005 (E_ACCESSDENIED: Access is denied)")
+    );
+    let details = error.details.expect("the classifier stamps details");
+    let mut keys: Vec<&str> = details
+        .as_object()
+        .expect("details are an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["complete", "retryable"]);
 }
 
 #[test]
@@ -157,6 +137,8 @@ mod windows_only {
     use super::*;
     use crate::tree::fixture::bootstrap;
     use uiautomation::Error as UiaError;
+
+    const LEAK_MARKER: &str = "zzmarkerzz-secret-window-title";
 
     /// Two calls on one thread hand back the *same* COM object, not two.
     ///

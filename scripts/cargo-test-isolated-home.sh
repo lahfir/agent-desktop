@@ -7,11 +7,7 @@ rustup_home="${RUSTUP_HOME:-$original_home/.rustup}"
 test_home="$(mktemp -d "${TMPDIR:-/tmp}/agent-desktop-test-home.XXXXXX")"
 
 cleanup() {
-    if command -v trash >/dev/null 2>&1; then
-        trash "$test_home"
-    else
-        printf 'Retained isolated test home because trash is unavailable: %s\n' "$test_home" >&2
-    fi
+    rm -rf -- "$test_home"
 }
 trap cleanup EXIT
 

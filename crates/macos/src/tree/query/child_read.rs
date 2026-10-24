@@ -85,7 +85,7 @@ impl ChildRead {
 mod imp {
     use super::super::{child_read_budget::ChildReadBudget, child_read_telemetry as telemetry};
     use super::*;
-    use crate::{cf_type::created_cf_array, tree::ax_value};
+    use crate::{tree::properties::ax_value, tree::properties::cf_type::created_cf_array};
     use accessibility_sys::{kAXErrorAttributeUnsupported, kAXErrorNoValue, kAXErrorSuccess};
     use core_foundation::{base::TCFType, string::CFString};
     use core_foundation_sys::base::{CFIndex, CFTypeRef};
@@ -99,7 +99,7 @@ mod imp {
         deadline: std::time::Instant,
     ) -> ChildRead {
         super::super::child_source::read_resilient(
-            crate::tree::element::child_attributes(role),
+            crate::tree::properties::element::child_attributes(role),
             deadline,
             |attribute| read_attribute_children(element, attribute, budget, deadline),
         )
@@ -112,7 +112,7 @@ mod imp {
         deadline: std::time::Instant,
     ) -> ChildRead {
         super::super::child_source::read_resilient(
-            crate::tree::element::child_attributes(role),
+            crate::tree::properties::element::child_attributes(role),
             deadline,
             |attribute| read_attribute_child_at(element, attribute, index, deadline),
         )
@@ -267,7 +267,7 @@ mod imp {
         deadline: std::time::Instant,
     ) -> Result<usize, i32> {
         let attribute = CFString::new(attribute);
-        crate::tree::ax_ipc::attribute_value_count(
+        crate::tree::properties::ax_ipc::attribute_value_count(
             element,
             attribute.as_concrete_TypeRef(),
             deadline,
@@ -312,7 +312,7 @@ mod imp {
         let attribute = CFString::new(attribute);
         let index = CFIndex::try_from(index).map_err(|_| i32::MIN)?;
         let max_values = CFIndex::try_from(max_values).map_err(|_| i32::MIN)?;
-        let (error, result) = crate::tree::ax_ipc::copy_attribute_values(
+        let (error, result) = crate::tree::properties::ax_ipc::copy_attribute_values(
             element,
             attribute.as_concrete_TypeRef(),
             index,

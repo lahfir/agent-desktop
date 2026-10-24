@@ -225,7 +225,7 @@ fn a_root_failure_that_is_not_a_missing_window_keeps_its_own_retry_stamp() {
 /// here.
 #[test]
 fn exhaustion_and_the_vanished_family_are_absence_and_anything_else_is_a_fault() {
-    use crate::system::hresult::UIA_E_TIMEOUT;
+    use crate::system::runtime::hresult::UIA_E_TIMEOUT;
 
     assert!(UiaFailure::Sentinel(ERR_NONE).is_absence());
     assert!(UiaFailure::Sentinel(ERR_NOTFOUND).is_absence());

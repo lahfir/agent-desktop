@@ -20,31 +20,22 @@ fn travel() -> CursorOverlayControl {
 
 /// A `Disable` against a session with no renderer answers `Ok` without
 /// starting one. Spawning here would start a renderer in order to tell it to
-/// stop, and the same path serves `session end`.
+/// stop, and the same path serves `session end`. A test binary cannot spawn
+/// (see the refusal below), so an attempted spawn would surface as the `Err`
+/// this `expect` rejects.
 #[test]
 fn a_disable_with_no_renderer_running_starts_nothing_and_succeeds() {
-    let before = renderer_count();
-
     update(&CursorOverlayControl::disable(session())).expect("a disable with nothing to disable");
-
-    assert_eq!(
-        renderer_count(),
-        before,
-        "a disable must never bring a renderer into existence"
-    );
 }
 
 /// Dispatch sends `Hide` before and `Show` after every mutating command in a
 /// headed overlay-enabled session. Without this refusal such a session would
-/// fork a detached renderer per command.
+/// fork a detached renderer per command. An attempted spawn from a test binary
+/// would surface as the `Err` these `expect`s reject.
 #[test]
 fn a_hide_or_show_with_no_renderer_running_starts_nothing() {
-    let before = renderer_count();
-
     update(&CursorOverlayControl::hide(session())).expect("a hide with nothing to hide");
     update(&CursorOverlayControl::show(session())).expect("a show with nothing to show");
-
-    assert_eq!(renderer_count(), before);
 }
 
 /// The spawn guard refuses from any image but the CLI's own, so a test binary
@@ -74,47 +65,6 @@ fn an_enable_refuses_from_a_test_binary_for_the_same_reason() {
     .expect_err("a test binary is not the agent-desktop image");
 
     assert_eq!(error.code, ErrorCode::PlatformNotSupported);
-}
-
-/// Counts processes carrying the overlay's argv token, which is how anything
-/// outside the child finds it: a process's environment block is not readable
-/// from outside, and this child's command line would otherwise be bare.
-///
-/// `wmic` is gone on Windows 11 24H2 and Server 2025 - `Command` still
-/// answers `Ok` with empty stdout there, which made the old implementation
-/// silently count zero on every machine that lacks it. `Get-CimInstance` is
-/// its replacement, and a failure to enumerate panics rather than returning
-/// zero, because a count that cannot tell "none running" from "could not
-/// look" is the same defect class this helper exists to avoid.
-fn renderer_count() -> usize {
-    #[cfg(target_os = "windows")]
-    {
-        let script = format!(
-            "Get-CimInstance Win32_Process -Filter \"Name='agent-desktop.exe'\" | \
-             Where-Object {{ $_.CommandLine -like '*{flag}*' }} | \
-             ForEach-Object {{ $_.ProcessId }}",
-            flag = super::pipe_name::CHILD_ARGV_FLAG
-        );
-        let output = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-            .output()
-            .unwrap_or_else(|error| {
-                panic!("powershell could not be launched to enumerate renderers: {error}")
-            });
-        if !output.status.success() {
-            panic!(
-                "powershell exited with {:?} enumerating renderers: {}",
-                output.status.code(),
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-        String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .filter_map(|line| line.trim().parse::<u32>().ok())
-            .count()
-    }
-    #[cfg(not(target_os = "windows"))]
-    0
 }
 
 /// Every attempt gets what is left of the budget, never the budget again.

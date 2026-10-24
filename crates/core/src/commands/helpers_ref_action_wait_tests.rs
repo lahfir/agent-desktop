@@ -4,9 +4,9 @@ use crate::AdapterError;
 use crate::adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps, WindowFilter};
 use crate::context::WaitSelector;
 use crate::refs::RefMap;
-use crate::refs_test_support::HomeGuard;
+use crate::refs::refs_test_support::HomeGuard;
 use crate::{AccessibilityNode, WindowInfo};
-use crate::{action::Action, action_result::ActionResult};
+use crate::{actions::action::Action, actions::action_result::ActionResult};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicU32, Ordering},
@@ -41,9 +41,9 @@ impl ScopedWaitAdapter {
 impl ObservationOps for ScopedWaitAdapter {
     fn observe_tree(
         &self,
-        root: crate::live_locator::ObservationRoot<'_>,
-        _request: &crate::live_locator::ObservationRequest,
-    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+        root: crate::locator::live_locator::ObservationRoot<'_>,
+        _request: &crate::locator::live_locator::ObservationRequest,
+    ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
         if self.lease_held.load(Ordering::SeqCst) {
             return Err(AdapterError::internal(
                 "post-action wait must poll with the interaction lease released",
@@ -117,7 +117,7 @@ impl ObservationOps for ScopedWaitAdapter {
         })
     }
 
-    crate::adapter::complete_live_observation!("button", "OK", [crate::capability::CLICK]);
+    crate::adapter::complete_live_observation!("button", "OK", [crate::actions::capability::CLICK]);
 }
 
 impl ActionOps for ScopedWaitAdapter {
@@ -189,10 +189,10 @@ struct MultiWindowAdapter;
 impl ObservationOps for MultiWindowAdapter {
     fn observe_tree(
         &self,
-        root: crate::live_locator::ObservationRoot<'_>,
-        _request: &crate::live_locator::ObservationRequest,
-    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
-        let crate::live_locator::ObservationRoot::Window(window) = root else {
+        root: crate::locator::live_locator::ObservationRoot<'_>,
+        _request: &crate::locator::live_locator::ObservationRequest,
+    ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
+        let crate::locator::live_locator::ObservationRoot::Window(window) = root else {
             return Err(AdapterError::internal("expected window root"));
         };
         let children = (window.id == "w-target")
@@ -212,7 +212,7 @@ impl ObservationOps for MultiWindowAdapter {
             .into_iter()
             .collect();
         crate::adapter::observed_tree(
-            &crate::live_locator::ObservationRoot::Window(window),
+            &crate::locator::live_locator::ObservationRoot::Window(window),
             AccessibilityNode {
                 ref_id: None,
                 role: "window".into(),
@@ -308,7 +308,7 @@ impl ObservationOps for MultiWindowAdapter {
         })
     }
 
-    crate::adapter::complete_live_observation!("button", "OK", [crate::capability::CLICK]);
+    crate::adapter::complete_live_observation!("button", "OK", [crate::actions::capability::CLICK]);
 }
 
 impl ActionOps for MultiWindowAdapter {

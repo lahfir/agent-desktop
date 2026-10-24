@@ -1,8 +1,8 @@
 #[cfg(target_os = "windows")]
-use super::hresult::win32_last_error;
-use agent_desktop_core::{AdapterError, Deadline, ProcessIdentity, process_state::ProcessState};
-
-use super::permissions::ensure_budget;
+use super::runtime::hresult::win32_last_error;
+use agent_desktop_core::{
+    AdapterError, Deadline, ProcessIdentity, system::process_state::ProcessState,
+};
 
 /// Result of one hang-probe pass over a process's top-level windows.
 ///
@@ -60,7 +60,7 @@ pub(crate) fn process_state_impl(
     process: ProcessIdentity,
     deadline: Deadline,
 ) -> Result<ProcessState, AdapterError> {
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     if !super::process_identity::matches_instance(process.pid, &process.instance)? {
         return Ok(ProcessState::Exited { code: None });
     }
@@ -112,7 +112,7 @@ fn classify_opened(
     use windows_sys::Win32::Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT};
     use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
 
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     let wait = unsafe { WaitForSingleObject(handle, 0) };
     if wait == WAIT_OBJECT_0 {
         let mut code: u32 = 0;
@@ -133,7 +133,7 @@ fn classify_opened(
         return Ok(ProcessState::Running);
     }
     classify_hang(|| {
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         probe_windows_once(&windows, deadline)
     })
 }
@@ -145,7 +145,7 @@ fn probe_windows_once(
 ) -> Result<HangProbeResult, AdapterError> {
     for (index, hwnd) in windows.iter().copied().enumerate() {
         if index > 0 {
-            ensure_budget(deadline)?;
+            deadline.ensure_remaining()?;
         }
         if window_is_hung(hwnd, deadline) {
             return Ok(HangProbeResult::Hung);
@@ -175,11 +175,11 @@ fn probe_timeout_ms(deadline: Deadline) -> u64 {
 #[cfg(target_os = "windows")]
 fn top_level_windows_for(pid: agent_desktop_core::ProcessId) -> Result<Vec<isize>, AdapterError> {
     let mut handles = Vec::new();
-    super::window_enum::enumerate_top_level(|window| {
+    super::window::window_enum::enumerate_top_level(|window| {
         if handles.len() >= MAX_PROBED_WINDOWS {
             return false;
         }
-        if super::window_identity::live_window_owner(window.handle) == Some(pid) {
+        if super::window::window_identity::live_window_owner(window.handle) == Some(pid) {
             handles.push(window.handle as isize);
         }
         true

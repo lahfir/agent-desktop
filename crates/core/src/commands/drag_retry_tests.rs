@@ -60,8 +60,8 @@ impl InputOps for StaleThenOkAdapter {
         &self,
         _params: DragParams,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
-        Ok(())
+    ) -> Result<crate::OperationReport, AdapterError> {
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -118,7 +118,8 @@ fn transient_stale_ref_retries_then_succeeds_when_timeout_wired() {
     )
     .unwrap();
 
-    assert_eq!(value["dragged"], true);
+    assert_eq!(value["disposition"]["delivery"], "delivered_unverified");
+    assert!(value.get("dragged").is_none());
     assert!(adapter.retry.calls() >= 3);
     assert_eq!(adapter.lease_acquisitions.load(Ordering::SeqCst), 1);
 }
@@ -170,9 +171,9 @@ impl InputOps for OccludedFromAdapter {
         &self,
         params: DragParams,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         *self.captured.lock().unwrap() = Some(params);
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -282,9 +283,9 @@ impl InputOps for MutuallyOffscreenAdapter {
         &self,
         _params: DragParams,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         self.dispatched.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 

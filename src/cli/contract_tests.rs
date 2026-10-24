@@ -291,3 +291,30 @@ fn every_status_surface_token_parses_as_a_surface_argument() {
         assert_eq!(&args.surface, surface, "token {token}");
     }
 }
+
+#[test]
+fn negative_coordinate_flags_state_the_equals_form_in_help() {
+    let root = Cli::command();
+    let cases = [
+        ("mouse-wheel", "x", "--x=-100"),
+        ("mouse-wheel", "y", "--y=-100"),
+        ("move-window", "x", "--x=-100"),
+        ("move-window", "y", "--y=-100"),
+        ("mouse-click", "xy", "--xy=-100,50"),
+        ("hover", "xy", "--xy=-100,50"),
+        ("drag", "from-xy", "--from-xy=-100,50"),
+        ("drag", "to-xy", "--to-xy=-100,50"),
+    ];
+    for (command, arg, example) in cases {
+        let help = root
+            .find_subcommand(command)
+            .and_then(|sub| {
+                sub.get_arguments()
+                    .find(|candidate| candidate.get_id() == arg)
+            })
+            .and_then(|candidate| candidate.get_help())
+            .unwrap_or_else(|| panic!("{command} --{arg} has no help"))
+            .to_string();
+        assert!(help.contains(example), "{command} --{arg}: {help}");
+    }
+}

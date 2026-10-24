@@ -1,6 +1,6 @@
 mod common;
 
-use common::{AdResult, CStr, ad_free_string, ad_snapshot, with_adapter};
+use common::{AdResult, CStr, ad_free_string, ad_last_error_code, ad_snapshot, with_adapter};
 
 #[test]
 fn snapshot_null_out_returns_invalid_args() {
@@ -73,50 +73,40 @@ fn snapshot_invalid_surface_rejected() {
 }
 
 #[test]
-fn snapshot_returns_a_result_code_and_frees_cleanly() {
-    with_adapter(|adapter| unsafe {
-        let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
-        let rc = ad_snapshot(adapter, std::ptr::null(), 0, 6, false, false, &mut out);
-        let rc_i32 = rc as i32;
-        assert!(
-            rc_i32 <= 0,
-            "ad_snapshot must return a valid AdResult (<=0), got {rc_i32}"
-        );
-        if !out.is_null() {
-            let s = CStr::from_ptr(out).to_string_lossy();
-            assert!(!s.is_empty(), "non-null out must be a non-empty string");
-            ad_free_string(out);
-        }
-    });
-}
-
-#[test]
 fn snapshot_out_contains_envelope_fields_on_any_response() {
     with_adapter(|adapter| unsafe {
         let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
         let rc = ad_snapshot(adapter, std::ptr::null(), 0, 6, false, false, &mut out);
-        if !out.is_null() {
-            let s = CStr::from_ptr(out).to_string_lossy();
-            assert!(
-                s.contains("\"version\""),
-                "envelope must carry 'version', got: {s}"
-            );
-            assert!(s.contains("\"ok\""), "envelope must carry 'ok', got: {s}");
-            assert!(
-                s.contains("\"command\""),
-                "envelope must carry 'command', got: {s}"
-            );
-            assert!(
-                s.contains("\"snapshot\""),
-                "command value must be 'snapshot', got: {s}"
-            );
-            ad_free_string(out);
-        } else {
-            let rc_i32 = rc as i32;
-            assert!(
-                rc_i32 < 0,
-                "null out is only valid on failure, got rc={rc_i32}"
-            );
+
+        assert!(
+            !out.is_null(),
+            "command-level result must write an envelope"
+        );
+        let s = CStr::from_ptr(out).to_string_lossy().into_owned();
+        ad_free_string(out);
+        let val: serde_json::Value = serde_json::from_str(&s).expect("envelope must be JSON");
+
+        assert_eq!(
+            val["version"].as_str(),
+            Some(agent_desktop_core::response::output::ENVELOPE_VERSION),
+            "envelope version must match ENVELOPE_VERSION, got: {s}"
+        );
+        assert_eq!(
+            val["command"].as_str(),
+            Some("snapshot"),
+            "command must be exactly 'snapshot', got: {s}"
+        );
+        match val["ok"].as_bool() {
+            Some(true) => assert_eq!(rc, AdResult::Ok, "ok:true envelope must return Ok"),
+            Some(false) => {
+                assert_ne!(rc, AdResult::Ok, "ok:false envelope must return an error");
+                assert!(
+                    val["error"]["code"].as_str().is_some_and(|c| !c.is_empty()),
+                    "error.code must be a non-empty string, got: {s}"
+                );
+                assert_eq!(ad_last_error_code(), rc, "errno invariant");
+            }
+            None => panic!("envelope 'ok' must be a bool, got: {s}"),
         }
     });
 }

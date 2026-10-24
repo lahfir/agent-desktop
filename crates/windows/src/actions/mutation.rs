@@ -13,7 +13,7 @@
 
 use agent_desktop_core::{AdapterError, DeliverySemantics, ErrorCode};
 
-use crate::system::hresult::{
+use crate::system::runtime::hresult::{
     E_ACCESSDENIED, E_INVALIDARG, RPC_E_DISCONNECTED, RPC_E_SERVERFAULT, RPC_S_CALL_FAILED,
     RPC_S_SERVER_UNAVAILABLE, UIA_E_ELEMENTNOTAVAILABLE, UIA_E_ELEMENTNOTENABLED,
     UIA_E_NOTSUPPORTED, UIA_E_TIMEOUT, com_hresult_detail,

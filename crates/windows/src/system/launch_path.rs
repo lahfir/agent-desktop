@@ -1,4 +1,4 @@
-use agent_desktop_core::{AdapterError, ErrorCode, launch_options::LaunchOptions};
+use agent_desktop_core::{AdapterError, ErrorCode, system::launch_options::LaunchOptions};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 

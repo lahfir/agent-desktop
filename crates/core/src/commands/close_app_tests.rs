@@ -32,8 +32,8 @@ impl SystemOps for ProtectiveAdapter {
         _app: &crate::AppInfo,
         _force: bool,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), crate::AdapterError> {
-        Ok(())
+    ) -> Result<crate::OperationReport, crate::AdapterError> {
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -63,7 +63,7 @@ impl SystemOps for FailingAdapter {
         _app: &crate::AppInfo,
         _force: bool,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         Err(AdapterError::new(ErrorCode::AppNotFound, "no such app"))
     }
 }
@@ -97,7 +97,7 @@ fn close_app_blocks_adapter_protected_process() {
 }
 
 #[test]
-fn graceful_close_reports_verified_termination() {
+fn graceful_close_reports_method_graceful_with_unverified_delivery() {
     let value = execute(
         CloseAppArgs {
             app: "TextEdit".into(),
@@ -109,8 +109,9 @@ fn graceful_close_reports_verified_termination() {
 
     assert_eq!(value["app"], "TextEdit");
     assert_eq!(value["method"], "graceful");
-    assert_eq!(value["requested"], true);
-    assert_eq!(value["closed"], true);
+    assert_eq!(value["disposition"]["delivery"], "delivered_unverified");
+    assert!(value.get("requested").is_none());
+    assert!(value.get("closed").is_none());
 }
 
 #[test]
@@ -128,7 +129,7 @@ fn close_app_propagates_adapter_errors() {
 }
 
 #[test]
-fn forced_close_confirms_termination() {
+fn forced_close_reports_method_force_with_unverified_delivery() {
     let value = execute(
         CloseAppArgs {
             app: "TextEdit".into(),
@@ -140,6 +141,7 @@ fn forced_close_confirms_termination() {
 
     assert_eq!(value["app"], "TextEdit");
     assert_eq!(value["method"], "force");
-    assert_eq!(value["requested"], true);
-    assert_eq!(value["closed"], true);
+    assert_eq!(value["disposition"]["delivery"], "delivered_unverified");
+    assert!(value.get("requested").is_none());
+    assert!(value.get("closed").is_none());
 }

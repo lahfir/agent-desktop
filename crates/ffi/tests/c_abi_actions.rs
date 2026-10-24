@@ -4,9 +4,9 @@ use common::{
     AdActionResult, AdActionStep, AdNativeHandle, AdPolicyKind, AdResult,
     ad_adapter_create_with_session, ad_adapter_destroy, ad_execute_action,
     ad_execute_action_with_policy, ad_execute_ref_action_exact_with_policy, ad_free_action_result,
-    default_action, default_exact_ref_entry, with_adapter,
+    ad_last_error_message, default_action, default_exact_ref_entry, with_adapter,
 };
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 
 #[test]
 fn enum_fuzz_invalid_discriminant_rejected() {
@@ -14,11 +14,16 @@ fn enum_fuzz_invalid_discriminant_rejected() {
         let mut action = default_action();
         action.kind = i32::MAX;
         let handle = AdNativeHandle {
-            ptr: std::ptr::null(),
+            ptr: std::ptr::dangling::<std::ffi::c_void>(),
         };
         let mut out: AdActionResult = std::mem::zeroed();
         let rc = ad_execute_action(adapter, &handle, &action, &mut out);
         assert_eq!(rc, AdResult::ErrInvalidArgs);
+        let message = CStr::from_ptr(ad_last_error_message()).to_string_lossy();
+        assert!(
+            message.contains("invalid action kind discriminant"),
+            "rejection must come from the discriminant check, got: {message}"
+        );
     });
 }
 
@@ -100,7 +105,7 @@ fn execute_action_policy_rejects_null_adapter_on_worker_thread() {
 /// Session context must not weaken the exact ref entry's fail-closed identity
 /// check.
 #[test]
-fn execute_ref_action_with_session_adapter_wires_context() {
+fn session_adapter_keeps_exact_ref_missing_generation_fail_closed() {
     unsafe {
         let session = CString::new("test-session-01").unwrap();
         let adapter = ad_adapter_create_with_session(session.as_ptr());
@@ -121,6 +126,11 @@ fn execute_ref_action_with_session_adapter_wires_context() {
         );
 
         assert_eq!(rc, AdResult::ErrInvalidArgs);
+        let message = CStr::from_ptr(ad_last_error_message()).to_string_lossy();
+        assert!(
+            message.contains("process_instance"),
+            "rejection must be the missing process_instance check, got: {message}"
+        );
 
         ad_adapter_destroy(adapter);
     }

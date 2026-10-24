@@ -44,7 +44,7 @@ mod imp {
     use agent_desktop_core::{AdapterError, ErrorCode};
 
     pub(super) fn run(session_id: &str, agent_id: Option<&str>) -> Result<(), AdapterError> {
-        crate::system::dpi::ensure_per_monitor_v2()?;
+        crate::system::runtime::dpi::ensure_per_monitor_v2()?;
 
         let root = agent_desktop_core::session::agent_desktop_dir()
             .map_err(|error| AdapterError::new(ErrorCode::InvalidArgs, error.to_string()))?;

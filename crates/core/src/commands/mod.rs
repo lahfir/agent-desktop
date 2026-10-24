@@ -45,6 +45,7 @@ pub mod notification_action;
 pub(crate) mod notification_identity;
 pub(crate) mod notification_policy;
 pub mod open_system_surface;
+pub(crate) mod operation_response;
 pub mod permissions;
 pub(crate) mod point_resolve;
 pub(crate) mod pointer_action;
@@ -74,17 +75,29 @@ pub mod version;
 pub mod wait;
 pub(crate) mod wait_element;
 pub(crate) mod wait_event;
+pub(crate) mod wait_event_filter;
 pub(crate) mod wait_event_input;
 pub(crate) mod wait_mode;
+pub(crate) mod wait_notification;
 pub(crate) mod wait_predicate;
+pub(crate) mod wait_scheduler;
 pub mod wait_selector;
 pub mod wait_surface;
 pub(crate) mod wait_text_match;
 pub(crate) mod wait_timeout;
+
+#[cfg(test)]
+mod wait_wakeup_tests;
 mod window_target;
+
+#[cfg(test)]
+mod pointer_capability_tests;
 
 #[cfg(test)]
 mod ref_policy_tests;
 
 #[cfg(test)]
 mod stale_retry_test_support;
+
+#[cfg(test)]
+mod operation_passthrough_tests;

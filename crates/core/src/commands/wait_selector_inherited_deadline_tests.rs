@@ -19,7 +19,7 @@ fn flicker_path_emits_wait_timeout_under_an_expired_inherited_deadline() {
         after: window_node(vec![]),
     };
     let inherited = crate::Deadline::after(300).unwrap();
-    let _scope = crate::deadline::enter_scope(Some(inherited));
+    let _scope = crate::wait::deadline::enter_scope(Some(inherited));
 
     let err = execute(
         WaitSelectorInput {
@@ -59,7 +59,7 @@ fn flicker_path_emits_wait_timeout_under_an_expired_inherited_deadline() {
 fn expired_inherited_deadline_without_a_snapshot_still_emits_wait_timeout() {
     let _guard = HomeGuard::new();
     let inherited = crate::Deadline::after(300).unwrap();
-    let _scope = crate::deadline::enter_scope(Some(inherited));
+    let _scope = crate::wait::deadline::enter_scope(Some(inherited));
 
     let err = execute(
         WaitSelectorInput {

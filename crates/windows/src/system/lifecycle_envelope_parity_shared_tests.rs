@@ -1,5 +1,4 @@
 use super::*;
-use crate::system::window_op::window_op_impl;
 use agent_desktop_core::WindowOp;
 
 /// Wire-shape assertion for a class-(a) condition - one both platforms can
@@ -9,7 +8,6 @@ use agent_desktop_core::WindowOp;
 /// anything, is independently verified against `crates/macos` for that
 /// specific condition.
 fn assert_class_a_envelope(error: &AdapterError, code: ErrorCode, expected: DeliverySemantics) {
-    assert_existing_error_code(error);
     assert_code_wire(error, code);
     assert_disposition_wire(error, expected);
 }
@@ -23,7 +21,7 @@ fn assert_class_a_envelope(error: &AdapterError, code: ErrorCode, expected: Deli
 ///
 /// macOS pins the identical pair for the identical condition - a deadline
 /// that expires waiting for exit after termination was already requested -
-/// in `crates/macos/src/system/app_ops.rs`'s `wait_for_exit`.
+/// in `crates/macos/src/system/app/app_ops.rs`'s `wait_for_exit`.
 #[test]
 fn shared_timeout_after_close_delivery_pins_the_windows_envelope() {
     #[cfg(target_os = "windows")]
@@ -53,46 +51,11 @@ fn shared_timeout_after_close_delivery_pins_the_windows_envelope() {
     }
 }
 
-/// Windows raises `StaleRef` here because `window_op_impl` has no
-/// process-instance token to verify before mutating the window, so the
-/// write is refused before any native call. That code choice is not a
-/// verified macOS match: macOS's own "no identity to verify" cases choose
-/// different codes for the same missing-token shape -
-/// `crates/macos/src/system/app_ops.rs::close_app_impl` reports
-/// `InvalidArgs`, and
-/// `crates/macos/src/system/window_resolve.rs::verify_window_record`
-/// reports `WindowNotFound`. This test therefore pins only the Windows wire
-/// shape.
-#[test]
-fn shared_stale_ref_before_window_write_pins_the_windows_envelope() {
-    let win = WindowInfo {
-        id: "w-1".into(),
-        title: String::new(),
-        app: "fixture".into(),
-        pid: ProcessId::from(1u32),
-        process_instance: None,
-        bounds: None,
-        state: WindowState::default(),
-    };
-    let error = window_op_impl(
-        &win,
-        WindowOp::Minimize,
-        Deadline::after(1_000).expect("deadline"),
-    )
-    .expect_err("stale");
-    assert_class_a_envelope(
-        &error,
-        ErrorCode::StaleRef,
-        DeliverySemantics::not_delivered(),
-    );
-    assert_eq!(error_wire(&error)["disposition"]["retry"], "safe");
-}
-
 /// `budget_exhausted(false)` is Windows' own focus-steal-retry-budget
 /// exhaustion; macOS's activation path carries no equivalent budget to
 /// exhaust, so no macOS call site pins this exact pair. The pair still
 /// expresses a cross-platform rule rather than a Windows-only one:
-/// `crates/macos/src/actions/chain.rs::exhaustion_disposition` reports the
+/// `crates/macos/src/actions/chain/mod.rs::exhaustion_disposition` reports the
 /// identical `ActionFailed`/not-delivered pair whenever its own chain, too,
 /// has issued no successful step.
 #[test]
@@ -104,37 +67,6 @@ fn shared_action_failed_before_delivery_pins_the_windows_envelope() {
         DeliverySemantics::not_delivered(),
     );
     assert_eq!(error_wire(&error)["disposition"]["retry"], "safe");
-}
-
-/// `AdapterError::ambiguous_target` is a core constructor, not a
-/// platform-specific one:
-/// `crates/windows/src/system/launch.rs::ambiguous_apps` and
-/// `crates/macos/src/system/launch.rs::ambiguous_apps` both build this exact
-/// error from the identical message, so the pair cannot drift between
-/// platforms without an edit to core.
-#[test]
-fn shared_ambiguous_target_pins_the_windows_envelope() {
-    let error = AdapterError::ambiguous_target(
-        "More than one application instance matches the launch target",
-    )
-    .with_details(serde_json::json!({ "candidate_pids": [10, 11] }));
-    assert_class_a_envelope(
-        &error,
-        ErrorCode::AmbiguousTarget,
-        DeliverySemantics::not_delivered(),
-    );
-    assert_eq!(
-        launch_ambiguous_shape(),
-        (error.code, error.disposition),
-        "launch ambiguous constructor must keep the shared pair"
-    );
-}
-
-fn launch_ambiguous_shape() -> (ErrorCode, DeliverySemantics) {
-    let error = AdapterError::ambiguous_target(
-        "More than one application instance matches the launch target",
-    );
-    (error.code, error.disposition)
 }
 
 /// `AdapterError::permission_denied()` is the core constructor Windows'
@@ -151,7 +83,7 @@ fn launch_ambiguous_shape() -> (ErrorCode, DeliverySemantics) {
 #[test]
 fn shared_perm_denied_before_delivery_pins_the_windows_envelope() {
     use crate::actions::mutation::classify_mutation;
-    use crate::system::hresult::E_ACCESSDENIED;
+    use crate::system::runtime::hresult::E_ACCESSDENIED;
     use crate::tree::automation::UiaFailure;
 
     let error = classify_mutation(
@@ -166,4 +98,41 @@ fn shared_perm_denied_before_delivery_pins_the_windows_envelope() {
         DeliverySemantics::not_delivered(),
     );
     assert_eq!(error_wire(&error)["disposition"]["retry"], "safe");
+}
+
+/// Windows raises `StaleRef` here because `window_op_impl` has no
+/// process-instance token to verify before mutating the window, so the
+/// write is refused before any native call. That code choice is not a
+/// verified macOS match: macOS's own "no identity to verify" cases choose
+/// different codes for the same missing-token shape -
+/// `crates/macos/src/system/app/app_ops.rs::close_app_impl` reports
+/// `InvalidArgs`, and
+/// `crates/macos/src/system/window/window_resolve.rs::verify_window_record`
+/// reports `WindowNotFound`. This test therefore pins only the Windows wire
+/// shape.
+#[test]
+fn adapter_window_op_without_a_process_instance_keeps_the_stale_ref_envelope() {
+    use agent_desktop_core::{InteractionLease, SystemOps};
+
+    let win = WindowInfo {
+        id: "w-1".into(),
+        title: String::new(),
+        app: "fixture".into(),
+        pid: ProcessId::from(1u32),
+        process_instance: None,
+        bounds: None,
+        state: WindowState::default(),
+    };
+    let deadline = Deadline::after(1_000).expect("deadline");
+    let lease = InteractionLease::guarded(deadline, ()).expect("lease");
+
+    let error = crate::adapter::WindowsAdapter::new()
+        .window_op(&win, WindowOp::Minimize, &lease)
+        .expect_err("stale");
+
+    assert_class_a_envelope(
+        &error,
+        ErrorCode::StaleRef,
+        DeliverySemantics::not_delivered(),
+    );
 }

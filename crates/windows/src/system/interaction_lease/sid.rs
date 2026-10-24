@@ -25,9 +25,9 @@ use windows_sys::Win32::Security::{
 #[cfg(test)]
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
-use crate::system::token_sid::{TokenSource, token_owner_sid, token_user_sid};
+use crate::system::runtime::token_sid::{TokenSource, token_owner_sid, token_user_sid};
 
-pub(super) use crate::system::token_sid::SidBuffer;
+pub(super) use crate::system::runtime::token_sid::SidBuffer;
 
 /// Process-invariant like the token SIDs below, so it is cached the same
 /// way: every lease acquisition (`directory::ensure_private`'s
@@ -79,7 +79,8 @@ pub(super) fn process_token_user_sid() -> std::io::Result<&'static SidBuffer> {
 /// used only to annotate a `lease_integrity_denied` refusal, never to decide
 /// policy.
 pub(super) fn process_token_integrity_rid() -> std::io::Result<u32> {
-    let buffer = crate::system::token_sid::read_process_token_information(TokenIntegrityLevel)?;
+    let buffer =
+        crate::system::runtime::token_sid::read_process_token_information(TokenIntegrityLevel)?;
     let label: TOKEN_MANDATORY_LABEL = unsafe { std::ptr::read(buffer.as_ptr().cast()) };
     let sid = label.Label.Sid;
     let count = unsafe { *GetSidSubAuthorityCount(sid) };

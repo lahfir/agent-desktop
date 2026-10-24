@@ -161,7 +161,7 @@ impl LocatorTraversal {
         if !subtree_complete {
             self.arena.mark_incomplete();
         }
-        if let Some(token) = crate::tree::retained::capture(&element)? {
+        if let Some(token) = crate::tree::resolve::retained::capture(&element)? {
             read.evidence.identifiers = read.evidence.identifiers.with_retained_object(token);
         }
         Ok(Some(ObservedSubtree::new(

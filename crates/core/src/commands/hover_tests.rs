@@ -2,13 +2,13 @@ use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     AdapterError, Rect,
+    actions::capability,
     adapter::NativeHandle,
-    capability,
+    adapter::hit_test::HitTestResult,
     commands::stale_retry_test_support::StaleRetryCounter,
-    hit_test::HitTestResult,
+    refs::refs_store::RefStore,
+    refs::refs_test_support::HomeGuard,
     refs::{RefEntry, RefMap},
-    refs_store::RefStore,
-    refs_test_support::HomeGuard,
 };
 use std::sync::{
     Mutex,
@@ -19,6 +19,8 @@ struct HoverCaptureAdapter {
     moved_to: Mutex<Option<MouseEvent>>,
     focused_pids: Mutex<Vec<crate::ProcessId>>,
     focused_bounds: Option<Rect>,
+    refuses_receiver: bool,
+    receiver_checks: AtomicU32,
 }
 
 impl HoverCaptureAdapter {
@@ -27,7 +29,14 @@ impl HoverCaptureAdapter {
             moved_to: Mutex::new(None),
             focused_pids: Mutex::new(Vec::new()),
             focused_bounds: None,
+            refuses_receiver: false,
+            receiver_checks: AtomicU32::new(0),
         }
+    }
+
+    fn refusing_receiver(mut self) -> Self {
+        self.refuses_receiver = true;
+        self
     }
 
     fn with_focused_bounds(mut self, bounds: Rect) -> Self {
@@ -71,6 +80,24 @@ impl ObservationOps for HoverCaptureAdapter {
     ) -> Result<HitTestResult, AdapterError> {
         Ok(HitTestResult::ReachesTarget)
     }
+
+    fn confirm_pointer_receiver(
+        &self,
+        _entry: &RefEntry,
+        _point: crate::Point,
+        _deadline: crate::Deadline,
+    ) -> Result<(), AdapterError> {
+        self.receiver_checks.fetch_add(1, Ordering::SeqCst);
+        if self.refuses_receiver {
+            return Err(AdapterError::new(
+                crate::ErrorCode::ActionFailed,
+                "Another element intercepts the pointer target",
+            )
+            .with_details(json!({ "check": "receives_events" }))
+            .with_disposition(crate::DeliverySemantics::not_delivered()));
+        }
+        Ok(())
+    }
 }
 
 impl ActionOps for HoverCaptureAdapter {}
@@ -80,9 +107,9 @@ impl InputOps for HoverCaptureAdapter {
         &self,
         event: MouseEvent,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         *self.moved_to.lock().unwrap() = Some(event);
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -124,6 +151,7 @@ fn ref_snapshot(pid: u32) -> String {
             native_id: None,
         },
         geometry: crate::RefGeometry {
+            bounds_space: None,
             bounds: None,
             bounds_hash: None,
         },
@@ -288,8 +316,8 @@ impl InputOps for StaleThenOkAdapter {
         &self,
         _event: MouseEvent,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
-        Ok(())
+    ) -> Result<crate::OperationReport, AdapterError> {
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -342,10 +370,14 @@ fn transient_stale_ref_retries_then_succeeds_when_timeout_wired() {
     )
     .unwrap();
 
-    assert_eq!(value["hovered"], true);
+    assert_eq!(value["disposition"]["delivery"], "delivered_unverified");
+    assert!(value.get("hovered").is_none());
     assert!(adapter.retry.calls() >= 3);
     assert_eq!(adapter.lease_acquisitions.load(Ordering::SeqCst), 1);
 }
+
+#[path = "hover_receiver_tests.rs"]
+mod receiver_tests;
 
 #[path = "hover_preflight_tests.rs"]
 mod preflight_tests;

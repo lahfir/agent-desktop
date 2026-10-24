@@ -42,18 +42,18 @@ mod imp {
     }
 
     pub(crate) fn focus_state(element: &AXElement, deadline: Deadline) -> Option<FocusState> {
-        let app = crate::system::app_ops::pid_from_element(element, deadline)
+        let app = crate::system::app::app_ops::pid_from_element(element, deadline)
             .map(crate::tree::element_for_pid)?;
         Some(FocusState {
-            focused_element: crate::tree::attributes::copy_element_attr_result(
+            focused_element: crate::tree::properties::attributes::copy_element_attr_result(
                 &app,
                 "AXFocusedUIElement",
                 deadline,
             )
             .ok()?,
-            selected: crate::tree::attributes::copy_bool_attr_result(
+            selected: crate::tree::properties::attributes::copy_bool_attr_result(
                 element,
-                crate::actions::container_select::SELECTED,
+                crate::actions::select::container_select::SELECTED,
                 deadline,
             )
             .ok()
@@ -132,11 +132,11 @@ mod imp {
             if crate::tree::same_element(&current, element) {
                 return true;
             }
-            let Some(parent) =
-                crate::tree::attributes::copy_element_attr_result(&current, "AXParent", deadline)
-                    .ok()
-                    .flatten()
-            else {
+            let Some(parent) = crate::tree::properties::attributes::copy_element_attr_result(
+                &current, "AXParent", deadline,
+            )
+            .ok()
+            .flatten() else {
                 return false;
             };
             current = parent;

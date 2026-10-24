@@ -11,8 +11,8 @@ date: 2026-09-20
 The user opened cursor-cam in Xcode, PID 24741, window w-19740. This probe
 used public Agent Desktop JSON and model-selected refs, without parsing wrappers.
 Project source was not edited and no build/run was requested. Raw AX was used
-only for separate read-only diagnosis. The provisional rating remains 8/10;
-these trials do not establish the repeated acceptance denominator.
+only for separate read-only diagnosis. These trials do not establish the
+repeated acceptance denominator.
 
 ## Reproduced and fixed
 
@@ -27,7 +27,11 @@ and only when explicit expanded/disclosing evidence is absent. Snapshot states,
 live-state completeness and disclosure action verification reuse that rule.
 Unknown/mixed values remain unknown; other roles never inherit it. The existing
 single-delivery semantic chain is unchanged. No focus or input fallback was added.
-Tests cover true/false, explicit precedence, missing/mixed values and other roles.
+Tests cover true/false, explicit precedence, missing/mixed values and other roles
+(`disclosure_value_is_role_scoped_and_explicit_state_wins` in
+`tree/state_reader_tests.rs`; the rule is `expanded_state` in
+`tree/state_reader.rs`, reused by `disclosed_state` in
+`actions/chain/chain_disclosure_steps.rs`).
 
 Repaired immutable candidate: `/tmp/ad-native-eval/disclosure-candidate`, SHA-256
 `1d68e0d6d5f71e9bcc046f19a3b2c22ee31a3bf7dc49b2f6bad121513783b39c`.
@@ -68,7 +72,8 @@ full baseline/reset series is still required.
 despite the nested textfield exposing that value. Canonical child labels read
 static text, while this navigator exposes editable textfield values. Do not
 blindly broaden stable identity to all mutable values or click editable labels.
-This inconsistency is unresolved.
+Collection selection now matches a live non-secure AXTextField value and presses
+only its owning selectable row (`actions/select/select_name.rs`).
 
 Clicking the file row reported verified selection and visibly selected it, but
 the editor remained on CursorCamAppDelegate.swift. Selection is not proof of
@@ -76,7 +81,8 @@ opening a file. Xcode displayed Preparing Editor Functionality throughout.
 No duplicate activation was attempted to force the result.
 
 Setting Project navigator filter to CursorCam visibly filtered the tree.
-Clearing it reported delivered_unverified because the empty value was absent;
+Clearing it reported delivered_unverified because the empty value was absent
+(repaired by the empty_text reader, 2026-09-20-xcode-empty-search-value.md);
 the final viewed screenshot showed the original unfiltered tree and empty
 filter. Earlier monitors included external-session input and activation of
 multiple apps; attribution was unavailable, so those trials are not clean
@@ -107,4 +113,4 @@ Headless InteractionPolicy already defaults both focus stealing and cursor
 movement to false. This repair keeps that policy and adds no physical path.
 This is not proof that arbitrary AX actions in arbitrary apps cannot activate
 their app. Menus, file opening, semantic drag and repeated cross-app acceptance
-remain outstanding; no 10/10 claim is supported. All changes remain local.
+remain outstanding.

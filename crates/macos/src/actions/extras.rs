@@ -14,9 +14,9 @@ pub(crate) fn select_value(
     let role = crate::actions::ax_helpers::element_role(element, deadline)?;
     match select_role_family(role.as_deref()) {
         Some("value_or_menu") => select_combobox(element, value, deadline),
-        Some("menu") => crate::actions::select_menu::select_from_menu(element, value, deadline),
+        Some("menu") => crate::actions::select::select_menu::select_from_menu(element, value, deadline),
         Some("collection") => {
-            crate::actions::select_menu::select_collection_item(element, value, deadline)
+            crate::actions::select::select_menu::select_collection_item(element, value, deadline)
         }
         _ => Err(AdapterError::new(
             ErrorCode::ActionNotSupported,
@@ -43,8 +43,10 @@ fn select_combobox(
             Ok(()) => match verify_value(element, value, deadline) {
                 Ok(verified) => return Ok(verified),
                 Err(error) if should_fallback_after_value_verification(&error) => {
-                    return crate::actions::select_menu::select_from_menu(element, value, deadline)
-                        .map_err(after_delivery);
+                    return crate::actions::select::select_menu::select_from_menu(
+                        element, value, deadline,
+                    )
+                    .map_err(after_delivery);
                 }
                 Err(error) => return Err(after_delivery(error)),
             },
@@ -53,7 +55,7 @@ fn select_combobox(
             Err(error) => return Err(error),
         }
     }
-    crate::actions::select_menu::select_from_menu(element, value, deadline)
+    crate::actions::select::select_menu::select_from_menu(element, value, deadline)
 }
 
 fn should_fallback_after_value_verification(error: &AdapterError) -> bool {
@@ -115,7 +117,7 @@ fn after_delivery(error: AdapterError) -> AdapterError {
 
 #[cfg(target_os = "macos")]
 fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {
-    crate::tree::attributes::set_messaging_timeout(element, deadline)
+    crate::tree::properties::attributes::set_messaging_timeout(element, deadline)
 }
 
 #[cfg(test)]

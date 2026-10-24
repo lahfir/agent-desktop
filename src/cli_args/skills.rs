@@ -32,7 +32,7 @@ pub(crate) enum SkillsAction {
 
 #[derive(Args, Debug)]
 pub(crate) struct SkillsGetArgs {
-    #[arg(help = "Skill name or alias: desktop, platform, macos, windows, ffi, jev")]
+    #[arg(help = "Skill name or alias: desktop, platform, macos, windows, linux, ffi, jev")]
     pub name: String,
     #[arg(
         help = "Reference filename (e.g. workflows or references/workflows.md). Omit for the main guide."

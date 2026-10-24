@@ -1,6 +1,6 @@
 use super::{SetValuePlan, parse_finite_f64, set_value_judged_for};
 use crate::actions::chain::DeliveryOutcome;
-use crate::system::test_time::deadline;
+use crate::system::fixture::test_time::deadline;
 use agent_desktop_core::{
     Action, ActionStepOutcome, DeliveryDisposition, ErrorCode, InteractionPolicy,
 };
@@ -8,6 +8,7 @@ use std::cell::Cell;
 
 #[test]
 fn set_value_verified_when_readback_equals() {
+    let value = Cell::new(0u8);
     let steps = set_value_judged_for(
         deadline(5_000),
         InteractionPolicy::headless(),
@@ -16,10 +17,14 @@ fn set_value_verified_when_readback_equals() {
             value_writable: true,
             range_available: false,
         },
-        || Ok(DeliveryOutcome::DeliveredVerified),
+        || {
+            value.set(value.get() + 1);
+            Ok(DeliveryOutcome::DeliveredVerified)
+        },
         || Ok(DeliveryOutcome::NotDelivered),
     )
     .expect("set-value");
+    assert_eq!(value.get(), 1);
     assert_eq!(steps.len(), 1);
     assert!(matches!(steps[0].outcome, ActionStepOutcome::Succeeded));
     assert_eq!(steps[0].verified(), Some(true));

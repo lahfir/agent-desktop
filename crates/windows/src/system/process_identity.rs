@@ -116,6 +116,40 @@ pub(crate) fn process_is_running(_pid: ProcessId) -> bool {
     true
 }
 
+/// Blocks on the process object itself for at most `window` and reports
+/// whether the process exited inside it.
+///
+/// `process_is_running` is a zero-timeout poll, so a process that is tearing
+/// down but not yet signaled reads as running. This waits on the handle, an
+/// event rather than a sleep, so the exit is observed the instant it happens.
+/// A pid that no longer names a process (`ERROR_INVALID_PARAMETER`) has
+/// exited; any other failure to open the handle cannot confirm an exit and
+/// reports `false` without waiting.
+#[cfg(target_os = "windows")]
+pub(crate) fn wait_for_exit(pid: ProcessId, window: std::time::Duration) -> bool {
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, ERROR_INVALID_PARAMETER, GetLastError, WAIT_OBJECT_0,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, WaitForSingleObject,
+    };
+
+    let access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE;
+    let process = unsafe { OpenProcess(access, 0, u32::from(pid)) };
+    if process.is_null() {
+        return unsafe { GetLastError() } == ERROR_INVALID_PARAMETER;
+    }
+    let millis = u32::try_from(window.as_millis()).unwrap_or(u32::MAX);
+    let wait = unsafe { WaitForSingleObject(process, millis) };
+    unsafe { CloseHandle(process) };
+    wait == WAIT_OBJECT_0
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn wait_for_exit(_pid: ProcessId, _window: std::time::Duration) -> bool {
+    false
+}
+
 /// The image name (executable filename) of the process at `pid`, read from
 /// the ToolHelp process table.
 ///

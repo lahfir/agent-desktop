@@ -5,12 +5,12 @@ fn main() {
     println!("cargo:rerun-if-changed=src/system/launch_bridge.m");
     println!("cargo:rerun-if-changed=src/system/appkit_bridge.m");
     println!("cargo:rerun-if-changed=src/system/screen_bridge.m");
-    println!("cargo:rerun-if-changed=src/system/cursor_overlay_bridge.m");
-    println!("cargo:rerun-if-changed=src/system/cursor_overlay_chrome_bridge.m");
-    println!("cargo:rerun-if-changed=src/system/cursor_overlay_chrome.h");
-    println!("cargo:rerun-if-changed=src/system/cursor_overlay_display_bridge.m");
-    println!("cargo:rerun-if-changed=src/system/cursor_overlay_image_bridge.m");
-    println!("cargo:rerun-if-changed=src/system/permission_guide_bridge.m");
+    println!("cargo:rerun-if-changed=src/system/cursor_overlay/cursor_overlay_bridge.m");
+    println!("cargo:rerun-if-changed=src/system/cursor_overlay/cursor_overlay_chrome_bridge.m");
+    println!("cargo:rerun-if-changed=src/system/cursor_overlay/cursor_overlay_chrome.h");
+    println!("cargo:rerun-if-changed=src/system/cursor_overlay/cursor_overlay_display_bridge.m");
+    println!("cargo:rerun-if-changed=src/system/cursor_overlay/cursor_overlay_image_bridge.m");
+    println!("cargo:rerun-if-changed=src/system/permissions/permission_guide_bridge.m");
     println!("cargo:rerun-if-env-changed=TARGET");
     println!("cargo:rerun-if-env-changed=MACOSX_DEPLOYMENT_TARGET");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
@@ -43,7 +43,7 @@ fn main() {
                 "-Wextra",
                 "-Werror",
                 "-c",
-                "src/system/cursor_overlay_display_bridge.m",
+                "src/system/cursor_overlay/cursor_overlay_display_bridge.m",
                 "-o",
             ])
             .arg(&cursor_overlay_display_object),
@@ -59,7 +59,7 @@ fn main() {
                 "-Wextra",
                 "-Werror",
                 "-c",
-                "src/system/cursor_overlay_bridge.m",
+                "src/system/cursor_overlay/cursor_overlay_bridge.m",
                 "-o",
             ])
             .arg(&cursor_overlay_object),
@@ -75,7 +75,7 @@ fn main() {
                 "-Wextra",
                 "-Werror",
                 "-c",
-                "src/system/cursor_overlay_chrome_bridge.m",
+                "src/system/cursor_overlay/cursor_overlay_chrome_bridge.m",
                 "-o",
             ])
             .arg(&cursor_overlay_chrome_object),
@@ -91,7 +91,7 @@ fn main() {
                 "-Wextra",
                 "-Werror",
                 "-c",
-                "src/system/cursor_overlay_image_bridge.m",
+                "src/system/cursor_overlay/cursor_overlay_image_bridge.m",
                 "-o",
             ])
             .arg(&cursor_overlay_image_object),
@@ -155,7 +155,7 @@ fn main() {
                 "-Wextra",
                 "-Werror",
                 "-c",
-                "src/system/permission_guide_bridge.m",
+                "src/system/permissions/permission_guide_bridge.m",
                 "-o",
             ])
             .arg(&permission_guide_object),

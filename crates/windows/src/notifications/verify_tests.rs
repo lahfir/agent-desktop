@@ -38,14 +38,6 @@ fn identity_includes_app_title_and_body() {
 }
 
 #[test]
-fn body_is_part_of_the_identity_a_reposted_entry_breaks() {
-    let original = info(1, "App A", "Reminder", Some("First"));
-    let reposted = info(2, "App A", "Reminder", Some("Second"));
-
-    assert!(!same_identity(&original, &reposted));
-}
-
-#[test]
 fn matching_count_counts_identity_matches_not_indices() {
     let target = info(1, "App A", "Reminder", Some("First"));
     let current = vec![

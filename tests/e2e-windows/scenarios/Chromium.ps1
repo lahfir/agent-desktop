@@ -193,10 +193,13 @@ function Invoke-ChromiumRateLeg {
         }
         Invoke-AgentDesktop -Arguments @('list-windows') | Out-Null
     }
-    if ($otherCount -eq 0) {
-        Add-Pass -Leg 'chromium-stale-ref-rate-measured'
-    } else {
+    Write-Host "chromium-stale-ref-rate-measured: N=$($script:ChromiumRateSampleCount) ok=$okCount stale=$staleCount other=$otherCount"
+    if ($otherCount -ne 0) {
         Add-Fail -Leg 'chromium-stale-ref-rate-measured' -Reason "N=$($script:ChromiumRateSampleCount) ok=$okCount stale=$staleCount other=$otherCount - an outcome outside ok/STALE_REF is not a rate measurement"
+    } elseif ($okCount -eq 0) {
+        Add-Fail -Leg 'chromium-stale-ref-rate-measured' -Reason "N=$($script:ChromiumRateSampleCount) ok=$okCount stale=$staleCount other=$otherCount - every sample was STALE_REF, so no ref re-identified and adapter ref identity is broken rather than merely noisy"
+    } else {
+        Add-Pass -Leg 'chromium-stale-ref-rate-measured'
     }
 }
 
@@ -236,7 +239,7 @@ function Invoke-ChromiumSemanticLeg {
             <# `A24-11`: this box's staged content has no accessible-name
                checkbox, so strict resolution fails closed before any
                candidate search runs - a real, reproducible, documented
-               adapter identity gap (closed, docs/phases.md),
+               adapter identity gap (closed),
                not an unbounded failure. TIMEOUT wrapping a STALE_REF
                `last_report` and a bare STALE_REF are both the honest
                negative this leg's own disposition already accounts for. #>

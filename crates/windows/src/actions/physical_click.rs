@@ -12,7 +12,6 @@ use crate::actions::physical_target::{
     focus_lost_before_delivery, read_click_bounds,
 };
 use crate::input::mouse::synthesize_mouse;
-use crate::system::permissions::ensure_budget;
 use crate::tree::element::UIAElement;
 
 const CLICK_LABEL: &str = "SendInput.click";
@@ -94,7 +93,7 @@ pub(crate) fn physical_click_steps(
     verified_point: Option<&Point>,
 ) -> Result<Vec<ActionStep>, AdapterError> {
     ensure_headed_click_policy(policy)?;
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     let foreground_ready = ensure_click_delivery_ready(element, deadline)?;
     let bounds = read_click_bounds(element)?;
     click_from_gate(

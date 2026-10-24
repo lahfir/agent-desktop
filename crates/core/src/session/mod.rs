@@ -1,14 +1,18 @@
 mod gc;
+pub(crate) mod interaction_lease;
 mod liveness;
 mod manifest;
+pub(crate) mod process_lease_guard;
+pub(crate) mod session_affinity;
+mod tree;
 
 pub use gc::{GcOptions, GcReport, gc, is_live};
 pub use liveness::SessionLivenessLease;
 pub use manifest::{ArtifactsMode, SessionManifest, SessionTraceMode};
 
 use crate::{
-    AppError, CursorOverlayConfig, context::validate_session_id, refs::write_private_file,
-    refs_store::RefStore,
+    AppError, CursorOverlayConfig, context::validate_session_id, refs::refs_store::RefStore,
+    refs::write_private_file,
 };
 use serde_json;
 use std::io::ErrorKind;
@@ -45,7 +49,7 @@ impl Default for StartSessionOptions {
 }
 
 pub fn agent_desktop_dir() -> Result<PathBuf, AppError> {
-    crate::state_root::resolve_configured_state_root()
+    crate::storage::state_root::resolve_configured_state_root()
 }
 
 pub fn session_dir(session_id: &str) -> Result<PathBuf, AppError> {
@@ -80,11 +84,13 @@ pub fn resolve_active_session(
 
 pub fn read_manifest(session_id: &str) -> Result<Option<SessionManifest>, AppError> {
     let path = manifest_path(session_id)?;
-    let json = match crate::private_file::read_private_bounded(&path, MAX_SESSION_MANIFEST_BYTES) {
-        Ok(json) => json,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Ok(ignore_unreadable_manifest(&path, &err)),
-    };
+    let json =
+        match crate::storage::private_file::read_private_bounded(&path, MAX_SESSION_MANIFEST_BYTES)
+        {
+            Ok(json) => json,
+            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Ok(ignore_unreadable_manifest(&path, &err)),
+        };
     match serde_json::from_slice(&json) {
         Ok(manifest) => Ok(Some(manifest)),
         Err(err) => Ok(ignore_unreadable_manifest(&path, &err)),
@@ -163,7 +169,7 @@ pub fn cursor_overlay_for_session_agent(
         return Ok(config);
     };
     let path = agent_profile_path(session_id, agent_id)?;
-    match crate::private_file::read_private_bounded(&path, MAX_SESSION_MANIFEST_BYTES) {
+    match crate::storage::private_file::read_private_bounded(&path, MAX_SESSION_MANIFEST_BYTES) {
         Ok(bytes) => {
             let parsed: Result<CursorOverlayConfig, AppError> = serde_json::from_slice::<
                 CursorOverlayConfig,
@@ -305,7 +311,7 @@ pub fn start_session(options: StartSessionOptions) -> Result<SessionManifest, Ap
         .map(|name| validate_session_name(&name))
         .transpose()?;
     let dir = session_dir(&id)?;
-    create_session_tree(&dir)?;
+    tree::create(&dir)?;
     let manifest = SessionManifest {
         id: id.clone(),
         name,
@@ -333,7 +339,7 @@ pub fn end_session(session_id: &str) -> Result<SessionManifest, AppError> {
         manifest.ended_at = Some(now_millis());
         write_manifest(&manifest)?;
         if manifest.artifacts == ArtifactsMode::Full
-            && let Ok(store) = crate::refs_store::RefStore::for_session(Some(&id))
+            && let Ok(store) = crate::refs::refs_store::RefStore::for_session(Some(&id))
         {
             store.discard_duplicated_ref_scaffolding();
         }
@@ -351,26 +357,6 @@ pub(crate) fn acquire_liveness_lease_with_deadline(
 ) -> Result<Option<SessionLivenessLease>, AppError> {
     validate_session_id(session_id)?;
     liveness::acquire(session_id, deadline)
-}
-
-fn create_session_tree(dir: &Path) -> Result<(), AppError> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        std::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(dir)?;
-        std::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(dir.join("trace"))?;
-    }
-    #[cfg(not(unix))]
-    {
-        crate::private_file_parent::ensure_private(&dir.join("trace"))?;
-    }
-    Ok(())
 }
 
 fn manifest_path(session_id: &str) -> Result<PathBuf, AppError> {

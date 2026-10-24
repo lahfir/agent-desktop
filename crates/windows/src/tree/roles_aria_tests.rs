@@ -1,4 +1,4 @@
-use agent_desktop_core::roles::{is_valid_role_query, normalize_role_query};
+use agent_desktop_core::tree::roles::{is_valid_role_query, normalize_role_query};
 
 use super::{ControlType, TreeProperty, flag, role_of};
 

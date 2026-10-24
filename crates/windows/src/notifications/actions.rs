@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     ActionResult, AdapterError, Deadline, DeliverySemantics, ErrorCode, InteractionPolicy,
-    NotificationFilter, NotificationIdentity, NotificationInfo,
+    NotificationFilter, NotificationIdentity, NotificationInfo, verify_notification_identity,
 };
 
 use crate::tree::element::UIAElement;
@@ -347,23 +347,8 @@ fn locate_and_verify(
         .into_iter()
         .find(|entry| entry.info.index == index)
         .ok_or_else(|| AdapterError::notification_not_found(index))?;
-    verify_identity(index, identity, &entry.info)?;
+    verify_notification_identity(index, identity, &entry.info)?;
     Ok(entry)
-}
-
-fn verify_identity(
-    index: usize,
-    identity: Option<&NotificationIdentity>,
-    info: &NotificationInfo,
-) -> Result<(), AdapterError> {
-    if identity.is_none_or(|value| value.is_empty() || value.matches(info)) {
-        return Ok(());
-    }
-    Err(AdapterError::new(
-        ErrorCode::NotificationNotFound,
-        format!("Notification at index {index} no longer matches its expected identity"),
-    )
-    .with_suggestion("Run list-notifications again and retry with the freshly-observed index"))
 }
 
 fn build_filter(app_filter: Option<&str>) -> NotificationFilter {

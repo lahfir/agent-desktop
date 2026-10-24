@@ -12,12 +12,21 @@ Live state and ref-root observation also used only the owning window. A native
 button clipped by a smaller scroll area therefore lacked offscreen state even
 after scroll-to had been repaired separately.
 
+Before that, element-root observation seeded its build context with the root
+element's own bounds as the viewport. A zero-size SF Symbols button was clipped
+against itself, so find reported it offscreen while get-states, which read
+AXWindow, returned an empty list. The mismatch was in observation context, not a
+changed element or a stale ref. The owning-window lookup now lives in
+`tree/element_bounds.rs`. It does not fall back to AXTopLevelUIElement: for a
+window-less menu that resolves to the menu bar, a 29-point strip that would
+report every open menu item offscreen. A failed AXWindow read still propagates.
+
 Traversal now carries the effective clipping rectangle down each branch and
 restores the prior rectangle before visiting siblings, including error paths.
 Ref-root and live observations read clipping ancestors under the existing
 deadline. Rectangle intersection and clipping-role definitions are shared with
 the pointer hit-test implementation. No per-node ancestry IPC was added to a
-full traversal. Empty intersections remain known empty, while unknown ancestor
+full traversal. Empty intersections remain known empty. Unknown ancestor
 geometry cannot become known again merely because a deeper container has bounds.
 
 The owned fixture now includes a visible sibling outside the scroll area.
@@ -46,11 +55,15 @@ interactive medians were 3063.9/3064.5 ms, skeleton 305.8/292.9 ms, depth-30
 3062.1/3072.1 ms, and candidate find 4099.2 ms. Partial depth-30 shapes differ;
 neither complete equivalence nor a clean aggregate baseline pass is claimed.
 
-Tests cover non-clipping groups, disjoint nested viewports and unknown geometry.
+Tests cover non-clipping groups, disjoint nested viewports and unknown geometry
+(`only_clipping_containers_narrow_the_viewport`,
+`disjoint_viewports_remain_known_empty_through_descendants`,
+`missing_clipping_geometry_is_unknown_not_empty` and
+`a_window_less_element_reports_no_clipping_viewport` in `tree/element_bounds.rs`).
 The earlier candidate passed seven semantic assertions and SF Symbols read-only
 performance observations. Xcode was absent and skipped, not passed. Numbers is
-excluded from active testing by the user's explicit instruction. Provisional
-rating remains 8/10; these fixes do not establish repeated real-app acceptance.
+excluded from active testing by the user's explicit instruction. These fixes do
+not establish repeated real-app acceptance.
 
 ## Real-app S3 baseline on the final candidate
 

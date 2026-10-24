@@ -42,7 +42,7 @@ pub unsafe extern "C" fn ad_dismiss_all_notifications(
         let lease = crate::operation::interaction_lease!(adapter.inner.as_ref());
         let request = agent_desktop_core::DismissAllNotificationsRequest {
             app_filter: filter_ref,
-            policy: agent_desktop_core::interaction_policy::InteractionPolicy::headless(),
+            policy: agent_desktop_core::actions::interaction_policy::InteractionPolicy::headless(),
         };
         match adapter.inner.dismiss_all_notifications(request, &lease) {
             Ok((dismissed, failed_messages)) => {

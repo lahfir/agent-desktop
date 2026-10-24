@@ -1,11 +1,11 @@
 use crate::{
     AppError,
-    action::Action,
-    action_request::ActionRequest,
+    actions::action::Action,
+    actions::action_request::ActionRequest,
+    actions::interaction_policy::InteractionPolicy,
     adapter::PlatformAdapter,
     commands::helpers::{RefArgs, execute_ref_action_with_context, normalize_action_timeout_ms},
     context::CommandContext,
-    interaction_policy::InteractionPolicy,
 };
 use serde_json::Value;
 

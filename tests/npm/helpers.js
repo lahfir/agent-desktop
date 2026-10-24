@@ -1,7 +1,7 @@
 const { spawn } = require('node:child_process');
-const { mkdtempSync, unlinkSync, writeFileSync } = require('node:fs');
+const { mkdtempSync, rmdirSync, unlinkSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
-const { join } = require('node:path');
+const { dirname, join } = require('node:path');
 
 const postinstallScriptPath = join(__dirname, '..', '..', 'npm', 'scripts', 'postinstall.js');
 const wrapperScriptPath = join(__dirname, '..', '..', 'npm', 'bin', 'agent-desktop');
@@ -24,9 +24,15 @@ function writeOsStub(osPlatform, osArch) {
   if (!known.test(osPlatform) || !known.test(osArch)) {
     throw new Error(`unsupported os stub identity: ${osPlatform}-${osArch}`);
   }
-  const stub = join(tmpdir(), `agent-desktop-os-stub-${process.pid}-${osPlatform}-${osArch}.js`);
-  writeFileSync(stub, OS_STUB_SOURCE);
+  const root = mkdtempSync(join(tmpdir(), 'agent-desktop-os-stub-'));
+  const stub = join(root, 'stub.js');
+  writeFileSync(stub, OS_STUB_SOURCE, { flag: 'wx' });
   return stub;
+}
+
+function removeOsStub(stub) {
+  try { unlinkSync(stub); } catch {}
+  try { rmdirSync(dirname(stub)); } catch {}
 }
 
 // The stub reads its identity from the environment, so any caller that spawns
@@ -35,11 +41,11 @@ function osStubEnv(osPlatform, osArch) {
   return { [OS_STUB_PLATFORM_ENV]: osPlatform, [OS_STUB_ARCH_ENV]: osArch };
 }
 
-function runScriptWithOsStub(scriptPath, osPlatform, osArch, args = []) {
+function runScriptWithOsStub(scriptPath, osPlatform, osArch, args = [], environment = {}) {
   const stub = writeOsStub(osPlatform, osArch);
   const env = { ...process.env };
   delete env.AGENT_DESKTOP_SKIP_DOWNLOAD;
-  Object.assign(env, osStubEnv(osPlatform, osArch));
+  Object.assign(env, osStubEnv(osPlatform, osArch), environment);
   return new Promise((settle) => {
     let settled = false;
     let stderr = '';
@@ -53,12 +59,28 @@ function runScriptWithOsStub(scriptPath, osPlatform, osArch, args = []) {
     const finish = (code) => {
       if (settled) return;
       settled = true;
-      try { unlinkSync(stub); } catch {}
+      removeOsStub(stub);
       settle({ code, stderr });
     };
     child.on('close', finish);
     child.on('error', () => finish(-1));
   });
+}
+
+// Loads a fresh copy of the installer as if it ran on another OS: the installer
+// reads os.platform() once at load, so the stub has to be in place before it.
+function postinstallAs(osPlatform) {
+  const os = require('node:os');
+  const originalPlatform = os.platform;
+  os.platform = () => osPlatform;
+  const modulePath = require.resolve('../../npm/scripts/postinstall.js');
+  try {
+    delete require.cache[modulePath];
+    return require('../../npm/scripts/postinstall.js');
+  } finally {
+    os.platform = originalPlatform;
+    delete require.cache[modulePath];
+  }
 }
 
 // Separate collections for each suite; their teardown strategies differ.
@@ -83,7 +105,9 @@ function createTemporaryRoots() {
 module.exports = {
   createTemporaryRoots,
   osStubEnv,
+  postinstallAs,
   postinstallScriptPath,
+  removeOsStub,
   runScriptWithOsStub,
   wrapperScriptPath,
   writeOsStub,

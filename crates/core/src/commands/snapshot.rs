@@ -4,7 +4,8 @@ use crate::{
     commands::{wait_selector, wait_selector::WaitSelectorInput},
     context::CommandContext,
     refs::validate_ref_id,
-    snapshot, snapshot_ref,
+    snapshot,
+    snapshot::snapshot_ref,
 };
 use serde_json::{Value, json};
 
@@ -74,7 +75,7 @@ pub fn execute(
         validate_ref_id(root)?;
     }
 
-    super::surface_scope::require_supported(args.surface, adapter)?;
+    adapter.check_surface_support(args.surface)?;
 
     let opts = tree_options(&args);
 

@@ -3,6 +3,7 @@ use super::{
     KillOnDrop, copy_probe_binary, copy_system_exe, deadline, full_image_path, matching_pids,
     probe_launch_options, scratch_dir, start_named_windowless, start_windowed_probe,
 };
+use crate::system::launch_path::resolve_executable;
 use agent_desktop_core::{Deadline, DeliveryDisposition, ErrorCode};
 use std::sync::Mutex;
 
@@ -52,6 +53,42 @@ fn attach_true_reuses_single_running_instance() {
     .expect("attach");
     assert_eq!(window.pid, before[0]);
     assert_eq!(matching_pids(image).len(), 1);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn attach_true_does_not_reuse_same_basename_from_another_path() {
+    let _lock = NOTEPAD_LAUNCH_LOCK.lock().expect("notepad lock");
+    crate::tree::fixture::bootstrap();
+    let dir = scratch_dir("same-basename");
+    let intended_dir = dir.join("intended");
+    let impostor_dir = dir.join("impostor");
+    std::fs::create_dir_all(&intended_dir).expect("intended dir");
+    std::fs::create_dir_all(&impostor_dir).expect("impostor dir");
+    let image = format!("launchprobe_host_same_{}.exe", std::process::id());
+    let intended = copy_probe_binary(&intended_dir, &image);
+    let impostor = copy_probe_binary(&impostor_dir, &image);
+    let running_impostor = start_windowed_probe(&impostor);
+    assert_eq!(matching_pids(&image), vec![running_impostor.0]);
+
+    let launched = launch_app_impl(
+        intended.to_str().expect("intended path"),
+        &probe_launch_options(true, 8_000),
+        deadline(10_000),
+    )
+    .expect("launch the requested executable instead of attaching to its basename impostor");
+    let launched_guard = KillOnDrop(launched.pid);
+    assert_ne!(launched.pid, running_impostor.0);
+    let actual = full_image_path(launched.pid).expect("launched image path");
+    assert_eq!(
+        actual.canonicalize().ok(),
+        intended.canonicalize().ok(),
+        "the returned process must run the requested path"
+    );
+    assert_eq!(matching_pids(&image).len(), 2);
+
+    drop(launched_guard);
+    drop(running_impostor);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

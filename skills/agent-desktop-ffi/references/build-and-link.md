@@ -12,15 +12,11 @@ Output:
 - Linux: `target/release-ffi/libagent_desktop_ffi.so`
 - Windows: `target/release-ffi/agent_desktop_ffi.dll`
 
-The generated header is at `crates/ffi/include/agent_desktop.h`. CI
-validates that the committed header matches what `cargo build`
-regenerates — if you change a type in `crates/ffi/src/`, rebuild
-locally and commit the updated header.
+The generated header is `crates/ffi/include/agent_desktop.h`.
 
-`--profile release-ffi` keeps `panic = "unwind"`, which is required for
-the `catch_unwind` traps inside every `extern "C"` entrypoint. The default
-`release` profile uses `panic = "abort"` (for CLI binary-size reasons) and
-silently defeats those traps.
+`--profile release-ffi` keeps `panic = "unwind"`, which the `catch_unwind` traps
+inside every `extern "C"` entrypoint need. The default `release` profile uses
+`panic = "abort"` and silently defeats those traps.
 
 ## Prebuilt archives
 
@@ -30,10 +26,14 @@ Every GitHub release ships prebuilt archives for:
 - Linux x64 and arm64 (glibc)
 - Windows x64 and ARM64 MSVC
 
-Each archive contains the dylib/so/dll (plus `lib/agent-desktop-macos-helper` on macOS and the `lib/agent_desktop_ffi.dll.lib` import library on Windows), `include/agent_desktop.h`, and
-`LICENSE`. Integrity: compare against `checksums.txt` in the release
-assets. Supply-chain verification: each release is signed via Sigstore
-attestation — verify with `gh attestation verify <file> --repo lahfir/agent-desktop` before deploying.
+Each archive contains `lib/` (the dylib, so, or dll), `include/agent_desktop.h`, and
+`LICENSE`. `lib/` also holds a helper that must stay beside the library:
+`agent-desktop-macos-helper` on macOS, `agent-desktop-linux-clipboard-owner` on
+Linux. On Windows it holds the `agent_desktop_ffi.dll.lib` import library, which an
+MSVC linking consumer links against. Integrity: compare against `checksums.txt` in
+the release assets. Supply-chain verification: each release carries a Sigstore
+attestation; verify with `gh attestation verify <file> --repo lahfir/agent-desktop`
+before deploying.
 
 ## ABI handshake (do this first)
 
@@ -60,43 +60,52 @@ if (dylib_major != AD_ABI_VERSION_MAJOR) {
 }
 ```
 
-`ad_init` returns `AD_RESULT_ERR_INVALID_ARGS` on mismatch (with a
-diagnostic in `ad_last_error_message`). A mismatch means the header you
-compiled against and the loaded dylib are incompatible — do not call
-anything further.
+`ad_init` returns `AD_RESULT_ERR_INVALID_ARGS` on mismatch, with a diagnostic in
+`ad_last_error_message`. Call nothing further.
 
 ## Struct size validation
 
-Languages whose struct layout may diverge from C (Python ctypes, Go cgo,
-JNI, etc.) must validate every size-pinned struct before passing it to
-the library. The FFI exposes three validation layers:
+Languages whose struct layout may diverge from C (Python ctypes, Go cgo, JNI,
+etc.) must validate every size-pinned struct before passing it to the library.
+The FFI exposes three validation layers:
 
-1. **Header macros**: `AD_ACTION_SIZE`, `AD_WAIT_ARGS_SIZE`,
-   `AD_REF_ENTRY_SIZE`, `AD_DRAG_PARAMS_SIZE`, `AD_ACTION_RESULT_SIZE`,
-   `AD_ACTION_STEP_SIZE`, `AD_ELEMENT_STATE_SIZE`.
-2. **Runtime getters**: `ad_action_size()`, `ad_wait_args_size()`,
-   `ad_ref_entry_size()`, `ad_drag_params_size()`, `ad_action_result_size()`,
-   `ad_action_step_size()`, `ad_element_state_size()` — each returns the
-   same value the macro encodes, compiled from the Rust side.
+1. **Header macros** (`AD_*_SIZE`) and
+2. **Runtime getters** (`ad_*_size()`, returning `size_t` compiled from the Rust
+   side, equal to the macro):
+
+   | Struct | Macro | Getter |
+   |--------|-------|--------|
+   | `AdAction` | `AD_ACTION_SIZE` | `ad_action_size()` |
+   | `AdActionResult` | `AD_ACTION_RESULT_SIZE` | `ad_action_result_size()` |
+   | `AdActionStep` | `AD_ACTION_STEP_SIZE` | `ad_action_step_size()` |
+   | `AdDisplayInfo` | `AD_DISPLAY_INFO_SIZE` | `ad_display_info_size()` |
+   | `AdDragParams` | `AD_DRAG_PARAMS_SIZE` | `ad_drag_params_size()` |
+   | `AdElementState` | `AD_ELEMENT_STATE_SIZE` | `ad_element_state_size()` |
+   | `AdExactRefEntry` | `AD_EXACT_REF_ENTRY_SIZE` | `ad_exact_ref_entry_size()` |
+   | `AdExactSurfaceInfo` | `AD_EXACT_SURFACE_INFO_SIZE` | `ad_exact_surface_info_size()` |
+   | `AdExactWindowInfo` | `AD_EXACT_WINDOW_INFO_SIZE` | `ad_exact_window_info_size()` |
+   | `AdRefEntry` | `AD_REF_ENTRY_SIZE` | `ad_ref_entry_size()` |
+   | `AdWaitArgs` | `AD_WAIT_ARGS_SIZE` | `ad_wait_args_size()` |
+
 3. **C11 static asserts** in the header (`#ifndef AGENT_DESKTOP_ABI_ASSERTS`)
    catch mismatches at C compile time.
 
-Compare your binding's `sizeof` equivalent against the getter at load
-time, before building or passing any of these structs. The Python smoke
-harness (`tests/ffi-python/smoke.py` Leg 2) demonstrates this check for
-all size-pinned structs in a single loop.
+Compare your binding's `sizeof` equivalent against the getter at load time, before
+building or passing any of these structs. Set `AdExactRefEntry.version` to
+`AD_EXACT_REF_ENTRY_VERSION`, `.size` to `AD_EXACT_REF_ENTRY_SIZE`, and
+`.process_instance` to the generation token the snapshot emitted.
 
 ## Worked example: Python ctypes smoke harness
 
-`tests/ffi-python/smoke.py` is the canonical reference for Python
-consumers. It covers:
+`tests/ffi-python/smoke.py` is the reference for Python consumers. It uses only the
+Python standard library. Legs:
 
-- Leg 1: `ad_abi_version()` vs `AD_ABI_VERSION_MAJOR` (header/dylib match)
-- Leg 2: every `ad_*_size()` getter vs its `AD_*_SIZE` macro (struct layout)
-- Leg 3: `ad_version()` → parse JSON → `ad_free_string` (basic pipeline)
-- Leg 4: `ad_adapter_create` → `ad_snapshot` → `ad_free_string` →
-  `ad_adapter_destroy` (full adapter lifecycle, stub passes through
-  `PLATFORM_NOT_SUPPORTED`)
+- Leg 1: `ad_abi_version()` vs `AD_ABI_VERSION_MAJOR`.
+- Leg 2: the size getters for `AdAction`, `AdActionResult`, `AdActionStep`,
+  `AdDragParams`, `AdElementState`, `AdRefEntry`, and `AdWaitArgs` vs their macros.
+- Leg 3: `ad_version()`, parse the JSON, `ad_free_string`.
+- Leg 4: `ad_adapter_create`, `ad_snapshot`, `ad_free_string`, `ad_adapter_destroy`.
+  A stub-adapter build yields a `PLATFORM_NOT_SUPPORTED` envelope.
 
 Run it:
 
@@ -114,7 +123,8 @@ AD_HEADER_PATH=crates/ffi/include/agent_desktop.h \
 python3 tests/ffi-python/smoke.py
 ```
 
-No `pip install` required — `smoke.py` uses the Python standard library only.
+`tests/ffi-python/README.md` covers the stub-adapter build and the `AD_EXPECT_*`
+switches.
 
 ## Minimal C example
 
@@ -147,22 +157,22 @@ int main(void) {
     // 4. Snapshot the focused window
     char *json_out = NULL;
     rc = ad_snapshot(adapter,
-                     NULL,   // app (null = focused window)
-                     0,      // surface = Window
-                     10,     // max_depth
-                     false,  // interactive_only
-                     false,  // compact
+                     NULL,                       // app (null = focused window)
+                     AD_SNAPSHOT_SURFACE_WINDOW, // surface
+                     10,                         // max_depth
+                     false,                      // interactive_only
+                     false,                      // compact
                      &json_out);
     if (rc == AD_RESULT_OK && json_out) {
         printf("%s\n", json_out);
-        // parse JSON to find @e refs in data.tree
+        // parse the JSON to find qualified refs in data.tree
         ad_free_string(json_out);
     } else if (json_out) {
-        // command-level error — ok:false envelope, still must free
+        // command-level error: ok:false envelope, still must free
         fprintf(stderr, "snapshot error: %s\n", json_out);
         ad_free_string(json_out);
     } else {
-        // infrastructure error — *out is null
+        // infrastructure error: *out is null
         fprintf(stderr, "snapshot failed: %s\n", ad_last_error_message());
     }
 
@@ -171,17 +181,18 @@ int main(void) {
 }
 ```
 
-Compile:
+Compile (macOS and Linux):
 
 ```sh
 clang -I./crates/ffi/include main.c \
       -L./target/release-ffi -lagent_desktop_ffi \
+      -Wl,-rpath,"$PWD/target/release-ffi" \
       -o snapshot_demo
-install_name_tool -change \
-    libagent_desktop_ffi.dylib \
-    @executable_path/target/release-ffi/libagent_desktop_ffi.dylib \
-    snapshot_demo
 ```
+
+The macOS install name is `@rpath/libagent_desktop_ffi.dylib`, so a linking consumer
+needs an rpath to the library's directory or dyld aborts at launch. `dlopen` and
+ctypes callers resolve by path and need nothing.
 
 ## Observe-act workflow in C
 
@@ -196,16 +207,15 @@ AdResult rc = ad_execute_by_ref(
     adapter,
     "@s8f3k2p9:e5", // qualified ref from snapshot data.tree
     &act,
-    0,            // policy = Headless
+    AD_POLICY_KIND_HEADLESS,
     &result
 );
 if (result) {
-    // parse JSON — ok:true on success, ok:false on STALE_REF etc.
+    // parse JSON: ok:true on success, ok:false on STALE_REF etc.
     printf("%s\n", result);
     ad_free_string(result);
 }
 if (rc != AD_RESULT_OK) {
-    const char *det = ad_last_error_details();  // may be NULL; treat as sensitive
     fprintf(stderr, "execute_by_ref failed (%d): %s\n",
             (int)rc, ad_last_error_message());
 }
@@ -217,30 +227,23 @@ To type text, set the action kind and text field:
 AdAction type_act = {0};
 type_act.kind = AD_ACTION_KIND_TYPE_TEXT;
 type_act.text = "hello";
-// TypeText defaults to focus_fallback via ad_execute_by_ref; explicit policy:
+// TypeText runs headless by default; opt in to focus fallback explicitly:
 rc = ad_execute_by_ref(adapter, "@s8f3k2p9:e3", &type_act,
                        AD_POLICY_KIND_FOCUS_FALLBACK, &result);
 ```
-
-## Threading reminder
-
-Adapter entrypoints may be called from any host thread. Keep native handles on
-the thread that resolved them and use snapshot-qualified refs across async or
-worker boundaries. Mutations are serialized by a canonical cross-process
-interaction lease. See [threading.md](threading.md).
 
 ## Minimal Python ctypes example
 
 ```python
 import ctypes, json
-from ctypes import c_int, c_int32, c_uint8, c_bool, c_char_p, POINTER, c_void_p
+from ctypes import c_int32, c_uint8, c_bool, c_char_p, POINTER, c_void_p
 
 lib = ctypes.CDLL("./target/release-ffi/libagent_desktop_ffi.dylib")
 
 # ABI handshake
 lib.ad_init.restype = c_int32
 lib.ad_init.argtypes = [ctypes.c_uint32]
-AD_ABI_VERSION_MAJOR = 5  # sync with header macro
+AD_ABI_VERSION_MAJOR = 6  # sync with header macro
 rc = lib.ad_init(AD_ABI_VERSION_MAJOR)
 assert rc == 0, f"ABI mismatch: rc={rc}"
 

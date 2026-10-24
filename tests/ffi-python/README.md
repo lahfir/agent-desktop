@@ -10,7 +10,9 @@ Proves the C ABI works from a non-Rust host (Python ctypes) and gates it in CI.
 | 2 | Every `ad_*_size()` getter equals the corresponding `AD_*_SIZE` macro (catches struct layout drift) |
 | 3 | `ad_version()` returns `ok:true` JSON with `data.version` (basic command pipeline) |
 | 4 | `ad_adapter_create` → `ad_snapshot` → `ad_free_string` → `ad_adapter_destroy` without crash or leak; stub adapter yields a clean `PLATFORM_NOT_SUPPORTED` envelope |
-| 5 | Opt-in (`AD_EXPECT_MACOS_HELPER=1`, run by `scripts/ci-ffi-helper-discovery-smoke.sh`): macOS helper discovery |
+| 5 | Opt-in (`AD_EXPECT_REAL=1`, optional `AD_APP`, default `gnome-calculator`): the real adapter returns a complete snapshot with refs for the named app on the main thread and on a worker thread. Run by `tests/linux-dist/run-consumer.sh` |
+| Linux helper | Opt-in (`AD_EXPECT_LINUX_HELPER=1` with `AD_HELPER_EMPTY_PATH`, run by `scripts/ci-ffi-helper-discovery-smoke.sh`): with an empty `PATH`, the library finds the clipboard owner beside it, a foreign GTK reader sees the text it sets, and clear empties the selection |
+| 6 | Opt-in (`AD_EXPECT_MACOS_HELPER=1`, run by `scripts/ci-ffi-helper-discovery-smoke.sh`): macOS helper discovery |
 
 ## Building the dylib
 
@@ -52,18 +54,29 @@ python3 tests/ffi-python/smoke.py
 Set `AD_EXPECT_STUB=1` when running the harness against a stub-adapter build.
 With this variable set, the harness fails if `ad_snapshot()` returns `ok:true`,
 which would indicate the dylib was **not** built with `--features stub-adapter`.
-CI always sets this variable so a real-adapter dylib cannot accidentally pass the
-stub-only gate.
+The stub Python smoke step on the macOS leg of the `ffi-panic-guard` CI job sets this variable so a real-adapter dylib cannot
+accidentally pass the stub-only gate.
 
 ## Dependencies
 
 `smoke.py` uses only the Python standard library (`ctypes`, `json`, `os`, `re`,
-`pathlib`, `sys`). No `pip install` required.
+`pathlib`, `sys`, `threading`). No `pip install` is required, except for the
+Linux helper leg: `linux_helper.py` reads the clipboard as a foreign GTK client
+and needs PyGObject with the GTK 3 typelib (`python3-gi`, `gir1.2-gtk-3.0`).
 
 ## Real-adapter happy path
 
-The smoke harness gates the AX-independent surface (ABI version, struct sizes,
-`ad_version`) and the `PLATFORM_NOT_SUPPORTED` passthrough path. The real-adapter
-happy path (a successful `ad_snapshot` with `ok:true`) is covered by the E2E
-harness (`tests/e2e/run.sh`), which requires AX permission and a release build
-without the stub feature.
+Legs 1 to 4 gate the permission-independent surface (ABI version, struct sizes,
+`ad_version`) and the `PLATFORM_NOT_SUPPORTED` passthrough path. A successful
+`ad_snapshot` with `ok:true` from the real adapter is covered elsewhere. On
+macOS, the native E2E harness covers it (`tests/e2e/run.sh`, whose `ffi_live.py`
+drives the release FFI library) and requires AX permission. On Linux, Leg 5
+covers it.
+
+## Other files
+
+| File | Purpose |
+|------|---------|
+| `linux_helper.py` | The Linux helper leg, and `verify_cli` for the installed CLI (used by `tests/linux-dist/run-npm-install.sh`) |
+| `test_linux_helper.py` | Unit tests for `linux_helper.py`: `python3 -I -m unittest discover -s tests/ffi-python -p 'test_linux_helper.py'` |
+| `leak_probe.py` | Linux only, not run by CI: `python3 tests/ffi-python/leak_probe.py <library.so> [--calls N]` points the library at a silent X11 TCP server and checks that repeated timed-out `ad_list_displays` calls keep the host's thread and descriptor counts flat |

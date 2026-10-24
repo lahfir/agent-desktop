@@ -15,7 +15,7 @@ set -euo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-files=(.githooks/pre-commit scripts/*.sh tests/e2e/*.sh)
+files=(.githooks/pre-commit scripts/*.sh tests/e2e/*.sh tests/e2e-linux/*.sh)
 for file in "${files[@]}"; do
     /bin/bash -n "$file"
 done

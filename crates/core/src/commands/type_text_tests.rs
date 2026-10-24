@@ -2,9 +2,9 @@ use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::commands::helpers::test_support::save_one_ref_snapshot;
 use crate::{
-    AdapterError, action_request::ActionRequest, action_result::ActionResult,
+    AdapterError, actions::action_request::ActionRequest, actions::action_result::ActionResult,
     adapter::NativeHandle, commands::stale_retry_test_support::StaleRetryCounter, refs::RefEntry,
-    refs_test_support::HomeGuard,
+    refs::refs_test_support::HomeGuard,
 };
 use std::sync::Mutex;
 
@@ -34,7 +34,7 @@ impl ObservationOps for StaleThenOkAdapter {
     crate::adapter::complete_live_observation!(
         "textfield",
         "Target",
-        [crate::capability::TYPE_TEXT],
+        [crate::actions::capability::TYPE_TEXT],
         adapter => crate::ElementState {
             role: "textfield".into(),
             states: Vec::new(),
@@ -114,4 +114,12 @@ fn timeout_none_makes_exactly_one_resolve_attempt() {
 
     assert_eq!(err.code(), "STALE_REF");
     assert_eq!(adapter.retry.calls(), 1);
+}
+
+#[test]
+fn default_budget_grows_with_the_payload() {
+    assert_eq!(default_timeout_ms(""), 5_000);
+    assert_eq!(default_timeout_ms("abc"), 5_090);
+    assert_eq!(default_timeout_ms("é你"), 5_060);
+    assert_eq!(default_timeout_ms(&"x".repeat(2_000)), 65_000);
 }

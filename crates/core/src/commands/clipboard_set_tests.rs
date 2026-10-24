@@ -1,6 +1,7 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{AdapterError, ErrorCode};
+use std::io::Write;
 use std::sync::Mutex;
 
 struct LocalDouble {
@@ -26,7 +27,7 @@ impl InputOps for LocalDouble {
         &self,
         content: &ClipboardContent,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         let stored = match content {
             ClipboardContent::Text(text) => ClipboardContent::Text(text.clone()),
             ClipboardContent::Image(image) => ClipboardContent::Image(ImageBuffer {
@@ -39,7 +40,7 @@ impl InputOps for LocalDouble {
             ClipboardContent::FileUrls(urls) => ClipboardContent::FileUrls(urls.clone()),
         };
         *self.seen.lock().unwrap() = Some(stored);
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -85,9 +86,12 @@ fn omitted_text_defaults_to_empty_string_not_error() {
 fn missing_file_url_reports_invalid_args_with_count_and_index_only() {
     let existing = std::env::temp_dir().join(format!(
         "agent-desktop-clipboard-set-test-{}.txt",
-        std::process::id()
+        crate::refs::new_snapshot_id()
     ));
-    std::fs::write(&existing, b"present").unwrap();
+    std::fs::File::create_new(&existing)
+        .unwrap()
+        .write_all(b"present")
+        .unwrap();
 
     let double = LocalDouble::new();
     let err = execute(
@@ -129,14 +133,17 @@ fn missing_file_url_reports_invalid_args_with_count_and_index_only() {
 fn image_flag_reads_bytes_and_dimensions_from_file() {
     let path = std::env::temp_dir().join(format!(
         "agent-desktop-clipboard-set-image-{}.png",
-        std::process::id()
+        crate::refs::new_snapshot_id()
     ));
     let bytes = vec![
         137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 4,
         0, 0, 0, 181, 28, 12, 2, 0, 0, 0, 11, 73, 68, 65, 84, 120, 218, 99, 100, 248, 15, 0, 1, 5,
         1, 1, 39, 24, 227, 102, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
     ];
-    std::fs::write(&path, &bytes).unwrap();
+    std::fs::File::create_new(&path)
+        .unwrap()
+        .write_all(&bytes)
+        .unwrap();
 
     let double = LocalDouble::new();
     let out = execute(
@@ -183,9 +190,12 @@ fn missing_image_path_reports_invalid_args() {
 fn file_urls_take_priority_over_text_and_image() {
     let existing = std::env::temp_dir().join(format!(
         "agent-desktop-clipboard-set-priority-{}.txt",
-        std::process::id()
+        crate::refs::new_snapshot_id()
     ));
-    std::fs::write(&existing, b"present").unwrap();
+    std::fs::File::create_new(&existing)
+        .unwrap()
+        .write_all(b"present")
+        .unwrap();
 
     let double = LocalDouble::new();
     let out = execute(

@@ -37,6 +37,19 @@ fn drain_recorder() -> Vec<Delivery> {
         .unwrap_or_default()
 }
 
+fn require_snapshot_event(deliveries: &[Delivery]) -> &Delivery {
+    deliveries
+        .iter()
+        .find(|d| d.message.contains("tree: snapshot"))
+        .unwrap_or_else(|| {
+            let seen: Vec<String> = deliveries
+                .iter()
+                .map(|d| d.message.chars().take(80).collect())
+                .collect();
+            panic!("no \"tree: snapshot\" event delivered; saw {seen:?}")
+        })
+}
+
 fn emit_scoped_ffi_event() {
     with_adapter(|adapter| unsafe {
         let mut out = std::ptr::null_mut();
@@ -58,14 +71,7 @@ fn log_callback_register_delivers_event() {
     emit_scoped_ffi_event();
 
     let deliveries = drain_recorder();
-    assert!(
-        !deliveries.is_empty(),
-        "at least one delivery expected after the snapshot tree debug event"
-    );
-    let d = deliveries
-        .iter()
-        .find(|d| d.message.contains("tree: snapshot"))
-        .unwrap_or(&deliveries[0]);
+    let d = require_snapshot_event(&deliveries);
     assert_eq!(d.level, 4, "DEBUG maps to level 4");
     assert!(!d.message.is_empty(), "message must be non-empty");
 
@@ -88,10 +94,7 @@ fn log_callback_spawned_thread_does_not_panic() {
     handle.join().expect("spawned thread must not panic");
 
     let deliveries = drain_recorder();
-    assert!(
-        !deliveries.is_empty(),
-        "spawned-thread event must reach the callback"
-    );
+    require_snapshot_event(&deliveries);
 
     unsafe {
         let _ = ad_set_log_callback(None);

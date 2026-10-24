@@ -1,9 +1,8 @@
 use agent_desktop_core::{AdapterError, AppInfo, AppPresentation, Deadline, ProcessId};
 
-use super::permissions::ensure_budget;
 use super::process_identity;
-use super::window_enum::{EnumeratedWindow, enumerate_top_level};
-use super::window_ops::passes_filter;
+use super::window::window_enum::{EnumeratedWindow, enumerate_top_level};
+use super::window::window_ops::passes_filter;
 
 const PROTECTED_PROCESSES: &[&str] = &[
     "csrss.exe",
@@ -32,7 +31,7 @@ pub(crate) fn is_protected_process(identifier: &str) -> bool {
 /// `list_apps` joins the window inventory's owning processes with this
 /// snapshot so the two inventories corroborate each other on
 /// `process_instance` (mirroring
-/// `crates/macos/src/system/app_inventory.rs:133-146` where two sources must
+/// `crates/macos/src/system/app/app_inventory.rs:133-146` where two sources must
 /// agree or the inventory fails).
 #[derive(Debug, Clone)]
 pub(crate) struct ProcessRow {
@@ -99,7 +98,7 @@ fn owning_processes(deadline: Deadline) -> Result<Vec<EnumeratedWindow>, Adapter
     let mut seen = 0usize;
     enumerate_top_level(|window| {
         if seen > 0 {
-            if let Err(error) = ensure_budget(deadline) {
+            if let Err(error) = deadline.ensure_remaining() {
                 *failure.borrow_mut() = Some(error);
                 return false;
             }
@@ -138,7 +137,7 @@ fn owning_processes(_deadline: Deadline) -> Result<Vec<EnumeratedWindow>, Adapte
 /// enumeration when the budget is already spent and checking it again
 /// between the per-window process-handle reads the assembly loop performs.
 pub(crate) fn list_apps_live(deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     let owners = owning_processes(deadline)?;
     let snapshot = process_snapshot()?;
     let snapshot_by_pid: std::collections::HashMap<u32, &ProcessRow> = snapshot
@@ -150,7 +149,7 @@ pub(crate) fn list_apps_live(deadline: Deadline) -> Result<Vec<AppInfo>, Adapter
     let mut apps = Vec::new();
     for (index, window) in owners.into_iter().enumerate() {
         if index > 0 {
-            ensure_budget(deadline)?;
+            deadline.ensure_remaining()?;
         }
         let Some((pid, token)) = process_token_of(window.handle) else {
             continue;
@@ -185,11 +184,11 @@ pub(crate) fn list_apps_live(deadline: Deadline) -> Result<Vec<AppInfo>, Adapter
 
 /// The owner pid + token for a window, reusing the identity path.
 fn process_token_of(
-    handle: super::window_enum::WindowHandle,
+    handle: super::window::window_enum::WindowHandle,
 ) -> Option<(ProcessId, Option<String>)> {
     #[cfg(target_os = "windows")]
     {
-        let pid = super::window_identity::live_window_owner(handle)?;
+        let pid = super::window::window_identity::live_window_owner(handle)?;
         let token = process_identity::token_for_pid(pid).ok().flatten();
         Some((pid, token))
     }
@@ -209,11 +208,11 @@ pub(super) mod enumeration_calls {
     }
 
     pub(super) fn record() {
-        crate::system::call_counter::record(&COUNT);
+        crate::system::fixture::call_counter::record(&COUNT);
     }
 
     pub(super) fn take() -> usize {
-        crate::system::call_counter::take(&COUNT)
+        crate::system::fixture::call_counter::take(&COUNT)
     }
 }
 

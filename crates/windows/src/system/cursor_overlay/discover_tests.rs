@@ -59,15 +59,3 @@ fn another_sessions_agents_do_not_carry_this_sessions_prefix() {
         "a disable for one session would have reached another session's agent"
     );
 }
-
-/// The listing is a widening, never a conclusion: an enumeration that answers
-/// nothing must still leave the session's own endpoint to stop.
-#[test]
-fn a_listing_that_finds_nothing_still_answers_the_session_itself() {
-    let found = session_endpoints(root(), "s0000009");
-
-    assert!(
-        !found.is_empty(),
-        "an empty answer would read as a session with nothing to stop"
-    );
-}

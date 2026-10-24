@@ -48,7 +48,7 @@ fn permission_report_through_the_trait_probes_instead_of_defaulting() {
 #[cfg(target_os = "windows")]
 #[test]
 fn the_activation_path_acquires_a_windows_lease_and_settles() {
-    crate::system::test_support::with_interaction_lease_test_lock(|| {
+    crate::system::fixture::test_support::with_interaction_lease_test_lock(|| {
         let adapter = WindowsAdapter::new();
         let lease = SystemOps::acquire_interaction_lease(&adapter, Deadline::after(5_000).unwrap())
             .expect("the Windows lease override must not show up as not_supported");
@@ -60,17 +60,6 @@ fn the_activation_path_acquires_a_windows_lease_and_settles() {
         )
         .expect("activation is the settle, which succeeds");
     });
-}
-
-/// The sheet surface specifically, reached through the `SystemOps` trait
-/// object rather than the inherent method. The full advertised vector is
-/// asserted by `supported_surfaces_advertises_window_focused_and_sheet`.
-#[test]
-fn sheet_is_among_the_surfaces_advertised_through_the_trait() {
-    use agent_desktop_core::{SnapshotSurface, SystemOps as _};
-
-    let surfaces = WindowsAdapter::new().supported_surfaces();
-    assert!(surfaces.contains(&SnapshotSurface::Sheet));
 }
 
 /// Pins that `is_blocked_combo` is actually overridden here, reached

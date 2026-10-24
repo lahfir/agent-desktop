@@ -3,17 +3,17 @@ use super::{
     unsupported_error, visibility_verified,
 };
 use crate::adapter::WindowsAdapter;
-use crate::system::hresult::{
+use crate::system::fixture::test_time::deadline;
+use crate::system::runtime::hresult::{
     E_ACCESSDENIED, RPC_E_DISCONNECTED, UIA_E_ELEMENTNOTAVAILABLE, com_hresult_detail,
 };
-use crate::system::test_time::deadline;
 use crate::tree::automation::{UiaFailure, automation_client};
 use crate::tree::element::UIAElement;
+use crate::tree::fixture::fixture_window;
 use crate::tree::fixture::{LocalFixture, ensure_test_apartment};
-use crate::tree::fixture_window;
+use crate::tree::properties::property_ids::TreeProperty;
+use crate::tree::properties::property_outcome::{PropertyOutcome, PropertyValue};
 use crate::tree::properties::{read_one, rect_has_area};
-use crate::tree::property_ids::TreeProperty;
-use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
 use agent_desktop_core::{
     ActionOps, AdapterError, DeliveryDisposition, DeliverySemantics, ErrorCode, InteractionLease,
     Rect,
@@ -173,13 +173,13 @@ fn degenerate_after_state_is_delivered_unverified_not_not_delivered() {
 }
 
 #[test]
-fn degenerate_before_and_after_is_delivered_unverified() {
+fn degenerate_before_state_is_delivered_unverified() {
     let error = finish_observation(
         Some(rect(0.0, 0.0, 0.0, 0.0)),
-        Some(rect(0.0, 0.0, 0.0, 0.0)),
+        Some(rect(10.0, 10.0, 20.0, 20.0)),
         None,
     )
-    .expect_err("degenerate both");
+    .expect_err("degenerate before");
     assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
     assert_ne!(error.disposition, DeliverySemantics::not_delivered());
 }

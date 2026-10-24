@@ -1,6 +1,6 @@
 use crate::{
     AppError,
-    action::Action,
+    actions::action::Action,
     adapter::PlatformAdapter,
     commands::helpers::{RefArgs, execute_ref_action_with_context},
     context::CommandContext,

@@ -11,7 +11,7 @@ Set-StrictMode -Version 2.0
 
 
 function Invoke-ContendedFocusStealLeg {
-    <# R17b(c): docs/phases.md 2.9's focus-steal budget of 2 rests on A21-6,
+    <# The focus-steal budget of 2 rests on A21-6,
        an UNCONTENDED capture (0/5 both attempts); the contended re-measure
        is assigned here because this file already stages open-duplicate-windows
        + ForegroundStage. Judged only by a raw GetForegroundWindow re-read,

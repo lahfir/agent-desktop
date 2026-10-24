@@ -6,7 +6,7 @@
 
 .DESCRIPTION
     Evaluates both open arms of the two-source menu detector
-    (crates/windows/src/system/menu_state.rs) against real hosts, reading the
+    (crates/windows/src/system/menu/menu_state.rs) against real hosts, reading the
     shipped sources DIRECTLY rather than through the product, the way
     24-fixture-e2e/08-chromium-content.ps1 reads them:
 

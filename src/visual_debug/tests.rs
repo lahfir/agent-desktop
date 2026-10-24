@@ -1,6 +1,7 @@
 use super::*;
 use agent_desktop_core::{AccessibilityNode, AdapterError, ErrorCode};
 use clap::Parser;
+use std::io::Write;
 
 fn command(args: &[&str]) -> Commands {
     crate::Cli::try_parse_from(std::iter::once("agent-desktop").chain(args.iter().copied()))
@@ -132,7 +133,10 @@ fn visual_debug_post_capture_failure_preserves_success_and_compact_output() {
 #[test]
 fn visual_debug_never_overwrites_existing_artifact() {
     let path = output_path();
-    std::fs::write(&path, "keep").unwrap();
+    std::fs::File::create_new(&path)
+        .unwrap()
+        .write_all("keep".as_ref())
+        .unwrap();
     let options = DebugOptions {
         verbose: false,
         debug: true,

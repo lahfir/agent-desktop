@@ -59,10 +59,16 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
         },
         scale,
     };
-    let mut surface = Surface::transparent(
-        bounds.width.ceil() as i32 + 1,
-        bounds.height.ceil() as i32 + 1,
-    );
+    let Some(mut surface) =
+        surface_extent(&bounds).and_then(|(width, height)| Surface::try_transparent(width, height))
+    else {
+        return Composed {
+            origin: mapping.origin,
+            surface: Surface::empty(),
+            text_rect: None,
+            card_rect: None,
+        };
+    };
 
     if let Some(highlight) = highlighted {
         rounded::draw_highlight(
@@ -116,6 +122,15 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
         text_rect,
         card_rect,
     }
+}
+
+fn surface_extent(bounds: &Rect) -> Option<(i32, i32)> {
+    let extent = |value: f64| {
+        let pixels = value.ceil();
+        (pixels.is_finite() && (0.0..f64::from(i32::MAX)).contains(&pixels))
+            .then(|| pixels as i32 + 1)
+    };
+    Some((extent(bounds.width)?, extent(bounds.height)?))
 }
 
 #[cfg(test)]

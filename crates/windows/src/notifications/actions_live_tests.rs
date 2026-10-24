@@ -10,14 +10,14 @@ use crate::notifications::session::ActionCenterSession;
 use crate::notifications::toast_support::{
     self, StagedToast, TOAST_BODY, TOAST_BODY_SECOND, TOAST_TITLE, TOAST_TITLE_SECOND,
 };
-use crate::system::raise_oracle::{responded_since, witness_desktop};
-use crate::system::shell_surface::resolve_surface;
-use crate::system::shell_surface_open::close_surface;
-use crate::system::test_support::{
+use crate::system::fixture::test_support::{
     SHELL_SURFACE_LOCK, or_skip_shell, wait_for_foreground_to_settle,
 };
+use crate::system::shell::raise_oracle::{responded_since, witness_desktop};
+use crate::system::shell::shell_surface::resolve_surface;
+use crate::system::shell::shell_surface_open::close_surface;
 
-use crate::system::test_time::{deadline, headed};
+use crate::system::fixture::test_time::{deadline, headed};
 
 fn foreground() -> isize {
     use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;

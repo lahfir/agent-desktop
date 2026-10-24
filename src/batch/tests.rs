@@ -1,7 +1,7 @@
 use super::*;
 use crate::cli_args::Surface;
 use crate::test_noop_ops::NoopAdapter;
-use agent_desktop_core::{PermissionReport, output::ENVELOPE_VERSION};
+use agent_desktop_core::{PermissionReport, response::output::ENVELOPE_VERSION};
 use clap::CommandFactory;
 
 fn item(command: &str, args: Value) -> BatchCommand {

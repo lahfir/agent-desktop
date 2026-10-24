@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-Please report security vulnerabilities through GitHub private vulnerability reporting for this repository.
+Please report security vulnerabilities through [GitHub private vulnerability reporting](https://github.com/lahfir/agent-desktop/security/advisories/new) for this repository.
 
 Do not open a public issue for suspected vulnerabilities. Include the affected version or commit, reproduction steps, expected impact, and any relevant logs or proof-of-concept details.
 

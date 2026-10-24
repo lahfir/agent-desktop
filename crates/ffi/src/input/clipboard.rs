@@ -77,7 +77,7 @@ pub unsafe extern "C" fn ad_set_clipboard(
             .inner
             .set_clipboard_content(&ClipboardContent::Text(text), &lease)
         {
-            Ok(()) => AdResult::Ok,
+            Ok(_) => AdResult::Ok,
             Err(e) => {
                 error::set_last_error(&e);
                 error::last_error_code()
@@ -97,7 +97,7 @@ pub unsafe extern "C" fn ad_clear_clipboard(adapter: *const AdAdapter) -> AdResu
         let adapter = crate::adapter::acquire_adapter!(adapter);
         let lease = crate::operation::interaction_lease!(adapter.inner.as_ref());
         match adapter.inner.clear_clipboard(&lease) {
-            Ok(()) => AdResult::Ok,
+            Ok(_) => AdResult::Ok,
             Err(e) => {
                 error::set_last_error(&e);
                 error::last_error_code()

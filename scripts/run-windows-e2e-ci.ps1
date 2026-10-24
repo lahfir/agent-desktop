@@ -3,7 +3,8 @@
 .SYNOPSIS
     The Windows analog of scripts/run-native-e2e-ci.sh: the operator-run
     entry point that builds and runs the exclusive tests/e2e-windows suite
-    on a box holding the interactive session. No CI workflow invokes it.
+    on a box holding the interactive session. No CI workflow runs the suite
+    through it; CI runs only the self-test of its refusal guard.
 
 .DESCRIPTION
     Mirrors run-native-e2e-ci.sh line for line in intent, including the

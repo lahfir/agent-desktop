@@ -127,7 +127,7 @@ mod tests {
             None,
             &agent_desktop_core::IdentifierEvidence::absent(),
             &agent_desktop_core::LocatorField::Known(vec![
-                agent_desktop_core::capability::CLICK.into(),
+                agent_desktop_core::actions::capability::CLICK.into(),
             ]),
         );
 

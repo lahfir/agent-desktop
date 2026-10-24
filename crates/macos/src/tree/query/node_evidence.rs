@@ -52,9 +52,9 @@ fn direct_wrapper_identity_is_empty(
 fn is_structural_action(action: &str) -> bool {
     matches!(
         action,
-        agent_desktop_core::capability::RIGHT_CLICK
-            | agent_desktop_core::capability::SCROLL_TO
-            | agent_desktop_core::capability::SET_FOCUS
+        agent_desktop_core::actions::capability::RIGHT_CLICK
+            | agent_desktop_core::actions::capability::SCROLL_TO
+            | agent_desktop_core::actions::capability::SET_FOCUS
     )
 }
 
@@ -82,6 +82,7 @@ pub(crate) fn unknown() -> LocatorEvidence {
         identifiers: IdentifierEvidence::unknown(),
         states: LocatorField::Unknown,
         ref_evidence: LocatorRefEvidence {
+            window_bounds: LocatorField::Absent,
             bounds: LocatorField::Unknown,
             available_actions: LocatorField::Unknown,
             descriptors: Default::default(),
@@ -90,7 +91,7 @@ pub(crate) fn unknown() -> LocatorEvidence {
 }
 
 pub(crate) fn identifiers(
-    identifiers: &crate::tree::node_identifiers::NodeIdentifiers,
+    identifiers: &crate::tree::properties::node_identifiers::NodeIdentifiers,
     requested: bool,
 ) -> IdentifierEvidence {
     if !requested {
@@ -124,7 +125,7 @@ mod tests {
 
     #[test]
     fn dom_identifier_is_preferred_without_discarding_ax_identifier() {
-        let identifiers = crate::tree::node_identifiers::NodeIdentifiers::from_fields(
+        let identifiers = crate::tree::properties::node_identifiers::NodeIdentifiers::from_fields(
             LocatorField::Known("native-save".into()),
             LocatorField::Known("dom-save".into()),
         );
@@ -142,7 +143,7 @@ mod tests {
 
     #[test]
     fn equal_strings_remain_distinct_across_identifier_kinds() {
-        let identifiers = crate::tree::node_identifiers::NodeIdentifiers::from_fields(
+        let identifiers = crate::tree::properties::node_identifiers::NodeIdentifiers::from_fields(
             LocatorField::Known("shared".into()),
             LocatorField::Known("shared".into()),
         );
@@ -197,7 +198,8 @@ mod tests {
         ));
 
         name.native_title = None;
-        let actions = LocatorField::Known(vec![agent_desktop_core::capability::CLICK.into()]);
+        let actions =
+            LocatorField::Known(vec![agent_desktop_core::actions::capability::CLICK.into()]);
         assert!(!is_transparent_wrapper(
             Some("AXGenericElement"),
             None,
@@ -212,9 +214,9 @@ mod tests {
     fn structural_actions_do_not_make_anonymous_groups_consume_depth() {
         let (name, identifiers, _) = inert_generic_wrapper();
         let actions = LocatorField::Known(vec![
-            agent_desktop_core::capability::RIGHT_CLICK.into(),
-            agent_desktop_core::capability::SCROLL_TO.into(),
-            agent_desktop_core::capability::SET_FOCUS.into(),
+            agent_desktop_core::actions::capability::RIGHT_CLICK.into(),
+            agent_desktop_core::actions::capability::SCROLL_TO.into(),
+            agent_desktop_core::actions::capability::SET_FOCUS.into(),
         ]);
 
         assert!(is_transparent_wrapper(

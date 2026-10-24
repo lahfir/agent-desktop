@@ -1,5 +1,11 @@
 use std::process::Command;
 
+#[path = "cli_process_support.rs"]
+mod support;
+
+#[path = "cli_parse_error_tests.rs"]
+mod parse_error_tests;
+
 fn binary() -> Command {
     Command::new(env!("CARGO_BIN_EXE_agent-desktop"))
 }
@@ -270,11 +276,19 @@ fn run_batch(dir: &std::path::Path, cmds: serde_json::Value, extra: &[&str]) -> 
         .args(extra)
         .env("AGENT_DESKTOP_HOME", dir);
     let o = c.output().expect("batch runs");
-    serde_json::from_slice(&o.stdout).unwrap()
+    serde_json::from_slice(&o.stdout).unwrap_or_else(|error| {
+        panic!(
+            "batch stdout is not JSON: {error}; stderr: {}",
+            String::from_utf8_lossy(&o.stderr)
+        )
+    })
 }
 
 #[test]
 fn batch_entry_after_mid_batch_session_end_is_skipped_without_aborting_batch() {
+    if support::run_in_private_session() {
+        return;
+    }
     let dir = unique_temp_dir("cli-batch-session-end");
     let session_id = start_session_in_dir(&dir);
     let data = run_batch(
@@ -328,7 +342,10 @@ fn batch_entry_after_mid_batch_session_end_is_skipped_without_aborting_batch() {
 }
 
 #[test]
-fn batch_session_ended_skip_is_defeated_by_following_event_wait_cross_session() {
+fn batch_session_ended_skip_leaves_a_following_entry_of_another_session_running() {
+    if support::run_in_private_session() {
+        return;
+    }
     let dir = unique_temp_dir("cli-batch-session-end-wait-cross");
     let sid_a = start_session_in_dir(&dir);
     let sid_b = start_session_in_dir(&dir);
@@ -337,7 +354,7 @@ fn batch_session_ended_skip_is_defeated_by_following_event_wait_cross_session() 
         serde_json::json!([
             {"command": "session", "session": sid_a, "args": {"action": "end"}},
             {"command": "clipboard-clear", "session": sid_a, "args": {}},
-            {"command": "wait", "session": sid_b, "args": {"event": "window-opened", "timeout": 100}},
+            {"command": "version", "session": sid_b, "args": {}},
             {"command": "version", "args": {}}
         ]),
         &[],
@@ -347,14 +364,17 @@ fn batch_session_ended_skip_is_defeated_by_following_event_wait_cross_session() 
     assert_eq!(results[1]["not_started_reason"], "session_ended", "{env}");
     assert_eq!(
         results[2]["execution"], "completed",
-        "wait dispatched: {env}"
+        "entry of the other session dispatched: {env}"
     );
     assert!(env["data"].get("stopped").is_none(), "{env}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
-fn batch_session_ended_skip_is_defeated_by_following_event_wait_same_session() {
+fn batch_session_ended_skip_covers_a_following_entry_of_the_same_session() {
+    if support::run_in_private_session() {
+        return;
+    }
     let dir = unique_temp_dir("cli-batch-session-end-wait-same");
     let sid_a = start_session_in_dir(&dir);
     let env = run_batch(
@@ -362,7 +382,7 @@ fn batch_session_ended_skip_is_defeated_by_following_event_wait_same_session() {
         serde_json::json!([
             {"command": "session", "session": sid_a, "args": {"action": "end"}},
             {"command": "clipboard-clear", "session": sid_a, "args": {}},
-            {"command": "wait", "session": sid_a, "args": {"event": "window-opened", "timeout": 100}},
+            {"command": "version", "session": sid_a, "args": {}},
             {"command": "version", "args": {}}
         ]),
         &[],
@@ -372,7 +392,7 @@ fn batch_session_ended_skip_is_defeated_by_following_event_wait_same_session() {
     assert_eq!(results[1]["not_started_reason"], "session_ended", "{env}");
     assert_eq!(
         results[2]["not_started_reason"], "session_ended",
-        "wait skipped: {env}"
+        "entry of the ended session skipped: {env}"
     );
     assert!(env["data"].get("stopped").is_none(), "{env}");
     let _ = std::fs::remove_dir_all(&dir);

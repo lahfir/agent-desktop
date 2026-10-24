@@ -7,7 +7,7 @@
     (`keybd_event`/`mouse_event` - real synthesized input the OS delivers
     through normal input processing, never a message posted directly into a
     window's queue) and a per-thread classic menu-mode reader mirroring
-    `crates/windows/src/system/menu_state.rs`'s `classic_menu_mode_active`
+    `crates/windows/src/system/menu/menu_state.rs`'s `classic_menu_mode_active`
     (`GetGUIThreadInfo` asked per thread of a named pid, not the foreground
     thread `NativeDesktop.psm1`'s `Get-NativeGuiThreadInfo` answers for).
     Split from Native.psm1/NativeTypes.psm1 rather than added there, both to

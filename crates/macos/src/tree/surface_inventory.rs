@@ -1,4 +1,4 @@
-use crate::tree::{AXElement, element::element_for_pid};
+use crate::tree::{AXElement, properties::element::element_for_pid};
 use agent_desktop_core::{AdapterError, SurfaceInfo};
 use std::time::Instant;
 

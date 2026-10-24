@@ -1,7 +1,8 @@
 //! Windows hardening for core's five private-file primitives.
 //!
-//! Four measured behaviors drive four modules: per-component reparse-point
-//! rejection (`path`), `ReplaceFileW`-based atomic promotion with a
+//! Five measured behaviors drive five modules: per-component reparse-point
+//! rejection (`path`), inherited-DACL protection (`dacl`),
+//! `ReplaceFileW`-based atomic promotion with a
 //! write-scoped temp lease (`replace`), owner-eligible-SID foreign-principal
 //! detection (`owner`), and control-call-disciplined storage locality
 //! (`locality`). Each override mirrors the portable default's observable
@@ -9,20 +10,10 @@
 //! nonce temp naming, and the bounded-read limits — and adds only the
 //! hardening the measured evidence justifies.
 //!
-//! Deliberately absent: descriptor authoring and DACL validation. A freshly
-//! created leaf under the user profile inherits its parent's ACL —
-//! `NT AUTHORITY\SYSTEM`, `BUILTIN\Administrators`, and the user, with no
-//! `BUILTIN\Users` — while a `ReplaceFileW` rewrite instead keeps the DACL of
-//! the leaf it replaces: for our own artifacts the same SYSTEM/Administrators/
-//! user grants with no `BUILTIN\Users`, though re-materialized as explicit
-//! ACEs rather than inherited ones. Either way the security-relevant grants
-//! carry across, so authoring would re-state what Windows grants and
-//! validating would re-check it with exactly the ACE-parsing code whose
-//! `AceSize` handling sank the deleted v0.5.0 layer. Nothing here calls the
-//! ACL/ACE family, a test pins that absence, and a structural test pins the
-//! inherited grants on the freshly created leaf and the same principals'
-//! survival across the replace path so an OS change breaks a test rather than
-//! the product.
+//! State roots may be redirected by configuration, so their existing ACLs
+//! are not assumed to match the user's profile defaults. Each private parent
+//! is protected to SYSTEM, Administrators, and owner-eligible token SIDs;
+//! files are checked before reads or replacement.
 //!
 //! Locality gates only the write surfaces (atomic writes, appends, lock
 //! opens); reads stay ungated so observation commands keep working wherever
@@ -35,6 +26,7 @@
 //! pre-creation by a genuinely foreign principal and are not, and cannot be,
 //! an isolation boundary between administrators.
 
+pub(crate) mod dacl;
 mod locality;
 pub(crate) mod owner;
 mod path;
@@ -79,12 +71,13 @@ impl PrivateFileOps for WindowsPrivateFile {
     fn open_private_append(&self, path: &Path) -> std::io::Result<File> {
         let _chain = path
             .parent()
-            .map(path::require_reparse_free_directory_chain)
+            .map(path::require_private_directory_chain)
             .transpose()?;
         let mut options = OpenOptions::new();
         options.read(true).create(true).append(true);
         let file = path::open_leaf_regular_no_follow(path, &mut options, "private append target")?;
         owner::require_owned_by_eligible_principal(&file, "private append target")?;
+        dacl::require_private(&file)?;
         locality::require_local_for_private_write(&file, "private append target")?;
         Ok(file)
     }
@@ -98,6 +91,7 @@ impl PrivateFileOps for WindowsPrivateFile {
         options.read(true).write(true).create(create);
         let file = path::open_leaf_regular_no_follow(path, &mut options, "private lock file")?;
         owner::require_owned_by_eligible_principal(&file, "private lock file")?;
+        dacl::require_private(&file)?;
         locality::require_local_for_private_write(&file, "private lock file")?;
         Ok(file)
     }
@@ -125,12 +119,16 @@ pub(crate) fn read_private_bounded_path(path: &Path, max_bytes: u64) -> std::io:
     options.read(true);
     let file = path::open_leaf_regular_no_follow(path, &mut options, "private file")?;
     owner::require_owned_by_eligible_principal(&file, "private file")?;
+    dacl::require_private(&file)?;
     bounded_read(file, max_bytes)
 }
 
 fn validate_destination_if_present(path: &Path) -> std::io::Result<()> {
     match path::open_leaf_for_validation(path, "private file destination") {
-        Ok(file) => owner::require_owned_by_eligible_principal(&file, "private file destination"),
+        Ok(file) => {
+            owner::require_owned_by_eligible_principal(&file, "private file destination")?;
+            dacl::require_private(&file)
+        }
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),
     }
@@ -138,7 +136,8 @@ fn validate_destination_if_present(path: &Path) -> std::io::Result<()> {
 
 fn validate_written_destination(path: &Path) -> std::io::Result<()> {
     let file = path::open_leaf_for_validation(path, "replaced private file")?;
-    owner::require_owned_by_eligible_principal(&file, "replaced private file")
+    owner::require_owned_by_eligible_principal(&file, "replaced private file")?;
+    dacl::require_private(&file)
 }
 
 fn write_all_and_sync(mut file: File, bytes: &[u8]) -> std::io::Result<()> {

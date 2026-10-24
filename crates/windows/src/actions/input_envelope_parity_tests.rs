@@ -10,7 +10,7 @@ use crate::input::{
     DragReleaseGuard, KeyReleaseGuard, NormalizedPoint, ensure_chunk_budget,
     keyboard_send_fake_sink as key_sink, mouse_send_fake_sink as mouse_sink, preflight_text,
 };
-use crate::system::test_time::deadline;
+use crate::system::fixture::test_time::deadline;
 use agent_desktop_core::{
     Action, ActionResult, ActionStep, AdapterError, AppError, Deadline, DeliverySemantics,
     ErrorCode, ErrorPayload, InteractionPolicy, KeyCombo, MouseButton, Point, Rect,

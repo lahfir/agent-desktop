@@ -54,14 +54,14 @@ fn prepare_target(
     policy: InteractionPolicy,
     deadline: Deadline,
     delivery: &mut crate::actions::DeliveryTracker,
-) -> Result<crate::system::process_identity::ProcessIdentity, AdapterError> {
+) -> Result<crate::system::process::process_identity::ProcessIdentity, AdapterError> {
     if !policy.allow_focus_steal {
         return Err(AdapterError::policy_denied_for_policy(
             "Physical keyboard fallback requires focus permission",
             policy,
         ));
     }
-    let pid = crate::system::app_ops::pid_from_element(element, deadline)
+    let pid = crate::system::app::app_ops::pid_from_element(element, deadline)
         .filter(|pid| *pid > 0)
         .ok_or_else(|| {
             AdapterError::new(
@@ -69,8 +69,8 @@ fn prepare_target(
                 "Keyboard target no longer has a valid owning process",
             )
         })?;
-    let identity =
-        crate::system::process_identity::ProcessIdentity::capture(pid)?.ok_or_else(|| {
+    let identity = crate::system::process::process_identity::ProcessIdentity::capture(pid)?
+        .ok_or_else(|| {
             AdapterError::new(
                 ErrorCode::StaleRef,
                 "Keyboard target process exited before physical input preparation",
@@ -97,7 +97,7 @@ fn prepare_target(
 
 fn verify_delivery_target(
     expected: &AXElement,
-    identity: crate::system::process_identity::ProcessIdentity,
+    identity: crate::system::process::process_identity::ProcessIdentity,
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
     if !identity.still_matches()? {
@@ -115,8 +115,10 @@ fn target_window(
     deadline: Deadline,
 ) -> Result<Option<AXElement>, AdapterError> {
     prepare(element, deadline)?;
-    let result = crate::tree::attributes::copy_element_attr_result(element, "AXWindow", deadline);
-    ensure_budget(deadline)?;
+    let result = crate::tree::properties::attributes::copy_element_attr_result(
+        element, "AXWindow", deadline,
+    );
+    deadline.ensure_remaining()?;
     result.map_err(|error| read_error("AXWindow", error))
 }
 
@@ -130,7 +132,7 @@ fn wait_for_focused_element(
         if focused_element_matches(expected, pid, deadline)? {
             return Ok(());
         }
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         if Instant::now() >= local_deadline {
             return Err(AdapterError::timeout(
                 "Target element did not become focused before keyboard delivery",
@@ -165,23 +167,18 @@ fn focused_element_matches(
 ) -> Result<bool, AdapterError> {
     let app = crate::tree::element_for_pid(pid);
     prepare(&app, deadline)?;
-    let result =
-        crate::tree::attributes::copy_element_attr_result(&app, "AXFocusedUIElement", deadline);
-    ensure_budget(deadline)?;
+    let result = crate::tree::properties::attributes::copy_element_attr_result(
+        &app,
+        "AXFocusedUIElement",
+        deadline,
+    );
+    deadline.ensure_remaining()?;
     let focused = result.map_err(|error| read_error("AXFocusedUIElement", error))?;
     Ok(focused.is_some_and(|focused| crate::tree::same_element(&focused, expected)))
 }
 
 fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {
-    crate::tree::attributes::set_messaging_timeout(element, deadline)
-}
-
-fn ensure_budget(deadline: Deadline) -> Result<(), AdapterError> {
-    if deadline.is_expired() {
-        Err(deadline.timeout_error())
-    } else {
-        Ok(())
-    }
+    crate::tree::properties::attributes::set_messaging_timeout(element, deadline)
 }
 
 fn read_error(attribute: &str, error: i32) -> AdapterError {

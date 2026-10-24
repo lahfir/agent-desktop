@@ -1,6 +1,6 @@
 use super::tests::reads;
 use super::{SlotStatus, TreeProperty, description_slot};
-use crate::tree::property_outcome::PropertyOutcome;
+use crate::tree::properties::property_outcome::PropertyOutcome;
 use crate::tree::test_support::text;
 
 #[test]

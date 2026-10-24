@@ -27,7 +27,6 @@ fn utf16_range(prefix: &str, selection: &str) -> Range<usize> {
 #[cfg(target_os = "windows")]
 mod imp {
     use super::utf16_range;
-    use crate::system::permissions::ensure_budget;
     use crate::tree::element::uia_element;
     use agent_desktop_core::{AdapterError, Deadline, NativeHandle};
     use std::ops::Range;
@@ -46,7 +45,7 @@ mod imp {
         handle: &NativeHandle,
         deadline: Deadline,
     ) -> Result<Option<Range<usize>>, AdapterError> {
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         let element = uia_element(handle)?;
         let Ok(pattern) = element.0.get_pattern::<UITextPattern>() else {
             return Ok(None);

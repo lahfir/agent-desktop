@@ -12,7 +12,7 @@
 //! it.
 //!
 //! Each code family is named exactly once. The HRESULT side is
-//! `hresult::hresult_record` (`crates/windows/src/system/hresult.rs`); the
+//! `hresult::hresult_record` (`crates/windows/src/system/runtime/hresult.rs`); the
 //! sentinel side is this module's own `sentinel_record`. Before this, one
 //! code's read-path `ReadDisposition` and its caller-facing `ErrorCode` lived
 //! in two separate matches that agreed only because both were edited by hand
@@ -22,7 +22,7 @@
 
 use agent_desktop_core::{AdapterError, ErrorCode};
 
-use crate::system::hresult::{
+use crate::system::runtime::hresult::{
     ReadDisposition, UIA_E_ELEMENTNOTAVAILABLE, classify_read_hresult, com_hresult_detail,
     hresult_record,
 };
@@ -187,11 +187,8 @@ fn sentinel_record(sentinel: i32) -> SentinelRecord {
     }
 }
 
-/// A one-line projection of `sentinel_record`, split out so `automation.rs`'s
-/// tests can pin every named sentinel's `ErrorCode` without a catch-all
-/// guess; `pub(crate)` because that pin lives in `automation`'s own test
-/// module, a sibling of this one rather than a descendant.
-pub(crate) fn sentinel_disposition(sentinel: i32) -> ErrorCode {
+/// A one-line projection of `sentinel_record` onto its `ErrorCode`.
+fn sentinel_disposition(sentinel: i32) -> ErrorCode {
     sentinel_record(sentinel).code
 }
 

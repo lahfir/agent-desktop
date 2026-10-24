@@ -2,7 +2,7 @@ use std::os::raw::c_char;
 
 use crate::types::AdRefEntry;
 
-pub const AD_EXACT_REF_ENTRY_VERSION: u32 = 1;
+pub const AD_EXACT_REF_ENTRY_VERSION: u32 = 2;
 pub const AD_EXACT_REF_ENTRY_SIZE: usize = 224;
 
 /// Additive exact-identity payload for low-level struct-based ref actions.

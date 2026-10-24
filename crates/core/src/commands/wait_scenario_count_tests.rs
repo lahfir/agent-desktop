@@ -69,9 +69,9 @@ macro_rules! text_tree_adapter {
         impl ObservationOps for $name {
             fn observe_tree(
                 &self,
-                root: crate::live_locator::ObservationRoot<'_>,
-                _request: &crate::live_locator::ObservationRequest,
-            ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+                root: crate::locator::live_locator::ObservationRoot<'_>,
+                _request: &crate::locator::live_locator::ObservationRequest,
+            ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
                 crate::adapter::observed_tree(&root, $tree)
             }
 
@@ -111,7 +111,7 @@ text_tree_adapter!(
 
 #[test]
 fn text_wait_with_count_on_incomplete_observation_times_out() {
-    let _guard = crate::refs_test_support::HomeGuard::new();
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
 
     let adapter_err = expect_timeout(execute(
         text_wait_args("ready", Some(1), 600),
@@ -126,7 +126,7 @@ fn text_wait_with_count_on_incomplete_observation_times_out() {
 
 #[test]
 fn text_wait_with_count_zero_on_incomplete_observation_times_out() {
-    let _guard = crate::refs_test_support::HomeGuard::new();
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
 
     let adapter_err = expect_timeout(execute(
         text_wait_args("ready", Some(0), 600),
@@ -141,7 +141,7 @@ fn text_wait_with_count_zero_on_incomplete_observation_times_out() {
 
 #[test]
 fn text_wait_without_count_on_incomplete_observation_matches_visible() {
-    let _guard = crate::refs_test_support::HomeGuard::new();
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
 
     let value = execute(
         text_wait_args("ready", None, 1_000),
@@ -160,7 +160,7 @@ fn text_wait_without_count_on_incomplete_observation_matches_visible() {
 
 #[test]
 fn text_wait_without_count_on_all_hidden_incomplete_observation_times_out() {
-    let _guard = crate::refs_test_support::HomeGuard::new();
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
 
     let adapter_err = expect_timeout(execute(
         text_wait_args("ready", None, 600),
@@ -175,7 +175,7 @@ fn text_wait_without_count_on_all_hidden_incomplete_observation_times_out() {
 
 #[test]
 fn text_wait_with_count_on_complete_observation_matches_exact_count() {
-    let _guard = crate::refs_test_support::HomeGuard::new();
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
 
     let value = execute(
         text_wait_args("ready", Some(3), 1_000),
@@ -190,7 +190,7 @@ fn text_wait_with_count_on_complete_observation_matches_exact_count() {
 
 #[test]
 fn text_wait_with_count_on_complete_observation_times_out_when_count_differs() {
-    let _guard = crate::refs_test_support::HomeGuard::new();
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
 
     let adapter_err = expect_timeout(execute(
         text_wait_args("ready", Some(1), 600),

@@ -32,7 +32,7 @@ pub(crate) fn read_node(
         child_plan,
     } = context;
     crate::tree::locator_deadline::remaining(deadline)?;
-    let read = crate::tree::element::fetch_node_attrs_with_status_for(
+    let read = crate::tree::properties::element::fetch_node_attrs_with_status_for(
         element,
         requirements,
         deadline,
@@ -67,7 +67,7 @@ pub(crate) fn read_node(
         || attrs.subrole.as_deref() == Some("AXSecureTextField");
     let value = (!secure).then(|| attrs.value.clone()).flatten();
     let actions = if let Some(actions) = requirements.ref_evidence.actions.then(|| {
-        crate::tree::action_list::read_platform_available_actions(
+        crate::tree::properties::action_list::read_platform_available_actions(
             element, &role, &attrs, deadline, usage,
         )
     }) {
@@ -196,13 +196,14 @@ pub(crate) fn read_node(
         } else {
             LocatorField::Unknown
         },
-        identifiers: crate::tree::retained::evidence(element, identifiers),
+        identifiers: crate::tree::resolve::retained::evidence(element, identifiers),
         states: if !requirements.states || read.status.states_unknown() {
             LocatorField::Unknown
         } else {
             LocatorField::Known(states.unwrap_or_default())
         },
         ref_evidence: LocatorRefEvidence {
+            window_bounds: LocatorField::Absent,
             bounds: if requirements.ref_evidence.bounds {
                 option_field(tree.bounds_for(attrs.bounds), read.status.bounds_unknown())
             } else {
@@ -245,8 +246,8 @@ fn permission_error(phase: &str) -> AdapterError {
 
 fn record_attribute_read(
     stats: &mut LocatorStats,
-    metrics: &crate::tree::node_attribute_metrics::NodeAttributeMetrics,
-    status: &crate::tree::node_attribute_status::NodeAttributeStatus,
+    metrics: &crate::tree::properties::node_attribute_metrics::NodeAttributeMetrics,
+    status: &crate::tree::properties::node_attribute_status::NodeAttributeStatus,
 ) {
     stats.reads.counts.attribute_batches += metrics.batch_reads;
     stats.reads.counts.attributes_requested += metrics.requested_count;
@@ -295,7 +296,7 @@ mod tests {
     #[test]
     fn attribute_stats_record_actual_batch_and_field_counts() {
         let mut stats = LocatorStats::default();
-        let metrics = crate::tree::node_attribute_metrics::NodeAttributeMetrics {
+        let metrics = crate::tree::properties::node_attribute_metrics::NodeAttributeMetrics {
             batch_reads: 1,
             requested_count: 22,
             ..Default::default()
@@ -304,7 +305,7 @@ mod tests {
         record_attribute_read(
             &mut stats,
             &metrics,
-            &crate::tree::node_attribute_status::NodeAttributeStatus::default(),
+            &crate::tree::properties::node_attribute_status::NodeAttributeStatus::default(),
         );
 
         assert_eq!(stats.reads.counts.attribute_batches, 1);
@@ -315,13 +316,14 @@ mod tests {
     #[test]
     fn cannot_complete_keeps_missing_fields_unknown() {
         let mut stats = LocatorStats::default();
-        let metrics = crate::tree::node_attribute_metrics::NodeAttributeMetrics {
+        let metrics = crate::tree::properties::node_attribute_metrics::NodeAttributeMetrics {
             batch_reads: 1,
             requested_count: 22,
             fallback_reads: 22,
             ..Default::default()
         };
-        let mut status = crate::tree::node_attribute_status::NodeAttributeStatus::default();
+        let mut status =
+            crate::tree::properties::node_attribute_status::NodeAttributeStatus::default();
         status.record_batch_error(accessibility_sys::kAXErrorCannotComplete);
 
         record_attribute_read(&mut stats, &metrics, &status);

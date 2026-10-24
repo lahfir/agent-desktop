@@ -2,8 +2,8 @@
 //! modules - too broadly useful to belong to any one of them, and too small
 //! to be worth re-typing in each.
 
+use crate::tree::properties::property_ids::TreeProperty;
 use crate::tree::properties::{ElementProperties, PropertyOutcome, PropertyValue};
-use crate::tree::property_ids::TreeProperty;
 #[cfg(target_os = "windows")]
 use agent_desktop_core::NativeHandle;
 

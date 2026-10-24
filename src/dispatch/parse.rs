@@ -1,7 +1,7 @@
 use agent_desktop_core::{
     AppError, ClipboardFormat, Direction, Modifier, MouseButton,
     commands::{get, is_check},
-    launch_options::LaunchOptions,
+    system::launch_options::LaunchOptions,
 };
 use std::collections::BTreeMap;
 
@@ -117,11 +117,11 @@ pub(crate) fn parse_modifiers(values: &[String]) -> Result<Vec<Modifier>, AppErr
 pub(crate) fn parse_modifier(s: &str) -> Result<Modifier, AppError> {
     match s.to_ascii_lowercase().as_str() {
         "shift" => Ok(Modifier::Shift),
-        "meta" | "cmd" | "command" => Ok(Modifier::Meta),
+        "meta" | "cmd" | "command" | "super" | "win" => Ok(Modifier::Meta),
         "ctrl" | "control" => Ok(Modifier::Ctrl),
         "alt" | "option" => Ok(Modifier::Alt),
         _ => Err(AppError::invalid_input(
-            "Unknown modifier. Valid: shift, meta, ctrl, alt (cmd/command aliases are accepted)",
+            "Unknown modifier. Valid: shift, meta, ctrl, alt (cmd, command, super and win are aliases of meta)",
         )),
     }
 }

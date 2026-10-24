@@ -1,35 +1,24 @@
 use super::*;
-use crate::refs_test_support::HomeGuard;
+use crate::refs::refs_test_support::HomeGuard;
 use crate::session::{ArtifactsMode, SessionTraceMode};
 use std::fs;
 
 #[test]
 fn resolve_prefers_explicit_over_env() {
     let _guard = HomeGuard::new();
-    unsafe { std::env::set_var("AGENT_DESKTOP_SESSION", "env-session") };
-    let resolved = resolve_active_session(Some("explicit"), None).unwrap();
+    let resolved = resolve_active_session(Some("explicit"), Some("env-session")).unwrap();
     assert_eq!(resolved.as_deref(), Some("explicit"));
-    unsafe { std::env::remove_var("AGENT_DESKTOP_SESSION") };
 }
 
 #[test]
 fn resolve_uses_env_without_explicit_session() {
     let _guard = HomeGuard::new();
-    unsafe { std::env::set_var("AGENT_DESKTOP_SESSION", "env-session") };
     let resolved = resolve_active_session(None, Some("env-session")).unwrap();
     assert_eq!(resolved.as_deref(), Some("env-session"));
-    unsafe { std::env::remove_var("AGENT_DESKTOP_SESSION") };
 }
 
 #[test]
 fn resolve_does_not_infer_an_active_session() {
-    let _guard = HomeGuard::new();
-    let resolved = resolve_active_session(None, None).unwrap();
-    assert!(resolved.is_none());
-}
-
-#[test]
-fn resolve_none_without_pointer() {
     let _guard = HomeGuard::new();
     let resolved = resolve_active_session(None, None).unwrap();
     assert!(resolved.is_none());
@@ -112,7 +101,11 @@ fn list_reports_manifest_fields_only() {
     })
     .unwrap();
     let listed = list_sessions().unwrap();
-    assert!(listed.iter().any(|entry| entry.id == manifest.id));
+    let entry = listed
+        .iter()
+        .find(|entry| entry.id == manifest.id)
+        .expect("started session is listed");
+    assert_eq!(entry, &manifest);
 }
 
 #[test]
@@ -152,24 +145,6 @@ fn corrupt_manifest_is_ignored_not_fatal() {
     let listed: Vec<String> = list_sessions().unwrap().into_iter().map(|m| m.id).collect();
     assert!(listed.contains(&good.id));
     assert!(!listed.iter().any(|id| id == "corruptsess"));
-}
-
-#[test]
-fn multiple_starts_remain_independent() {
-    let _guard = HomeGuard::new();
-    let first = start_session(StartSessionOptions {
-        name: None,
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    let second = start_session(StartSessionOptions {
-        name: None,
-        trace: SessionTraceMode::On,
-        ..Default::default()
-    })
-    .unwrap();
-    assert_ne!(first.id, second.id);
 }
 
 #[test]
@@ -293,7 +268,7 @@ fn legacy_pointer_symlink_does_not_activate_a_session() {
 }
 
 fn seed_session_refs(id: &str) -> (std::path::PathBuf, String) {
-    let store = crate::refs_store::RefStore::for_session(Some(id)).unwrap();
+    let store = crate::refs::refs_store::RefStore::for_session(Some(id)).unwrap();
     let snapshot_id = store
         .save_new_snapshot(&crate::RefMap::new())
         .expect("session snapshot");
@@ -339,7 +314,7 @@ fn a_refmap_the_trace_never_copied_survives_ending_a_full_session() {
     })
     .unwrap();
 
-    let store = crate::refs_store::RefStore::for_session(Some(&manifest.id)).unwrap();
+    let store = crate::refs::refs_store::RefStore::for_session(Some(&manifest.id)).unwrap();
     let copied = store.save_new_snapshot(&crate::RefMap::new()).unwrap();
     let skipped = store.save_new_snapshot(&crate::RefMap::new()).unwrap();
     let dir = session_dir(&manifest.id).unwrap();

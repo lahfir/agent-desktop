@@ -10,7 +10,7 @@ const RIM: [f64; 3] = [0.07, 0.07, 0.09];
 const ACCENT: [f64; 3] = [0.26, 0.60, 1.0];
 
 fn surface() -> Surface {
-    Surface::transparent(200, 200)
+    Surface::try_transparent(200, 200).expect("bounded test surface")
 }
 
 fn mapping(scale: f64) -> SurfaceMapping {
@@ -39,6 +39,12 @@ fn an_untouched_surface_is_fully_transparent() {
 
     assert!(surface.pixels.iter().all(|pixel| *pixel == 0));
     assert_eq!(surface.alpha_at(10, 10), 0);
+}
+
+#[test]
+fn a_surface_with_unbounded_pixel_count_is_rejected_without_allocation() {
+    assert!(Surface::try_transparent(100_000, 100_000).is_none());
+    assert!(Surface::try_transparent(-1, 10).is_none());
 }
 
 /// The whole reason this module exists. A GDI `Polygon` would leave the alpha
@@ -169,7 +175,7 @@ fn a_ripple_outside_its_phase_paints_nothing() {
 
 #[test]
 fn nothing_is_written_outside_the_surface() {
-    let mut surface = Surface::transparent(24, 24);
+    let mut surface = Surface::try_transparent(24, 24).expect("bounded test surface");
 
     draw_glyph(
         &mut surface,
@@ -189,7 +195,10 @@ fn nothing_is_written_outside_the_surface() {
         ACCENT,
     );
 
-    assert_eq!(surface.pixels.len(), 24 * 24);
+    assert!(
+        surface.pixels.iter().all(|pixel| *pixel == 0),
+        "both targets lie wholly off the surface, so any lit pixel is a clamp defect"
+    );
 }
 
 /// The glyph as it was drawn before the origin and the scale were bundled:

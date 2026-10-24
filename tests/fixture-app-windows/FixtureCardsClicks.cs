@@ -97,7 +97,7 @@ namespace AgentDeskFixtureApp
             // either twin: agent-desktop's Windows resolver re-identifies a
             // ref by its stored child-index tree path before it ever reaches
             // the bounds-hash tie-break (can_use_path_fast_path,
-            // crates/windows/src/tree/resolve_search.rs), and a bare location
+            // crates/windows/src/tree/resolve/resolve_search.rs), and a bare location
             // change leaves both twins at their original Controls indices -
             // the path lands on the exact original element, which is a
             // correct re-identification, not an ambiguity. Removing and

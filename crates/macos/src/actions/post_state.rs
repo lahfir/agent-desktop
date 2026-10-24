@@ -1,3 +1,6 @@
+use agent_desktop_core::adapter::live_element::{
+    essential_live_evidence_complete, incomplete_live_evidence, known_actions,
+};
 use agent_desktop_core::{
     AdapterError, Deadline, DeliverySemantics, ElementState, ErrorCode, EvidenceRequirements,
     LiveElement, LiveIdentity, LocatorField, Rect,
@@ -139,40 +142,12 @@ fn read_live_observation_once(
     Ok(read)
 }
 
-fn essential_live_evidence_complete(evidence: &agent_desktop_core::LocatorEvidence) -> bool {
-    !evidence.role.is_unknown()
-        && !evidence.value.is_unknown()
-        && !evidence.states.is_unknown()
-        && !evidence.ref_evidence.bounds.is_unknown()
-        && !evidence.ref_evidence.available_actions.is_unknown()
-}
-
 fn new_usage() -> crate::tree::observation_usage::ObservationUsage {
     crate::tree::observation_usage::ObservationUsage::with_defaults()
 }
 
 fn known_role(role: &LocatorField<String>) -> Result<String, AdapterError> {
     role.known().cloned().ok_or_else(incomplete_live_evidence)
-}
-
-fn known_actions(actions: LocatorField<Vec<String>>) -> Result<Vec<String>, AdapterError> {
-    match actions {
-        LocatorField::Known(actions) => Ok(actions),
-        LocatorField::Absent => Ok(Vec::new()),
-        LocatorField::Unknown => Err(incomplete_live_evidence()),
-    }
-}
-
-fn incomplete_live_evidence() -> AdapterError {
-    AdapterError::new(
-        ErrorCode::AppUnresponsive,
-        "Live element evidence was incomplete",
-    )
-    .with_details(serde_json::json!({
-        "kind": "live_element_evidence",
-        "complete": false,
-        "retryable": true,
-    }))
 }
 
 /// Reports whether the control-state evidence the post-action verifier reads was
@@ -219,9 +194,9 @@ fn element_state_from_attrs(
 
 fn hidden_state(reported: Option<bool>, canonical: &LocatorField<Vec<String>>) -> Option<bool> {
     reported.or_else(|| match canonical {
-        LocatorField::Known(states) => Some(agent_desktop_core::state::has_state(
+        LocatorField::Known(states) => Some(agent_desktop_core::tree::state::has_state(
             states,
-            agent_desktop_core::state::HIDDEN,
+            agent_desktop_core::tree::state::HIDDEN,
         )),
         _ => None,
     })

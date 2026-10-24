@@ -2,10 +2,10 @@ use agent_desktop_core::{Deadline, ObservationRoot, ProcessId, WindowInfo, Windo
 use agent_desktop_windows::tree::automation::failure_of;
 use agent_desktop_windows::tree::element::UIAElement;
 use agent_desktop_windows::tree::name_evidence::read_label;
+use agent_desktop_windows::tree::properties::property_ids::TreeProperty;
 use agent_desktop_windows::tree::properties::{read_live, read_one};
-use agent_desktop_windows::tree::property_ids::TreeProperty;
-use agent_desktop_windows::tree::walker::{NodeKey, TreeSource, WalkBudget, walk_vocabulary};
-use agent_desktop_windows::tree::walker_source::{UiaTreeSource, walk_uia_subtree};
+use agent_desktop_windows::tree::walk::walker::{NodeKey, TreeSource, WalkBudget, walk_vocabulary};
+use agent_desktop_windows::tree::walk::walker_source::{UiaTreeSource, walk_uia_subtree};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 

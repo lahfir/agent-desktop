@@ -1,7 +1,7 @@
 use crate::{
     AdapterError, AppError, ErrorCode,
-    action::Action,
-    action_request::ActionRequest,
+    actions::action::Action,
+    actions::action_request::ActionRequest,
     adapter::{NativeHandle, PlatformAdapter, optional_live_read},
     refs::RefEntry,
 };
@@ -153,7 +153,7 @@ fn visible(
     deadline: crate::Deadline,
 ) -> Result<Value, AdapterError> {
     let live = adapter.get_live_element(handle, deadline)?;
-    let evidence = crate::state::VisibilityEvidence {
+    let evidence = crate::tree::state::VisibilityEvidence {
         bounds: live.bounds,
         states: live.state.states,
         bounds_from_live: live.bounds.is_some(),

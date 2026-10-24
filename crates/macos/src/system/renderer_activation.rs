@@ -6,7 +6,7 @@ const ENHANCED_ACTIVATION_DELAY: Duration = Duration::from_secs(2);
 
 pub(crate) fn activate(process: ProcessIdentity, deadline: Deadline) -> Result<(), AdapterError> {
     let identity =
-        crate::system::process_identity::require_core(&process).map_err(not_delivered)?;
+        crate::system::process::process_identity::require_core(&process).map_err(not_delivered)?;
     let application = crate::tree::element_for_pid(identity.pid());
     let attribute = renderer_probe::activation_attribute(
         &application,
@@ -46,7 +46,7 @@ fn enable_attribute(
         return Err(not_delivered(deadline.timeout_error()));
     }
     let attribute = CFString::new(attribute_name);
-    let error = crate::tree::ax_ipc::set_attribute_value(
+    let error = crate::tree::properties::ax_ipc::set_attribute_value(
         application,
         attribute.as_concrete_TypeRef(),
         CFBoolean::true_value().as_CFTypeRef(),

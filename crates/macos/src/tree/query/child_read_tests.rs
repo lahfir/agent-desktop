@@ -43,21 +43,6 @@ fn unsupported_and_missing_child_attributes_are_authoritatively_absent() {
 }
 
 #[test]
-fn bounded_child_read_distinguishes_truncation_from_native_failure() {
-    let read = ChildRead {
-        elements: Vec::new(),
-        total_count: 4,
-        complete: true,
-        source_availability: ChildSourceAvailability::Available,
-        prefix_certain: true,
-        status: ChildReadStatus::default(),
-    };
-
-    assert!(read.truncated());
-    assert!(read.complete);
-}
-
-#[test]
 fn indexed_child_requires_a_successful_unchanged_final_count() {
     for final_count in [
         Ok(1),

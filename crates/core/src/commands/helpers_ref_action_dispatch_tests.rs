@@ -3,10 +3,11 @@ use super::*;
 use crate::AdapterError;
 use crate::adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps};
 use crate::refs::RefMap;
-use crate::refs_test_support::HomeGuard;
+use crate::refs::refs_test_support::HomeGuard;
 use crate::{
-    action::Action, action_result::ActionResult, action_step::ActionStep,
-    element_state::ElementState, interaction_policy::InteractionPolicy,
+    actions::action::Action, actions::action_result::ActionResult,
+    actions::action_step::ActionStep, actions::interaction_policy::InteractionPolicy,
+    tree::element_state::ElementState,
 };
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -27,7 +28,7 @@ impl ObservationOps for RecordingAdapter {
     crate::adapter::complete_live_observation!(
         "textfield",
         "OK",
-        [crate::capability::CLICK, crate::capability::TYPE_TEXT],
+        [crate::actions::capability::CLICK, crate::actions::capability::TYPE_TEXT],
         adapter => ElementState {
             role: "textfield".into(),
             states: vec!["focused".into()],
@@ -124,7 +125,7 @@ fn execute_ref_action_preserves_action_and_policy() {
     target
         .capabilities
         .available_actions
-        .push(crate::capability::CLICK.into());
+        .push(crate::actions::capability::CLICK.into());
     refmap.allocate(target);
     let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
     let adapter = RecordingAdapter {

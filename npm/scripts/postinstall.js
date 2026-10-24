@@ -20,6 +20,7 @@ const { execFileSync } = require('child_process');
 const { createHash } = require('crypto');
 const {
   MACOS_HELPER_NAME,
+  helperNames,
   releasedKeys,
   resolve,
   tarCommand,
@@ -38,28 +39,12 @@ function log(msg) {
   process.stderr.write(`agent-desktop: ${msg}\n`);
 }
 
-function trashRecoverably(path, trashCommand = 'trash') {
+function cleanupStaging(path) {
   try {
-    execFileSync(trashCommand, [path], { stdio: 'pipe', timeout: 30000 });
+    rmSync(path, { recursive: true, force: true });
   } catch (err) {
-    if (!existsSync(path)) return;
-    const reason = err.code === 'ENOENT'
-      ? `trash command is unavailable: ${trashCommand}`
-      : `trash exited with status ${err.status ?? 'unknown'}`;
-    log(`Could not move cleanup artifact to Trash; retained at ${path}: ${reason}`);
+    log(`Could not remove staging directory; retained at ${path}: ${err.message}`);
   }
-}
-
-function cleanupStaging(path, trashCommand) {
-  if (platform() === 'win32') {
-    try {
-      rmSync(path, { recursive: true, force: true });
-    } catch (err) {
-      log(`Could not remove staging directory; retained at ${path}: ${err.message}`);
-    }
-    return;
-  }
-  trashRecoverably(path, trashCommand);
 }
 
 function getPlatformKey() {
@@ -127,15 +112,15 @@ function matchesRecordedDigest(destination) {
   }
 }
 
-function customHelperPath(customBinaryPath) {
-  const override = process.env[MACOS_HELPER_PATH_ENV];
+function customHelperPath(customBinaryPath, helperName = MACOS_HELPER_NAME) {
+  const override = helperName === MACOS_HELPER_NAME ? process.env[MACOS_HELPER_PATH_ENV] : undefined;
   if (override) {
     if (!isAbsolute(override)) {
       throw new Error(`${MACOS_HELPER_PATH_ENV} must be an absolute path`);
     }
     return override;
   }
-  return join(dirname(customBinaryPath), MACOS_HELPER_NAME);
+  return join(dirname(customBinaryPath), helperName);
 }
 
 function validateArchive(tarballPath, expectedEntries) {
@@ -153,8 +138,8 @@ function validateArchive(tarballPath, expectedEntries) {
   }
 }
 
-function installArchive(tarballPath, binaryPath, helperPath, entry, trashCommand) {
-  const includesHelper = entry.entries.includes(MACOS_HELPER_NAME);
+function installArchive(tarballPath, binaryPath, helperPath, entry) {
+  const [helperName] = helperNames(entry);
   validateArchive(tarballPath, entry.entries);
   const staging = mkdtempSync(join(binDir, '.extract-'));
   try {
@@ -167,13 +152,12 @@ function installArchive(tarballPath, binaryPath, helperPath, entry, trashCommand
     if (JSON.stringify(entries) !== JSON.stringify(expected)) {
       throw new Error(`Extracted archive has unexpected entries: ${entries.join(', ')}`);
     }
-    const binaryMember = entry.entries.find((member) => member !== MACOS_HELPER_NAME);
-    const extractedBinary = join(staging, binaryMember);
+    const extractedBinary = join(staging, entry.entries[0]);
     if (!lstatSync(extractedBinary).isFile()) {
       throw new Error('Release archive executables must be regular files');
     }
-    if (includesHelper) {
-      const extractedHelper = join(staging, MACOS_HELPER_NAME);
+    if (helperName) {
+      const extractedHelper = join(staging, helperName);
       if (!lstatSync(extractedHelper).isFile()) {
         throw new Error('Release archive executables must be regular files');
       }
@@ -181,7 +165,7 @@ function installArchive(tarballPath, binaryPath, helperPath, entry, trashCommand
     }
     installExecutable(extractedBinary, binaryPath);
   } finally {
-    cleanupStaging(staging, trashCommand);
+    cleanupStaging(staging);
   }
 }
 
@@ -232,15 +216,19 @@ function promptSkillInstall() {
   const platformSkill = {
     darwin: 'agent-desktop-macos',
     win32: 'agent-desktop-windows',
+    linux: 'agent-desktop-linux',
   }[platform()];
   const skills = ['agent-desktop', 'agent-desktop-ffi'];
   if (platformSkill) skills.push(platformSkill);
 
   log('');
   log('Claude Code skills available for agent-desktop!');
-  log('Install with:');
+  log('The binary serves its own skills:');
+  log('  agent-desktop skills get desktop');
+  log('  agent-desktop skills get platform');
+  log('Or install a skill with:');
   for (const skill of skills) {
-    log(`  claude mcp add-skill lahfir/${skill}`);
+    log(`  npx skills add https://github.com/lahfir/agent-desktop --skill ${skill}`);
   }
   log('');
 }
@@ -249,11 +237,11 @@ function printManualFallback(tarballUrl, checksumsUrl, entry) {
   log('');
   log('Download manually from:');
   log(`  ${tarballUrl}`);
-  const includesHelper = entry.entries.includes(MACOS_HELPER_NAME);
+  const [helperName] = helperNames(entry);
   log('Then extract the archive so the installed file(s) are at:');
   log(`  ${join(binDir, entry.binaryName)}`);
-  if (includesHelper) {
-    log(`  ${join(binDir, MACOS_HELPER_NAME)}`);
+  if (helperName) {
+    log(`  ${join(binDir, helperName)}`);
   }
   log('');
   log('Verify the download before running it:');
@@ -278,10 +266,11 @@ function main() {
     return;
   }
 
-  const includesHelper = entry.entries.includes(MACOS_HELPER_NAME);
+  const [helperName] = helperNames(entry);
+  const includesHelper = Boolean(helperName);
   const binaryName = entry.binaryName;
   const binaryPath = join(binDir, binaryName);
-  const helperPath = join(binDir, MACOS_HELPER_NAME);
+  const helperPath = includesHelper ? join(binDir, helperName) : undefined;
 
   if (!existsSync(binDir)) {
     mkdirSync(binDir, { recursive: true });
@@ -294,9 +283,9 @@ function main() {
         throw new Error(`binary is not a regular file: ${customPath}`);
       }
       if (includesHelper) {
-        const sourceHelper = customHelperPath(customPath);
+        const sourceHelper = customHelperPath(customPath, helperName);
         if (!existsSync(sourceHelper) || !lstatSync(sourceHelper).isFile()) {
-          throw new Error(`macOS helper not found at ${sourceHelper}`);
+          throw new Error(`${helperName} not found at ${sourceHelper}`);
         }
         installExecutable(sourceHelper, helperPath);
       }
@@ -321,7 +310,7 @@ function main() {
     if (includesHelper) chmodSync(helperPath, 0o755);
     log(
       includesHelper
-        ? `Native executables ready: ${binaryName}, ${MACOS_HELPER_NAME}`
+        ? `Native executables ready: ${binaryName}, ${helperName}`
         : `Native executable ready: ${binaryName}`,
     );
     linkBinEntry(binDir, binaryName);
@@ -353,7 +342,7 @@ function main() {
     unlinkSync(tarballPath);
     log(
       includesHelper
-        ? `Installed native executables: ${binaryName}, ${MACOS_HELPER_NAME}`
+        ? `Installed native executables: ${binaryName}, ${helperName}`
         : `Installed native executable: ${binaryName}`,
     );
   } catch (err) {
@@ -384,6 +373,5 @@ module.exports = {
   matchesRecordedDigest,
   printManualFallback,
   promptSkillInstall,
-  trashRecoverably,
   validateArchive,
 };

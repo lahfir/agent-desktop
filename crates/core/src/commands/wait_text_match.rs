@@ -1,4 +1,4 @@
-use crate::{AccessibilityNode, search_text};
+use crate::{AccessibilityNode, tree::search_text};
 
 pub(crate) struct TextMatch {
     pub ref_id: Option<String>,

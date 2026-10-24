@@ -64,7 +64,7 @@ impl InputOps for WheelCaptureAdapter {
         &self,
         event: MouseEvent,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         let MouseEventKind::Wheel { delta_x, delta_y } = event.kind else {
             return Err(AdapterError::not_supported("non-wheel mouse event"));
         };
@@ -78,7 +78,7 @@ impl InputOps for WheelCaptureAdapter {
         if let Some(disposition) = self.failure {
             return Err(AdapterError::not_supported("mouse_wheel").with_disposition(disposition));
         }
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -132,7 +132,17 @@ fn returns_scrolled_envelope_with_requested_deltas() {
     )
     .unwrap();
 
-    assert_eq!(value, json!({ "scrolled": true, "dy": 7.0, "dx": -2.0 }));
+    assert_eq!(value["dy"], 7.0);
+    assert_eq!(value["dx"], -2.0);
+    assert_eq!(value["disposition"]["delivery"], "delivered_unverified");
+    assert!(value.get("scrolled").is_none());
+}
+
+fn propagated_adapter_error(result: Result<Value, AppError>) -> AdapterError {
+    match result.expect_err("the adapter failure must propagate") {
+        AppError::Adapter(error) => error,
+        other => panic!("expected the adapter error to propagate unchanged, got {other:?}"),
+    }
 }
 
 #[test]
@@ -154,7 +164,9 @@ fn adapter_error_propagates_as_err() {
             .with_cursor_overlay_session("test-session", config),
     );
 
-    assert!(result.is_err());
+    let error = propagated_adapter_error(result);
+    assert_eq!(error.code, crate::ErrorCode::PlatformNotSupported);
+    assert_eq!(error.disposition, crate::DeliverySemantics::not_delivered());
     let presented = adapter.presented.lock().unwrap();
     assert_eq!(presented.len(), 1);
     assert!(presented[0].is_travel());
@@ -179,7 +191,12 @@ fn delivered_error_still_presents_effect_before_propagating() {
             .with_cursor_overlay_session("test-session", config),
     );
 
-    assert!(result.is_err());
+    let error = propagated_adapter_error(result);
+    assert_eq!(error.code, crate::ErrorCode::PlatformNotSupported);
+    assert_eq!(
+        error.disposition,
+        crate::DeliverySemantics::delivered_unverified()
+    );
     let presented = adapter.presented.lock().unwrap();
     assert_eq!(presented.len(), 2);
     assert!(presented[0].is_travel());

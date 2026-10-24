@@ -1,511 +1,282 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Common Commands
-
-Every platform adapter compiles on its own OS only, so an unscoped `cargo build`,
-`cargo test --workspace` or `cargo clippy --all-targets` fails on every host: the
-workspace names all three. `.githooks/pre-commit` picks the host's package set;
-`HOST_PKGS` below is the macOS one.
-
-```bash
-HOST_PKGS="-p agent-desktop-core -p agent-desktop-macos -p agent-desktop-linux -p agent-desktop -p agent-desktop-ffi"
-
-cargo build $HOST_PKGS                         # Debug build
-cargo build --release -p agent-desktop         # Release build (<15MB target)
-cargo test $HOST_PKGS                          # Run every test (lib, binary, and integration targets)
-cargo test $HOST_PKGS --lib                    # Library unit tests only; SKIPS the agent-desktop binary crate
-cargo test -p agent-desktop                    # Binary crate tests (CLI contract, dispatch, batch, policy)
-cargo test --lib -p agent-desktop-core         # Test core crate only
-cargo test --lib -p agent-desktop-macos        # Test macOS crate only
-cargo test $HOST_PKGS test_name                # Run a single test by name
-cargo check -p agent-desktop-core --all-targets --target x86_64-pc-windows-msvc  # Core must cross-compile
-cargo check -p agent-desktop-core --all-targets --target x86_64-unknown-linux-gnu
-cargo clippy $HOST_PKGS --all-targets -- -D warnings   # Lint (must pass, zero warnings)
-cargo fmt --all -- --check                     # Format check
-cargo fmt --all                                # Auto-format
-cargo tree -p agent-desktop-core               # Verify no platform crate leaks (CI enforces)
-bash tests/e2e/run.sh                          # E2E: real binary vs fixture app, verify by observation (needs --release + AX permission)
-bash scripts/perf-baseline-compare.sh          # Perf A/B vs merge-base -> report.html (add --apps "Slack,Google Chrome" for Electron coverage)
-```
-
-Run the binary: `./target/release/agent-desktop snapshot --app Finder -i`
-
-The E2E harness drives the release binary against a real SwiftUI/AppKit fixture and asserts every effect by independent observation (never the command's own `ok:true`), covering every ref action in **both** headless and `--headed` mode. See `tests/e2e/README.md`.
-
-## Pre-commit Hook
-
-The repo ships a pre-commit hook at `.githooks/pre-commit`. For staged Rust changes it runs the source rules (`scripts/check-rust-file-size.sh`, `scripts/check-no-phase-references.sh`, `scripts/check-stale-ref-constructor-misuse.sh`), `cargo fmt --all -- --check`, and clippy and `cargo test --lib` over the host's package set; with FFI changes staged it also runs the FFI passthrough test and the cbindgen header check. Wire it up once after cloning:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-Bypass for an emergency commit with `git commit --no-verify` or `SKIP_PRECOMMIT=1 git commit ...`.
-
-## Project Overview
-
-Computer-use tool (CLI + C library) letting AI agents observe and operate desktop apps via native accessibility trees.
-
-## Source of Truth & Sync (Non-Negotiable)
-
-Two documents govern every phase, and they are never allowed to disagree.
-
-- **`docs/phases.md` is the source of truth for the product.** Scope, exit criteria, invariants, API mappings, dependency pins and phase order live there. What the product *is* and *will be* is settled by that document.
-- **The sub-phase plan under `docs/plans/` is the source of truth for implementation and review.** How a sub-phase is built, what its units are, and what its Verification Contract and Definition of Done require are settled by the plan.
-- **They must be in sync at every commit, and both must match the code.** A statement in one that contradicts the other, or contradicts what shipped, is a defect in its own right — not documentation debt to be tidied later. The next sub-phase's planner reads these documents as fact; a stale line becomes a wrong decision.
-
-### Planning: contradictions are corrected on discovery
-
-Research routinely disproves statements in `docs/phases.md`. When it does:
-
-- **Correct `docs/phases.md` in the same PR that discovered it.** Never plan around a statement known to be false, and never leave the correction to a later sub-phase.
-- **Correct in place; never annotate.** Rewrite the statement so the document reads true. No "previously said X", no "NOTE:", no changelog line — the document is the product's source of truth, not its history.
-- **Cite what disproved it** — a `probes/**/FINDINGS.md` row id, or the verified source.
-- The plan carries the correction as its own implementation unit, so it is reviewed alongside the work.
-
-### Implementation: build it, do not defer it
-
-**Deferral is the exception and the bar is high. The default is that the implementer makes it work.**
-
-- **Attempt the work fully before concluding it cannot be done.** "Harder than expected", "the plan underestimated it", "a later sub-phase touches this anyway", and "the PR is already large" are **not** grounds for deferral.
-- A deferral is justified only when the work is genuinely blocked: technically impossible on the platform, dependent on infrastructure that does not exist yet, or completable only by violating a stated invariant or safety property. Name which one applies.
-- **Measure before deferring.** If the obstacle is an unknown, settle it with a probe or an experiment first. A deferral resting on an assumption is not a deferral, it is a guess — and an assumption that turns out to be wrong has usually hidden work that was a few hours away.
-- Reducing scope is the owner's call, not the implementer's. If the work genuinely cannot land, say so explicitly and stop; do not narrow the deliverable quietly.
-
-### Every deferral updates `docs/phases.md` immediately
-
-When something is deferred — at planning time or at implementation time — the sub-phase that now owns it is updated in the **same PR**, before that PR is opened for review:
-
-- Write the deferred work into the **receiving** sub-phase's scope in `docs/phases.md`, in enough detail that its implementer can act on it without reading this PR or its plan.
-- State what was learned that forces it there, and cite the evidence.
-- If the deferral changes what the **originating** sub-phase delivers, correct that sub-phase's scope and exit criteria too, so it never claims work it did not ship.
-- A ledger row, a PR description, or a plan's residual list is **not** sufficient. Those are read by this PR's reviewer; `docs/phases.md` is read by the next sub-phase's planner, and that is who needs to know.
-
-**A PR that defers work without updating `docs/phases.md` is incomplete and must not be merged.**
-
-## Git & Commits
-
-### Branching
-
-- **`main` carries macOS and Windows.** Windows reached `main` in v0.10.0 as one `feat!` promotion of `feat/windows-adapter`, which is merged. Fixes and features for either platform branch off `main` and PR into `main`.
-- **A platform phase works on its own integration branch.** Phase 3 (Linux) uses `feat/linux-adapter`: every sub-phase is cut from it as `feat/linux-<n.n>-<slug>` and merges back into it, never into `main`, and never rebases onto `main`.
-- The integration branch reaches `main` exactly once, at the end, when the adapter is production-solid as a whole — one release-noted `feat!` promotion after full-branch review, live e2e, and a perf baseline.
-- Plan docs: historical plans and brainstorms are tracked on `main`. Every sub-phase's plan doc lands on
-  its own sub-phase branch, so each sub-phase PR reviews as one self-contained unit.
-- See `docs/phases.md` §Platform Delivery Model for the full rule.
-
-- All commits are authored by **Lahfir**
-- NEVER add `Co-Authored-By` lines, AI attribution badges, or "Generated with" footers
-- NEVER include co-committers of any kind
-- **Conventional Commits required.** Every commit message must use a type prefix:
-  - `feat:` — new feature (triggers minor version bump)
-  - `fix:` — bug fix (triggers patch version bump)
-  - `feat!:` or `BREAKING CHANGE:` footer — breaking change (triggers major version bump)
-  - `docs:` — documentation only
-  - `style:` — formatting, no code change
-  - `refactor:` — code change that neither fixes a bug nor adds a feature
-  - `perf:` — performance improvement with no behavior change
-  - `chore:` — maintenance tasks, dependencies
-  - `ci:` — CI/CD changes
-  - `test:` — adding or fixing tests
-- Format: `type: concise imperative description` (lowercase type, no capital after colon)
-- Focus on "why" not "what"
-- Examples: `feat: add scroll-to command`, `fix: prevent stale ref on window resize`, `ci: add binary size check`
-- **Pre-1.0 versioning policy** (release-please `bump-minor-pre-major` + `bump-patch-for-minor-pre-major`): while the version is 0.x, a `BREAKING CHANGE` cuts a **minor** (0.2 → 0.3) and a `feat:` cuts a **patch**. Do not expect a major release before 1.0.
-
-## Core Principle
-
-agent-desktop is NOT an AI agent. It is a tool that AI agents invoke. It outputs structured JSON with ref-based element identifiers. The observation-action loop lives in the calling agent.
-
-## Architecture
-
-### Workspace Layout
-
-```
-agent-desktop/
-├── Cargo.toml              # workspace: members, shared deps
-├── CONCEPTS.md             # shared domain vocabulary for refs, snapshots, sessions, actionability, and related concepts
-├── rust-toolchain.toml     # pinned Rust version
-├── clippy.toml             # project-wide lint config
-├── crates/
-│   ├── core/               # agent-desktop-core (platform-agnostic)
-│   │   └── src/
-│   │       ├── ref_alloc.rs      # Shared ref helpers (INTERACTIVE_ROLES, is_collapsible)
-│   │       ├── snapshot_ref.rs   # Ref-rooted drill-down (run_from_ref)
-│   │       └── commands/         # one file per command
-│   ├── macos/              # agent-desktop-macos (Phase 1)
-│   ├── windows/            # agent-desktop-windows (Phase 2)
-│   ├── linux/              # agent-desktop-linux (stub → Phase 3)
-│   └── ffi/                # agent-desktop-ffi (cdylib + committed C ABI header)
-├── src/                    # agent-desktop binary (entry point)
-│   ├── main.rs             # entry point, permission check, JSON envelope
-│   ├── batch/              # batch JSON → typed Commands
-│   ├── cli/                # clap derive enum, help text, CLI contract tests
-│   ├── cli_args/           # command argument structs by domain
-│   ├── command_policy/     # permission/ref/side-effect policy
-│   ├── dispatch/           # command dispatcher, parse helpers, notifications
-│   └── tests/              # binary-level conformance tests
-├── docs/
-│   └── solutions/          # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type); relevant when implementing or debugging in documented areas
-└── tests/
-    └── fixtures/           # golden JSON snapshots
-```
-
-### Dependency Inversion (Non-Negotiable)
-
-- `agent-desktop-core` defines the `PlatformAdapter` trait and all shared types
-- Platform crates (`macos`, `windows`, `linux`) implement the trait
-- **Core NEVER imports platform crates.** Platform crates NEVER import each other.
-- Two legitimate wiring points bring platform → core together:
-  1. The binary crate (`src/`) — CLI consumers
-  2. The FFI crate (`crates/ffi/`) — cdylib consumers (Python, Swift, Go, Node, C++)
-- CI enforces core isolation: `cargo tree -p agent-desktop-core` must contain zero platform crate names
-
-### Platform Selection
-
-Compile-time via `#[cfg(target_os)]` in `build_adapter()`. Agents never specify platform — `agent-desktop snapshot -i` works identically on macOS, Windows, and Linux.
-
-```rust
-fn build_adapter() -> impl PlatformAdapter {
-    #[cfg(target_os = "macos")]
-    { agent_desktop_macos::MacOSAdapter::new() }
-
-    #[cfg(target_os = "windows")]
-    { agent_desktop_windows::WindowsAdapter::new() }
-
-    #[cfg(target_os = "linux")]
-    { agent_desktop_linux::LinuxAdapter::new() }
-}
-```
-
-### Target-Gated Dependencies
-
-Binary crate `Cargo.toml` uses platform-specific deps, NOT unconditional deps with `#[cfg]` in source:
-
-```toml
-[target.'cfg(target_os = "macos")'.dependencies]
-agent-desktop-macos = { path = "crates/macos" }
-
-[target.'cfg(target_os = "windows")'.dependencies]
-agent-desktop-windows = { path = "crates/windows" }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-agent-desktop-linux = { path = "crates/linux" }
-```
-
-### Command Dispatch
-
-Direct `match` in the binary crate. No `Command` trait, no `CommandRegistry`. Each command is a standalone `execute()` function under `crates/core/src/commands/`.
-
-```rust
-pub fn dispatch(
-    cmd: Commands,
-    adapter: &dyn PlatformAdapter,
-    permission_report: &PermissionReport,
-) -> Result<serde_json::Value, AppError> {
-    match cmd {
-        Commands::Snapshot(args) => commands::snapshot::execute(args, adapter),
-        Commands::Click(args) => commands::click::execute(args, adapter),
-        // one arm per command
-    }
-}
-```
-
-Batch is not a second dispatcher. `src/batch/mod.rs` deserializes JSON entries into the same typed `Commands` enum, runs the same `CommandPolicy` preflight, and calls the same `dispatch()` path as CLI.
-
-### Additive Phase Model
-
-Numbering follows `docs/phases.md` (the source of truth for phase scope):
-
-- **Phase 1 / 1.5 / 1.6 (completed):** Foundation + macOS MVP, FFI cdylib distribution, and the Playwright-grade foundation contract (capability supertraits, auto-wait, occlusion gate, live locator, ProcessState, envelope 2.1)
-- **Phase 2 (completed, v0.10.0):** Windows adapter — delivered as sub-phases 2.0–2.17, beginning with a raw-script platform exploration phase, each a <=2,000-LOC PR into the `feat/windows-adapter` integration branch
-- **Phase 3:** Linux adapter — same sub-phase template onto `feat/linux-adapter`
-- **Phase 4:** MCP server mode via `--mcp` flag — wraps existing commands
-- **Phase 5:** Daemon, sessions, enterprise quality gates
-
-Later phases add adapters, transports, and production readiness work. Nothing in core is rebuilt; platform work implements into the settled contract.
-
-## Coding Standards
-
-### File Rules
-
-- **400 LOC hard limit per hand-written Rust file**, enforced by `scripts/check-rust-file-size.sh` on every `.rs` file in the repository. If approaching 400, split by responsibility. Probe-corpus scripts (`probes/**/*.ps1`) are organized by measurement area rather than line count and routinely exceed 400 lines; they are deliberately outside this cap. The committed C header at `crates/ffi/include/agent_desktop.h` is generated by cbindgen and verified by the `ffi-header-drift` CI job; change the Rust ABI declarations or cbindgen configuration and regenerate it rather than hand-editing generated declarations.
-- **No inline comments.** Code must be self-documenting through naming. Only Rust doc-comments (`///`) on public items when the name alone is insufficient.
-- **No delivery-plan references in shipped source.** `crates/**` and `src/**` must not mention a phase, a sub-phase, a plan decision id (`KTD<n>`) or a plan implementation-unit id (`U<n>`). Those answer *when this was written*, which stops being true the moment the roadmap moves and means nothing to a reader without the plan open. Write what is true about the code and why, in terms that survive the plan being rewritten — `"The seam is deliberately unfilled: filling it needs Chromium detection this module does not do"`, never `"Sub-phase 2.2 ships the seam, 2.4 fills it"`. Enforced by `scripts/check-no-phase-references.sh` in the pre-commit hook and on the CI lane. **Probe ledger row ids (`A15-7`) are exempt and encouraged** — they cite the measurement that forced a decision, the way a comment may cite a CVE, and stay true regardless of the roadmap. `docs/` and `probes/` are out of scope: `docs/phases.md` *is* the plan, and the probe corpus is organised by the areas that produced it.
-- **One struct/enum per file** for domain types. `node.rs` defines `AccessibilityNode`. `action.rs` defines `Action`.
-- **One command per file.** Each CLI command lives in its own file under `commands/`. Filename matches the command name.
-- **No God objects.** No struct with more than 7 fields. No function with more than 5 parameters. Use builder patterns or config structs.
-- **Explicit pub boundaries.** Only `lib.rs` re-exports public items. Internal modules use `pub(crate)`. No wildcard re-exports.
-
-### Error Handling
-
-- **Zero `unwrap()` in non-test code.** All `Result`s propagated with `?` or matched explicitly. Panics are test-only.
-- Every error carries: `ErrorCode` enum (machine-readable), `message: String` (human-readable), `suggestion: Option<String>` (recovery hint), `platform_detail: Option<String>` (OS-specific detail)
-- All platform adapter functions return `Result<T, AdapterError>`
-- All command handlers return `Result<serde_json::Value, AppError>`
-- The binary's `main()` converts `AppError` to JSON and sets the exit code
-
-### Error Codes
-
-```
-PERM_DENIED, ELEMENT_NOT_FOUND, APP_NOT_FOUND, ACTION_FAILED,
-ACTION_NOT_SUPPORTED, STALE_REF, AMBIGUOUS_TARGET, WINDOW_NOT_FOUND,
-PLATFORM_NOT_SUPPORTED, TIMEOUT, INVALID_ARGS, NOTIFICATION_NOT_FOUND,
-SNAPSHOT_NOT_FOUND, POLICY_DENIED, APP_UNRESPONSIVE, INTERNAL
-```
-
-### Exit Codes
-
-- `0` — success
-- `1` — structured error (JSON with error code)
-- `2` — argument/parse error
-
-### Naming Conventions
-
-| Element | Convention | Example |
-|---------|-----------|---------|
-| Crate names | `agent-desktop-{name}` | `agent-desktop-core`, `agent-desktop-macos` |
-| Module files | `snake_case`, singular | `snapshot.rs`, `list_windows.rs` |
-| Structs | PascalCase, descriptive noun | `SnapshotEngine`, `RefAllocator` |
-| Traits | PascalCase, adjective/capability | `PlatformAdapter`, `Executable` |
-| Enums | PascalCase, variants PascalCase | `Action::Click`, `ErrorCode::PermDenied` |
-| Functions | `snake_case`, verb-first | `build_tree()`, `allocate_refs()` |
-| Constants | `SCREAMING_SNAKE_CASE` | `MAX_TREE_DEPTH`, `DEFAULT_TIMEOUT_MS` |
-| CLI flags | kebab-case | `--max-depth`, `--include-bounds` |
-| Ref IDs | `@<snapshot_id>:e{n}` qualified output | `@s8f3k2p9:e1`, `@s8f3k2p9:e14` |
-
-### Platform Crate Folder Structure
-
-All platform crates (`macos`, `windows`, `linux`) share the same top-level subfolder layout (`tree/`, `actions/`, `input/`, `system/`). New files must be placed in the correct subfolder. The file set inside `actions/` differs by platform: macOS ships a chain-family (`chain.rs`, `chain_*.rs`, `ax_mutation.rs`, `type_text.rs`, …), not a single `activate.rs`; Windows ships the semantic-dispatch set below.
-
-```
-crates/{macos,windows,linux}/src/
-├── lib.rs              # mod declarations + re-exports only
-├── adapter.rs          # PlatformAdapter trait impl
-├── tree/               # Reading & understanding the UI
-│   ├── mod.rs          # re-exports
-│   ├── element.rs      # AXElement struct + attribute readers
-│   ├── capabilities.rs # AX-supported actions and settable attributes
-│   ├── builder.rs      # build_subtree, tree traversal
-│   ├── roles.rs        # Role mapping
-│   ├── resolve.rs      # Element re-identification
-│   └── surfaces.rs     # Surface detection
-├── actions/            # Interacting with elements
-│   ├── mod.rs          # re-exports
-│   ├── dispatch.rs     # execute_action match arms
-│   ├── chain.rs        # policy-gated activation chain engine
-│   ├── mutation.rs     # write-path delivery classifier (macOS: ax_mutation.rs)
-│   ├── value_write.rs  # SetValue / Clear + secure-field gate
-│   ├── toggle_state.rs # Toggle / Check / Uncheck
-│   ├── disclosure.rs   # Expand / Collapse
-│   ├── select.rs       # Select by display value
-│   ├── scroll.rs       # scroll semantics
-│   ├── scroll_ladder.rs # ancestor ScrollPattern ladder
-│   ├── scroll_into_view.rs
-│   ├── focus.rs        # headed SetFocus + verification
-│   └── post_state.rs   # post-action state for ActionResult (macOS only)
-├── input/              # Low-level OS input synthesis
-│   ├── mod.rs          # re-exports
-│   ├── keyboard.rs     # Key synthesis, text typing (+ keyboard_event/map/send/text on Windows)
-│   ├── mouse.rs        # Mouse events (+ mouse_coord/send/modifier/click_guard on Windows)
-│   ├── drag.rs         # Drag with release guard (+ drag_state on Windows)
-│   ├── release_state.rs # Armed-and-counted guard state + delivery report (Windows)
-│   ├── elevation.rs    # UIPI integrity detection (Windows)
-│   ├── blocked_combo.rs # Platform-dangerous combo list (Windows)
-│   └── clipboard.rs    # Clipboard get/set (macOS and Windows)
-└── system/             # App lifecycle, windows, permissions
-    ├── mod.rs          # re-exports
-    ├── app_ops.rs      # launch, close, focus
-    ├── window_ops.rs   # window operations
-    ├── key_dispatch.rs # app-targeted key press
-    ├── permissions.rs  # permission checks
-    ├── screenshot.rs   # screen capture
-    └── wait.rs         # wait utilities
-```
-
-**Placement rules:**
-- Tree reading/traversal/resolution → `tree/`
-- Element interaction/activation → `actions/`
-- Raw OS input (keyboard, mouse, clipboard) → `input/`
-- App lifecycle, windows, permissions, screenshots → `system/`
-- `adapter.rs` stays at root — it's the PlatformAdapter impl that wires everything together
-
-### Extensibility Pattern
-
-Adding a new command requires exactly these steps:
-1. Create `crates/core/src/commands/{name}.rs` with an `execute()` function
-2. Register it in `crates/core/src/commands/mod.rs`
-3. Add the CLI subcommand variant to `src/cli/mod.rs` and arguments under `src/cli_args/`
-4. Add a match arm in `dispatch()` in the binary crate
-5. If new `Action` variant needed, add to `crates/core/src/action.rs`
-6. If new adapter method needed, add to `PlatformAdapter` trait with a default returning `Err(AdapterError::not_supported())`
-
-No existing files are modified beyond the registration points. Enforce via code review.
-
-## JSON Output Contract
-
-Every command produces a response envelope:
-
-```json
-{
-  "version": "2.4",
-  "ok": true,
-  "command": "snapshot",
-  "data": {
-    "app": "Finder",
-    "window": { "id": "w-4521", "title": "Documents" },
-    "ref_count": 14,
-    "snapshot_id": "s8f3k2p9",
-    "complete": true,
-    "tree": { ... }
-  }
-}
-```
-
-`data.complete` is present on every snapshot. A snapshot that exhausts its
-observation budget succeeds with `"complete": false`, the tree it did observe,
-`"truncated": true`, and `"nodes_observed"`; each node whose descendants were
-cut short carries `"subtree_truncated": true`, serialized only when true. A
-`--root` drill-down replaces refs inside an existing snapshot, so an incomplete
-observation there returns `TIMEOUT` rather than a partial tree.
-
-Error responses:
-
-```json
-{
-  "version": "2.4",
-  "ok": false,
-  "command": "click",
-  "error": {
-    "code": "STALE_REF",
-    "message": "Element could not be resolved from the requested snapshot",
-    "suggestion": "Run 'snapshot' to refresh, then retry with updated ref",
-    "recovery": {
-      "strategy": "refresh_snapshot_then_retry_original",
-      "retryable": true,
-      "requires_fresh_snapshot": true
-    },
-    "disposition": {
-      "delivery": "not_delivered",
-      "retry": "safe"
-    }
-  }
-}
-```
-
-The `error` object may also carry optional `details` and `recovery` objects. Version 2.1 removed the 2.0 `retry_command` string without a compatibility alias; consumers must use `recovery.strategy` only when `disposition.retry` is `safe`.
-
-### Serialization Rules
-
-- Omit null/None fields (`#[serde(skip_serializing_if = "Option::is_none")]`)
-- Omit empty arrays (`#[serde(skip_serializing_if = "Vec::is_empty")]`)
-- Omit bounds in compact mode
-- `ref_count` and `tree` go inside `data`, not as top-level siblings
-
-## Ref System
-
-- Refs are allocated in depth-first document order and emitted as snapshot-qualified IDs such as `@s8f3k2p9:e1`. Only the qualified form is accepted as input: a bare `@e1` fails with `INVALID_ARGS` and a suggestion to use the qualified ref `snapshot` prints. RefMap keys stay `@eN` internally; that storage form is never user input.
-- An element receives a ref when it is **addressable for an action**: its role is interactive (`button`, `textfield`, `checkbox`, `link`, `menuitem`, `tab`, `slider`, `combobox`, `treeitem`, `cell`, `radiobutton`, `switch`, `colorwell`, `menubutton`, `incrementor`, `dockitem`), **or** it advertises a primary action regardless of role. Container roles such as `scrollarea` (Scroll) and `disclosure` (Expand/Collapse/Click) are not interactive by role but are genuinely actionable, so they are ref-able — `scroll` / `expand` / `collapse` need a ref to target them
-- Ubiquitous affordances do not qualify on their own: `SetFocus` (focusability is not a primary action), `RightClick`, and `ScrollTo` (web runtimes such as Chromium/Electron advertise context menu and scroll-into-view on nearly every node). Inert containers and text advertising only these stay ref-less; `find` applies the same rule and returns `bounds` instead of a ref for such matches
-- Static text and non-actionable groups/containers do NOT get refs (they remain in tree for context)
-- Refs are deterministic within a snapshot but NOT stable across snapshots if UI changed
-- All persisted state lives under one state root, default `~/.agent-desktop`. `AGENT_DESKTOP_HOME` relocates it (the env value is the root itself, no suffix appended); resolution lives in `crates/core/src/state_root.rs` with precedence test override > env > default, and `status` reports the resolved root as `state_root`
-- Snapshot refs are stored by snapshot ID under `<state root>/snapshots/{snapshot_id}/refmap.json`, with a `latest_snapshot_id` pointer that `status` reports
-- Retention keeps the newest 128 snapshots per namespace and evicts down to 96, so the sort-and-stat pass is amortised instead of running on every save. Refs are invalidated by the next UI change, so retention only has to cover one interaction's drill-downs. Per R7/KTD5 of the session-first trace plan, a `snapshot_id` referenced by an *older* trace event may therefore no longer resolve to a full tree; `ArtifactsMode::Full` is the recorded mitigation because it copies each refmap into `<session>/trace/refmaps/`
-- `~/.agent-desktop/last_refmap.json` is a legacy file that is no longer written; `RefStore` reads it only to migrate an existing one into the default namespace; command code must use `RefStore`
-- Action commands use strict re-identification from platform-neutral `RefEntry` evidence: pid, role, path/source surface, role-conditional stable text identity, and bounds hash. Mutable control values are volatile and must not be treated as stable text identity. Return `STALE_REF` on mismatch and `AMBIGUOUS_TARGET` when multiple plausible live candidates remain.
-- Progressive traversal: `--skeleton` clamps depth to 3, annotates truncated containers with `children_count`. Named/described containers at boundary receive refs as drill-down targets
-- Drill-down: `--root @ref` starts from a previously-discovered ref with scoped invalidation (only that ref's subtree refs are replaced on re-drill)
-- RefMap size check: write-side guard prevents >1MB refmap files
-- **Sessions:** `session start` creates and returns a manifest-gated session under `~/.agent-desktop/sessions/<id>/` and enables automatic trace segments by default. It does not activate that session for later processes. Pass the returned ID through `--session` or `AGENT_DESKTOP_SESSION`. Bare `--session <id>` without a manifest scopes only the snapshot namespace — no surprise trace files.
-- **Subagent cursors (macOS and Windows):** `session start --cursor --multi-agent` enables independent cursors keyed by session ID and global `--agent-id` (`AGENT_DESKTOP_AGENT_ID` fallback). The harness supplies a stable ID per subagent; desktop UI actions require it in this mode. Agents share session snapshots and use qualified refs. Optional named `cursor-overlay enable` profiles affect presentation only. Disable/end stops every cursor in the session.
-- **Trace:** manifest `trace: on` writes per-process JSONL segments under `<session>/trace/<pid>-<procTs>.jsonl`; `--trace <path>` overrides to one file; activation resolves `--session` > `AGENT_DESKTOP_SESSION` > no session. Snapshot lookup is confined to that selected namespace and never searches other sessions.
-
-## PlatformAdapter Trait
-
-Core defines `PlatformAdapter`; platform crates implement it. Methods default to
-`not_supported()`, so an adapter only implements what it supports. Read the
-current signatures in `crates/core/src/adapter/mod.rs` and its `actions.rs`, `input.rs`, `observation.rs`, and `system.rs` capability fragments — notably strict resolution
-(`resolve_element_strict*` → STALE_REF on 0, AMBIGUOUS_TARGET on 2+), live reads
-for the actionability preflight (`get_live_*`), and `is_protected_process`
-(keeps platform-specific process names out of core).
-
-## macOS Adapter Gotchas
-
-- **Ancestor-path set, not a global visited set** — macOS reuses
-  `AXUIElementRef` pointers across sibling branches, so a global visited set
-  would prune real subtrees.
-- **`AXElement` memory safety** — inner field is `pub(crate)` (prevents
-  double-free via raw pointer extraction); `Clone` must `CFRetain`, `Drop` must
-  `CFRelease`.
-- **Batch attribute reads** — use `AXUIElementCopyMultipleAttributeValues`
-  (3-5x faster than per-attribute fetches).
-
-## Testing
-
-- Unit tests use an in-memory `MockAdapter`; golden fixtures in `tests/fixtures/`
-  regression-test serialization.
-- macOS CI integration tests drive real apps (Finder, TextEdit, System Settings).
-- `tests/e2e/run.sh` drives the release binary against the SwiftUI fixture and
-  verifies every effect by independent observation in both headless and
-  `--headed` mode (see `tests/e2e/README.md`).
-
-## CI Requirements
-
-- GitHub Actions macOS runner executes full test suite on every PR
-- Windows and Linux runners execute the core unit tests plus their native platform crate on every PR
-- `cargo tree -p agent-desktop-core` must not contain platform crate names
-- `cargo clippy --all-targets -- -D warnings` over each host's package set
-- `cargo test` over each host's package set
-- Binary size check: fail if release binary exceeds 15MB
-
-### Core platform-conditional code
-
-`agent-desktop-core` must stay executable on every supported OS. A `#[cfg]` branch in core
-that no CI lane runs is a hypothesis, not shipped code — either add a lane that executes
-it or keep it out of core. Platform hardening belongs behind `PlatformAdapter` or in the
-platform crate, written on that platform against a lane that runs it. Core carried 1,062
-LOC of never-executed Win32 file I/O into v0.5.0; it failed 225 of 940 tests on first
-contact with Windows and was deleted. See
-`docs/solutions/best-practices/never-ship-platform-code-that-ci-cannot-execute.md`.
+Guidance for AI coding agents working in this repository.
+
+agent-desktop is a tool that AI agents invoke, not an agent. It is a Rust CLI and C library that reads native
+accessibility trees and returns structured JSON with ref-based element ids. The observe-act loop lives in the
+calling agent. It never embeds an LLM and has no GUI or interactive prompt. It does not automate web pages (use
+agent-browser). It cannot see UIs that expose no accessibility tree.
 
 ## Commands
 
-60 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard,
-Mouse, Notifications, Clipboard, Wait, System (including `session`), and
-Batch. The core skill (`skills/agent-desktop/`) covers the loop on every OS; the platform skills (`skills/agent-desktop-macos/`, `skills/agent-desktop-windows/`) cover what differs. `agent-desktop skills get platform` serves the one for the running OS.
-56 of the 60 command names are operational on macOS; the four held-input names (key-down, key-up, mouse-down, mouse-up) fail closed. Windows ships the same surface,
-including event waits, shell surfaces and Action Center notifications, with the
-per-platform limits stated in `skills/agent-desktop-windows/`. Linux (Phase 3)
-targets the same surface. Adding a command: see the Extensibility Pattern above.
+Each platform adapter compiles only on its own OS and the workspace names all three, so an unscoped `cargo build`,
+`cargo test --workspace` or `cargo clippy --all-targets` fails on every host. Scope cargo to the host's package set,
+the same set `.githooks/pre-commit` uses:
 
-## Non-Goals
+```bash
+HOST_PKGS=(-p agent-desktop-core -p agent-desktop-macos -p agent-desktop -p agent-desktop-ffi)
+# Windows: replace agent-desktop-macos with agent-desktop-windows. Linux: with agent-desktop-linux.
+# An array expands to separate arguments in both bash and zsh; a plain string does not in zsh.
 
-- Does NOT embed or invoke LLMs
-- Does NOT provide a GUI, TUI, or interactive prompt — machine-facing only
-- Does NOT automate web browsers (use agent-browser for that)
-- Does NOT record or replay macros (stateless per invocation until Phase 5 daemon)
-- Does NOT work with custom-rendered or game-engine UIs lacking accessibility exposure
+cargo build "${HOST_PKGS[@]}"                                  # debug build
+cargo build --release -p agent-desktop                         # release CLI; CI fails it above 15 MB
+cargo test "${HOST_PKGS[@]}"                                   # every test target
+cargo test "${HOST_PKGS[@]}" --lib                             # library tests only; skips the binary crate
+cargo test -p agent-desktop                                    # binary crate: CLI contract, dispatch, batch, policy
+cargo test "${HOST_PKGS[@]}" <test_name>                       # one test by name
+cargo clippy "${HOST_PKGS[@]}" --all-targets -- -D warnings    # zero warnings
+cargo fmt --all -- --check
+cargo check -p agent-desktop-core --all-targets --target x86_64-pc-windows-msvc   # core cross-compiles
+cargo check -p agent-desktop-core --all-targets --target x86_64-unknown-linux-gnu
+cargo tree -p agent-desktop-core                               # must name no platform crate
+AGENT_DESKTOP_E2E_EXCLUSIVE=1 bash tests/e2e/run.sh            # macOS E2E; builds its own artifacts
+bash scripts/perf-baseline-compare.sh                          # macOS perf A/B against the merge-base
+```
 
-## Reference Documents
+`scripts/cargo-test-isolated-home.sh test "${HOST_PKGS[@]}" --lib` runs tests with a throwaway `HOME`, which keeps them out
+of your real `~/.agent-desktop`. The pre-commit hook uses it.
 
-- Architecture Brainstorm: `docs/brainstorms/2026-02-19-architecture-validation-brainstorm.md`
-- Phase 1 Plan: `docs/plans/2026-02-19-feat-agent-desktop-phase1-foundation-plan.md`
+Enable the hook once per clone with `git config core.hooksPath .githooks`. For staged Rust or TOML changes it runs the
+source-rule scripts (`check-rust-file-size.sh`, `check-no-phase-references.sh`, `check-stale-ref-constructor-misuse.sh`),
+fmt, clippy and library tests over the host set. FFI changes add the C ABI passthrough test and the cbindgen header
+check. Bypass it only in an emergency: `git commit --no-verify` or `SKIP_PRECOMMIT=1 git commit ...`.
 
-## Definition of Done: Performance Baseline
+## Where the truth lives
 
-Every substantive change ends with a performance baseline check before merge, reviewed against the merge-base. Latency deltas must be intentional and explainable — never discovered by users.
+- **Shipped behavior** is the code and its tests. A doc that contradicts the code is a defect; fix it in the same change.
+- **Agent usage** is the skills under `skills/`. They compile into the binary: `agent-desktop skills get desktop` and
+  `agent-desktop skills get platform`.
+- **Vocabulary** is `CONCEPTS.md`. **The JSON contract** is `docs/json-output.md`. **Past lessons** are in
+  `docs/solutions/`, with YAML frontmatter (`module`, `tags`, `problem_type`); search it before you work in a
+  documented area.
+- **Planning documents** (the phase roadmap `phases.md`, sub-phase plans, brainstorms) live in `.compound-engineering/`
+  at the repo root. That folder is untracked on purpose. Read it when you plan. Never link to it or cite it from a
+  committed file, because it does not exist in any other checkout.
+- When a plan contradicts the code, the code says what shipped. Correct the plan in place, with no "previously said"
+  note, and cite what disproved it: a `probes/**/FINDINGS.md` row id or the source line.
 
-**The vehicle is platform-specific.** On macOS: `bash scripts/perf-baseline-compare.sh` (optionally `--apps "Slack,Google Chrome"` for dense Electron/Chromium coverage) → `report.html`. On Windows that script does not run — it is structurally macOS-bound, opening the `.app` fixture bundle — so the vehicle is the probe corpus cost methodology: min-of-seven with the warm-up discarded, reported as min with median and max beside it (`probes/windows/FINDINGS.md` A15-13, applied in A18-7). Naming the macOS script in a Windows plan names a gate that platform cannot run.
+### Build it; do not defer it
 
-## Definition of Done: Dogfood Is a Gate
+- The implementer makes the work land. "Harder than expected", "the PR is already large" and "a later phase touches
+  this" are not reasons to defer.
+- Defer only when the work is blocked: impossible on the platform, dependent on infrastructure that does not exist,
+  or possible only by breaking a stated invariant or safety property. Name which one.
+- Measure before you defer. Settle an unknown with a probe; a deferral that rests on an assumption is a guess.
+- Reducing scope is the owner's call. If the work cannot land, say so and stop. Never narrow it quietly.
+- Write each deferral into the receiving phase of the local roadmap before the PR opens, with the evidence that
+  forced it, and name it in the PR description. If it changes what the current phase delivers, correct that phase too.
 
-Phase 2/3 sub-phases carry an additional, non-negotiable gate, stated in full under **Cross-cutting sub-phase DoD** in `docs/phases.md` and summarized here so it is not missed: every sub-phase drives its own surface against real software and commits a judged report; **a report with no findings is a failed dogfood, not a passed one**; and every finding takes exactly one of three dispositions — *fixed here* with a named test that is invert-verified (break the fix, watch that test fail, restore), *owned elsewhere* and written into the receiving sub-phase's scope in `docs/phases.md` in the same PR, or *accepted* with a stated reason. **"Recorded" is not a disposition.**
+## Branches and commits
 
-**Run it as a stranger, or it is not a dogfood.** The operator gets the shipped skill and the built binary and nothing else — not the source, not the plan. A subagent doing it is told so and denied the repo. Every example the shipped docs contain is executed **verbatim in the platform's default shell**, because that is what a new agent will actually type; an example that cannot run as written is a defect of the same weight as a broken command. **Reaching for any flag, variable or ordering the skill does not document ends the run as a finding** — author reflexes are precisely what the run exists to strip out. The evidence for this rule is its own: an author-run dogfood passed, and the same surface driven from the skill alone yielded five defects in twenty minutes.
+- `main` carries macOS and Windows. Fixes and features for them branch off `main` and merge into `main`.
+- Linux develops on the integration branch `feat/linux-adapter`. Each sub-phase is cut from it as
+  `feat/linux-<n.n>-<slug>` and merges back into it, never into `main`, and never rebases onto `main`. The branch
+  reaches `main` once, as one release-noted `feat!` promotion after full-branch review, live E2E and a perf check.
+- All commits are authored by Lahfir. Never add `Co-Authored-By` lines, AI attribution or "Generated with" footers.
+- Use Conventional Commits: `feat:`, `fix:`, `feat!:` or a `BREAKING CHANGE:` footer, `docs:`, `style:`, `refactor:`,
+  `perf:`, `chore:`, `ci:`, `test:`. Write `type: imperative summary` in lowercase after the colon, and say why.
+- Versions are pre-1.0 (`bump-minor-pre-major` and `bump-patch-for-minor-pre-major` in `release-please-config.json`):
+  a breaking change cuts a minor and a `feat:` cuts a patch.
 
-**Do not report a failure you have not confirmed twice.** No step's output is discarded, every step's `ok` is read, and waiting uses the tool's own wait primitives — a fixed sleep then a check is a race, and a failure seen that way is not a finding until a real wait reproduces it. **Measure a behavioural claim in both directions before writing it down**, the failing case and the passing one; a claim measured once names whichever cause happened to be present, and shipping it puts wrong advice in a doc someone will follow.
+## Architecture
 
-A sub-phase's exit criteria must also enumerate every capability its scope names, and every requirement in its plan must map to at least one test that fails if that requirement is violated. `docs/phases.md` is authoritative if these ever diverge.
+```
+crates/core/     agent-desktop-core: PlatformAdapter trait in adapter/, shared types in domain folders,
+                 one file per command in commands/
+crates/macos/    agent-desktop-macos: AX API
+crates/windows/  agent-desktop-windows: UI Automation
+crates/linux/    agent-desktop-linux: AT-SPI
+crates/ffi/      agent-desktop-ffi: cdylib and the committed C header include/agent_desktop.h
+src/             agent-desktop binary: cli/, cli_args/, dispatch/, batch/, command_policy/, command_host/,
+                 diagnostic/, visual_debug/
+skills/          agent skills, compiled into the binary
+tests/           golden fixtures, E2E harness per OS, FFI smoke tests
+probes/          raw platform measurements; FINDINGS.md rows are citable evidence
+```
+
+**Dependency inversion (non-negotiable).**
+- Core defines `PlatformAdapter` and every shared type. Platform crates implement the trait.
+- Core never imports a platform crate, and platform crates never import each other. CI fails if
+  `cargo tree -p agent-desktop-core` names a platform crate.
+- Only two crates wire a platform to core: the binary (`src/`) and the FFI crate.
+- The platform is chosen at compile time by `#[cfg(target_os)]` in `build_adapter()` (`src/main.rs`,
+  `crates/ffi/src/adapter.rs`) with target-gated dependencies in `src/Cargo.toml`
+  (`[target.'cfg(target_os = "macos")'.dependencies]`), never unconditional dependencies behind source `cfg`s.
+- `PlatformAdapter` is split across `crates/core/src/adapter/` (`mod.rs` plus the `actions`, `input`, `observation` and
+  `system` fragments). Every method defaults to `AdapterError::not_supported`, so an adapter implements only what it
+  supports. Strict resolution (`resolve_element_strict*`) returns `STALE_REF` for zero matches and `AMBIGUOUS_TARGET`
+  for two or more.
+- Core must run on every OS. A `#[cfg]` branch in core that no CI lane executes is a hypothesis, not shipped code: add
+  a lane or move it behind `PlatformAdapter`.
+
+**Dispatch.** `dispatch()` in `src/dispatch/mod.rs` is a direct `match` that calls each command's `execute()` in
+`crates/core/src/commands/`. There is no command trait or registry. Batch is not a second dispatcher: it deserializes
+JSON entries into the same `Commands` enum, runs the same `CommandPolicy` preflight and calls the same `dispatch()`.
+
+**Adding a command.**
+1. Create `crates/core/src/commands/<name>.rs` with an `execute()` function, its tests in `<name>_tests.rs`, and
+   register it in `commands/mod.rs`.
+2. Add the CLI variant in `src/cli/mod.rs` and its arguments under `src/cli_args/`.
+3. Add its arm to `dispatch()` and to `policy_for()` in `src/command_policy/mod.rs`. Both matches are exhaustive.
+4. Add its name to `parse_command()` in `src/batch/mod.rs`; `every_cli_subcommand_is_known_to_batch_parser` fails
+   otherwise. Add it to the surface lists in `src/cli/contract_command_surface_tests.rs`.
+5. Update the command counts in `README.md` and in this file; `src/cli/doc_literal_drift_tests.rs` checks them.
+6. A new `Action` variant goes in `crates/core/src/actions/action.rs`. A new adapter method goes in the matching
+   `PlatformAdapter` fragment with a `not_supported` default.
+7. Update the matching skill in the same change: `skills/agent-desktop/` for cross-platform behavior, the platform
+   skill for what differs, `skills/agent-desktop-ffi/` for the C ABI. The skills compile into the binary and are what
+   agents read.
+
+**Crate layout.** Core's root holds only `lib.rs` and domain folders named after `CONCEPTS.md` words: `actionability`,
+`actions`, `adapter`, `commands`, `context`, `cursor_overlay`, `input`, `locator`, `notifications`, `ref_action`,
+`refs`, `response`, `session`, `snapshot`, `storage`, `system`, `trace`, `tree` and `wait`.
+- A platform crate's root holds `lib.rs`, `adapter.rs` (the trait impl) and five layer folders, plus `bin/` where a
+  helper binary exists. `tree/` reads, traverses and resolves the UI; `actions/` acts on elements; `input/`
+  synthesizes raw keyboard, mouse and clipboard input; `system/` handles app lifecycle, windows, permissions and
+  screenshots; `notifications/` handles the OS notification surface.
+- Inside a layer, a concept with four or more source files gets a subfolder named from the shared vocabulary
+  (`resolve`, `walk`, `properties`, `select`, `scroll`, `clipboard`, `keyboard`, `mouse`, `window`, `capture`, ...).
+  File names keep their prefix (`system/window/window_ops.rs`). A file named like its folder becomes its `mod.rs`.
+- Tests sit beside their code as `foo_tests.rs`, declared from `foo.rs` with
+  `#[cfg(test)] #[path = "foo_tests.rs"] mod tests;`.
+- Capability impls live in `adapter.rs` or in the matching layer's `adapter.rs`.
+
+**Grounding rule.** `scripts/check-architecture.sh` (rules in `scripts/check_architecture.py`) runs in the pre-commit
+hook and in CI next to the source rules. Before it scans, it plants a violation of every rule, so a rule that stops
+detecting fails the gate. It fails when core depends on a platform or OS crate, a platform crate reaches another,
+core gains OS-conditional code outside its allow-list, a crate's top-level layout drifts, a capability is implemented
+in the wrong layer, core domains reach `commands/`, or a test file is not declared beside its code. Its lists (core
+dependencies, core domains, binary folders, OS allow-list) change only in review. The CI `cargo tree` isolation steps
+remain the transitive check.
+
+## Coding standards
+
+- **400 lines at most per hand-written `.rs` file** (`scripts/check-rust-file-size.sh`). Split by responsibility.
+  A generated `.rs` file with an `@generated` marker in its first five lines is exempt, and the fix goes in the
+  generator, not the output. Probe `.ps1` scripts are exempt. The C header is generated by cbindgen and checked by CI
+  for drift: change the Rust ABI or `crates/ffi/cbindgen.toml` and regenerate it with `scripts/update-ffi-header.sh`,
+  never edit it by hand.
+- **No inline comments.** Names carry the meaning. Standalone `//` lines, end-of-line `//` comments and non-doc
+  `/* */` blocks are all rejected. The allowed forms are `///` on public items, only when the name is not enough, and
+  `//!` module docs. `scripts/check-rust-file-size.sh` enforces this together with the size cap, through
+  `scripts/check_rust_comments.py`.
+- **No delivery-plan references in `crates/**` or `src/**`**: no phase, sub-phase, plan decision id (`KTD<n>`) or plan
+  unit id (`U<n>`). Write what is true about the code and why. Probe ledger row ids such as `A15-7` are allowed and
+  encouraged. `scripts/check-no-phase-references.sh` enforces this.
+- **One domain struct or enum per file** (`node.rs` holds `AccessibilityNode`). **One command per file**, named after
+  the command.
+- **At most 7 fields per struct and 5 parameters per function.** Use a config struct or a builder.
+- **Explicit `pub` boundaries.** Only `lib.rs` re-exports. Internal modules are `pub(crate)`. No wildcard re-exports.
+- **Naming.** Crates are `agent-desktop-<name>`; module files are singular `snake_case`; types are `PascalCase`;
+  functions are verb-first `snake_case`; constants are `SCREAMING_SNAKE_CASE`; CLI flags are kebab-case.
+
+**Errors.**
+- No `unwrap()`, `expect()` or `panic!` outside tests; panics are test-only. Propagate with `?` or match.
+- Adapter functions return `Result<T, AdapterError>`. Command handlers return `Result<serde_json::Value, AppError>`.
+  `main()` turns an `AppError` into the JSON envelope and the exit code.
+- An error carries `code` (`ErrorCode`), `message`, and optional `suggestion`, `platform_detail` and `details`, plus
+  its delivery disposition.
+- Codes: `PERM_DENIED`, `ELEMENT_NOT_FOUND`, `APP_NOT_FOUND`, `ACTION_FAILED`, `ACTION_NOT_SUPPORTED`, `STALE_REF`,
+  `AMBIGUOUS_TARGET`, `WINDOW_NOT_FOUND`, `PLATFORM_NOT_SUPPORTED`, `TIMEOUT`, `INVALID_ARGS`,
+  `NOTIFICATION_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `POLICY_DENIED`, `APP_UNRESPONSIVE`, `INTERNAL`.
+- Exit codes: `0` success, `1` structured error, `2` argument or parse error.
+
+## Output contract
+
+Every command prints one envelope. `docs/json-output.md` holds the full contract.
+
+```json
+{ "version": "2.5", "ok": true, "command": "snapshot",
+  "data": { "app": "Finder", "snapshot_id": "s8f3k2p9", "ref_count": 14, "complete": true, "tree": { } } }
+```
+
+```json
+{ "version": "2.5", "ok": false, "command": "click",
+  "error": { "code": "STALE_REF", "message": "...", "suggestion": "...",
+             "recovery": { "strategy": "refresh_snapshot_then_retry_original", "retryable": true,
+                           "requires_fresh_snapshot": true },
+             "disposition": { "delivery": "not_delivered", "retry": "safe" } } }
+```
+
+- Omit `None` fields and empty arrays. Compact mode omits bounds. `ref_count` and `tree` live inside `data`.
+- Every snapshot carries `data.complete`. A snapshot that runs out of observation budget succeeds with
+  `"complete": false`, `"truncated": true`, `"nodes_observed"` and the tree it saw; each cut node carries
+  `"subtree_truncated": true`. A `--root` drill-down returns `TIMEOUT` instead of a partial tree.
+- Pointer, drag, clipboard, close-app and window commands return the adapter's `OperationReport` as `data`.
+  `delivered_verified` needs a postcondition read, `delivered_unverified` means a completed dispatch without one, and
+  `not_delivered` is only for an operation already observed as satisfied. Core never adds an unconditional success
+  flag such as `clicked`.
+- Use `recovery.strategy` only when `disposition.retry` is `safe`.
+
+## Refs and state
+
+`CONCEPTS.md` defines refs, snapshots, sessions, cursors and traces. These rules are the ones code most often breaks:
+
+- Refs are snapshot-qualified (`@s8f3k2p9:e1`) and allocated depth-first. Only the qualified form is accepted as
+  input; a bare `@e1` fails with `INVALID_ARGS`. `@eN` is the internal RefMap key only.
+- An element gets a ref when its role is interactive (`INTERACTIVE_ROLES` in `crates/core/src/tree/roles.rs`) or it
+  advertises a primary action. `SetFocus`, `RightClick` and `ScrollTo` alone do not qualify, because web runtimes
+  advertise them on nearly every node.
+- Actions re-identify the element strictly from `RefEntry` evidence: pid, role, path and source surface, stable text
+  identity and a bounds hash. Control values are volatile and never identity. A mismatch returns `STALE_REF`; several
+  live candidates return `AMBIGUOUS_TARGET`.
+- All state lives under one root, `~/.agent-desktop` by default. `AGENT_DESKTOP_HOME` relocates it
+  (`crates/core/src/storage/state_root.rs`). Refmaps live at `snapshots/<snapshot_id>/refmap.json`, capped at 1 MB each; the
+  store keeps the newest 128 snapshots per namespace and prunes to 96. Command code goes through `RefStore`, which
+  only reads the legacy `last_refmap.json` to migrate it.
+- A session is selected by `--session`, then `AGENT_DESKTOP_SESSION`, then none. `session start` does not activate a
+  session for later processes; pass its id. Snapshot lookup never searches another session's namespace.
+
+## macOS adapter gotchas
+
+- macOS reuses `AXUIElementRef` pointers across sibling branches. Guard traversal with an ancestor-path set, never a
+  global visited set, or real subtrees disappear.
+- `AXElement` keeps its pointer `pub(crate)` to prevent a double free. `Clone` must `CFRetain` and `Drop` must
+  `CFRelease`.
+- Read attributes in batches with `AXUIElementCopyMultipleAttributeValues`, not one call per attribute.
+
+## Testing and CI
+
+- Unit tests use small purpose-built adapter stubs (see `crates/core/src/adapter/test_support.rs`). Golden JSON in
+  `tests/fixtures/` guards serialization.
+- The E2E harnesses (`tests/e2e/`, `tests/e2e-windows/`, `tests/e2e-linux/`) drive the built binary against real
+  apps. They check every effect by independent observation, never by the command's own `ok: true`. The macOS harness
+  covers every ref action in headless and `--headed` mode.
+- CI runs fmt, the MSRV build, the core cross-compile checks, clippy and tests per OS, the core isolation check, a
+  15 MB binary size check and the FFI header and panic guards.
+
+## Command surface
+
+60 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard, Mouse, Notifications, Clipboard, Wait,
+System (including `session`, `trace`, `skills`) and Batch. 56 of the 60 command names are operational on macOS; the
+four held-input names (`key-down`, `key-up`, `mouse-down`, `mouse-up`) fail closed. Windows and Linux expose the same
+command names. Each platform's limits are in its skill (`skills/agent-desktop-macos/`, `skills/agent-desktop-windows/`,
+`skills/agent-desktop-linux/`).
+
+## Definition of done
+
+**Performance.** Check every substantive change for latency against the merge-base before merge. A latency change
+must be intended and explained, never found by users.
+- macOS: `bash scripts/perf-baseline-compare.sh` writes `report.html`. Add `--apps "Slack,Google Chrome"` for dense
+  Electron and Chromium coverage.
+- Windows: that script cannot run there. Use the probe cost method instead: min of seven runs with the warm-up
+  discarded, reported as the min with the median and max beside it (`probes/windows/FINDINGS.md` A15-13, A18-7).
+- Linux: there is no baseline comparison. Hold these budgets: release CLI at most 15 MiB; every command under a silent
+  display, a silent bus or a stopped app returns its documented code within its timeout plus 1 s; a snapshot of a
+  real app is `complete: true` or cleanly truncated; FFI threads, descriptors and memory stay flat across repeated
+  calls; the glibc floor stays at 2.35 or lower (`scripts/check-elf-glibc-floor.sh`).
+
+**Dogfood.** Every platform sub-phase drives its own surface against real software and keeps a judged report.
+- Run it as a stranger. The operator gets the shipped skill and the built binary, and nothing else: no source, no plan.
+  A subagent that does it is told so and denied the repo.
+- Run every example in the shipped docs verbatim in the platform's default shell. An example that cannot run as
+  written is a defect of the same weight as a broken command.
+- Reaching for a flag, variable or ordering the skill does not document ends the run as a finding.
+- A report with no findings is a failed dogfood, not a passed one.
+- Read every step's `ok`. Wait with the tool's own wait primitives; a fixed sleep and then a check is a race.
+  Confirm a failure twice before you report it. Measure a behavioral claim in both directions before you write it down.
+- Give every finding exactly one disposition: fixed here, with a named test that you invert-verify (break the fix,
+  watch the test fail, restore); owned elsewhere, written into the receiving phase of the local roadmap; or accepted,
+  with a reason. "Recorded" is not a disposition.
+- Reports and their evidence stay out of version control.
+- Every requirement in a plan maps to at least one test that fails when the requirement is violated.

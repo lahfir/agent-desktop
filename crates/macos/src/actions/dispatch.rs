@@ -1,14 +1,15 @@
 use agent_desktop_core::{
     Action, ActionResult, ActionStep, AdapterError, Deadline, ErrorCode, StepMechanism,
-    action_request::ActionRequest,
+    actions::action_request::ActionRequest,
 };
 
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
     use crate::actions::{
+        chain::chain_defs,
         chain::{ChainContext, ChainDef, execute_chain},
-        chain_defs, toggle_state,
+        toggle_state,
     };
     use crate::tree::AXElement;
 
@@ -22,7 +23,7 @@ mod imp {
             verified_point: request.verified_point(),
             deadline,
         };
-        crate::tree::attributes::set_messaging_timeout(el, deadline)?;
+        crate::tree::properties::attributes::set_messaging_timeout(el, deadline)?;
         budget.ensure_budget()?;
         let action = &request.action;
         let label = action.name();
@@ -225,7 +226,11 @@ mod imp {
         deadline: Deadline,
     ) -> Result<Option<String>, AdapterError> {
         let operation_deadline = crate::tree::locator_deadline::from_operation(deadline)?;
-        match crate::tree::resolve_ax_read::read_string(element, "AXRole", operation_deadline) {
+        match crate::tree::resolve::resolve_ax_read::read_string(
+            element,
+            "AXRole",
+            operation_deadline,
+        ) {
             Err(error) if error.code == ErrorCode::AppUnresponsive => Ok(None),
             result => result,
         }

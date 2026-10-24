@@ -16,7 +16,8 @@ impl TreeBuildContext {
         deadline: std::time::Instant,
     ) -> Result<Self, agent_desktop_core::AdapterError> {
         let app = super::element_for_pid(pid);
-        let focused = super::resolve_ax_read::read_element(&app, "AXFocusedUIElement", deadline)?;
+        let focused =
+            super::resolve::resolve_ax_read::read_element(&app, "AXFocusedUIElement", deadline)?;
         Ok(Self {
             focused,
             window_bounds: None,

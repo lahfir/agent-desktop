@@ -1,8 +1,8 @@
-use agent_desktop_core::{LocatorField, roles, state};
+use agent_desktop_core::{LocatorField, tree::roles, tree::state};
 
 use super::properties::ElementProperties;
-use super::property_ids::TreeProperty;
-use super::property_outcome::PropertyOutcome;
+use super::properties::property_ids::TreeProperty;
+use super::properties::property_outcome::PropertyOutcome;
 
 /// `STATE_SYSTEM_HASPOPUP`, the MSAA bit A15-6 measured on a menu item
 /// alongside `STATE_SYSTEM_FOCUSABLE`. Neither `haspopup` nor `busy` has a UI

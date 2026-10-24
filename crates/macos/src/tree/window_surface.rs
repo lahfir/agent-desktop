@@ -9,14 +9,16 @@ pub(crate) fn surface_for_window(
     deadline: Instant,
 ) -> Result<Option<AXElement>, AdapterError> {
     resolve_owned_surface(
-        crate::system::window_resolve::window_element_for_info_with_deadline(window, deadline),
+        crate::system::window::window_resolve::window_element_for_info_with_deadline(
+            window, deadline,
+        ),
         |owner| super::surfaces::surface_in_window(&owner, surface, deadline),
         || {
-            let pid = crate::system::process_identity::to_pid_t(window.pid)?;
+            let pid = crate::system::process::process_identity::to_pid_t(window.pid)?;
             surface_for_pid_with_window_number(
                 pid,
                 surface,
-                crate::system::window_resolve::parse_window_number(&window.id),
+                crate::system::window::window_resolve::parse_window_number(&window.id),
                 deadline,
             )
         },
@@ -53,7 +55,7 @@ pub(super) fn surface_for_pid_with_window_number(
     if expected_number.is_none() {
         return Ok(None);
     }
-    let app = super::element::element_for_pid(pid);
+    let app = super::properties::element::element_for_pid(pid);
     let mut windows = super::surface_read::elements(&app, "AXWindows", deadline)?;
     if let Some(focused) = super::surfaces::focused_surface_for_pid(pid, deadline)? {
         super::element_dedupe::push_unique(&mut windows, focused);
@@ -76,7 +78,7 @@ pub(super) fn surface_for_pid_with_window_number(
             if !matches {
                 return Ok(None);
             }
-            crate::system::window_resolve::ax_window_id_with_deadline(element, deadline)
+            crate::system::window::window_resolve::ax_window_id_with_deadline(element, deadline)
         },
     )
 }

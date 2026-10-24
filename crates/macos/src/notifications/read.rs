@@ -20,14 +20,14 @@ pub(super) fn children_for_attribute(
     attribute: &str,
     deadline: Deadline,
 ) -> Result<Vec<AXElement>, AdapterError> {
-    crate::tree::attributes::set_messaging_timeout(element, deadline)?;
-    let result = crate::tree::attributes::copy_ax_array_prefix_result(
+    crate::tree::properties::attributes::set_messaging_timeout(element, deadline)?;
+    let result = crate::tree::properties::attributes::copy_ax_array_prefix_result(
         element,
         attribute,
         MAX_NOTIFICATION_CHILDREN,
         deadline,
     );
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     let children = result
         .map(|value| value.unwrap_or_default())
         .map_err(|error| read_error(attribute, error))?;
@@ -46,9 +46,10 @@ pub(super) fn string(
     attribute: &str,
     deadline: Deadline,
 ) -> Result<Option<String>, AdapterError> {
-    crate::tree::attributes::set_messaging_timeout(element, deadline)?;
-    let result = crate::tree::attributes::copy_string_attr_result(element, attribute, deadline);
-    ensure_budget(deadline)?;
+    crate::tree::properties::attributes::set_messaging_timeout(element, deadline)?;
+    let result =
+        crate::tree::properties::attributes::copy_string_attr_result(element, attribute, deadline);
+    deadline.ensure_remaining()?;
     result.map_err(|error| read_error(attribute, error))
 }
 
@@ -90,14 +91,6 @@ pub(super) fn bounds(
 ) -> Result<Option<Rect>, AdapterError> {
     let read_deadline = crate::tree::locator_deadline::from_operation(deadline)?;
     crate::tree::element_bounds::read_bounds_with_deadline(element, read_deadline)
-}
-
-fn ensure_budget(deadline: Deadline) -> Result<(), AdapterError> {
-    if deadline.is_expired() {
-        Err(deadline.timeout_error())
-    } else {
-        Ok(())
-    }
 }
 
 fn read_error(attribute: &str, error: i32) -> AdapterError {

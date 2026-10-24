@@ -29,7 +29,7 @@ impl SystemOps for DeniedAdapter {
 
 #[test]
 fn status_uses_precomputed_permission_report() {
-    let _guard = crate::refs_test_support::HomeGuard::new();
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
     let report = PermissionReport {
         accessibility: PermissionState::Granted,
         screen_recording: PermissionState::Granted,
@@ -48,7 +48,7 @@ fn status_uses_precomputed_permission_report() {
 
 #[test]
 fn status_reports_tracing_false_when_writer_failed() {
-    let _guard = crate::refs_test_support::HomeGuard::new();
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
     let session = crate::session::start_session(crate::session::StartSessionOptions {
         name: None,
         trace: crate::session::SessionTraceMode::On,
@@ -75,7 +75,7 @@ fn status_reports_tracing_false_when_writer_failed() {
 
 #[test]
 fn status_reports_resolved_state_root_verbatim() {
-    let guard = crate::refs_test_support::HomeGuard::new();
+    let guard = crate::refs::refs_test_support::HomeGuard::new();
     let report = PermissionReport {
         accessibility: PermissionState::Granted,
         screen_recording: PermissionState::Granted,
@@ -92,7 +92,7 @@ fn status_reports_resolved_state_root_verbatim() {
 
 #[test]
 fn status_surfaces_artifacts_mode_for_active_session() {
-    let _guard = crate::refs_test_support::HomeGuard::new();
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
     let session = crate::session::start_session(crate::session::StartSessionOptions {
         artifacts: crate::session::ArtifactsMode::Full,
         ..Default::default()

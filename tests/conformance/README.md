@@ -1,14 +1,15 @@
 # Adapter Reliability Conformance
 
-Every platform adapter must satisfy the same ref/action contract. The macOS
-adapter is the first implementation, but the tests are written against
-`PlatformAdapter` semantics so Windows UIA and Linux AT-SPI can reuse the same
-expectations.
+Every platform adapter must satisfy the same ref/action contract. The tests are
+written against `PlatformAdapter` semantics, so macOS AX, Windows UIA and Linux
+AT-SPI share the same expectations.
 
 The reusable command-path helper lives in `tests/conformance/ref_action_contract.rs`.
-The executable smoke harness in `src/tests/conformance.rs` uses it with a mock
-adapter; future Windows and Linux fixtures can call the same helper with real
-adapter-provided refs.
+`window_identity_contract.rs` holds the window-identity contract, and
+`macos_notification_contract.rs` the macOS-only notification contract. The
+executable smoke harness in `src/tests/conformance.rs` mounts all three and runs
+the ref/action helper against a mock adapter. A fixture driving a real adapter
+can call the same helper with adapter-provided refs.
 
 ## Required Gates
 
@@ -20,7 +21,7 @@ adapter-provided refs.
 | Actionability | Ref actions check live visibility, stability, enabled state, supported action, policy, and editability before dispatch |
 | Wait recovery | `wait --element` polls the snapshot embedded in its qualified ref, honors the caller timeout while resolving, and reports the last observed predicate state |
 | Snapshot scope | A qualified ref resolves its own snapshot inside the selected session namespace and never searches other sessions |
-| Trace | With a `trace: on` session manifest (from `session start`), commands write per-process JSONL segments under the session directory; `--trace <path>` overrides to one file. Best-effort unless `--trace-strict`. |
+| Trace | With a `trace: on` session manifest (from `session start`), commands write per-process JSONL segments under the session directory. `--trace <path>` overrides to one file. Best-effort unless `--trace-strict`. |
 | Session lifecycle | `session start/end/list/gc` manage manifests, the current-session pointer, and trace directories |
 | FFI parity | FFI ref actions use strict resolve and actionability checks before adapter dispatch |
 
@@ -43,17 +44,21 @@ shapes identical. Prefer semantic platform actions first (`AXPress`, UIA
 Invoke/Value/Selection patterns, AT-SPI actions). Coordinate input is a lower
 confidence fallback and must remain explicit in policy or command choice.
 
-## Windows Private-Storage Runtime Gate
+## Windows Private-Storage Gate
 
-Windows support must not be enabled from cross-compilation evidence alone. A
-native Windows integration suite must continuously rename or replace every
-ancestor of the private state directory while `open`, bounded read, append,
-lock, and atomic replace operations run. Each operation must either access the
-intended handle-bound file or fail closed; it must never follow a reparse point
-or escape the guarded ancestor chain.
+Windows private-file behavior is verified by native tests, never by
+cross-compilation evidence alone. The Windows CI lanes run these suites natively:
 
-The same gate must verify owner-only protected DACL creation and rejection,
-hardlink rejection, local-versus-remote storage detection, drive and UNC
-verbatim path encoding beyond `MAX_PATH`, and atomic replacement durability.
-Static Windows target checks are required before this suite, but are not a
-substitute for the native race test.
+| Behavior | Native test |
+|----------|-------------|
+| A junction as a path component, the parent, or the leaf is refused and nothing lands at its target | `crates/windows/src/system/private_file/path_tests.rs` |
+| A validated ancestor cannot be renamed while the write holds its no-follow handle | `a_pinned_directory_cannot_be_renamed_while_its_no_follow_handle_is_held` in `path_tests.rs` |
+| A foreign owner is refused on atomic write, append, and bounded read | `owner_tests.rs` |
+| A fresh artifact keeps its inherited SYSTEM, Administrators, and user grants, and never `BUILTIN\Users`, across create and replace | `a_profile_artifact_keeps_system_admins_and_user_and_never_users_across_create_and_replace` in `owner_tests.rs` |
+| Remote or undeterminable storage refuses the write and append surfaces | `locality_tests.rs` |
+| Atomic replace succeeds over open readers and concurrent writers, and leaves no temporary residue | `replace_tests.rs` |
+| The binary and the FFI adapter install the hardened seam, and `session start` through a junction state root is refused with nothing written under the target | `src/tests/windows_private_file_install.rs`, `crates/ffi/tests/c_abi_windows_private_file_install.rs` |
+
+The module installs no DACL of its own. It relies on the inherited grants the
+owner test pins, and `no_banned_acl_or_ace_symbol_appears_anywhere_in_this_module`
+keeps it that way.

@@ -25,9 +25,9 @@ impl InputOps for ModifierCaptureAdapter {
         &self,
         event: MouseEvent,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         *self.captured.lock().unwrap() = Some(event);
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 

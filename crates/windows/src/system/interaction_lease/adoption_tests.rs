@@ -5,8 +5,8 @@ use agent_desktop_core::SystemOps;
 use super::*;
 use super::{directory, identity};
 use crate::adapter::WindowsAdapter;
+use crate::system::fixture::test_support::with_interaction_lease_test_lock;
 use crate::system::interaction_lease::tests::scratch_root;
-use crate::system::test_support::with_interaction_lease_test_lock;
 
 fn raw_open(path: &Path, share_mode: u32) -> HANDLE {
     let wide = identity::to_wide(path);

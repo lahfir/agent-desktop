@@ -29,7 +29,7 @@ pub(crate) fn prepare(
     element: &super::AXElement,
     deadline: Instant,
 ) -> Result<Duration, AdapterError> {
-    super::ax_ipc::prepare(element, deadline)
+    super::properties::ax_ipc::prepare(element, deadline)
 }
 
 fn remaining_at(deadline: Instant, now: Instant) -> Result<Duration, AdapterError> {

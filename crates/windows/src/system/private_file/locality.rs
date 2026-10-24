@@ -145,7 +145,7 @@ pub(super) mod forced_control_failure {
     }
 
     pub(in super::super) fn with_forced_control_failure<R>(run: impl FnOnce() -> R) -> R {
-        crate::system::test_support::with_flag(&FORCE_CONTROL_FAILURE, true, run)
+        crate::system::fixture::test_support::with_flag(&FORCE_CONTROL_FAILURE, true, run)
     }
 }
 
@@ -165,6 +165,6 @@ pub(super) mod forced_remote_locality {
     }
 
     pub(in super::super) fn with_forced_remote_locality<R>(run: impl FnOnce() -> R) -> R {
-        crate::system::test_support::with_flag(&FORCE_REMOTE_LOCALITY, true, run)
+        crate::system::fixture::test_support::with_flag(&FORCE_REMOTE_LOCALITY, true, run)
     }
 }

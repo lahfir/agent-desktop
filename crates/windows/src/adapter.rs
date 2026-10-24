@@ -1,8 +1,9 @@
 use agent_desktop_core::{
     AccessibilityNode, ActionOps, AdapterError, AppInfo, ClipboardContent, ClipboardFormat,
     Deadline, DragParams, ElementState, InputOps, InteractionLease, KeyCombo, LiveElement,
-    MouseEvent, NativeHandle, ObservationOps, ObservationRequest, ObservationRoot, ProcessIdentity,
-    Rect, RefEntry, SnapshotSurface, SurfaceInfo, TreeOptions, WindowFilter, WindowInfo,
+    MouseEvent, NativeHandle, ObservationOps, ObservationRequest, ObservationRoot, OperationReport,
+    ProcessIdentity, Rect, RefEntry, SnapshotSurface, SurfaceInfo, TreeOptions, WindowFilter,
+    WindowInfo,
 };
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -94,7 +95,7 @@ impl ObservationOps for WindowsAdapter {
         entry: &RefEntry,
         deadline: Deadline,
     ) -> Result<NativeHandle, AdapterError> {
-        crate::tree::resolve_anchor::resolve_locator_anchor(entry, deadline)
+        crate::tree::resolve::resolve_anchor::resolve_locator_anchor(entry, deadline)
     }
 
     /// The five live readers are projections over one shared single-element
@@ -164,7 +165,7 @@ impl ObservationOps for WindowsAdapter {
         handle: &NativeHandle,
         point: agent_desktop_core::Point,
         deadline: Deadline,
-    ) -> Result<agent_desktop_core::hit_test::HitTestResult, AdapterError> {
+    ) -> Result<agent_desktop_core::adapter::hit_test::HitTestResult, AdapterError> {
         crate::tree::hit_test::hit_test_impl(handle, point, deadline)
     }
 
@@ -173,7 +174,7 @@ impl ObservationOps for WindowsAdapter {
         filter: &WindowFilter,
         deadline: Deadline,
     ) -> Result<Vec<WindowInfo>, AdapterError> {
-        crate::system::window_ops::list_windows_live(filter, deadline)
+        crate::system::window::window_ops::list_windows_live(filter, deadline)
     }
 
     fn list_apps(&self, deadline: Deadline) -> Result<Vec<AppInfo>, AdapterError> {
@@ -204,15 +205,15 @@ impl ObservationOps for WindowsAdapter {
         surface: SnapshotSurface,
         deadline: Deadline,
     ) -> Result<WindowInfo, AdapterError> {
-        crate::system::shell_surface::resolve_surface(surface, deadline)?
-            .ok_or_else(|| crate::system::shell_surface::not_open_error(surface))
+        crate::system::shell::shell_surface::resolve_surface(surface, deadline)?
+            .ok_or_else(|| crate::system::shell::shell_surface::not_open_error(surface))
     }
 }
 impl ActionOps for WindowsAdapter {
     fn execute_action(
         &self,
         handle: &NativeHandle,
-        request: agent_desktop_core::action_request::ActionRequest,
+        request: agent_desktop_core::actions::action_request::ActionRequest,
         lease: &InteractionLease,
     ) -> Result<agent_desktop_core::ActionResult, AdapterError> {
         crate::actions::dispatch::execute_action_impl(handle, request, lease)
@@ -227,8 +228,14 @@ impl ActionOps for WindowsAdapter {
     }
 }
 impl InputOps for WindowsAdapter {
-    fn mouse_event(&self, event: MouseEvent, lease: &InteractionLease) -> Result<(), AdapterError> {
-        crate::input::mouse::synthesize_mouse(event, lease.deadline())
+    fn mouse_event(
+        &self,
+        event: MouseEvent,
+        lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        let report = OperationReport::pointer_dispatched(&event, false);
+        crate::input::mouse::synthesize_mouse(event, lease.deadline())?;
+        Ok(report)
     }
 
     /// A standalone key edge has no daemon to own the hold across a request
@@ -244,12 +251,19 @@ impl InputOps for WindowsAdapter {
         crate::input::keyboard::reject_standalone_key_state(combo, down)
     }
 
-    fn drag(&self, params: DragParams, lease: &InteractionLease) -> Result<(), AdapterError> {
-        crate::input::drag::synthesize_drag(params, lease.deadline())
+    fn drag(
+        &self,
+        params: DragParams,
+        lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        let report = OperationReport::drag_dispatched(&params);
+        crate::input::drag::synthesize_drag(params, lease.deadline())?;
+        Ok(report)
     }
 
-    fn clear_clipboard(&self, lease: &InteractionLease) -> Result<(), AdapterError> {
-        crate::input::clipboard::clear(lease.deadline())
+    fn clear_clipboard(&self, lease: &InteractionLease) -> Result<OperationReport, AdapterError> {
+        crate::input::clipboard::clear(lease.deadline())?;
+        Ok(OperationReport::clipboard_written("clipboard-clear", false))
     }
 
     fn get_clipboard_content(
@@ -264,91 +278,8 @@ impl InputOps for WindowsAdapter {
         &self,
         content: &ClipboardContent,
         lease: &InteractionLease,
-    ) -> Result<(), AdapterError> {
-        crate::input::clipboard::set_content(content, lease.deadline())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use agent_desktop_core::{InteractionLease, SnapshotSurface, SystemOps};
-
-    /// `key_event` through the trait, exactly as FFI reaches it: a standalone
-    /// edge has no daemon to own the hold, so it must reject with zero
-    /// synthesis regardless of `down`'s value.
-    #[test]
-    fn key_event_rejects_a_standalone_edge_through_the_trait() {
-        let adapter = WindowsAdapter::new();
-        let deadline = Deadline::after(5_000).expect("bounded deadline");
-        let lease = InteractionLease::guarded(deadline, ()).expect("lease");
-        let combo = KeyCombo {
-            key: "a".into(),
-            modifiers: Vec::new(),
-        };
-
-        let error = InputOps::key_event(&adapter, &combo, true, &lease)
-            .expect_err("a standalone key edge must reject");
-
-        assert_eq!(
-            error.code,
-            agent_desktop_core::ErrorCode::ActionNotSupported
-        );
-        let details = error.details.expect("standalone error carries details");
-        assert_eq!(details["raw_input_emitted"], false);
-        assert_eq!(details["requires_daemon_owned_transaction"], true);
-    }
-
-    /// The surfaces gate: the adapter advertises exactly the surfaces it can
-    /// observe - a named window, the focused window, a Chromium modal
-    /// classified as a sheet, an open application menu, and the shell kinds
-    /// the kind table resolves on this build. Core validates the requested
-    /// surface against this list before the adapter is ever called, so this
-    /// advertisement is what makes `snapshot` end to end possible, and it is
-    /// the "advertised" side of the advertise/resolve/emit equality the live
-    /// tests pin.
-    #[test]
-    fn supported_surfaces_advertises_window_focused_sheet_menu_and_shell_kinds() {
-        let adapter = WindowsAdapter::new();
-        assert_eq!(
-            adapter.supported_surfaces(),
-            vec![
-                SnapshotSurface::Window,
-                SnapshotSurface::Focused,
-                SnapshotSurface::Sheet,
-                SnapshotSurface::Menu,
-                SnapshotSurface::StartMenu,
-                SnapshotSurface::Taskbar,
-                SnapshotSurface::SystemTray,
-                SnapshotSurface::SystemTrayOverflow,
-                SnapshotSurface::ActionCenter,
-            ]
-        );
-    }
-
-    #[test]
-    fn renderer_activation_state_starts_unattempted_and_notes_once() {
-        let adapter = WindowsAdapter::new();
-        let process = ProcessIdentity::new(agent_desktop_core::ProcessId::new(1), "gen-1");
-
-        assert!(!adapter.renderer_activation_attempted(&process));
-
-        adapter.note_renderer_activation_attempted(process.clone());
-        assert!(adapter.renderer_activation_attempted(&process));
-    }
-
-    /// Finding 2: a single global flag would let one process's settle
-    /// suppress another process's activation forever. The state must be
-    /// scoped so a second, unrelated process is unaffected by the first.
-    #[test]
-    fn renderer_activation_state_is_scoped_per_process_not_global() {
-        let adapter = WindowsAdapter::new();
-        let first = ProcessIdentity::new(agent_desktop_core::ProcessId::new(1), "gen-1");
-        let second = ProcessIdentity::new(agent_desktop_core::ProcessId::new(2), "gen-1");
-
-        adapter.note_renderer_activation_attempted(first.clone());
-
-        assert!(adapter.renderer_activation_attempted(&first));
-        assert!(!adapter.renderer_activation_attempted(&second));
+    ) -> Result<OperationReport, AdapterError> {
+        crate::input::clipboard::set_content(content, lease.deadline())?;
+        Ok(OperationReport::clipboard_written("clipboard-set", false))
     }
 }

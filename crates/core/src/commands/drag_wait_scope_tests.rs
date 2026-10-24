@@ -5,10 +5,10 @@ use super::*;
 use crate::adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps, TreeOptions};
 use crate::commands::wait_selector::{self, WaitSelectorInput};
 use crate::context::WaitSelector;
-use crate::refs_test_support::HomeGuard;
+use crate::refs::refs_test_support::HomeGuard;
 use crate::{
     AccessibilityNode, AdapterError, CommandContext, DragParams, InteractionLease, ProcessId,
-    WindowInfo, WindowState, window_filter::WindowFilter,
+    WindowInfo, WindowState, system::window_filter::WindowFilter,
 };
 use serde_json::json;
 use std::sync::Mutex;
@@ -75,15 +75,18 @@ impl CrossAppWaitAdapter {
 impl ObservationOps for CrossAppWaitAdapter {
     fn observe_tree(
         &self,
-        root: crate::live_locator::ObservationRoot<'_>,
-        _request: &crate::live_locator::ObservationRequest,
-    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
-        let crate::live_locator::ObservationRoot::Window(window) = root else {
+        root: crate::locator::live_locator::ObservationRoot<'_>,
+        _request: &crate::locator::live_locator::ObservationRequest,
+    ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
+        let crate::locator::live_locator::ObservationRoot::Window(window) = root else {
             return Err(AdapterError::internal("expected window root"));
         };
         self.observed.lock().unwrap().push(window.id.clone());
         let node = Self::window_node(window);
-        crate::adapter::observed_tree(&crate::live_locator::ObservationRoot::Window(window), node)
+        crate::adapter::observed_tree(
+            &crate::locator::live_locator::ObservationRoot::Window(window),
+            node,
+        )
     }
 
     fn resolve_element_strict(
@@ -119,15 +122,23 @@ impl ObservationOps for CrossAppWaitAdapter {
         Ok(Self::window_node(window))
     }
 
-    crate::adapter::complete_live_observation!("button", "Item", [crate::capability::CLICK]);
+    crate::adapter::complete_live_observation!(
+        "button",
+        "Item",
+        [crate::actions::capability::CLICK]
+    );
 }
 
 impl ActionOps for CrossAppWaitAdapter {}
 
 impl InputOps for CrossAppWaitAdapter {
-    fn drag(&self, params: DragParams, _lease: &InteractionLease) -> Result<(), AdapterError> {
+    fn drag(
+        &self,
+        params: DragParams,
+        _lease: &InteractionLease,
+    ) -> Result<crate::OperationReport, AdapterError> {
         *self.captured.lock().unwrap() = Some(params);
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -167,7 +178,7 @@ fn wait_context(timeout_ms: u64) -> CommandContext {
 /// `from` and `to` `source_entry`s are identical and the scope choice is
 /// invisible. The destination carries the "Dropped" confirmation.
 fn same_window_snapshot() -> String {
-    let store = crate::refs_store::RefStore::new().unwrap();
+    let store = crate::refs::refs_store::RefStore::new().unwrap();
     let mut refmap = crate::refs::RefMap::new();
     refmap.allocate(ref_entry(2));
     refmap.allocate(ref_entry(2));
@@ -191,7 +202,11 @@ fn drag_wait_defaults_to_destination_window_and_finds_confirmation() {
     .expect("destination carries the confirmation; default scope must poll it");
 
     assert_eq!(value["matched_selector"], ":dropped");
-    assert_eq!(value["after_action"]["dragged"], json!(true));
+    assert_eq!(
+        value["after_action"]["disposition"]["delivery"],
+        "delivered_unverified"
+    );
+    assert!(value["after_action"].get("dragged").is_none());
     let observed = adapter.observed.lock().unwrap();
     assert!(
         observed.iter().any(|id| id == "w-2"),
@@ -225,7 +240,11 @@ fn drag_wait_scoped_to_source_window_misses_destination_confirmation() {
         other => panic!("expected adapter TIMEOUT, got {other:?}"),
     };
     assert_eq!(details["kind"], json!("wait_timeout"));
-    assert_eq!(details["after_action"]["dragged"], json!(true));
+    assert_eq!(
+        details["after_action"]["disposition"]["delivery"],
+        "delivered_unverified"
+    );
+    assert!(details["after_action"].get("dragged").is_none());
     let observed = adapter.observed.lock().unwrap();
     assert!(
         observed.iter().all(|id| id == "w-1"),
@@ -281,7 +300,11 @@ fn drag_wait_same_window_drag_polls_the_shared_window_and_matches() {
     .expect("the shared window carries the confirmation");
 
     assert_eq!(value["matched_selector"], ":dropped");
-    assert_eq!(value["after_action"]["dragged"], json!(true));
+    assert_eq!(
+        value["after_action"]["disposition"]["delivery"],
+        "delivered_unverified"
+    );
+    assert!(value["after_action"].get("dragged").is_none());
     let observed = adapter.observed.lock().unwrap();
     assert!(
         observed.iter().any(|id| id == "w-2") && !observed.iter().any(|id| id == "w-1"),

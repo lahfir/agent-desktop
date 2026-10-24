@@ -1,7 +1,7 @@
 use crate::{
     AppError, WindowInfo, WindowOp,
     adapter::{PlatformAdapter, WindowFilter},
-    window_lookup,
+    system::window_lookup,
 };
 use serde_json::{Value, json};
 
@@ -14,7 +14,6 @@ pub(crate) fn window_op_command(
     args: AppArgs,
     adapter: &dyn PlatformAdapter,
     op: WindowOp,
-    response_key: &'static str,
 ) -> Result<Value, AppError> {
     let deadline = crate::Deadline::standard()?;
     let win = resolve_window(
@@ -25,8 +24,8 @@ pub(crate) fn window_op_command(
     )?;
     let lease = adapter.acquire_interaction_lease(deadline)?;
     let live = revalidate_window_for_mutation(adapter, &win, &lease)?;
-    adapter.window_op(&live, op, &lease)?;
-    Ok(json!({ response_key: true }))
+    let report = adapter.window_op(&live, op, &lease)?;
+    super::operation_response::operation_response(&report, json!({}))
 }
 
 pub(crate) fn resolve_window_for_app(

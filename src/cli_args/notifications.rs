@@ -18,7 +18,10 @@ pub(crate) struct DismissNotificationCliArgs {
     #[arg(value_name = "INDEX", help = "1-based notification index from list-notifications",
           value_parser = clap::value_parser!(u64).range(1..))]
     pub index: u64,
-    #[arg(long, help = "Filter notifications by app before selecting index")]
+    #[arg(
+        long,
+        help = "Require the notification at INDEX to be from this app; INDEX is its position in the unfiltered list"
+    )]
     pub app: Option<String>,
     #[arg(
         long,

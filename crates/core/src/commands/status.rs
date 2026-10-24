@@ -3,7 +3,7 @@ use crate::{
     adapter::PlatformAdapter,
     commands::permissions::{self, PermissionsArgs},
     context::CommandContext,
-    refs_store::RefStore,
+    refs::refs_store::RefStore,
 };
 use serde_json::{Value, json};
 
@@ -51,7 +51,7 @@ pub fn execute_with_report_with_context(
     if let Some(artifacts) = artifacts {
         body["artifacts"] = json!(artifacts);
     }
-    if let Ok(state_root) = crate::state_root::resolve_configured_state_root() {
+    if let Ok(state_root) = crate::storage::state_root::resolve_configured_state_root() {
         body["state_root"] = json!(state_root.to_string_lossy());
     }
     Ok(body)

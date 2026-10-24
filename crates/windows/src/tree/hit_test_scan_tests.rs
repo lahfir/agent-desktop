@@ -14,14 +14,14 @@ const PATTERN_ALLOWLIST: &[&str] = &[
 ];
 
 const HIT_TEST_FAMILY: [(&str, &str); 3] = [
-    ("tree/hit_test.rs", include_str!("hit_test.rs")),
+    ("tree/hit_test/mod.rs", include_str!("hit_test/mod.rs")),
     (
-        "tree/hit_test_classify.rs",
-        include_str!("hit_test_classify.rs"),
+        "tree/hit_test/hit_test_classify.rs",
+        include_str!("hit_test/hit_test_classify.rs"),
     ),
     (
-        "tree/hit_test_corroborate.rs",
-        include_str!("hit_test_corroborate.rs"),
+        "tree/hit_test/hit_test_corroborate.rs",
+        include_str!("hit_test/hit_test_corroborate.rs"),
     ),
 ];
 
@@ -57,8 +57,8 @@ const GATE_SUPPORT: [(&str, &str); 10] = [
     ),
     ("actions/scroll.rs", include_str!("../actions/scroll.rs")),
     (
-        "system/window_resolve.rs",
-        include_str!("../system/window_resolve.rs"),
+        "system/window/window_resolve.rs",
+        include_str!("../system/window/window_resolve.rs"),
     ),
 ];
 
@@ -180,7 +180,7 @@ fn the_pattern_allowlist_covers_a_call_site_that_is_still_there() {
 /// call sites fails here rather than silently opening the ban.
 #[test]
 fn a_get_pattern_call_outside_the_allowlist_is_caught() {
-    let fixture_name = "tree/hit_test.rs";
+    let fixture_name = "tree/hit_test/mod.rs";
     assert!(
         !allowlisted(fixture_name),
         "fixture host must stay off the allowlist"

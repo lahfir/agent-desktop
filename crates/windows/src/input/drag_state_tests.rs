@@ -1,6 +1,6 @@
 use super::*;
-use crate::input::mouse_send::MOUSEEVENTF_MOVE;
-use crate::input::mouse_send::mouse_send_fake_sink as sink;
+use crate::input::mouse::mouse_send::MOUSEEVENTF_MOVE;
+use crate::input::mouse::mouse_send::mouse_send_fake_sink as sink;
 use agent_desktop_core::DeliverySemantics;
 
 fn origin() -> NormalizedPoint {

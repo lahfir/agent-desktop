@@ -16,8 +16,8 @@ mod traversal;
 
 use crate::tree::AXElement;
 use agent_desktop_core::{
-    AdapterError, DeliverySemantics, ErrorCode, ObservationRequest, ObservationRoot,
-    ObservationSource, ObservedTree, SnapshotSurface,
+    AdapterError, ErrorCode, ObservationRequest, ObservationRoot, ObservationSource, ObservedTree,
+    SnapshotSurface,
 };
 use serde_json::json;
 
@@ -98,7 +98,7 @@ fn resolve_root(
     let source = ObservationSource::from_root(&root, request.surface);
     match root {
         ObservationRoot::Window(window) => {
-            let pid = crate::system::process_identity::to_pid_t(window.pid)?;
+            let pid = crate::system::process::process_identity::to_pid_t(window.pid)?;
             let element = resolve_window_surface(window, request.surface, deadline)?;
             let context =
                 crate::tree::TreeBuildContext::for_pid_with_deadline(pid, true, deadline)?
@@ -118,7 +118,7 @@ fn resolve_root(
             root_ref,
         } => {
             verify_entry_process(entry)?;
-            let pid = crate::system::process_identity::to_pid_t(entry.process.pid)?;
+            let pid = crate::system::process::process_identity::to_pid_t(entry.process.pid)?;
             let element = handle.downcast_ref::<AXElement>().cloned().ok_or_else(|| {
                 AdapterError::new(
                     ErrorCode::StaleRef,
@@ -150,30 +150,19 @@ fn resolve_root(
 
 fn verify_entry_process(entry: &agent_desktop_core::RefEntry) -> Result<(), AdapterError> {
     let instance = entry.process.process_instance.as_deref().ok_or_else(|| {
-        stale_evidence_error("Live locator root has no process instance identity")
+        AdapterError::stale_ref_because("Live locator root has no process instance identity")
     })?;
-    let pid = crate::system::process_identity::to_pid_t(entry.process.pid)?;
-    match crate::system::process_identity::matches_instance(pid, instance) {
+    let pid = crate::system::process::process_identity::to_pid_t(entry.process.pid)?;
+    match crate::system::process::process_identity::matches_instance(pid, instance) {
         Ok(true) => Ok(()),
-        Ok(false) => Err(stale_evidence_error(
+        Ok(false) => Err(AdapterError::stale_ref_because(
             "Live locator root process instance is no longer running",
         )),
-        Err(error) if error.code == ErrorCode::InvalidArgs => Err(stale_evidence_error(
+        Err(error) if error.code == ErrorCode::InvalidArgs => Err(AdapterError::stale_ref_because(
             "Live locator root has a malformed process instance identity",
         )),
         Err(error) => Err(error),
     }
-}
-
-/// Builds a `STALE_REF` directly from what was observed, rather than through
-/// `AdapterError::stale_ref`, whose parameter is a **ref id** it interpolates
-/// into `"{ref_id} not found in current RefMap"`. None of these three
-/// failures is a missing RefMap entry - the ref was found and read, and it
-/// was the live process evidence that refused it.
-fn stale_evidence_error(message: &str) -> AdapterError {
-    AdapterError::new(ErrorCode::StaleRef, message)
-        .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
-        .with_disposition(DeliverySemantics::not_delivered())
 }
 
 fn resolve_window_surface(
@@ -182,7 +171,7 @@ fn resolve_window_surface(
     deadline: std::time::Instant,
 ) -> Result<AXElement, AdapterError> {
     crate::tree::locator_deadline::remaining(deadline)?;
-    let pid = crate::system::process_identity::to_pid_t(window.pid)?;
+    let pid = crate::system::process::process_identity::to_pid_t(window.pid)?;
     let element = match surface {
         SnapshotSurface::Sheet | SnapshotSurface::Popover | SnapshotSurface::Alert => {
             crate::tree::window_surface::surface_for_window(window, surface, deadline)?.ok_or_else(
@@ -195,7 +184,9 @@ fn resolve_window_surface(
             )?
         }
         SnapshotSurface::Window => {
-            crate::system::window_resolve::window_element_for_info_with_deadline(window, deadline)?
+            crate::system::window::window_resolve::window_element_for_info_with_deadline(
+                window, deadline,
+            )?
         }
         SnapshotSurface::Focused => crate::tree::surfaces::focused_surface_for_pid(pid, deadline)?
             .ok_or_else(|| AdapterError::element_not_found("No focused surface found"))?,
@@ -258,7 +249,7 @@ mod tests {
     #[test]
     fn null_element_root_is_a_structured_stale_ref() {
         let pid = i32::try_from(std::process::id()).expect("test pid fits macOS pid_t");
-        let process_instance = crate::system::process_identity::token_for_pid(pid)
+        let process_instance = crate::system::process::process_identity::token_for_pid(pid)
             .expect("current process identity read")
             .expect("current process identity");
         let entry = RefEntry {
@@ -275,6 +266,7 @@ mod tests {
                 native_id: None,
             },
             geometry: RefGeometry {
+                bounds_space: None,
                 bounds: None,
                 bounds_hash: None,
             },

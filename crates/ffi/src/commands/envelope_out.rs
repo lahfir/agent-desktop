@@ -1,7 +1,7 @@
 use crate::commands::app_error_to_adapter;
 use crate::convert::string::string_to_c;
 use crate::error::{AdResult, set_last_error};
-use agent_desktop_core::output::{ErrorPayload, Response};
+use agent_desktop_core::response::output::{ErrorPayload, Response};
 use agent_desktop_core::{AdapterError, AppError, ErrorCode};
 use serde_json::Value;
 use std::ffi::c_char;

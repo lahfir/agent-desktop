@@ -1,6 +1,11 @@
 [advisories]
 version = 2
 yanked = "deny"
+ignore = [
+  { id = "RUSTSEC-2026-0370", reason = "Unmaintained advisory on a zbus 5 transitive dependency. zbus 5.19 is the newest release that has the blocking API this crate uses; remove this entry when the crate moves to zbus 6." },
+  { id = "RUSTSEC-2026-0371", reason = "Unmaintained advisory on a zbus 5 transitive dependency. zbus 5.19 is the newest release that has the blocking API this crate uses; remove this entry when the crate moves to zbus 6." },
+  { id = "RUSTSEC-2026-0372", reason = "Unmaintained advisory on a zbus 5 transitive dependency. zbus 5.19 is the newest release that has the blocking API this crate uses; remove this entry when the crate moves to zbus 6." },
+]
 
 [licenses]
 version = 2

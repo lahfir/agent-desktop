@@ -189,16 +189,19 @@ fn close_delay_does_not_consume_focus_restoration_budget() {
         cleanup_on_drop: false,
     };
     let mut restore_attempted = false;
+    let close_deadline = std::cell::Cell::new(None);
 
     session
         .cleanup_with(
-            |_| {
+            |deadline| {
+                close_deadline.set(Some(deadline));
                 std::thread::sleep(std::time::Duration::from_millis(200));
                 Err(AdapterError::timeout("close timed out"))
             },
             |_, deadline| {
                 restore_attempted = true;
-                assert!(deadline.remaining() > std::time::Duration::from_millis(1_900));
+                assert_ne!(Some(deadline), close_deadline.get());
+                assert!(!deadline.is_expired());
                 Ok(())
             },
         )

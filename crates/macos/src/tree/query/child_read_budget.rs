@@ -66,9 +66,13 @@ mod tests {
         let far = Instant::now() + Duration::from_secs(3);
 
         let bounded = count_deadline(false, far);
+        let after = Instant::now();
 
         assert!(bounded < far);
-        assert!(far.saturating_duration_since(bounded) >= Duration::from_millis(1400));
+        assert!(
+            far.saturating_duration_since(bounded) >= far.saturating_duration_since(after) / 2,
+            "the count may spend at most half of what was left when it was bounded"
+        );
     }
 
     #[test]
@@ -81,18 +85,18 @@ mod tests {
     #[test]
     fn a_boundary_requesting_label_children_still_gets_the_25ms_count_budget() {
         let far = Instant::now() + Duration::from_secs(3);
-        let budget = ChildReadBudget {
-            max_elements: 5,
-            boundary: true,
-        };
+        let budget = super::super::child_read_plan::ChildReadPlan::boundary_aware(128, 5, 3, 3)
+            .max_elements(false, true);
+        assert_eq!(budget.max_elements, 5);
 
+        let earliest = Instant::now() + BOUNDARY_COUNT_BUDGET;
         let bounded = count_deadline(budget.boundary, far);
+        let latest = Instant::now() + BOUNDARY_COUNT_BUDGET;
 
         assert!(
-            bounded < far,
-            "requesting a handful of label children at a boundary must not fall back to \
-             the generous half-deadline budget"
+            earliest <= bounded && bounded <= latest,
+            "requesting a handful of label children at a boundary must keep the 25 ms count \
+             slice, not fall back to the generous half-deadline budget"
         );
-        assert!(bounded <= Instant::now() + Duration::from_millis(60));
     }
 }

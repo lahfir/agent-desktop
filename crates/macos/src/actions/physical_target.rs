@@ -3,20 +3,21 @@ use agent_desktop_core::{AdapterError, Deadline, ErrorCode, Point};
 use crate::tree::AXElement;
 
 pub(crate) struct PreparedPhysicalTarget {
-    identity: crate::system::process_identity::ProcessIdentity,
+    identity: crate::system::process::process_identity::ProcessIdentity,
     window: AXElement,
 }
 
 impl PreparedPhysicalTarget {
     pub(crate) fn prepare(element: &AXElement, deadline: Deadline) -> Result<Self, AdapterError> {
-        let pid = crate::system::app_ops::pid_from_element(element, deadline).ok_or_else(|| {
-            AdapterError::new(
-                ErrorCode::StaleRef,
-                "Physical input target no longer has an owning application",
-            )
-        })?;
-        let identity =
-            crate::system::process_identity::ProcessIdentity::capture(pid)?.ok_or_else(|| {
+        let pid =
+            crate::system::app::app_ops::pid_from_element(element, deadline).ok_or_else(|| {
+                AdapterError::new(
+                    ErrorCode::StaleRef,
+                    "Physical input target no longer has an owning application",
+                )
+            })?;
+        let identity = crate::system::process::process_identity::ProcessIdentity::capture(pid)?
+            .ok_or_else(|| {
                 AdapterError::new(
                     ErrorCode::StaleRef,
                     "Physical input target process exited before input preparation",
@@ -37,8 +38,12 @@ impl PreparedPhysicalTarget {
         crate::system::focus::verify_app_focused(self.identity.pid(), deadline)?;
         crate::system::focus::verify_window_main(&self.window, deadline)?;
         match crate::tree::hit_test::hit_test_ax_element(element, point.clone(), deadline)? {
-            agent_desktop_core::hit_test::HitTestResult::ReachesTarget => {}
-            agent_desktop_core::hit_test::HitTestResult::InterceptedBy { role, name, .. } => {
+            agent_desktop_core::adapter::hit_test::HitTestResult::ReachesTarget => {}
+            agent_desktop_core::adapter::hit_test::HitTestResult::InterceptedBy {
+                role,
+                name,
+                ..
+            } => {
                 return Err(AdapterError::new(
                     ErrorCode::ActionFailed,
                     "Physical input point is intercepted by another accessibility element",
@@ -49,7 +54,7 @@ impl PreparedPhysicalTarget {
                     "occluder_name": name,
                 })));
             }
-            agent_desktop_core::hit_test::HitTestResult::Unknown => {
+            agent_desktop_core::adapter::hit_test::HitTestResult::Unknown => {
                 return Err(AdapterError::new(
                     ErrorCode::ActionFailed,
                     "Physical input target could not be proven at the final input point",
@@ -69,8 +74,10 @@ impl PreparedPhysicalTarget {
 }
 
 fn target_window(element: &AXElement, deadline: Deadline) -> Result<AXElement, AdapterError> {
-    crate::tree::attributes::set_messaging_timeout(element, deadline)?;
-    let result = crate::tree::attributes::copy_element_attr_result(element, "AXWindow", deadline);
+    crate::tree::properties::attributes::set_messaging_timeout(element, deadline)?;
+    let result = crate::tree::properties::attributes::copy_element_attr_result(
+        element, "AXWindow", deadline,
+    );
     if deadline.is_expired() {
         return Err(deadline.timeout_error());
     }

@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     AdapterError, ErrorCode,
-    action_request::ActionRequest,
+    actions::action_request::ActionRequest,
     adapter::{NativeHandle, PlatformAdapter},
 };
 use serde_json::json;
@@ -19,8 +19,8 @@ pub(crate) fn check(
     request: &ActionRequest,
 ) -> Result<ActionabilityReport, AdapterError> {
     use crate::{
+        adapter::hit_test::HitTestResult,
         adapter::{ActionOps, InputOps, ObservationOps, SystemOps},
-        hit_test::HitTestResult,
     };
 
     struct TestHitAdapter;
@@ -41,21 +41,22 @@ pub(crate) fn check(
     impl SystemOps for TestHitAdapter {}
 
     let evidence = ActionabilityEvidence {
+        nonspatial: false,
         state: crate::ElementState {
             role: entry.identity.role.clone(),
             states: entry.capabilities.states.clone(),
             value: entry.identity.value.clone(),
-            enabled: Some(!crate::state::has_state(
+            enabled: Some(!crate::tree::state::has_state(
                 &entry.capabilities.states,
-                crate::state::DISABLED,
+                crate::tree::state::DISABLED,
             )),
-            hidden: Some(crate::state::has_state(
+            hidden: Some(crate::tree::state::has_state(
                 &entry.capabilities.states,
-                crate::state::HIDDEN,
+                crate::tree::state::HIDDEN,
             )),
-            offscreen: Some(crate::state::has_state(
+            offscreen: Some(crate::tree::state::has_state(
                 &entry.capabilities.states,
-                crate::state::OFFSCREEN,
+                crate::tree::state::OFFSCREEN,
             )),
         },
         states_complete: true,
@@ -81,7 +82,7 @@ pub(super) fn check_with_stability(
     deadline: crate::Deadline,
 ) -> Result<ActionabilityReport, AdapterError> {
     let report = build_report(stability, evidence, request, hit_test, deadline)?;
-    finish(evidence, report)
+    finish(evidence, request, report)
 }
 
 /// Like [`check_with_stability`], but a report whose only unmet requirement
@@ -104,10 +105,10 @@ pub(super) fn check_with_stability_or_gap(
     if !report.actionable && report.only_blocking_check_is_stability() {
         return Ok(report);
     }
-    finish(evidence, report)
+    finish(evidence, request, report)
 }
 
-fn build_report(
+pub(super) fn build_report(
     stability: StabilityExpectation,
     evidence: &ActionabilityEvidence,
     request: &ActionRequest,
@@ -120,14 +121,34 @@ fn build_report(
     let mut checks = Vec::new();
     let mut verified_point = None;
     let presentation_point = evidence.bounds.and_then(center_point);
+    let without_pointer = requirements.delivered_without_pointer(
+        request,
+        &evidence.available_actions,
+        pointer_delivery,
+    );
     if requirements.visible {
-        checks.push(gates::visibility(
-            evidence,
-            requirements.requires_geometry(request, &evidence.available_actions),
-        ));
+        let requires_geometry =
+            requirements.requires_geometry(request, &evidence.available_actions);
+        let visibility = gates::visibility(evidence, requires_geometry, without_pointer);
+        if requires_geometry
+            && evidence.bounds.is_none()
+            && matches!(
+                visibility.status,
+                super::status::ActionabilityStatus::Unknown
+            )
+            && let Some((handle, adapter)) = hit_test
+            && let Some(refusal) = adapter.pointer_position_refusal(handle, deadline)
+        {
+            return Err(refusal);
+        }
+        checks.push(visibility);
     }
     if requirements.requires_stability(pointer_delivery) {
-        checks.push(gates::stability(stability, evidence.bounds));
+        checks.push(if without_pointer {
+            gates::stability_without_pointer(evidence, stability)
+        } else {
+            gates::stability(stability, evidence.bounds)
+        });
     }
     if requirements.enabled {
         checks.push(gates::enabled(evidence));
@@ -183,6 +204,7 @@ fn center_point(bounds: crate::Rect) -> Option<crate::Point> {
 
 fn finish(
     evidence: &ActionabilityEvidence,
+    request: &ActionRequest,
     report: ActionabilityReport,
 ) -> Result<ActionabilityReport, AdapterError> {
     if report.actionable {
@@ -196,9 +218,25 @@ fn finish(
             check.check == "editable" && check.status == super::status::ActionabilityStatus::Fail
         })
     {
-        "This cell is not directly editable. Activate it, take a fresh snapshot, and target the text editor if one appears; otherwise the application may accept only keyboard input (--headed)."
+        "This cell is not directly editable. Activate it, take a fresh snapshot, and target the text editor if one appears."
+    } else if code == ErrorCode::ActionNotSupported
+        && matches!(request.action, crate::Action::SetFocus)
+    {
+        "Choose an element advertising SetFocus in a fresh snapshot. To focus the owning window instead, use focus-window."
+    } else if code == ErrorCode::ActionNotSupported
+        && matches!(
+            request.action,
+            crate::Action::SetValue(_) | crate::Action::Clear
+        )
+        && matches!(evidence.state.role.as_str(), "textfield" | "combobox")
+    {
+        if request.policy.is_headed() {
+            "This field has no semantic text-write action. Use 'type' in the current headed mode for physical keyboard input; select the existing text first if you intend to replace it. If typing refuses because the field cannot be focused, use clipboard-set and the app's paste shortcut, then verify the field."
+        } else {
+            "This field has no semantic text-write action. Use '--headed type' for physical keyboard input; select the existing text first if you intend to replace it. If typing refuses because the field cannot be focused, use clipboard-set and the app's paste shortcut, then verify the field."
+        }
     } else {
-        "Waiting will not help: this element cannot satisfy the action as targeted. Target an element that advertises the action (check available_actions in a fresh snapshot) or adjust the interaction policy (e.g. pass --headed)."
+        "Waiting will not help: this element cannot satisfy the action as targeted. Target an element that advertises the action (check available_actions in a fresh snapshot). For a dropdown without select support, open it with click, inspect its choices, and use explicit keyboard input."
     };
     let mut details = json!(report);
     if let Some(object) = details.as_object_mut()
@@ -218,11 +256,20 @@ fn finish(
 }
 
 #[cfg(test)]
+#[path = "evaluate_recovery_tests.rs"]
+mod recovery_tests;
+
+#[cfg(test)]
+#[path = "position_refusal_tests.rs"]
+mod position_refusal_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
     fn cell_evidence() -> ActionabilityEvidence {
         ActionabilityEvidence {
+            nonspatial: false,
             state: crate::ElementState {
                 role: "cell".to_string(),
                 states: Vec::new(),
@@ -260,16 +307,38 @@ mod tests {
             super::super::pointer_delivery::PointerDelivery::NotApplicable,
         );
 
-        let error = finish(&evidence, report).expect_err("non-actionable report must fail");
+        let request = ActionRequest::headed(crate::Action::SetValue("value".into()));
+        let error =
+            finish(&evidence, &request, report).expect_err("non-actionable report must fail");
 
         assert_eq!(
             error.suggestion.as_deref(),
             Some(
                 "This cell is not directly editable. Activate it, take a fresh snapshot, and \
-                 target the text editor if one appears; otherwise the application may accept \
-                 only keyboard input (--headed)."
+                 target the text editor if one appears."
             )
         );
         assert!(!error.suggestion.unwrap().contains("it exposes"));
+    }
+
+    #[test]
+    fn unsupported_headed_select_does_not_suggest_repeating_headed_select() {
+        let mut evidence = cell_evidence();
+        evidence.state.role = "combobox".into();
+        evidence.state.enabled = Some(true);
+        evidence.state.hidden = Some(false);
+        evidence.state.offscreen = Some(false);
+        let error = check_with_stability(
+            StabilityExpectation::permissive(None),
+            &evidence,
+            &ActionRequest::headed(crate::Action::Select("Manual Schedule".into())),
+            None,
+            crate::Deadline::standard().unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::ActionNotSupported);
+        let suggestion = error.suggestion.unwrap();
+        assert!(!suggestion.contains("--headed"));
+        assert!(suggestion.contains("available_actions"));
     }
 }

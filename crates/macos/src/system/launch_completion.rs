@@ -137,7 +137,7 @@ fn validate_result(
             .with_details(serde_json::json!({ "pid": result.pid, "complete": false })),
         ));
     }
-    let identity = crate::system::process_identity::ProcessIdentity::capture(result.pid)
+    let identity = crate::system::process::process_identity::ProcessIdentity::capture(result.pid)
         .map_err(|error| callback_error(result, error))?
         .ok_or_else(|| {
             callback_error(result, {

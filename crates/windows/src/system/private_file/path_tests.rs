@@ -107,10 +107,71 @@ fn ensure_private_creates_a_nested_chain_that_accepts_writes() {
 
     let artifact = nested.join("segment.jsonl");
     ops.write_atomic(&artifact, b"{\"event\":1}").unwrap();
+    let directory = open_directory_no_follow(
+        &nested,
+        DIRECTORY_PIN_ACCESS | windows_sys::Win32::Storage::FileSystem::READ_CONTROL,
+    )
+    .unwrap();
+    let file = std::fs::File::open(&artifact).unwrap();
+    crate::system::private_file::dacl::require_private(&directory).unwrap();
+    crate::system::private_file::dacl::require_private(&file).unwrap();
     assert_eq!(
         ops.read_private_bounded(&artifact, 1024).unwrap(),
         b"{\"event\":1}"
     );
+}
+
+#[test]
+fn a_new_private_leaf_does_not_inherit_a_broad_users_grant() {
+    let root = Scratch::new("inherited-users");
+    author_container_inherit_users_ace(root.path());
+    let nested = root.path().join("sessions").join("s1").join("trace");
+
+    WindowsPrivateFile::new().ensure_private(&nested).unwrap();
+
+    let directory = open_directory_no_follow(
+        &nested,
+        DIRECTORY_PIN_ACCESS | windows_sys::Win32::Storage::FileSystem::READ_CONTROL,
+    )
+    .unwrap();
+    crate::system::private_file::dacl::require_private(&directory).unwrap();
+}
+
+#[test]
+fn an_existing_private_leaf_with_a_users_grant_is_refused_without_repair() {
+    let root = Scratch::new("existing-users");
+    author_container_inherit_users_ace(root.path());
+    let nested = root.path().join("existing");
+    std::fs::create_dir(&nested).unwrap();
+    let before = open_directory_no_follow(
+        &nested,
+        DIRECTORY_PIN_ACCESS | windows_sys::Win32::Storage::FileSystem::READ_CONTROL,
+    )
+    .unwrap();
+    assert!(crate::system::private_file::dacl::require_private(&before).is_err());
+
+    let error = WindowsPrivateFile::new()
+        .ensure_private(&nested)
+        .expect_err("an unsafe existing leaf must fail closed");
+
+    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+    let after = open_directory_no_follow(
+        &nested,
+        DIRECTORY_PIN_ACCESS | windows_sys::Win32::Storage::FileSystem::READ_CONTROL,
+    )
+    .unwrap();
+    assert!(crate::system::private_file::dacl::require_private(&after).is_err());
+}
+
+fn author_container_inherit_users_ace(root: &Path) {
+    let status = std::process::Command::new("icacls")
+        .arg(root)
+        .args(["/grant", "*S-1-5-32-545:(OI)(CI)(W)"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .expect("icacls must spawn to install a BUILTIN\\Users ACE");
+    assert!(status.success(), "icacls must install the broad ACE");
 }
 
 #[test]

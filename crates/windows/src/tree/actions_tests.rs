@@ -1,7 +1,7 @@
 use super::*;
-use agent_desktop_core::ref_alloc::is_ref_able_role_actions;
+use agent_desktop_core::refs::ref_alloc::is_ref_able_role_actions;
 
-use crate::tree::property_outcome::PropertyValue;
+use crate::tree::properties::property_outcome::PropertyValue;
 
 fn known_flag(value: bool) -> PropertyOutcome {
     PropertyOutcome::Known(PropertyValue::Flag(value))
@@ -181,6 +181,27 @@ fn every_emitted_action_is_a_member_of_core_capability_vocabulary() {
                 .any(|action| action == unreachable),
             "{unreachable} is in the vocabulary but this producer cannot emit it, so advertising it would promise an affordance the adapter cannot perform"
         );
+    }
+
+    let isolated_cases: [(TreeProperty, &[&str]); 3] = [
+        (TreeProperty::ToggleAvailable, &[capability::TOGGLE]),
+        (
+            TreeProperty::ExpandCollapseAvailable,
+            &[capability::EXPAND, capability::COLLAPSE],
+        ),
+        (TreeProperty::SelectionItemAvailable, &[capability::SELECT]),
+    ];
+    for (property, expected) in isolated_cases {
+        let mut reads = inert_reads();
+        reads.retain(|(candidate, _)| *candidate != property);
+        reads.push((property, known_flag(true)));
+        let isolated = resolve_actions(&ElementProperties::from_reads(reads));
+        for action in expected {
+            assert!(
+                known_actions(&isolated).contains(&action.to_string()),
+                "{action} must be advertised when only its own pattern is available"
+            );
+        }
     }
 }
 

@@ -17,36 +17,6 @@ fn test_mouse_button_mapping() {
     ));
 }
 
-#[test]
-fn valid_discriminants_convert_to_typed_enums() {
-    let ev = AdMouseEvent {
-        kind: AdMouseEventKind::Click as i32,
-        point: AdPoint { x: 10.0, y: 20.0 },
-        button: AdMouseButton::Left as i32,
-        click_count: 2,
-    };
-    assert!(matches!(
-        AdMouseButton::from_c(ev.button),
-        Some(AdMouseButton::Left)
-    ));
-    assert!(matches!(
-        AdMouseEventKind::from_c(ev.kind),
-        Some(AdMouseEventKind::Click)
-    ));
-}
-
-#[test]
-fn invalid_discriminants_reject_without_ub() {
-    let ev = AdMouseEvent {
-        kind: 999,
-        point: AdPoint { x: 0.0, y: 0.0 },
-        button: -5,
-        click_count: 0,
-    };
-    assert!(AdMouseButton::from_c(ev.button).is_none());
-    assert!(AdMouseEventKind::from_c(ev.kind).is_none());
-}
-
 /// F10 regression: `ad_mouse_event` hardcoded `modifiers: Vec::new()` with no
 /// way for an FFI caller to supply a chord at all. These cover the additive
 /// `modifiers_from_c` parser and `build_mouse_event`'s threading of its

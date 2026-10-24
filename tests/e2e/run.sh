@@ -131,6 +131,12 @@ check_fixture_contention || { finish; exit 1; }
 # shellcheck source=tests/e2e/scenarios/surfaces.sh
 source "$here/scenarios/surfaces.sh"
 check_fixture_contention || { finish; exit 1; }
+# shellcheck source=tests/e2e/scenarios/error_contract.sh
+source "$here/scenarios/error_contract.sh"
+check_fixture_contention || { finish; exit 1; }
+# shellcheck source=tests/e2e/scenarios/keyboard.sh
+source "$here/scenarios/keyboard.sh"
+check_fixture_contention || { finish; exit 1; }
 # shellcheck source=tests/e2e/scenarios/trace_performance.sh
 source "$here/scenarios/trace_performance.sh"
 # shellcheck source=tests/e2e/scenarios/notifications.sh
@@ -154,5 +160,8 @@ if [ "$fixture_owned" -eq 0 ] || "$bin" close-app "$app" --force >/dev/null 2>&1
 else
     badmsg "fixture could not be restarted for the multi-agent cursor probe"
 fi
+
+# shellcheck source=tests/e2e/scenarios/ref_churn.sh
+source "$here/scenarios/ref_churn.sh"
 
 finish

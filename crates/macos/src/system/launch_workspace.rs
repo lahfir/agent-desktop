@@ -1,4 +1,4 @@
-use agent_desktop_core::{AdapterError, Deadline, launch_options::LaunchOptions};
+use agent_desktop_core::{AdapterError, Deadline, system::launch_options::LaunchOptions};
 
 pub(crate) fn open(
     id: &str,

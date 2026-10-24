@@ -103,24 +103,16 @@ fn execute_by_ref_returns_error_envelope_when_no_refmap_exists() {
         let action = default_action();
         let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
         let rc = ad_execute_by_ref(adapter, ref_id.as_ptr(), &action, 0, &mut out);
-        let rc_i32 = rc as i32;
-        assert!(
-            rc_i32 <= 0,
-            "must return a valid AdResult (<=0), got {rc_i32}"
-        );
-        if !out.is_null() {
-            let s = CStr::from_ptr(out).to_string_lossy();
-            assert!(
-                s.contains("\"version\""),
-                "envelope must carry 'version', got: {s}"
-            );
-            assert!(s.contains("\"ok\""), "envelope must carry 'ok', got: {s}");
-            assert!(
-                s.contains("\"command\""),
-                "envelope must carry 'command', got: {s}"
-            );
-            ad_free_string(out);
-        }
+        assert_ne!(rc, AdResult::Ok, "a ref with no refmap must not resolve");
+        assert!(!out.is_null(), "command failure must return an envelope");
+        let s = CStr::from_ptr(out).to_string_lossy().into_owned();
+        ad_free_string(out);
+        let val: serde_json::Value = serde_json::from_str(&s).expect("envelope must be JSON");
+        assert_eq!(val["ok"].as_bool(), Some(false), "got: {s}");
+        assert_eq!(val["command"].as_str(), Some("execute_by_ref"), "got: {s}");
+        assert!(val["version"].is_string(), "got: {s}");
+        assert!(val["error"]["code"].is_string(), "got: {s}");
+        assert_eq!(ad_last_error_code(), rc, "errno invariant");
     });
 }
 

@@ -2,11 +2,11 @@ use crate::{
     AppError, ClipboardContent, ClipboardFormat, ImageBuffer,
     adapter::PlatformAdapter,
     context::CommandContext,
-    refs::{write_private_file, write_user_file},
-    refs_store::{
+    refs::refs_store::{
         STALE_TMP_MAX_AGE,
         prune::{is_orphaned_tmp_file, remove_stale_files_in_dir},
     },
+    refs::{write_private_file, write_user_file},
     session,
 };
 use serde_json::{Value, json};
@@ -48,7 +48,9 @@ fn write_image(
 ) -> Result<Value, AppError> {
     let path = match out {
         Some(path) => {
-            write_user_file(&path, &image.data)?;
+            write_user_file(&path, &image.data).map_err(|error| {
+                crate::refs::unwritable_output("the clipboard content", &path, error)
+            })?;
             path
         }
         None => {

@@ -16,34 +16,30 @@ description: >
 
 # agent-desktop-ffi
 
-Direct C-ABI access to every PlatformAdapter operation. Build the
-cdylib with the workspace's `release-ffi` profile:
+Direct C-ABI access to PlatformAdapter operations. Build the cdylib with the
+`release-ffi` profile:
 
 ```sh
 cargo build --profile release-ffi -p agent-desktop-ffi
 ```
 
-The output is `target/release-ffi/libagent_desktop_ffi.dylib`
-(`.so` on Linux, `.dll` on Windows) plus a committed C header at
-`crates/ffi/include/agent_desktop.h`.
-
-A Python ctypes smoke harness lives at `tests/ffi-python/smoke.py` and
-serves as a worked end-to-end example covering the ABI handshake, struct
-size validation, `ad_version`, and the snapshot pipeline leg. See
-`tests/ffi-python/README.md` for usage.
+The output is `target/release-ffi/libagent_desktop_ffi.dylib` (`.so` on Linux,
+`agent_desktop_ffi.dll` on Windows) plus a committed C header at
+`crates/ffi/include/agent_desktop.h`. The default `release` profile uses
+`panic = "abort"`: a Rust panic inside an `extern "C"` function would `SIGABRT`
+the host. `release-ffi` keeps `panic = "unwind"`, which the panic traps need.
 
 Four reference topics, loaded as needed:
 
-- [ownership.md](references/ownership.md) — who allocates / who frees,
-  for every `*mut T` the FFI hands back to the caller.
-- [error-handling.md](references/error-handling.md) — errno-style
-  last-error contract, enum validation, panic boundary.
-- [threading.md](references/threading.md) — host-thread contract,
-  cross-process mutation serialization, AXIsProcessTrusted inheritance,
-  and adapter-bound native handles.
-- [build-and-link.md](references/build-and-link.md) — ABI handshake,
-  struct size validation, minimal C and Python examples, observe-act
-  workflow, and prebuilt archive locations.
+- [ownership.md](references/ownership.md): who allocates and who frees every
+  pointer the FFI hands back.
+- [error-handling.md](references/error-handling.md): errno-style last-error
+  contract, error codes, enum validation, panic boundary.
+- [threading.md](references/threading.md): host-thread contract, mutation
+  ordering across threads and processes, adapter-bound native handles,
+  AXIsProcessTrusted inheritance.
+- [build-and-link.md](references/build-and-link.md): prebuilt archives, ABI
+  handshake, struct size validation, C and Python examples.
 
 ## Observe-act workflow (canonical path)
 
@@ -60,148 +56,126 @@ ad_free_string(result_out)
 ad_adapter_destroy(adapter)
 ```
 
-`ad_snapshot` returns a `{version, ok, command, data}` JSON envelope
-identical to the CLI output. The `data.tree` field contains snapshot-qualified
-ref IDs for interactive elements. Pass a qualified ref to `ad_execute_by_ref`
-to drive the pipeline
-(RefStore load → strict resolution → actionability preflight → dispatch).
+`ad_snapshot` returns the CLI envelope `{version, ok, command, data}`.
+`data.tree` carries snapshot-qualified refs for interactive elements. Read
+`data.complete` before trusting a tree: `false` means the observation budget ran
+out and the tree is partial, not an error. `ad_snapshot` always targets the
+focused window of `app`; window targeting, skeleton mode and `--root` drill-down
+are not exposed over the ABI. A bare `@eN` ref returns
+`AD_RESULT_ERR_INVALID_ARGS`.
 
 ## Core constraints
 
 - **ABI handshake.** Call `ad_init(AD_ABI_VERSION_MAJOR)` once after loading the
-  dylib. A mismatch between the compiled-in constant and the loaded dylib returns
-  `AD_RESULT_ERR_INVALID_ARGS` — abort rather than proceed. You can also read the
-  raw dylib major via `ad_abi_version()` for diagnostic display. New `ad_*` symbols
-  and new error codes are additive (no bump required); removed or layout-changed
-  symbols increment the major.
+  library. A mismatch returns `AD_RESULT_ERR_INVALID_ARGS`: abort. `ad_abi_version()`
+  returns the library's major for display. The major increments on a removed
+  symbol or a layout change; new `ad_*` symbols and error codes are additive.
+  Before 1.0, pin the exact `libagent_desktop_ffi` version you link against.
 
-- **Session adapters.** `ad_adapter_create_with_session("session-id")` associates
-  the adapter with a session namespace for refmap persistence — the same as CLI
-  `--session <id>`. A bare `@eN` ref is rejected with
-  `AD_RESULT_ERR_INVALID_ARGS`. Session IDs: 1–64
-  chars, ASCII alphanumeric / `-` / `_`.
-  Invalid IDs return null (check `ad_last_error_*`).
+- **Session adapters.** `ad_adapter_create_with_session("session-id")` scopes
+  refmap persistence to a session namespace, like CLI `--session <id>`. IDs are 1
+  to 64 ASCII alphanumeric, `-`, or `_` characters. A null ID behaves like
+  `ad_adapter_create()`. An invalid ID returns null (read `ad_last_error_*`).
 
-- **Structured session trace (no ABI change).** File-based JSONL tracing activates
-  only when the session has a manifest with `trace: on` from `session start`
-  (CLI) or equivalent on-disk setup. `ad_adapter_create_with_session` alone does
-  **not** create trace files. When tracing is active, `command_context()`-backed
-  commands append to one segment per OS process under
-  `~/.agent-desktop/sessions/<id>/trace/<pid>-<procTs>.jsonl`. A long-lived host
-  reuses the same segment filename for all calls in that process. For unstructured
-  diagnostics regardless of session manifest, use `ad_set_log_callback` (below).
-
-- **Threading and mutation leases.** Adapter entrypoints may be called from any
-  host thread. Native handles remain bound to their creating adapter and thread.
-  Desktop mutations acquire the same canonical cross-process interaction lease
-  as the CLI; reads carry finite deadlines without taking the mutation lock. See
-  [threading.md](references/threading.md) for the Apple documentation basis and
-  the read/read, read/mutation, and mutation/mutation ordering matrix.
-
-- **Release profile.** `cargo build --release` produces `panic = "abort"` —
-  any Rust panic inside an `extern "C"` fn will `SIGABRT` the host. Use
-  `--profile release-ffi` to get the correct `panic = "unwind"` profile. CI
-  enforces this.
-
-- **Last-error lifetime.** Pointers returned by `ad_last_error_*` remain valid
-  across any number of subsequent *successful* FFI calls on the same thread.
-  Only the next failing call rotates them. Cache the pointer once, read it as
-  many times as you need.
-
-- **ad_last_error_details.** A fourth accessor, `ad_last_error_details()`,
-  returns a borrowed JSON string carrying structured details (e.g. the
-  actionability check report on `ACTION_FAILED`, candidate summaries on
-  `AMBIGUOUS_TARGET`). The details may contain element names, values, and window
-  titles from the user's screen — treat as sensitive diagnostics and avoid routing
-  to shared log surfaces.
-
-- **Handle release.** Every `ad_resolve_element_exact` / `ad_find_exact` result must be
-  released with `ad_free_handle(adapter, &handle)` on the same adapter that
-  produced it, before that adapter is destroyed. On macOS this balances the
-  internal `CFRetain`; on Windows/Linux the call is a no-op but safe to issue.
-  `ad_free_handle` zeroes `handle.ptr` so a follow-up call is a safe no-op.
-
-- **Primary ref-action path.** `ad_execute_by_ref` is the recommended entrypoint
-  for the observe-act loop: it loads the RefStore, looks up the ref in the refmap
-  (STALE_REF on miss), runs strict element re-identification (STALE_REF / AMBIGUOUS_TARGET),
-  runs the live actionability preflight, then dispatches. TypeText and PressKey
-  default to `focus_fallback` policy (matching CLI `type`/`press-key`); all other
-  actions default to `headless`. Pass `AD_POLICY_KIND_HEADED` (2) to opt in to
-  cursor-based fallbacks.
+- **Ref actions.** `ad_execute_by_ref` is the primary action entrypoint. It loads
+  the RefStore, resolves the ref strictly (`STALE_REF` when the snapshot has no
+  such ref or the element changed, `AMBIGUOUS_TARGET` on several candidates), runs
+  the live actionability preflight (visible, stable, enabled, supported action,
+  policy, editable), then dispatches. A disabled or unsupported target fails
+  before any platform call; on `AD_RESULT_ERR_ACTION_FAILED` the check report is
+  JSON in `ad_last_error_details()`. It auto-waits 5000 ms before the preflight;
+  `ad_execute_by_ref_timeout` takes `timeout_ms` (`-1` = 5000 ms default, `0` =
+  single-shot). `PressKey` defaults to `focus_fallback`; every other action,
+  including `TypeText`, defaults to `headless`. Pass `AD_POLICY_KIND_FOCUS_FALLBACK`
+  (1) to allow focus without cursor movement, or `AD_POLICY_KIND_HEADED` (2) to allow
+  physical cursor and keyboard delivery. `ad_execute_ref_action_exact_with_policy`
+  runs the same preflight from an `AdExactRefEntry`.
 
 - **Generation-safe direct APIs.** Every direct targeting function takes
   process-generation evidence: `AdExactRefEntry`, `AdExactWindowInfo`,
   `ad_list_windows_exact`, `ad_launch_app_exact`, and the other `*_exact`
-  symbols. `AdRefEntry`, `AdWindowInfo`, and `AdSurfaceInfo` exist only as
-  fields embedded in the exact structs. `ad_list_surfaces_exact` preserves
-  `SurfaceInfo.id`. From `AD_EXACT_SURFACE_INFO_VERSION` 2, an exact entry's
-  `unclassified` names the surface kinds its probe could not read (for example
-  `sheet,menu`), or is null. On Windows, a missing `sheet` or `menu` next to a
-  listed kind is unknown, not absent.
+  symbols. `AdRefEntry`, `AdWindowInfo`, and `AdSurfaceInfo` exist
+  only as fields embedded in the exact structs. `ad_list_surfaces_exact` keeps the
+  surface `id`. From `AD_EXACT_SURFACE_INFO_VERSION` 2, `AdExactSurfaceInfo.unclassified`
+  names the surface kinds its probe could not read (for example `sheet,menu`), or
+  is null. A missing `sheet` or `menu` next to a listed kind is unknown, not
+  absent. Only the Windows adapter fills it; macOS and Linux return null.
+
+- **Native handles.** `ad_resolve_element_exact` and `ad_find_exact` return an
+  `AdNativeHandle`. `ad_execute_action` (headless, no preflight) and
+  `ad_execute_action_with_policy` act on it directly, bypassing the ref-action
+  pipeline. Release every handle with `ad_free_handle(adapter, &handle)` on the
+  same adapter and thread, before `ad_adapter_destroy`, on every platform. It
+  zeroes `handle.ptr`, so a second call is a no-op.
+
+- **Action results.** `AdActionResult.steps` mirrors the CLI `steps` array for
+  activation-chain actions. Each `AdActionStep` has `label` and `outcome` strings,
+  `mechanism` (`AD_STEP_MECHANISM_SEMANTIC_API` = 1 or
+  `AD_STEP_MECHANISM_PHYSICAL_SYNTHETIC` = 2, valid only when `has_mechanism`),
+  and `verified` (valid only when `has_verified`). `AdActionResult.disposition`
+  carries the same delivery/retry pair as `ad_last_error_delivery_semantics`.
+  Release the result with `ad_free_action_result(&out)`.
 
 - **Display discovery.** Call `ad_list_displays` before using
-  `AdScreenshotTarget.screen_index`. List order is the screenshot index order;
-  inspect each `AdDisplayInfo` for its stable display ID, bounds, primary flag,
-  and scale, then release the handle with `ad_display_list_free`.
+  `AdScreenshotTarget.screen_index`. List order is the screenshot index order.
+  Each `AdDisplayInfo` carries a stable display ID, bounds, primary flag, and scale.
+  Release the list with `ad_display_list_free`.
 
-- **Low-level action paths.** `ad_execute_action` (headless, no preflight) and
-  `ad_execute_action_with_policy` are raw escape hatches for callers holding a live
-  `AdNativeHandle` from `ad_resolve_element_exact` / `ad_find_exact`. Use them when
-  you need to bypass the ref-action pipeline.
+- **Errors.** A failing call sets thread-local last-error state; read it with the
+  `ad_last_error_*` accessors before the next failing call. `ad_last_error_details()`
+  returns structured JSON (the actionability report on `ACTION_FAILED`, candidate
+  summaries on `AMBIGUOUS_TARGET`) that can contain element names, values, and
+  window titles from the user's screen: keep it out of shared logs.
+  `ad_last_error_delivery_semantics` reports whether the failed action was
+  delivered and whether a retry is safe. Invalid enum discriminants return
+  `AD_RESULT_ERR_INVALID_ARGS`. See [error-handling.md](references/error-handling.md).
 
-- **Ref-action preflight.** `ad_execute_by_ref` and
-  `ad_execute_ref_action_exact_with_policy` both resolve the element strictly and run the live actionability preflight
-  (visible, stable, enabled, supported action, policy, editable) before dispatching
-  — a disabled or unsupported target fails before any platform call. On
-  `AD_RESULT_ERR_ACTION_FAILED`, the structured check report is available as JSON
-  via `ad_last_error_details()`.
+- **Threading.** Entrypoints may be called from any host thread. Native handles
+  stay on the adapter and thread that created them; pass qualified refs across
+  threads. Desktop mutations take the same cross-process interaction lease as the
+  CLI; reads take no lease and carry finite deadlines. See
+  [threading.md](references/threading.md) for the read/read, read/mutation, and
+  mutation/mutation matrix.
 
-- **Action result steps.** `AdActionResult.steps` mirrors the CLI `steps` array
-  for activation-chain actions. Each entry has `label` and `outcome` strings and
-  is owned by the result; release with `ad_free_action_result(&out)`.
+- **Tracing.** File tracing (same JSONL contract as CLI `--trace`; segments carry
+  `event`, `ts_ms`, `seq`, and redacted fields) is active only when the session has
+  a manifest with `trace: on`, created by `session start` (or an equivalent manifest
+  on disk) before the adapter is created. `ad_adapter_create_with_session` alone
+  writes nothing. Each OS process appends to one segment,
+  `~/.agent-desktop/sessions/<id>/trace/<pid>-<procTs>.jsonl`, and a long-lived host
+  reuses it. `ad_trace_show` (JSON envelope) and `ad_trace_export` (self-contained
+  HTML file) read the adapter session's merged timeline; `limit` `-1` = CLI default.
 
-- **Tracing / log callback.** Two tracing surfaces coexist:
+- **Log callback.** `ad_set_log_callback(cb)` registers one process-wide callback
+  for diagnostics regardless of session manifest. It receives, as JSON, the
+  `tracing` events emitted inside later `ad_*` calls on the same thread; the FFI
+  never installs or replaces the host process's global tracing subscriber. `cb`
+  receives an `int32_t` level (1=ERROR ... 5=TRACE) and a `const char *msg` valid
+  only for the duration of the call. Pass `NULL` to unregister. Sensitive field
+  values (password, token, text, ...) are replaced with `{"redacted":true}`. The
+  callback must not unwind across the C ABI: catch C++ exceptions and Rust panics
+  inside it, because a violation may abort the host. It may fire from several host
+  threads at once and briefly after a `NULL` unregister: keep the callback and
+  any data it captures valid for the process lifetime.
 
-  1. **Structured file trace** — same JSONL contract as CLI `--trace`, gated by a
-     `trace: on` session manifest. Segments include `event`, `ts_ms`, `seq`, and
-     redacted fields. Requires `session start` (or equivalent manifest on disk)
-     before creating the adapter; plain session-id adapters write nothing to disk.
-
-  2. **`ad_set_log_callback(cb)`** — registers one process-wide callback that
-     receives, as JSON, the `tracing` events emitted inside later `ad_*` calls;
-     the FFI never installs or replaces the host process's global tracing
-     subscriber. `cb` receives an int32_t level (1=ERROR … 5=TRACE) and a
-     `const char *msg` valid only for the duration of the call. Pass `NULL` to
-     unregister. Sensitive field values (password, token, text, …) are replaced
-     with `{"redacted":true}` before formatting. The callback must not unwind
-     across the C ABI: catch C++ exceptions and Rust panics inside it, because a
-     violation may abort the host. The callback may fire from several host
-     threads at once, and may still fire briefly after a `NULL` unregister —
-     keep the callback and any data it captures valid for the process lifetime.
-
-- **Wait.** `ad_wait(adapter, args, &out)` runs the full CLI `wait` command
-  (element-appear, window-appear, text-appear, menu-open/close, notification,
-  element predicates). Zero-initialize `AdWaitArgs`, set the fields you need, and
-  validate the struct size against `AD_WAIT_ARGS_SIZE` / `ad_wait_args_size()` before
-  calling. The output is a `{version, ok, command, data}` JSON envelope freed with
-  `ad_free_string`. `ad_wait` blocks the calling thread up to `timeout_ms` ms —
-  ensure the adapter is not destroyed from another thread while it is running.
+- **Wait.** `ad_wait(adapter, args, &out)` runs the CLI `wait` command. Set
+  `mode.pause` (`AdOptionalU64`, ms), `mode.element`, `mode.window` (waits for a
+  window with that title), `mode.text`, or one of `mode.surfaces.menu`,
+  `.menu_closed`, `.notification`; add the `predicate` group (`predicate`,
+  `value`, `action`, `count`) and `scope.timeout_ms` / `scope.app`. The CLI event
+  wait (`--event`, `--window-id`) is not exposed. Zero-initialize `AdWaitArgs` and
+  validate the struct size against `AD_WAIT_ARGS_SIZE` / `ad_wait_args_size()`
+  before calling. The output is a `{version, ok, command, data}` envelope freed with
+  `ad_free_string`. `ad_wait` blocks the calling thread up to `scope.timeout_ms` ms. A
+  concurrent `ad_adapter_destroy` does not invalidate an in-flight wait.
 
 - **Text input privacy.** On macOS, focus-fallback or headed text insertion may
   briefly use the clipboard for non-ASCII text. For sensitive text, prefer
   `AD_ACTION_KIND_SET_VALUE` with `AD_POLICY_KIND_HEADLESS` when the target
   supports settable values.
 
-- **Enum discriminants.** Every `#[repr(i32)]` enum field is validated at the C
-  boundary — invalid discriminants return `AD_RESULT_ERR_INVALID_ARGS` instead of
-  undefined behavior.
-
-- **ABI stability.** The major version in `AD_ABI_VERSION_MAJOR` increments on any
-  breaking change (removed symbol, incompatible layout). Additive changes (new
-  symbols, new error codes) do not bump it. Before 1.0, pin the exact version of
-  libagent_desktop_ffi you link against.
-
-- **`ad_get_tree_exact` vs `ad_snapshot`.** `ad_get_tree_exact` returns a raw flat BFS tree
-  without `@e` refs, no refmap persistence, and no JSON envelope — use it for
-  custom traversal or UI inspection. For observe-act agents that drive actions via
-  `ad_execute_by_ref`, always start with `ad_snapshot`.
+- **`ad_get_tree_exact` vs `ad_snapshot`.** `ad_get_tree_exact` returns a raw flat
+  breadth-first tree: no refs, no refmap persistence, no JSON envelope (free it
+  with `ad_free_tree`). Use it for custom traversal or UI inspection. For
+  observe-act agents that drive actions via `ad_execute_by_ref`, start with
+  `ad_snapshot`.

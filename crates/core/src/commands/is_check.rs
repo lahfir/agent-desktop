@@ -1,11 +1,11 @@
 use crate::{
-    AppError,
+    AppError, Rect,
     adapter::{PlatformAdapter, optional_live_read},
     commands::helpers::resolve_ref_with_context,
     context::CommandContext,
-    element_state::ElementState,
     refs::RefEntry,
-    state::{self, CHECKED, EXPANDED, FOCUSED, SELECTED, VisibilityEvidence},
+    tree::element_state::ElementState,
+    tree::state::{self, CHECKED, EXPANDED, FOCUSED, SELECTED, VisibilityEvidence},
 };
 use serde_json::{Value, json};
 
@@ -49,6 +49,9 @@ pub fn execute(
     let (applicable, result) = match args.property {
         IsProperty::Visible => {
             let live_bounds = optional_live_read(adapter.get_element_bounds(&handle, deadline))?;
+            if let Some(visible) = visible_without_bounds(live_bounds, live_state.as_ref()) {
+                return Ok(visible_answer(&args.ref_id, visible));
+            }
             let visibility = VisibilityEvidence {
                 bounds: live_bounds.or(entry.geometry.bounds),
                 states: state.states.clone(),
@@ -63,20 +66,20 @@ pub fn execute(
         }
         IsProperty::Focused => (true, state::has_state(&state.states, FOCUSED)),
         IsProperty::Checked => (
-            crate::roles::is_toggleable_role(&entry.identity.role)
+            crate::tree::roles::is_toggleable_role(&entry.identity.role)
                 || state::has_state(&state.states, CHECKED)
-                || crate::capability::contains_any(
+                || crate::actions::capability::contains_any(
                     &entry.capabilities.available_actions,
-                    crate::capability::CHECKED_APPLICABILITY,
+                    crate::actions::capability::CHECKED_APPLICABILITY,
                 ),
             state::has_state(&state.states, CHECKED),
         ),
         IsProperty::Expanded => (
-            crate::roles::is_expandable_role(&entry.identity.role)
+            crate::tree::roles::is_expandable_role(&entry.identity.role)
                 || state::has_state(&state.states, EXPANDED)
-                || crate::capability::contains_any(
+                || crate::actions::capability::contains_any(
                     &entry.capabilities.available_actions,
-                    crate::capability::EXPANDED_APPLICABILITY,
+                    crate::actions::capability::EXPANDED_APPLICABILITY,
                 ),
             state::has_state(&state.states, EXPANDED),
         ),
@@ -86,6 +89,18 @@ pub fn execute(
     Ok(
         json!({ "property": prop_name, "ref": args.ref_id, "result": result, "applicable": applicable }),
     )
+}
+
+/// The actionability gate passes `visible` for a node whose bounds cannot be
+/// read once the live state says it is not offscreen; the command answers
+/// from that same evidence instead of reporting the property inapplicable.
+fn visible_without_bounds(live_bounds: Option<Rect>, live: Option<&ElementState>) -> Option<bool> {
+    live.filter(|_| live_bounds.is_none())?
+        .visible_without_bounds()
+}
+
+fn visible_answer(ref_id: &str, visible: bool) -> Value {
+    json!({ "property": "visible", "ref": ref_id, "result": visible, "applicable": true })
 }
 
 fn state_from_ref_entry(entry: &RefEntry) -> ElementState {

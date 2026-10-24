@@ -1,17 +1,34 @@
 use crate::{
     AdapterError, ClipboardContent, ClipboardFormat, Deadline, DragParams, InteractionLease,
-    KeyCombo, MouseEvent,
+    KeyCombo, MouseEvent, OperationReport,
 };
 
 /// `get_clipboard`/`set_clipboard` were removed pre-1.0 in favor of
 /// `get_clipboard_content`/`set_clipboard_content`; the C ABI
 /// (`ad_get_clipboard`/`ad_set_clipboard`) is unaffected.
 pub trait InputOps: Send + Sync {
+    /// The reason physical pointer delivery cannot happen in this session, if
+    /// it cannot. Commands that would aim a cursor ask before any geometry or
+    /// actionability work, so a session without pointer input answers at once
+    /// instead of spending its wait budget on a gesture it can never send.
+    fn physical_pointer_refusal(&self) -> Option<AdapterError> {
+        None
+    }
+
+    /// Whether a headed keyboard delivery needs the target window activated
+    /// first. An adapter whose keys can be delivered without activating
+    /// another window (a Wayland session, where the compositor refuses client
+    /// activation) answers false, so core skips a window focus the session
+    /// cannot grant.
+    fn keyboard_needs_window_activation(&self) -> bool {
+        true
+    }
+
     fn mouse_event(
         &self,
         _event: MouseEvent,
         _lease: &InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<OperationReport, AdapterError> {
         Err(AdapterError::not_supported("mouse_event"))
     }
 
@@ -24,11 +41,15 @@ pub trait InputOps: Send + Sync {
         Err(AdapterError::not_supported("key_event"))
     }
 
-    fn drag(&self, _params: DragParams, _lease: &InteractionLease) -> Result<(), AdapterError> {
+    fn drag(
+        &self,
+        _params: DragParams,
+        _lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
         Err(AdapterError::not_supported("drag"))
     }
 
-    fn clear_clipboard(&self, _lease: &InteractionLease) -> Result<(), AdapterError> {
+    fn clear_clipboard(&self, _lease: &InteractionLease) -> Result<OperationReport, AdapterError> {
         Err(AdapterError::not_supported("clear_clipboard"))
     }
 
@@ -49,7 +70,7 @@ pub trait InputOps: Send + Sync {
         &self,
         _content: &ClipboardContent,
         _lease: &InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<OperationReport, AdapterError> {
         Err(AdapterError::not_supported("set_clipboard_content"))
     }
 }

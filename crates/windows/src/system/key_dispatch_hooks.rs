@@ -12,7 +12,7 @@ pub(super) mod force_higher_integrity {
     }
 
     pub(crate) fn with<R>(run: impl FnOnce() -> R) -> R {
-        crate::system::test_support::with_flag(&ACTIVE, true, run)
+        crate::system::fixture::test_support::with_flag(&ACTIVE, true, run)
     }
 }
 
@@ -107,6 +107,6 @@ pub(super) mod force_keyboard_focus_denied {
     }
 
     pub(crate) fn with<R>(run: impl FnOnce() -> R) -> R {
-        crate::system::test_support::with_flag(&ACTIVE, true, run)
+        crate::system::fixture::test_support::with_flag(&ACTIVE, true, run)
     }
 }

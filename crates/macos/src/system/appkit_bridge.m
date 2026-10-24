@@ -11,6 +11,12 @@ typedef struct {
     uint8_t deliveryStarted;
 } AgentDesktopTerminateResult;
 
+typedef bool (*AgentDesktopLaunchTimeConflict)(
+    double expectedLaunchTime,
+    double observedLaunchTime,
+    bool launchDatePresent
+);
+
 typedef struct {
     uint8_t status;
     const char *failureField;
@@ -41,7 +47,8 @@ int32_t agent_desktop_app_finished_launching(int32_t pid) {
 AgentDesktopTerminateResult agent_desktop_terminate_application(
     int32_t pid,
     double expectedLaunchTime,
-    uint8_t force
+    uint8_t force,
+    AgentDesktopLaunchTimeConflict launchTimeConflict
 ) {
     AgentDesktopTerminateResult result = { .status = 4, .deliveryStarted = 0 };
     @try {
@@ -53,8 +60,11 @@ AgentDesktopTerminateResult agent_desktop_terminate_application(
                 return result;
             }
             NSDate *launchDate = app.launchDate;
-            if (launchDate == nil ||
-                fabs(launchDate.timeIntervalSince1970 - expectedLaunchTime) > 5.0) {
+            bool launchDatePresent = launchDate != nil;
+            double observedLaunchTime =
+                launchDatePresent ? launchDate.timeIntervalSince1970 : 0.0;
+            if (launchTimeConflict == NULL ||
+                launchTimeConflict(expectedLaunchTime, observedLaunchTime, launchDatePresent)) {
                 result.status = 5;
                 return result;
             }

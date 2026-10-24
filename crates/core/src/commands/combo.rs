@@ -19,8 +19,20 @@ pub fn ensure_combo_allowed(
 }
 
 pub fn parse_combo_normalized(raw: &str) -> Result<KeyCombo, AppError> {
-    let normalized = raw.to_lowercase().replace(' ', "");
-    parse_combo(&normalized)
+    let compact = raw.replace(' ', "");
+    let mut combo = parse_combo(&compact.to_lowercase())?;
+    if combo.modifiers.is_empty() && is_uppercase_letter(&compact) {
+        combo.modifiers.push(Modifier::Shift);
+    }
+    Ok(combo)
+}
+
+fn is_uppercase_letter(key: &str) -> bool {
+    let mut characters = key.chars();
+    matches!(
+        (characters.next(), characters.next()),
+        (Some(only), None) if only.is_ascii_uppercase()
+    )
 }
 
 pub fn parse_combo(s: &str) -> Result<KeyCombo, AppError> {
@@ -35,7 +47,7 @@ pub fn parse_combo(s: &str) -> Result<KeyCombo, AppError> {
 
     for &part in &parts[..parts.len() - 1] {
         let modifier = match part {
-            "meta" | "cmd" | "command" => Modifier::Meta,
+            "meta" | "cmd" | "command" | "super" | "win" => Modifier::Meta,
             "ctrl" | "control" => Modifier::Ctrl,
             "alt" | "option" => Modifier::Alt,
             "shift" => Modifier::Shift,

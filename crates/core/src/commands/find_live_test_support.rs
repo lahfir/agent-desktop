@@ -1,26 +1,56 @@
 use crate::{
     AdapterError, WindowInfo,
     adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps, WindowFilter},
-    live_locator::{
+    locator::live_locator::{
         IdentifierEvidence, LocatorEvidence, LocatorField, LocatorRefEvidence, LocatorStats,
         ObservationRequest, ObservationRoot, ObservationSource, ObservedSubtree, ObservedTree,
     },
 };
 
+pub(crate) const FRAMED_LABEL: &str = "FramedLabel";
+
+pub(crate) fn framed_label_screen_bounds() -> crate::Rect {
+    crate::Rect {
+        x: 214.0,
+        y: 202.0,
+        width: 177.0,
+        height: 18.0,
+    }
+}
+
+fn framed_label_window_bounds() -> crate::Rect {
+    crate::Rect {
+        x: 48.0,
+        y: 70.0,
+        width: 177.0,
+        height: 18.0,
+    }
+}
+
 pub(crate) struct LiveFindAdapter {
     structurally_complete: bool,
+    framed_label: bool,
 }
 
 impl LiveFindAdapter {
     pub(crate) fn complete() -> Self {
         Self {
             structurally_complete: true,
+            framed_label: false,
         }
     }
 
     pub(crate) fn incomplete() -> Self {
         Self {
             structurally_complete: false,
+            framed_label: false,
+        }
+    }
+
+    pub(crate) fn with_framed_label() -> Self {
+        Self {
+            structurally_complete: true,
+            framed_label: true,
         }
     }
 
@@ -35,6 +65,7 @@ impl LiveFindAdapter {
             identifiers: IdentifierEvidence::absent(),
             states: LocatorField::Known(Vec::new()),
             ref_evidence: LocatorRefEvidence {
+                window_bounds: LocatorField::Absent,
                 bounds: LocatorField::Absent,
                 available_actions: LocatorField::Known(Vec::new()),
                 descriptors: Default::default(),
@@ -73,8 +104,14 @@ impl ObservationOps for LiveFindAdapter {
         } else {
             "OnlyInWindowOne"
         };
-        let child = self.node(Self::evidence("button", Some(marker)), Vec::new());
-        let root_node = self.node(Self::evidence("window", Some(&window.title)), vec![child]);
+        let mut children = vec![self.node(Self::evidence("button", Some(marker)), Vec::new())];
+        if self.framed_label {
+            let mut label = Self::evidence("statictext", Some(FRAMED_LABEL));
+            label.ref_evidence.bounds = LocatorField::Known(framed_label_screen_bounds());
+            label.ref_evidence.window_bounds = LocatorField::Known(framed_label_window_bounds());
+            children.push(self.node(label, Vec::new()));
+        }
+        let root_node = self.node(Self::evidence("window", Some(&window.title)), children);
         ObservedTree::from_roots(
             vec![root_node],
             ObservationSource::from_root(&root, request.surface),

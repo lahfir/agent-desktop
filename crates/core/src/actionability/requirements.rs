@@ -1,5 +1,5 @@
 use super::PointerDelivery;
-use crate::action::Action;
+use crate::actions::action::Action;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ActionabilityRequirements {
@@ -45,7 +45,7 @@ impl ActionabilityRequirements {
         }
         if policy.is_headed() && action.headed_requirement().requires_cursor() {
             PointerDelivery::Physical
-        } else if crate::capability::supports_direct_semantic_pointer_delivery(
+        } else if crate::actions::capability::supports_direct_semantic_pointer_delivery(
             action,
             available_actions,
         ) {
@@ -61,28 +61,58 @@ impl ActionabilityRequirements {
     /// without usable bounds stay actionable. The visibility gate applies this
     /// only to targets that report bounds but no owning window (`offscreen`
     /// unknown), the shape macOS closed-menu items have: a zero-size control
-    /// inside a known window, or a target with no bounds at all, still needs
-    /// bounds. Explicit
-    /// hidden/offscreen state still gates them; headed, focus-fallback, and
-    /// physical paths keep the geometry requirement.
+    /// inside a known window still needs bounds. A separately proven nonspatial
+    /// protocol target needs complete live state instead of geometry. Explicit
+    /// hidden/offscreen state still gates both. Headed pointer
+    /// paths keep the geometry requirement, but an action typed through the
+    /// keyboard never uses a pointer: a Wayland field reports no bounds, and
+    /// waiting for one that can never arrive spends the whole budget on a
+    /// check the session cannot answer.
     pub(crate) fn requires_geometry(
         &self,
         request: &crate::ActionRequest,
         available_actions: &[String],
     ) -> bool {
+        if request.action.delivered_by_keyboard() {
+            return false;
+        }
         if request.policy != crate::InteractionPolicy::headless() {
             return true;
         }
-        let direct_pointer = crate::capability::supports_direct_semantic_pointer_delivery(
+        let direct_pointer = crate::actions::capability::supports_direct_semantic_pointer_delivery(
             &request.action,
             available_actions,
         );
         let direct_text = self.editable
-            && crate::capability::contains_any(
+            && crate::actions::capability::contains_any(
                 available_actions,
-                crate::capability::for_action(&request.action),
+                crate::actions::capability::for_action(&request.action),
             );
         !(direct_pointer || direct_text)
+    }
+
+    /// Whether a headless action reaches its target without a pointer: the
+    /// delivery is semantic (a click through an advertised verb) or the
+    /// action's own capability is advertised, and no cursor or hit test is
+    /// involved. Headed, hover, drag and a click with no semantic verb are
+    /// pointer-delivered and never qualify.
+    pub(crate) fn delivered_without_pointer(
+        &self,
+        request: &crate::ActionRequest,
+        available_actions: &[String],
+        pointer_delivery: PointerDelivery,
+    ) -> bool {
+        if request.policy != crate::InteractionPolicy::headless() {
+            return false;
+        }
+        match pointer_delivery {
+            PointerDelivery::Physical => false,
+            PointerDelivery::Semantic => true,
+            PointerDelivery::NotApplicable => crate::actions::capability::contains_any(
+                available_actions,
+                crate::actions::capability::for_action(&request.action),
+            ),
+        }
     }
 
     pub(crate) fn requires_stability(&self, pointer_delivery: PointerDelivery) -> bool {

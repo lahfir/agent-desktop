@@ -1,5 +1,8 @@
 //! Verifies the committed C header is also a valid C++17 interface.
 
+#[path = "common/header_temp.rs"]
+mod header_temp;
+
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -23,9 +26,9 @@ fn committed_header_compiles_as_cpp17_with_portable_abi_types() {
         return;
     };
 
-    let stem = format!("agent_desktop_header_cpp17_{}", std::process::id());
-    let tmp = std::env::temp_dir().join(format!("{stem}.cpp"));
-    let obj = std::env::temp_dir().join(format!("{stem}.o"));
+    let directory = header_temp::HeaderTemp::new();
+    let tmp = directory.0.join("header.cpp");
+    let obj = directory.0.join("header.o");
     let src = r#"
 #include <cstdint>
 #include <limits>

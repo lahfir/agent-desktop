@@ -6,10 +6,10 @@ use super::{
 };
 use crate::{
     AdapterError, DeliverySemantics, ErrorCode, IdentityMatch, LocatorField,
-    action_request::ActionRequest,
+    actions::action_request::ActionRequest,
     adapter::{LiveElement, NativeHandle, PlatformAdapter},
-    ref_identity::{has_meaningful_identity, identity_match},
     refs::RefEntry,
+    refs::ref_identity::{has_meaningful_identity, identity_match},
 };
 
 /// Groups the read-only coordinates of a live element check: which element,
@@ -49,13 +49,8 @@ pub(crate) fn check_live_with_stability(
     request: &ActionRequest,
     stability: StabilityExpectation,
 ) -> Result<ActionabilityReport, AdapterError> {
-    let evidence = observe(
-        target.entry,
-        target
-            .adapter
-            .get_live_element(target.handle, target.deadline),
-    )
-    .map_err(crate::ref_action::mark_pre_dispatch_resolution_failure)?;
+    let evidence =
+        observe(target).map_err(crate::ref_action::mark_pre_dispatch_resolution_failure)?;
     check_with_stability(
         stability,
         &evidence,
@@ -73,12 +68,7 @@ pub(crate) fn check_live_with_stability_or_gap(
     request: &ActionRequest,
     stability: StabilityExpectation,
 ) -> Result<ActionabilityReport, AdapterError> {
-    let evidence = observe(
-        target.entry,
-        target
-            .adapter
-            .get_live_element(target.handle, target.deadline),
-    )?;
+    let evidence = observe(target)?;
     check_with_stability_or_gap(
         stability,
         &evidence,
@@ -88,11 +78,11 @@ pub(crate) fn check_live_with_stability_or_gap(
     )
 }
 
-fn observe(
-    entry: &RefEntry,
-    live: Result<LiveElement, AdapterError>,
-) -> Result<ActionabilityEvidence, AdapterError> {
-    let live = match live {
+fn observe(target: &LiveCheckTarget<'_>) -> Result<ActionabilityEvidence, AdapterError> {
+    let live = match target
+        .adapter
+        .get_live_element(target.handle, target.deadline)
+    {
         Ok(live) => live,
         Err(err)
             if matches!(
@@ -109,8 +99,9 @@ fn observe(
         }
         Err(err) => return Err(err),
     };
-    validate_live_identity(entry, &live)?;
+    validate_live_identity(target.entry, &live)?;
     Ok(ActionabilityEvidence {
+        nonspatial: target.adapter.is_nonspatial_target(target.handle),
         state: live.state,
         states_complete: live.states_complete,
         bounds: live.bounds,

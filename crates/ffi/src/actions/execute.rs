@@ -222,7 +222,7 @@ fn action_request(policy: AdPolicyKind, action: Action) -> ActionRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_desktop_core::{Action, interaction_policy::InteractionPolicy};
+    use agent_desktop_core::{Action, actions::interaction_policy::InteractionPolicy};
 
     #[test]
     fn ffi_policy_kind_maps_to_core_interaction_policy() {

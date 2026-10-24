@@ -9,13 +9,17 @@ pub enum AdPolicyKind {
 impl AdPolicyKind {
     pub(crate) fn to_interaction_policy(
         self,
-    ) -> agent_desktop_core::interaction_policy::InteractionPolicy {
+    ) -> agent_desktop_core::actions::interaction_policy::InteractionPolicy {
         match self {
-            Self::Headless => agent_desktop_core::interaction_policy::InteractionPolicy::headless(),
-            Self::FocusFallback => {
-                agent_desktop_core::interaction_policy::InteractionPolicy::focus_fallback()
+            Self::Headless => {
+                agent_desktop_core::actions::interaction_policy::InteractionPolicy::headless()
             }
-            Self::Headed => agent_desktop_core::interaction_policy::InteractionPolicy::headed(),
+            Self::FocusFallback => {
+                agent_desktop_core::actions::interaction_policy::InteractionPolicy::focus_fallback()
+            }
+            Self::Headed => {
+                agent_desktop_core::actions::interaction_policy::InteractionPolicy::headed()
+            }
         }
     }
 }
@@ -23,7 +27,7 @@ impl AdPolicyKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_desktop_core::interaction_policy::InteractionPolicy;
+    use agent_desktop_core::actions::interaction_policy::InteractionPolicy;
 
     #[test]
     fn discriminants_are_abi_stable() {

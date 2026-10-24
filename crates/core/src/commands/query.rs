@@ -1,6 +1,6 @@
 use crate::{
     AccessibilityNode, AppError, IdentityPredicate, LocatorQuery, accessibility_node_matches,
-    search_text,
+    tree::search_text,
 };
 
 pub fn validate_selector(raw: &str) -> Result<LocatorQuery, AppError> {

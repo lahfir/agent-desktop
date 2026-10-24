@@ -1,8 +1,9 @@
 use std::time::Duration;
 
 use crate::{
-    AdapterError, AppError, DeliverySemantics, ErrorCode, adapter::PlatformAdapter, cdp_endpoint,
-    launch_options::LaunchOptions, launch_result::LaunchResult, renderer_kind::RendererKind,
+    AdapterError, AppError, DeliverySemantics, ErrorCode, adapter::PlatformAdapter,
+    system::cdp_endpoint, system::launch_options::LaunchOptions,
+    system::launch_result::LaunchResult, tree::renderer_kind::RendererKind,
 };
 use serde_json::Value;
 
@@ -44,9 +45,13 @@ pub fn execute(args: LaunchArgs, adapter: &dyn PlatformAdapter) -> Result<Value,
     let mut launched = adapter.launch_app(&app, &options, &lease)?;
     if let Some(port) = options.cdp_port {
         let granted = deadline.remaining();
-        launched.cdp = Some(verify_cdp_endpoint(port, deadline, granted, &launched)?);
+        launched.cdp = Some(verify_cdp_endpoint(
+            port, deadline, granted, &launched, adapter,
+        )?);
     }
-    launched.suggestion = launch_suggestion(requested_cdp_port.is_some(), &launched);
+    if launched.suggestion.is_none() {
+        launched.suggestion = launch_suggestion(requested_cdp_port.is_some(), &launched);
+    }
     Ok(serde_json::to_value(launched)?)
 }
 
@@ -190,9 +195,31 @@ fn verify_cdp_endpoint(
     deadline: crate::Deadline,
     probe_budget: Duration,
     launched: &LaunchResult,
+    adapter: &dyn PlatformAdapter,
 ) -> Result<cdp_endpoint::CdpEndpoint, AppError> {
-    cdp_endpoint::probe(port, deadline)
-        .map_err(|error| augment_probe_error(error, launched, probe_budget))
+    let endpoint = cdp_endpoint::probe(port, deadline)
+        .map_err(|error| augment_probe_error(error, launched, probe_budget))?;
+    let Some(instance) = launched.process_instance.as_deref() else {
+        return Err(augment_probe_error(
+            cdp_endpoint::unattributed(port),
+            launched,
+            probe_budget,
+        ));
+    };
+    let process = crate::ProcessIdentity::new(launched.pid, instance);
+    match adapter.process_owns_tcp_listener(process, port, deadline) {
+        Ok(true) => Ok(endpoint),
+        Ok(false) => Err(augment_probe_error(
+            cdp_endpoint::unattributed(port),
+            launched,
+            probe_budget,
+        )),
+        Err(error) => Err(augment_probe_error(
+            AppError::Adapter(error.with_disposition(DeliverySemantics::delivered_unverified())),
+            launched,
+            probe_budget,
+        )),
+    }
 }
 
 fn augment_probe_error(
@@ -216,9 +243,8 @@ fn augment_probe_error(
         extra,
     );
     AppError::Adapter(inner.with_details(merged).with_suggestion(
-        "The app is running but no DevTools endpoint answered on this port. It may not be \
-         Chromium-based, may strip debugging switches, or may still be starting. Drive it with \
-         accessibility commands, or close-app it if it is unwanted.",
+        "The app is running but its DevTools endpoint could not be verified as belonging to the \
+         launched process. Drive it with accessibility commands, or close-app it if it is unwanted.",
     ))
 }
 

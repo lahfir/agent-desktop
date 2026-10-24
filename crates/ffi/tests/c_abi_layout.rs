@@ -205,6 +205,7 @@ fn ref_entry_layout_is_guarded_for_c_consumers() {
     assert_eq!(offset_of!(AdRefGeometry, bounds_hash), 32);
     assert_eq!(offset_of!(AdRefGeometry, has_bounds), 40);
     assert_eq!(offset_of!(AdRefGeometry, has_bounds_hash), 41);
+    assert_eq!(offset_of!(AdRefGeometry, bounds_space), 44);
     assert_eq!(size_of::<AdRefSource>(), 40);
     assert_eq!(offset_of!(AdRefSource, window_bounds_hash), 24);
     assert_eq!(offset_of!(AdRefSource, surface), 32);
@@ -225,7 +226,7 @@ fn ref_entry_layout_is_guarded_for_c_consumers() {
 
 #[test]
 fn exact_ref_entry_is_additive_versioned_and_layout_pinned() {
-    assert_eq!(agent_desktop_ffi::AD_EXACT_REF_ENTRY_VERSION, 1);
+    assert_eq!(agent_desktop_ffi::AD_EXACT_REF_ENTRY_VERSION, 2);
     assert_eq!(agent_desktop_ffi::AD_EXACT_REF_ENTRY_SIZE, 224);
     assert_eq!(unsafe { common::ad_exact_ref_entry_size() }, 224);
     assert_eq!(size_of::<AdExactRefEntry>(), 224);

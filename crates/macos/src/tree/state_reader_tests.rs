@@ -1,5 +1,7 @@
 use super::*;
-use crate::tree::{node_attr_states::NodeAttrStates, node_attrs::NodeAttrs};
+use crate::tree::{
+    properties::node_attr_states::NodeAttrStates, properties::node_attrs::NodeAttrs,
+};
 use agent_desktop_core::Rect;
 
 fn sample_attrs() -> NodeAttrs {

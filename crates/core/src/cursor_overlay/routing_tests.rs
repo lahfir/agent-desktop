@@ -25,8 +25,8 @@ impl InputOps for RoutingCaptureAdapter {
         &self,
         _event: MouseEvent,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), crate::AdapterError> {
-        Ok(())
+    ) -> Result<crate::OperationReport, crate::AdapterError> {
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -80,13 +80,10 @@ fn ordinary_session_routes_agent_actions_to_the_default_socket() {
         &lease(),
     )
     .expect("dispatch succeeds");
+    let presented = adapter.presented.lock().unwrap();
+    assert!(!presented.is_empty(), "no cursor controls were presented");
     assert!(
-        adapter
-            .presented
-            .lock()
-            .unwrap()
-            .iter()
-            .all(|control| control.agent_id().is_none()),
+        presented.iter().all(|control| control.agent_id().is_none()),
         "ordinary sessions must not stamp agent ids on present controls"
     );
 }
@@ -104,11 +101,10 @@ fn multi_agent_session_routes_agent_actions_to_the_per_agent_socket() {
         &lease(),
     )
     .expect("dispatch succeeds");
+    let presented = adapter.presented.lock().unwrap();
+    assert!(!presented.is_empty(), "no cursor controls were presented");
     assert!(
-        adapter
-            .presented
-            .lock()
-            .unwrap()
+        presented
             .iter()
             .all(|control| control.agent_id() == Some("agent-a")),
         "multi-agent sessions must stamp the agent id on present controls"
@@ -168,6 +164,7 @@ fn without_a_pointer_image_travel_never_carries_the_pointer_flag() {
     )
     .expect("dispatch succeeds");
     let presented = adapter.presented.lock().unwrap();
+    assert!(!presented.is_empty(), "no cursor controls were presented");
     assert!(
         presented
             .iter()

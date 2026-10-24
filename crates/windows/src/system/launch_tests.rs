@@ -1,6 +1,10 @@
 use super::*;
-use agent_desktop_core::{Deadline, DeliveryDisposition, ErrorCode, ProcessId};
+use agent_desktop_core::{
+    AppError, Deadline, DeliverySemantics, ErrorCode, ErrorPayload, ProcessId,
+};
 
+#[cfg(target_os = "windows")]
+use super::super::launch_path::resolve_executable;
 #[cfg(target_os = "windows")]
 use std::path::{Path, PathBuf};
 
@@ -44,10 +48,42 @@ fn ambiguous_launch_target_suggestion_names_pids_instead_of_a_ref_retry() {
     );
 }
 
+/// The envelope a caller reads when a launch name matches several running
+/// instances: the refusal happens before any process is started, and the
+/// candidate pids travel in `details` so the caller can pick one by pid.
+#[test]
+fn shared_ambiguous_target_pins_the_windows_envelope() {
+    let matches = vec![
+        ProcessRow {
+            pid: ProcessId::from(10),
+            name: "Cursor.exe".into(),
+        },
+        ProcessRow {
+            pid: ProcessId::from(11),
+            name: "Cursor.exe".into(),
+        },
+    ];
+
+    let wire = serde_json::to_value(ErrorPayload::from_app_error(&AppError::from(
+        ambiguous_apps(&matches),
+    )))
+    .expect("ErrorPayload serializes");
+
+    assert_eq!(wire["code"], ErrorCode::AmbiguousTarget.as_str());
+    assert_eq!(
+        wire["disposition"],
+        serde_json::to_value(DeliverySemantics::not_delivered()).expect("disposition serializes")
+    );
+    assert_eq!(
+        wire["details"]["candidate_pids"],
+        serde_json::json!([10, 11])
+    );
+}
+
 /// The `Timeout` arm of [`is_unobservable_within_budget`], mirroring the
 /// `WindowNotFound` arm's tolerance: an already-expired deadline makes
 /// `list_windows_live`'s shared retry budget (`retry_transient_window_race`'s
-/// own `ensure_budget` preamble) refuse before any native enumeration runs,
+/// own `ensure_remaining` preamble) refuse before any native enumeration runs,
 /// so `exact_window` returns `Err(Timeout)` deterministically and needs no
 /// fixture. A launch racing its own deadline must still resolve to "no
 /// window observed" here - the deadline itself is what ends `observe_window`'s
@@ -87,25 +123,10 @@ fn launch_options_enforce_a_bounded_text_budget() {
 }
 
 #[test]
-fn invalid_identifier_is_not_delivered() {
-    let error = launch_app_impl(
-        r"sub\app.exe",
-        &LaunchOptions::default(),
-        Deadline::after(1_000).expect("deadline"),
-    )
-    .expect_err("relative id");
-    assert_eq!(error.code, ErrorCode::InvalidArgs);
-    assert_eq!(
-        error.disposition.delivery(),
-        DeliveryDisposition::NotDelivered
-    );
-}
-
-#[test]
 fn elevation_required_maps_through_hresult_from_win32() {
-    let hresult = crate::system::hresult::hresult_from_win32(740);
+    let hresult = crate::system::runtime::hresult::hresult_from_win32(740);
     assert_eq!(hresult, 0x8007_02E4_u32 as i32);
-    let error = crate::system::hresult::adapter_error_from_win32(
+    let error = crate::system::runtime::hresult::adapter_error_from_win32(
         740,
         "CreateProcessW failed to start the application",
     );
@@ -159,7 +180,7 @@ fn absolute_cwd_returns_an_absolute_path_unchanged() {
 }
 
 #[cfg(target_os = "windows")]
-use crate::system::test_time::deadline;
+use crate::system::fixture::test_time::deadline;
 
 #[cfg(target_os = "windows")]
 fn matching_pids(image: &str) -> Vec<ProcessId> {

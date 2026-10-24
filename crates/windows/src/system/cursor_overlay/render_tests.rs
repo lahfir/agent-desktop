@@ -188,6 +188,26 @@ fn the_surface_follows_the_pose_rather_than_spanning_the_screen() {
 }
 
 #[test]
+fn an_oversized_target_fails_closed_without_surface_allocation() {
+    let style = CursorOverlayStyle::default();
+    for extent in [100_000.0, f64::from(i32::MAX), f64::MAX] {
+        let mut oversized = frame(&style, None);
+        oversized.target = Some(Rect {
+            x: -50_000.0,
+            y: -50_000.0,
+            width: extent,
+            height: extent,
+        });
+        oversized.highlight_opacity = 1.0;
+
+        let composed = compose(&oversized);
+
+        assert_eq!((composed.surface.width, composed.surface.height), (0, 0));
+        assert!(composed.surface.pixels.is_empty());
+    }
+}
+
+#[test]
 fn a_larger_style_size_yields_a_larger_surface() {
     let small = CursorOverlayStyle::default();
     let mut large = CursorOverlayStyle::default();
@@ -367,4 +387,12 @@ fn composing_frames_around_large_targets_fits_inside_a_display_frame() {
          walk over the outline's interior, which measured 339ms - and any regression of even \
          half that size still crosses this"
     );
+}
+
+#[test]
+fn cursor_outside_work_area_is_not_clipped() {
+    let style = CursorOverlayStyle::default();
+    let mut input = frame(&style, None);
+    input.tip.y = input.screen.height + 80.0;
+    assert!(painted_pixels(&compose(&input)) > 0);
 }

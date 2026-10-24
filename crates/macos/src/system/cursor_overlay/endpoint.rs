@@ -295,7 +295,14 @@ mod tests {
         let first = path_for_root(root, "run-1", Some("agent-a"));
         let second = path_for_root(root, "run-1", Some("agent-b"));
         assert_ne!(first, second);
-        assert!(first.file_name().unwrap().to_string_lossy().contains('-'));
+        let session_prefix = format!(
+            ".cursor-overlay-{:016x}-",
+            endpoint_hash(root, "run-1", Some(PROTOCOL_VERSION))
+        );
+        for endpoint in [&first, &second] {
+            let name = endpoint.file_name().unwrap().to_string_lossy();
+            assert!(name.starts_with(&session_prefix), "{name}");
+        }
     }
 
     #[test]

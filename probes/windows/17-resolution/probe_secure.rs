@@ -39,8 +39,8 @@ use agent_desktop_core::Deadline;
 use agent_desktop_windows::tree::element::UIAElement;
 use agent_desktop_windows::tree::name_evidence::read_label;
 use agent_desktop_windows::tree::properties::{PropertyOutcome, read_live_bounded};
-use agent_desktop_windows::tree::property_ids::{TreeProperty, uia_property};
-use agent_desktop_windows::tree::walker::walk_vocabulary;
+use agent_desktop_windows::tree::properties::property_ids::{TreeProperty, uia_property};
+use agent_desktop_windows::tree::walk::walker::walk_vocabulary;
 use uiautomation::UIElement;
 use uiautomation::types::UIProperty;
 

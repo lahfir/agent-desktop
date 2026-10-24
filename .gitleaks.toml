@@ -2,8 +2,8 @@ title = "agent-desktop secret and privacy scanning"
 
 # Inherit gitleaks' built-in credential rules (API keys, tokens, private keys),
 # then add project-specific privacy rules below. This repo is public and ships
-# planning documents, probe evidence, and traces that are written on developer
-# machines, so operator identity and filesystem layout are treated as leaks
+# probe evidence and traces that are written on developer machines, so
+# operator identity and filesystem layout are treated as leaks
 # alongside conventional secrets.
 #
 # Regexes are Go RE2: no lookahead, no lookbehind, no backreferences. Anything
@@ -77,6 +77,12 @@ regexes = [
   '''/home/runner''',
   # Well-known localized group principals are OS vocabulary, not identity.
   '''(?i)BUILTIN\\Admin[a-z]*''',
+  # Linux desktop vocabulary that has the shape of an address: systemd
+  # template unit names, the per-user service manager unit, and the id of
+  # Ubuntu's own GNOME Shell extension.
+  '''\borg\.gnome\.Shell@(x11|wayland)\.service\b''',
+  '''\buser@[0-9]+\.service\b''',
+  '''\bubuntu-appindicators@ubuntu\.com\b''',
   # Addresses that are meant to be public.
   '''(?i)[A-Za-z0-9._%+-]+@example\.(com|org|net)''',
   '''(?i)noreply@''',

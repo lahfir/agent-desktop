@@ -2,9 +2,9 @@ use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::commands::helpers::test_support::save_one_ref_snapshot;
 use crate::{
-    AdapterError, action_request::ActionRequest, action_result::ActionResult,
+    AdapterError, actions::action_request::ActionRequest, actions::action_result::ActionResult,
     adapter::NativeHandle, commands::stale_retry_test_support::StaleRetryCounter, refs::RefEntry,
-    refs_test_support::HomeGuard,
+    refs::refs_test_support::HomeGuard,
 };
 
 struct StaleThenOkAdapter {
@@ -28,7 +28,11 @@ impl ObservationOps for StaleThenOkAdapter {
         self.retry.attempt()
     }
 
-    crate::adapter::complete_live_observation!("combobox", "Target", [crate::capability::SELECT]);
+    crate::adapter::complete_live_observation!(
+        "combobox",
+        "Target",
+        [crate::actions::capability::SELECT]
+    );
 }
 
 impl ActionOps for StaleThenOkAdapter {

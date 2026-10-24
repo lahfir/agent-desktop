@@ -3,8 +3,8 @@ use crate::{
     adapter::PlatformAdapter,
     commands::{helpers::load_ref_entry, wait_predicate, wait_timeout},
     context::CommandContext,
-    ref_resolve_deadline::{POLL_INTERVAL, resolve_within_deadline},
-    resolve_attempt_outcome::ResolveAttemptOutcome,
+    refs::ref_resolve_deadline::{POLL_INTERVAL, resolve_within_deadline},
+    refs::resolve_attempt_outcome::ResolveAttemptOutcome,
 };
 use serde_json::{Value, json};
 use std::time::Instant;

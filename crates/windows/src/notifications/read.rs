@@ -1,7 +1,7 @@
 use agent_desktop_core::{AdapterError, Deadline, DeliverySemantics, ErrorCode, NotificationInfo};
 
-use crate::system::shell_surface::build_number;
-use crate::system::shell_surface_kinds::{EMPTY_CENTER_LANDMARKS, MAIN_LIST_VIEW};
+use crate::system::shell::shell_surface::build_number;
+use crate::system::shell::shell_surface_kinds::{EMPTY_CENTER_LANDMARKS, MAIN_LIST_VIEW};
 use crate::tree::element::UIAElement;
 
 const MAX_ENTRIES: usize = 256;
@@ -159,7 +159,7 @@ fn walk(
         .with_details(serde_json::json!({ "complete": false })));
     }
     for child in children(element)? {
-        crate::system::permissions::ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         match control_type(&child)? {
             ControlType::ListItem => {
                 if let Some(entry) = entry_of(&child, group)? {

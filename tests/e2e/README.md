@@ -29,8 +29,15 @@ library from the current checkout with `--locked` into the canonical repository
 paths under a private suite directory. The suite uses only those copies plus an
 isolated `HOME`, ref/session stores, fixture build, and `TMPDIR`. Every CLI child
 runs in its own process group with an absolute timeout and bounded stdout/stderr
-capture. Artifact hashes and exact JSON/Clap version identity are checked again
-before success is reported.
+capture. The JSON `version` and the Clap `--version` output must both match
+`Cargo.toml` before the first scenario runs, and the artifact hashes are verified
+again before success is reported.
+
+Before the fixture suite starts, `run.sh` runs `safe-semantic.sh`, a strict
+headless non-interference gate. It launches the fixture in the background and
+asserts that semantic click, type, set-value, and check/uncheck/toggle commands
+each produce their effect while the fixture never becomes frontmost. Its exit
+code (`1` failure, `2` blocked prerequisite) ends the run before any headed case.
 
 The harness then builds and launches `AgentDeskFixture.app`. Once the fixture is
 running, a missing control, window, status readout, bounds record, or surface is
@@ -41,6 +48,13 @@ failed.
 
 Headed cases move the real cursor. Run them on a machine where that is safe.
 The fixture process is force-closed by the cleanup trap even when a test fails.
+After the scenarios, `run.sh` closes the fixture and runs
+`scripts/cursor-multi-agent-probe.py` in headless and headed modes.
+
+For a dedicated self-hosted runner, `scripts/run-native-e2e-ci.sh` sets the
+exclusivity acknowledgement and calls `run.sh`; it refuses to run unless
+`AGENT_DESKTOP_NATIVE_E2E_RUNNER=1` is set. The `native-e2e.yml` workflow is
+`workflow_dispatch` only.
 
 ## Exact ref namespaces
 
@@ -61,21 +75,40 @@ helper that returns a bare `@eN`.
 | Path | Responsibility |
 |---|---|
 | `run.sh` | Global gate, fixture lifecycle, semantic suite orchestration |
+| `harness.sh` | Exclusivity acknowledgement, isolated `HOME`/`TMPDIR`, immutable binary and FFI staging |
 | `lib.sh` | Fail-closed assertions and exact `{ref_id,snapshot_id}` target helpers |
+| `safe-semantic.sh`, `scenarios/silent-text.sh`, `safe_semantic_guard.py` | Strict headless non-interference gate that runs before the fixture suite |
 | `scenarios/observation.sh` | Snapshots, locators, namespace pinning, strict twins |
 | `scenarios/interaction.sh` | Headless/headed actions and exact-once effects |
 | `scenarios/acceptance.sh` | Named AE1-AE7 acceptance contract |
 | `scenarios/reliability.sh` | Stale refs, waits, drill-down, sessions |
 | `scenarios/surfaces.sh` | Sheets, menus, drag, disclosure |
+| `scenarios/error_contract.sh` | Exit code and `error.code` envelopes an agent branches on, `batch` continue/stop/reject semantics |
+| `scenarios/keyboard.sh` | `press` key combos observed through the fixture's own text readout, blocked-combo and unknown-modifier refusals |
 | `scenarios/trace_performance.sh` | Trace artifacts, redaction, timings, cleanup |
+| `scenarios/ref_churn.sh` | `STALE_REF` after the UI really changes, on a dedicated fixture process (`AGENT_DESKTOP_FIXTURE_REF_CHURN=1`), with and without the opt-in command host |
+| `scenarios/notifications.sh` | Real Notification Center lifecycle |
 | `permission-contract.sh` | Deterministic AE5 mapping tests without mutating TCC |
-| `electron-live.sh` | Opt-in installed Electron/Chromium app measurement |
+| `electron-live.sh`, `electron_metrics*.py` | Opt-in installed Electron/Chromium app measurement |
+| `json_tool.py`, `bounded_process.py`, `guard-command.sh` | JSON field extraction and the timeout/output-capped, process-group-isolated command runner |
+| `interaction_lock.py` | Exclusive desktop lease held by `run.sh`, `safe-semantic.sh`, and `electron-live.sh` |
+| `ffi_live.py` | Native release-FFI consumer used by AE2 |
+| `test_*.py` | Desktop-free unit tests for the harness itself |
 
-Every shell file stays below the repository's 400-line limit.
+Keep every shell file under 400 lines (the repository's file-size convention;
+`scripts/check-rust-file-size.sh` enforces the cap for `.rs` files only) and
+Bash 3 compatible (macOS ships Bash 3); `scripts/check-bash3-compat.sh` gates
+the top-level `tests/e2e/*.sh` files.
+
+The harness self-tests need no desktop and run in the `fmt` CI lane:
+
+```bash
+python3 -m unittest discover -s tests/e2e -p 'test_*.py'
+```
 
 ## AE1-AE7 acceptance map
 
-`scenarios/acceptance.sh` names and fails closed on every plan example:
+`scenarios/acceptance.sh` names and fails closed on every acceptance example:
 
 | Example | Native fixture assertion |
 |---|---|
@@ -126,7 +159,7 @@ samples, and exact-snapshot re-resolution checks. It deliberately omits RSS:
 `RUSAGE_CHILDREN.ru_maxrss` is a cumulative harness maximum, not a per-command
 measurement.
 
-The report explicitly labels its limits: it describes one machine, app state,
+The report labels its limits: it describes one machine, app state,
 and TCC state; it measures observation and ref re-resolution rather than action
 delivery; and it never invents a baseline when none was explicitly supplied.
 The default output is a timestamped file under `/tmp`; pass `--out` to retain it
@@ -140,5 +173,7 @@ elsewhere.
 3. Use `act_target`, `get_target`, `is_target`, or `wait_target` so the source
    snapshot id is always explicit.
 4. Treat missing controls and unsupported behavior as failures after setup.
-5. When timing behavior, assert both the structured JSON contract and elapsed
+5. For timing behavior, assert both the structured JSON contract and elapsed
    bounds, then verify that no duplicate effect appears after settling.
+6. Source the new scenario file from `run.sh`, after the existing scenarios and
+   guarded by `check_fixture_contention`.

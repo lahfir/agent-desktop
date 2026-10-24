@@ -1,4 +1,4 @@
-use super::{AXElement, element::element_for_pid, surface_read};
+use super::{AXElement, properties::element::element_for_pid, surface_read};
 use agent_desktop_core::{AdapterError, ErrorCode, SnapshotSurface};
 use std::time::Instant;
 

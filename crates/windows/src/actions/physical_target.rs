@@ -6,12 +6,11 @@ use agent_desktop_core::{
 };
 
 use crate::input::elevation::ensure_target_integrity_allows_input;
-use crate::system::permissions::ensure_budget;
-use crate::system::window_ops::is_root_foreground_window;
+use crate::system::window::window_ops::is_root_foreground_window;
 use crate::tree::element::UIAElement;
 use crate::tree::live_read::corroborate_verified_process;
+use crate::tree::properties::property_ids::TreeProperty;
 use crate::tree::properties::read_one;
-use crate::tree::property_ids::TreeProperty;
 
 pub(crate) fn target_process_id(element: &UIAElement) -> Result<ProcessId, AdapterError> {
     if let Some((pid, _)) = element.verified_process() {
@@ -59,7 +58,7 @@ pub(crate) fn ensure_click_delivery_ready(
     element: &UIAElement,
     deadline: Deadline,
 ) -> Result<bool, AdapterError> {
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     corroborate_verified_process(element)?;
     ensure_elevation_allows(element)?;
     target_window_is_foreground(element, deadline)
@@ -69,7 +68,7 @@ pub(crate) fn ensure_keyboard_delivery_ready(
     element: &UIAElement,
     deadline: Deadline,
 ) -> Result<bool, AdapterError> {
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     corroborate_verified_process(element)?;
     ensure_elevation_allows(element)?;
     crate::actions::focus::keyboard_focus_ready(element)
@@ -152,7 +151,7 @@ fn target_window_is_foreground(
 fn host_window_handle(
     element: &UIAElement,
     deadline: Deadline,
-) -> Result<Option<crate::system::window_enum::WindowHandle>, AdapterError> {
+) -> Result<Option<crate::system::window::window_enum::WindowHandle>, AdapterError> {
     let Ok(client) = crate::tree::automation::automation_client() else {
         return Ok(None);
     };
@@ -160,7 +159,7 @@ fn host_window_handle(
         return Ok(None);
     };
     match crate::tree::hit_test::corroborate::first_native_hwnd(element, &walker, deadline) {
-        Ok(hwnd) => Ok(hwnd.map(|value| value as crate::system::window_enum::WindowHandle)),
+        Ok(hwnd) => Ok(hwnd.map(|value| value as crate::system::window::window_enum::WindowHandle)),
         Err(_) => Err(incomplete_climb_error(deadline)),
     }
 }
@@ -194,7 +193,7 @@ fn incomplete_climb_error(deadline: Deadline) -> AdapterError {
 fn host_window_handle(
     element: &UIAElement,
     deadline: Deadline,
-) -> Result<Option<crate::system::window_enum::WindowHandle>, AdapterError> {
+) -> Result<Option<crate::system::window::window_enum::WindowHandle>, AdapterError> {
     let _ = (element, deadline);
     Ok(None)
 }
@@ -206,7 +205,7 @@ fn host_window_handle(
 pub(crate) fn host_window_handle_for_test(
     element: &UIAElement,
     deadline: Deadline,
-) -> Result<Option<crate::system::window_enum::WindowHandle>, AdapterError> {
+) -> Result<Option<crate::system::window::window_enum::WindowHandle>, AdapterError> {
     host_window_handle(element, deadline)
 }
 

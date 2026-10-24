@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     AccessibilityNode, AdapterError, AppError, Deadline, ImageFormat, PlatformAdapter, Rect,
-    RefEntry, WindowInfo, WindowState, context::CommandContext, refs_store::RefStore,
+    RefEntry, WindowInfo, WindowState, context::CommandContext, refs::refs_store::RefStore,
 };
 use base64::Engine;
 use serde_json::{Value, json};
@@ -92,7 +92,7 @@ fn first_ref(node: &AccessibilityNode) -> Option<&str> {
 }
 
 pub(super) fn collect_nodes(node: &AccessibilityNode, depth: usize, nodes: &mut Vec<Value>) {
-    let addressable = agent_desktop_core::ref_alloc::is_ref_able(node);
+    let addressable = agent_desktop_core::refs::ref_alloc::is_ref_able(node);
     let (kind, reason) = if node.ref_id.is_some() && !addressable {
         (
             "drill",

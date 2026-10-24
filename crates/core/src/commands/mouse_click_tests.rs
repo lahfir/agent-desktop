@@ -36,9 +36,9 @@ impl InputOps for ModifierCaptureAdapter {
         &self,
         event: MouseEvent,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         *self.captured.lock().unwrap() = Some(event);
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -93,7 +93,7 @@ fn no_modifiers_requested_dispatches_empty_modifiers() {
 
 #[test]
 fn headed_mouse_click_presents_agent_cursor_after_delivery() {
-    let _guard = crate::refs_test_support::HomeGuard::new();
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
     let adapter = ModifierCaptureAdapter::new();
     let session = crate::session::start_session(Default::default()).expect("session starts");
     let config = crate::CursorOverlayConfig::enabled(None, 6)

@@ -17,8 +17,8 @@ use agent_desktop_core::{
 
 use crate::notifications::actions;
 use crate::notifications::list::list_infos;
-use crate::system::shell_surface_kinds::MAIN_LIST_VIEW;
-use crate::system::shell_surface_open::close_surface;
+use crate::system::shell::shell_surface_kinds::MAIN_LIST_VIEW;
+use crate::system::shell::shell_surface_open::close_surface;
 
 pub(crate) const TOAST_TITLE: &str = "agent-desktop-probe-notification";
 pub(crate) const TOAST_BODY: &str = "agent-desktop-probe-notification-body";

@@ -1,18 +1,19 @@
 use crate::{
-    AppError, ErrorCode, NotificationFilter, NotificationInfo,
+    AppError, ErrorCode,
     adapter::{PlatformAdapter, WindowFilter},
     commands::{
         helpers::resolve_app,
         wait_element::{ElementWaitInput, wait_for_element},
         wait_mode::WaitMode,
+        wait_notification,
         wait_surface::SurfaceWait,
         wait_text_match, wait_timeout,
     },
     context::CommandContext,
-    refs_store::RefStore,
-    search_text,
+    refs::refs_store::RefStore,
     snapshot::{self, emit_snapshot_saved},
-    trace_artifacts,
+    trace::trace_artifacts,
+    tree::search_text,
 };
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
@@ -64,7 +65,7 @@ pub fn execute(
         }
         WaitMode::Menu { app, open } => wait_for_menu(app, open, timeout_ms, adapter),
         WaitMode::Notification { app, text } => {
-            wait_for_notification(app, text, timeout_ms, adapter, context)
+            wait_notification::wait_for_notification(app, text, timeout_ms, adapter, context)
         }
         WaitMode::Element { ref_id, predicate } => wait_for_element(
             ElementWaitInput {
@@ -113,14 +114,21 @@ fn wait_for_menu(
 ) -> Result<Value, AppError> {
     let start = Instant::now();
     let deadline = crate::Deadline::at(start, timeout_ms)?;
-    let target = resolve_app(app.as_deref(), adapter, deadline)?;
+    let target = resolve_app(app.as_deref(), adapter, deadline).map_err(|error| match error {
+        AppError::Adapter(error) => wait_timeout::menu(error, timeout_ms),
+        other => other,
+    })?;
+    let process = crate::commands::helpers::process_identity(&target)?;
     adapter
-        .wait_for_menu(
-            crate::commands::helpers::process_identity(&target)?,
-            open,
-            deadline,
-        )
-        .map_err(AppError::Adapter)?;
+        .wait_for_menu(process.clone(), open, deadline)
+        .map_err(|error| {
+            wait_timeout::menu(
+                crate::ref_action::ref_action_wait_support::with_exited_process_state(
+                    adapter, process, error, deadline,
+                ),
+                timeout_ms,
+            )
+        })?;
     let elapsed = start.elapsed().as_millis();
     Ok(json!({ "found": true, "elapsed_ms": elapsed }))
 }
@@ -158,7 +166,16 @@ fn wait_for_window(
                 }
                 last_observed = Some(wait_timeout::window_observation(&windows));
             }
-            Err(err) if is_retryable_wait_poll_error(&err.code) => {
+            Err(err) if wait_timeout::is_deadline_expired(&err) => {
+                return wait_timeout::window(
+                    &title,
+                    filter.app.as_deref(),
+                    timeout_ms,
+                    last_error,
+                    last_observed,
+                );
+            }
+            Err(err) if is_retryable_window_poll_error(&err) => {
                 last_error = Some(json!({
                     "code": err.code.as_str(),
                     "message": err.message
@@ -193,7 +210,14 @@ fn wait_for_text(
     let deadline = crate::Deadline::at(start, timeout_ms)?;
     let opts = crate::adapter::TreeOptions::default();
     let normalized_text = search_text::normalize(&text);
-    let mut interval = Duration::from_millis(200);
+    let mut scheduler = super::wait_scheduler::WaitScheduler::new(
+        adapter,
+        &crate::SignalFilter {
+            app: app.clone(),
+            process: None,
+        },
+        deadline,
+    );
     let mut last_error = None;
 
     loop {
@@ -222,7 +246,7 @@ fn wait_for_text(
                         "text": text,
                         "ref": found
                             .and_then(|found| found.ref_id.as_deref())
-                            .map(|ref_id| crate::ref_token::qualify_ref_id(&snapshot_id, ref_id)),
+                            .map(|ref_id| crate::refs::ref_token::qualify_ref_id(&snapshot_id, ref_id)),
                         "role": found.map(|found| found.role.clone()),
                         "snapshot_id": snapshot_id,
                         "elapsed_ms": elapsed
@@ -233,11 +257,20 @@ fn wait_for_text(
                     return Ok(body);
                 }
             }
+            Err(AppError::Adapter(err)) if wait_timeout::is_deadline_expired(&err) => {
+                return wait_timeout::text(&text, timeout_ms, expected_count, last_error);
+            }
             Err(err) if is_retryable_wait_app_error(&err) => {
                 last_error = Some(json!({
                     "code": err.code(),
                     "message": err.to_string()
                 }));
+            }
+            Err(AppError::Adapter(mut err)) if err.code == ErrorCode::AmbiguousTarget => {
+                err.suggestion = Some(
+                    "Use `wait --window <title> --app <app>` to wait for the target window, or run `list-windows` and inspect it with `snapshot --window-id <id>`.".into(),
+                );
+                return Err(err.into());
             }
             Err(err) => return Err(err),
         }
@@ -246,121 +279,28 @@ fn wait_for_text(
             return wait_timeout::text(&text, timeout_ms, expected_count, last_error);
         }
 
-        std::thread::sleep(deadline.remaining().min(interval));
-        interval = (interval * 2).min(Duration::from_millis(1000));
+        scheduler.wait(deadline);
     }
 }
 
-fn is_retryable_wait_poll_error(code: &ErrorCode) -> bool {
+pub(crate) fn is_retryable_wait_poll_error(code: &ErrorCode) -> bool {
     matches!(code, ErrorCode::Timeout | ErrorCode::ElementNotFound)
 }
 
+/// A window wait polls a condition that is not yet true, and an application
+/// that has not registered on the desktop yet is that condition: the window
+/// cannot exist before the application does. Absence is retried until the
+/// deadline unless the adapter explicitly marks the error non-retryable.
+fn is_retryable_window_poll_error(error: &crate::AdapterError) -> bool {
+    is_retryable_wait_poll_error(&error.code)
+        || (matches!(
+            error.code,
+            ErrorCode::AppNotFound | ErrorCode::WindowNotFound
+        ) && error.permits_retry_by_default())
+}
+
 fn is_retryable_wait_app_error(err: &AppError) -> bool {
-    matches!(err, AppError::Adapter(err) if is_retryable_wait_poll_error(&err.code))
-}
-
-fn wait_for_notification(
-    app: Option<String>,
-    text: Option<String>,
-    timeout_ms: u64,
-    adapter: &dyn PlatformAdapter,
-    context: &CommandContext,
-) -> Result<Value, AppError> {
-    let filter = NotificationFilter {
-        app: app.clone(),
-        text: text.clone(),
-        ..Default::default()
-    };
-    let start = Instant::now();
-    let deadline = crate::Deadline::at(start, timeout_ms)?;
-    let mut baseline: Option<std::collections::HashMap<NotificationFingerprint, usize>> = None;
-    let mut last_error = None;
-
-    loop {
-        if deadline.is_expired() {
-            return wait_timeout::notification(app.as_ref(), text.as_ref(), timeout_ms, last_error);
-        }
-        match super::notification_policy::list_with_foreground_lease(
-            &filter, deadline, adapter, context,
-        ) {
-            Ok(current) => match &baseline {
-                None => {
-                    baseline = Some(notification_counts(&current));
-                }
-                Some(baseline) => {
-                    if let Some(notif) = first_new_notification(&current, baseline) {
-                        let elapsed = start.elapsed().as_millis();
-                        return Ok(json!({
-                            "condition": "notification",
-                            "matched": true,
-                            "notification": notif,
-                            "elapsed_ms": elapsed,
-                        }));
-                    }
-                }
-            },
-            Err(AppError::Adapter(err)) if is_retryable_wait_poll_error(&err.code) => {
-                last_error = Some(json!({
-                    "code": err.code.as_str(),
-                    "message": err.message
-                }));
-            }
-            Err(err) => return Err(err),
-        }
-
-        let remaining = deadline.remaining();
-        if remaining.is_zero() {
-            return wait_timeout::notification(app.as_ref(), text.as_ref(), timeout_ms, last_error);
-        }
-        std::thread::sleep(remaining.min(Duration::from_millis(500)));
-    }
-}
-
-#[derive(Clone, Eq, Hash, PartialEq)]
-struct NotificationFingerprint {
-    app_name: String,
-    title: String,
-    body: Option<String>,
-    actions: Vec<String>,
-}
-
-impl From<&NotificationInfo> for NotificationFingerprint {
-    fn from(info: &NotificationInfo) -> Self {
-        Self {
-            app_name: info.app_name.clone(),
-            title: info.title.clone(),
-            body: info.body.clone(),
-            actions: info.actions.clone(),
-        }
-    }
-}
-
-fn notification_counts(
-    notifications: &[NotificationInfo],
-) -> std::collections::HashMap<NotificationFingerprint, usize> {
-    let mut counts = std::collections::HashMap::new();
-    for notification in notifications {
-        *counts
-            .entry(NotificationFingerprint::from(notification))
-            .or_insert(0) += 1;
-    }
-    counts
-}
-
-fn first_new_notification<'a>(
-    current: &'a [NotificationInfo],
-    baseline: &std::collections::HashMap<NotificationFingerprint, usize>,
-) -> Option<&'a NotificationInfo> {
-    let mut seen = std::collections::HashMap::new();
-    for notification in current {
-        let fingerprint = NotificationFingerprint::from(notification);
-        let current_count = seen.entry(fingerprint.clone()).or_insert(0);
-        *current_count += 1;
-        if *current_count > baseline.get(&fingerprint).copied().unwrap_or(0) {
-            return Some(notification);
-        }
-    }
-    None
+    matches!(err, AppError::Adapter(err) if is_retryable_window_poll_error(err))
 }
 
 #[cfg(test)]
@@ -392,3 +332,11 @@ mod predicate_tests;
 #[cfg(test)]
 #[path = "wait_resolution_tests.rs"]
 mod resolution_tests;
+
+#[cfg(test)]
+#[path = "wait_deadline_tests.rs"]
+mod deadline_tests;
+
+#[cfg(test)]
+#[path = "wait_window_retry_tests.rs"]
+mod window_retry_tests;

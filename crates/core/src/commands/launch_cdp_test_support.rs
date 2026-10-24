@@ -1,5 +1,5 @@
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
-use crate::launch_options::LaunchOptions;
+use crate::system::launch_options::LaunchOptions;
 use crate::{AdapterError, AppError, AppInfo, InteractionLease, ProcessId, RendererKind};
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -16,9 +16,9 @@ pub(super) struct CdpAdapter {
     pub(super) list_apps_calls: AtomicUsize,
     pub(super) launch_app_calls: AtomicUsize,
     pub(super) serve_cdp: bool,
+    pub(super) attribute_cdp_listener: bool,
     pub(super) renderer: Option<RendererKind>,
-    pub(super) captured_args: Mutex<Vec<String>>,
-    pub(super) captured_cdp_port: Mutex<Option<u16>>,
+    pub(super) captured_options: Mutex<LaunchOptions>,
 }
 
 impl ObservationOps for CdpAdapter {
@@ -43,15 +43,14 @@ impl SystemOps for CdpAdapter {
         _id: &str,
         options: &LaunchOptions,
         _lease: &InteractionLease,
-    ) -> Result<crate::launch_result::LaunchResult, AdapterError> {
+    ) -> Result<crate::system::launch_result::LaunchResult, AdapterError> {
         self.launch_app_calls.fetch_add(1, Ordering::SeqCst);
-        *self.captured_args.lock().unwrap() = options.args.clone();
-        *self.captured_cdp_port.lock().unwrap() = options.cdp_port;
+        *self.captured_options.lock().unwrap() = options.clone();
         if self.serve_cdp {
             let port = options.cdp_port.expect("cdp_port resolved before launch");
             serve_fake_cdp_endpoint(port);
         }
-        Ok(crate::launch_result::LaunchResult {
+        Ok(crate::system::launch_result::LaunchResult {
             app: "Fixture".into(),
             pid: ProcessId::new(42),
             process_instance: Some("42:1".into()),
@@ -61,6 +60,18 @@ impl SystemOps for CdpAdapter {
             suggestion: None,
         })
     }
+
+    fn process_owns_tcp_listener(
+        &self,
+        process: crate::ProcessIdentity,
+        _port: u16,
+        _deadline: crate::Deadline,
+    ) -> Result<bool, AdapterError> {
+        Ok(self.attribute_cdp_listener
+            && self.serve_cdp
+            && process.pid == ProcessId::new(42)
+            && process.instance == "42:1")
+    }
 }
 
 fn serve_fake_cdp_endpoint(port: u16) {
@@ -69,7 +80,9 @@ fn serve_fake_cdp_endpoint(port: u16) {
         if let Ok((mut stream, _)) = listener.accept() {
             let mut buf = [0_u8; 1024];
             let _ = stream.read(&mut buf);
-            let body = r#"{"Browser":"Fixture/1.0","webSocketDebuggerUrl":"ws://127.0.0.1/devtools/browser/fixture"}"#;
+            let body = format!(
+                r#"{{"Browser":"Fixture/1.0","webSocketDebuggerUrl":"ws://127.0.0.1:{port}/devtools/browser/fixture"}}"#
+            );
             let response = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
                 body.len(),
@@ -86,9 +99,9 @@ pub(super) fn empty_cdp_adapter(serve_cdp: bool) -> CdpAdapter {
         list_apps_calls: AtomicUsize::new(0),
         launch_app_calls: AtomicUsize::new(0),
         serve_cdp,
+        attribute_cdp_listener: serve_cdp,
         renderer: None,
-        captured_args: Mutex::new(Vec::new()),
-        captured_cdp_port: Mutex::new(None),
+        captured_options: Mutex::new(LaunchOptions::default()),
     }
 }
 

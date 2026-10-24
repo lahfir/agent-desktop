@@ -7,11 +7,9 @@
 # ungrammatical and wrong about the cause - the ref was found and read, and
 # it was the live evidence that refused it, not a missing RefMap entry.
 #
-# A caller with that shape must build its error directly -
-# `AdapterError::new(ErrorCode::StaleRef, message)` with the snapshot-refresh
-# suggestion and the not-delivered disposition - exactly as
-# `crates/windows/src/tree/resolve_match.rs`'s `stale_evidence_error` already
-# does.
+# A caller with that shape must use `AdapterError::stale_ref_because(message)`,
+# which builds the StaleRef error with the snapshot-refresh suggestion and the
+# not-delivered disposition.
 #
 # This is a call-site count, not a `debug_assert`: a runtime assertion would
 # panic the two test fixtures that legitimately hand these constructors a
@@ -44,9 +42,8 @@ EXPECTED_APP_CALLS=3
 #   - an inline `#[cfg(test)]`-gated item within an otherwise production
 #     file: a whole `mod tests { ... }` block (`crates/ffi/src/commands/mod.rs`,
 #     `crates/ffi/src/commands/envelope_out.rs`) or a single gated function
-#     mixed into production code (`RefStore::for_tests` in
-#     `crates/core/src/refs_store.rs`, ahead of that file's own real
-#     `stale_ref` caller). Brace-depth tracking skips exactly the item the
+#     mixed into production code, ahead of a real `stale_ref` caller in the
+#     same file. Brace-depth tracking skips exactly the item the
 #     attribute gates and resumes counting once it closes, rather than
 #     truncating the rest of the file at the first `#[cfg(test)]` seen -
 #     which would have silently dropped `refs_store.rs`'s real caller from
@@ -153,11 +150,8 @@ fi
 
 if [ "$failed" -ne 0 ]; then
     printf '\nA changed count almost always means a whole sentence reached a ref-id\n' >&2
-    printf 'constructor. Build the error directly instead:\n' >&2
-    printf '  AdapterError::new(ErrorCode::StaleRef, message)\n' >&2
-    printf '      .with_suggestion("Run '"'"'snapshot'"'"' to refresh, then retry with the updated ref.")\n' >&2
-    printf '      .with_disposition(DeliverySemantics::not_delivered())\n' >&2
-    printf 'as crates/windows/src/tree/resolve_match.rs'"'"'s stale_evidence_error already does.\n' >&2
+    printf 'constructor. Use the helper instead:\n' >&2
+    printf '  AdapterError::stale_ref_because(message)\n' >&2
     printf 'If the new caller genuinely passes a ref id, update EXPECTED_*_CALLS above.\n' >&2
     exit 1
 fi

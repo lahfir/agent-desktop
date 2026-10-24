@@ -11,7 +11,7 @@
     `app_name`, `body`, `attribution` (the element fields plus the serialized NotificationInfo
     field names the shell/notification surfaces publish), every element of
     a `path` array (crates/core/src/commands/find.rs:222
-    and live_locator/select.rs's node_label both populate it as
+    and locator/live_locator/select.rs's node_label both populate it as
     "role:label"), every element of an `actions` array (notification
     verb-button labels), `error.details.checks[].occluder.name`, and any literal
     pid field (pid/processid/parentprocessid/ownerprocessid/sessionprocessid

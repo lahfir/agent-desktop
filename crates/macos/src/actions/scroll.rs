@@ -154,7 +154,7 @@ fn try_value_shift(
     prepare(bar, deadline)?;
     let value = CFNumber::from(next as f32);
     let attribute = CFString::new("AXValue");
-    let error = crate::tree::ax_ipc::set_attribute_value(
+    let error = crate::tree::properties::ax_ipc::set_attribute_value(
         bar,
         attribute.as_concrete_TypeRef(),
         value.as_CFTypeRef(),
@@ -272,7 +272,12 @@ fn physical_wheel(
         y: bounds.y + bounds.height / 2.0,
     };
     prepared.verify_pointer(target, &point, deadline)?;
-    crate::input::mouse_scroll::synthesize_scroll_at(point, (vertical, horizontal), &[], deadline)
+    crate::input::mouse::mouse_scroll::synthesize_scroll_at(
+        point,
+        (vertical, horizontal),
+        &[],
+        deadline,
+    )
 }
 
 fn wheel_delta(direction: &Direction, amount: u32) -> (i32, i32) {
@@ -291,7 +296,7 @@ fn scroll_wheel_delta(direction: &Direction, amount: u32) -> (i32, i32) {
 }
 
 fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {
-    crate::tree::attributes::set_messaging_timeout(element, deadline)
+    crate::tree::properties::attributes::set_messaging_timeout(element, deadline)
 }
 
 fn ensure_budget(deadline: Deadline, delivery_started: bool) -> Result<(), AdapterError> {

@@ -1,13 +1,13 @@
 use crate::{
     AccessibilityNode, AdapterError, AppInfo, Deadline, ErrorCode, Rect, SnapshotSurface,
     SurfaceInfo, WindowInfo,
-    element_state::ElementState,
-    live_element::LiveElement,
-    live_locator::{ObservationRequest, ObservationRoot, ObservedTree},
-    native_handle::NativeHandle,
+    adapter::live_element::LiveElement,
+    adapter::native_handle::NativeHandle,
+    locator::live_locator::{ObservationRequest, ObservationRoot, ObservedTree},
     refs::RefEntry,
-    tree_options::TreeOptions,
-    window_filter::WindowFilter,
+    system::window_filter::WindowFilter,
+    tree::element_state::ElementState,
+    tree::tree_options::TreeOptions,
 };
 
 pub(crate) fn optional_live_read<T>(
@@ -28,6 +28,14 @@ fn is_live_read_unsupported(err: &AdapterError) -> bool {
 }
 
 pub trait ObservationOps: Send + Sync {
+    /// Whether this resolved handle denotes a protocol object with no screen
+    /// position, rather than a native control whose geometry is unreadable.
+    /// Only headless semantic delivery can use this fact; fresh identity,
+    /// complete state and action capability are still required.
+    fn is_nonspatial_target(&self, _handle: &NativeHandle) -> bool {
+        false
+    }
+
     fn observe_tree(
         &self,
         _root: ObservationRoot<'_>,
@@ -73,6 +81,41 @@ pub trait ObservationOps: Send + Sync {
                     })
             })
             .collect())
+    }
+
+    /// Allows filtering before presentation enrichment. Skipped records describe
+    /// incomplete evidence within the query; exact lookups cannot authorize
+    /// mutation until that inventory is complete.
+    fn query_app_inventory(
+        &self,
+        query: crate::AppInventoryQuery<'_>,
+        deadline: Deadline,
+    ) -> Result<crate::AppInventory, AdapterError> {
+        let name = match query {
+            crate::AppInventoryQuery::All => return self.list_apps_inventory(deadline),
+            crate::AppInventoryQuery::Exact { name, bundle_id } => {
+                return Ok(crate::AppInventory {
+                    apps: self.list_apps_scoped(name, bundle_id, deadline)?,
+                    skipped: Vec::new(),
+                });
+            }
+            crate::AppInventoryQuery::NameOrAlias(name) => name,
+        };
+        let mut inventory = self.list_apps_inventory(deadline)?;
+        inventory
+            .apps
+            .retain(|app| query.matches_display_name(&app.name));
+        let aliased = match self.list_apps_scoped(name, None, deadline) {
+            Ok(apps) => apps,
+            Err(err) if err.code == ErrorCode::PlatformNotSupported => Vec::new(),
+            Err(err) => return Err(err),
+        };
+        for app in aliased {
+            if !inventory.apps.iter().any(|kept| kept.pid == app.pid) {
+                inventory.apps.push(app);
+            }
+        }
+        Ok(inventory)
     }
 
     fn get_tree(
@@ -172,14 +215,53 @@ pub trait ObservationOps: Send + Sync {
         Err(AdapterError::not_supported("get_element_bounds"))
     }
 
+    /// Fresh pointer geometry and visibility from one observation when supported.
+    /// The default preserves bounds-first reads and optional state evidence.
+    fn observe_pointer(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<crate::PointerObservation, AdapterError> {
+        let bounds = self.get_element_bounds(handle, deadline)?;
+        let states = optional_live_read(self.get_live_state(handle, deadline))?
+            .map(|state| state.states)
+            .unwrap_or_default();
+        Ok(crate::PointerObservation { bounds, states })
+    }
+
+    /// Why no pointer can be aimed at this target, when the adapter has proved
+    /// that its screen position cannot be known, not merely that it is unread
+    /// yet. Waiting cannot help, so a request that needs the position is
+    /// refused with this error instead of retried until its deadline.
+    fn pointer_position_refusal(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: Deadline,
+    ) -> Option<AdapterError> {
+        None
+    }
+
     fn hit_test(
         &self,
         handle: &NativeHandle,
         point: crate::Point,
         _deadline: Deadline,
-    ) -> Result<crate::hit_test::HitTestResult, AdapterError> {
+    ) -> Result<crate::adapter::hit_test::HitTestResult, AdapterError> {
         let _ = (handle, point);
         Err(AdapterError::not_supported("hit_test"))
+    }
+
+    /// Strict receiver proof for a physical pointer move that has no element
+    /// action to carry it. An adapter that can prove who receives the pointer
+    /// refuses with a `not_delivered` error when the target does not.
+    fn confirm_pointer_receiver(
+        &self,
+        entry: &RefEntry,
+        point: crate::Point,
+        deadline: Deadline,
+    ) -> Result<(), AdapterError> {
+        let _ = (entry, point, deadline);
+        Ok(())
     }
 }
 

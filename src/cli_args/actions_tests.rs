@@ -10,22 +10,23 @@ use clap::CommandFactory;
 /// covers the CLI, and `#[serde(default = "default_ref_timeout_ms")]` covers
 /// batch JSON, since clap defaults never fire during `serde_json::from_value`.
 #[test]
-fn type_args_cli_omitted_timeout_defaults_to_5000() {
+fn type_args_cli_omitted_timeout_scales_with_the_text() {
     let args = TypeArgs::try_parse_from(["type", "@e1", "hello"]).unwrap();
-    assert_eq!(args.timeout_ms, 5000);
+    assert_eq!(args.timeout_ms, None);
+    assert_eq!(args.effective_timeout_ms(), 5150);
 }
 
 #[test]
 fn type_args_cli_explicit_timeout_is_honored() {
     let args = TypeArgs::try_parse_from(["type", "@e1", "hello", "--timeout-ms", "1500"]).unwrap();
-    assert_eq!(args.timeout_ms, 1500);
+    assert_eq!(args.effective_timeout_ms(), 1500);
 }
 
 #[test]
-fn type_args_batch_json_omitted_timeout_defaults_to_5000() {
+fn type_args_batch_json_omitted_timeout_scales_with_the_text() {
     let args: TypeArgs =
         serde_json::from_value(serde_json::json!({ "ref_id": "@e1", "text": "hello" })).unwrap();
-    assert_eq!(args.timeout_ms, 5000);
+    assert_eq!(args.effective_timeout_ms(), 5150);
 }
 
 #[test]

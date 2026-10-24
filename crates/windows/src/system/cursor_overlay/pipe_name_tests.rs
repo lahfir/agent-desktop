@@ -97,7 +97,7 @@ fn a_command_line_that_is_not_ours_parses_to_nothing() {
 /// just started.
 #[test]
 fn a_ledger_of_one_generation_retires_nothing() {
-    assert!(retired_generations(&PROTOCOL_GENERATIONS).is_empty());
+    assert!(retired_generations(&["w1"]).is_empty());
 }
 
 /// The rule the ledger exists to enforce, proved on a ledger that has been
@@ -121,12 +121,16 @@ fn appending_a_generation_moves_the_previous_one_into_the_retired_set() {
 /// answers there.
 #[test]
 fn the_generation_this_build_speaks_is_never_a_retirement_target() {
-    assert_eq!(PROTOCOL_GENERATION, "w1");
+    let ledger: [&'static str; 3] = ["w1", "w2", "w3"];
+
+    assert!(
+        !retired_generations(&ledger).contains(&"w3"),
+        "the newest generation of a ledger must never be swept"
+    );
     assert!(
         !retired_generations(&PROTOCOL_GENERATIONS).contains(&PROTOCOL_GENERATION),
         "the current generation must never be swept"
     );
-    assert!(!retired_generations(&["w1", "w2", "w3"]).contains(&"w3"));
 }
 
 /// An empty ledger is not a state the constant can be in, but the function

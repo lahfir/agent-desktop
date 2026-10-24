@@ -29,6 +29,9 @@ Set-StrictMode -Version 2.0
    file's own header for why. #>
 . (Join-Path (Split-Path -Parent $PSScriptRoot) 'InteractionHeaded.ps1')
 
+<# Invoke-PressLegs lives in ../InteractionPress.ps1 for the same reason. #>
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'InteractionPress.ps1')
+
 function Get-InteractionHeadlessLegTable {
     @(
         @{ Name = 'click'; TargetId = 'primary-button'; StatusId = 'click-status'; Property = 'value'; Prefix = 'clicked'; AnyChange = $true; Action = 'click'; Mechanism = 'semantic_api' }
@@ -98,6 +101,8 @@ function Invoke-InteractionScenario {
             'mouse-move-refused', 'mouse-click-refused', 'mouse-wheel-refused', 'surface-menu-closed-is-window-not-found',
             'headed-double-click', 'headed-triple-click', 'headed-right-click-then-choose', 'headed-hover',
             'headed-drag', 'headed-type', 'headed-press-app',
+            'press-ctrl-a-backspace-clears-text', 'press-shift-tab-moves-focus',
+            'press-return-activates-focused-button', 'press-blocked-combo-refused',
             'interaction-scroll-to-visibility', 'interaction-focus-refused-headless', 'interaction-focus-headed-oracle'
         ))
 
@@ -121,6 +126,7 @@ function Invoke-InteractionScenario {
 
                 $assertArgs = @{ Target = $target; StatusTarget = $statusTarget; Action = $leg['Action'] }
                 if ($leg['ActionArgs']) { $assertArgs.ActionArgs = $leg['ActionArgs'] }
+                if ($leg['Mechanism']) { $assertArgs.ExpectedMechanism = $leg['Mechanism'] }
                 if ($leg['IsProperty']) {
                     $assertArgs.IsProperty = $leg['IsProperty']
                     $assertArgs.ExpectedState = $leg['ExpectedState']
@@ -162,6 +168,7 @@ function Invoke-InteractionScenario {
     Invoke-HeldInputRefusalLegs
     Invoke-SurfaceClosedMenuLeg -App $App
     Invoke-HeadedInteractionLegs -App $App
+    Invoke-PressLegs -App $App
     Invoke-ScrollToVisibilityLeg -App $App
     Invoke-FocusRefusalLeg -App $App
     Invoke-FocusOracleLeg -App $App

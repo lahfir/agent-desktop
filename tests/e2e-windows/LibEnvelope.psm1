@@ -64,6 +64,73 @@ function Assert-EnvelopeCheckOccluder {
     }
 }
 
+function Assert-EnvelopeRecovery {
+    <#
+    .SYNOPSIS
+        Asserts a failed envelope's error.recovery block (strategy,
+        retryable, requires_fresh_snapshot) - a door of its own because
+        Assert-Envelope has no recovery parameter and Lib.psm1 is at the
+        400-line cap. recovery_for_code (crates/core/src/response/output.rs) emits it
+        only for the codes that have a documented recovery.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]$Envelope,
+        [Parameter(Mandatory = $true)][string]$Strategy,
+        [bool]$RequiresFreshSnapshot = $true
+    )
+    if ($Envelope['ok'] -ne $false) {
+        throw "Assert-EnvelopeRecovery: expected ok=false, got ok=$($Envelope['ok'])"
+    }
+    $err = $Envelope['error']
+    $recovery = $null
+    if ($err) { $recovery = $err['recovery'] }
+    if (-not $recovery) { throw 'Assert-EnvelopeRecovery: error.recovery is missing' }
+    if ($recovery['strategy'] -ne $Strategy) {
+        throw "Assert-EnvelopeRecovery: expected recovery.strategy '$Strategy', got '$($recovery['strategy'])'"
+    }
+    if ($recovery['retryable'] -ne $true) {
+        throw "Assert-EnvelopeRecovery: expected recovery.retryable true, got '$($recovery['retryable'])'"
+    }
+    if ($recovery['requires_fresh_snapshot'] -ne $RequiresFreshSnapshot) {
+        throw "Assert-EnvelopeRecovery: expected requires_fresh_snapshot $RequiresFreshSnapshot, got '$($recovery['requires_fresh_snapshot'])'"
+    }
+}
+
+function Assert-EnvelopeSuggestion {
+    <# Asserts a failed envelope's error.suggestion contains the given text. #>
+    param(
+        [Parameter(Mandatory = $true)]$Envelope,
+        [Parameter(Mandatory = $true)][string]$Contains
+    )
+    $err = $Envelope['error']
+    $suggestion = ''
+    if ($err -and $err['suggestion']) { $suggestion = [string]$err['suggestion'] }
+    if (-not $suggestion.Contains($Contains)) {
+        throw "Assert-EnvelopeSuggestion: error.suggestion does not contain '$Contains' (got '$suggestion')"
+    }
+}
+
+function Invoke-AgentDesktopWithExitCode {
+    <#
+    .SYNOPSIS
+        The exit code Invoke-AgentDesktop discards. Calls the same one
+        guarded door (Invoke-GuardedAgent) and returns plain fields, never a
+        raw result: ExitCode and the parsed Envelope.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string[]]$Arguments, [int]$TimeoutSeconds = 20)
+    $bin = Get-TargetBinary
+    $full = @($bin.PrefixArgs) + $Arguments
+    $result = Invoke-GuardedAgent -FilePath $bin.FilePath -ArgumentList $full -TimeoutSeconds $TimeoutSeconds
+    if ([string]::IsNullOrWhiteSpace($result.StdOut)) {
+        throw "Invoke-AgentDesktopWithExitCode: '$($Arguments -join ' ')' produced no stdout to parse (ExitCode=$($result.ExitCode), TimedOut=$($result.TimedOut))"
+    }
+    return [pscustomobject]@{
+        ExitCode = [int]$result.ExitCode
+        Envelope = (ConvertFrom-AgentJson -Json $result.StdOut)
+    }
+}
+
 function Invoke-AgentDesktopBatch {
     <#
     .SYNOPSIS
@@ -76,7 +143,8 @@ function Invoke-AgentDesktopBatch {
         signal baseline immediately before the acting entry runs, so an
         event a later entry waits for is detected against a truly
         pre-action baseline with no concurrency of any kind - one process,
-        sequential entries, no detached spawn needed.
+        sequential entries, no detached spawn needed. Entries halt at the
+        first failed one (--stop-on-error) unless -ContinueOnError is given.
     .OUTPUTS
         PSCustomObject[]: one entry per batch step - EntryOk, ErrorCode,
         ActionOk (Invoke-Target-shaped success), Found (wait's own
@@ -84,10 +152,12 @@ function Invoke-AgentDesktopBatch {
         Fields that do not apply to a given entry's command are $null.
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory = $true)][hashtable[]]$Entries, [int]$TimeoutSeconds = 20)
+    param([Parameter(Mandatory = $true)][hashtable[]]$Entries, [int]$TimeoutSeconds = 20, [switch]$ContinueOnError)
     $payload = @($Entries | ForEach-Object { @{ command = $_.Command; args = $_.Args } })
     $json = ConvertTo-Json -InputObject $payload -Depth 10 -Compress
-    $envelope = Invoke-AgentDesktop -Arguments @('batch', $json, '--stop-on-error') -TimeoutSeconds $TimeoutSeconds
+    $batchArgs = @('batch', $json)
+    if (-not $ContinueOnError) { $batchArgs += '--stop-on-error' }
+    $envelope = Invoke-AgentDesktop -Arguments $batchArgs -TimeoutSeconds $TimeoutSeconds
     if ($envelope['ok'] -ne $true) {
         throw "Invoke-AgentDesktopBatch: the batch call itself failed: $($envelope['error']['code'])"
     }
@@ -261,4 +331,4 @@ function Invoke-ShellSurfaceSnapshot {
     }
 }
 
-Export-ModuleMember -Function @('Assert-EnvelopeCheckOccluder', 'Invoke-AgentDesktopBatch', 'Test-EnvelopeValueEquals', 'Get-EnvelopeSurfaces', 'Invoke-ShellSurfaceOpen', 'Invoke-ShellSurfaceSnapshot')
+Export-ModuleMember -Function @('Assert-EnvelopeCheckOccluder', 'Assert-EnvelopeRecovery', 'Assert-EnvelopeSuggestion', 'Invoke-AgentDesktopWithExitCode', 'Invoke-AgentDesktopBatch', 'Test-EnvelopeValueEquals', 'Get-EnvelopeSurfaces', 'Invoke-ShellSurfaceOpen', 'Invoke-ShellSurfaceSnapshot')

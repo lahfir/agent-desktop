@@ -2,10 +2,11 @@ use super::test_support::{
     PredicateAdapter, snapshot_with_disabled_ref, snapshot_with_one_ref, wait_for_element_test,
 };
 use super::*;
+use crate::actions::action_request;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    AdapterError, adapter::NativeHandle, commands::wait_predicate, element_state::ElementState,
-    refs::RefEntry, refs_test_support::HomeGuard,
+    AdapterError, adapter::NativeHandle, commands::wait_predicate, refs::RefEntry,
+    refs::refs_test_support::HomeGuard, tree::element_state::ElementState,
 };
 use std::sync::Mutex;
 
@@ -57,7 +58,7 @@ impl ObservationOps for FlippingPredicateAdapter {
             },
             states_complete: true,
             bounds: live_bounds(),
-            available_actions: vec![crate::capability::CLICK.into()],
+            available_actions: vec![crate::actions::capability::CLICK.into()],
         })
     }
 
@@ -95,7 +96,7 @@ impl ObservationOps for FlippingPredicateAdapter {
         _handle: &NativeHandle,
         _deadline: crate::Deadline,
     ) -> Result<Option<Vec<String>>, AdapterError> {
-        Ok(Some(vec![crate::capability::CLICK.into()]))
+        Ok(Some(vec![crate::actions::capability::CLICK.into()]))
     }
 
     fn hit_test(
@@ -103,8 +104,8 @@ impl ObservationOps for FlippingPredicateAdapter {
         _handle: &NativeHandle,
         _point: crate::Point,
         _deadline: crate::Deadline,
-    ) -> Result<crate::hit_test::HitTestResult, AdapterError> {
-        Ok(crate::hit_test::HitTestResult::ReachesTarget)
+    ) -> Result<crate::adapter::hit_test::HitTestResult, AdapterError> {
+        Ok(crate::adapter::hit_test::HitTestResult::ReachesTarget)
     }
 }
 
@@ -191,9 +192,9 @@ fn element_wait_timeout_reports_last_actionability_observation() {
     let err = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
-        wait_predicate::ElementPredicate::Actionable(
-            crate::action_request::ActionRequest::headless(crate::action::Action::Click),
-        ),
+        wait_predicate::ElementPredicate::Actionable(action_request::ActionRequest::headless(
+            crate::actions::action::Action::Click,
+        )),
         50,
         &adapter,
         &crate::context::CommandContext::default(),
@@ -231,9 +232,9 @@ fn element_wait_actionable_uses_live_state() {
     let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
-        wait_predicate::ElementPredicate::Actionable(
-            crate::action_request::ActionRequest::headless(crate::action::Action::Click),
-        ),
+        wait_predicate::ElementPredicate::Actionable(action_request::ActionRequest::headless(
+            crate::actions::action::Action::Click,
+        )),
         500,
         &adapter,
         &crate::context::CommandContext::default(),
@@ -256,9 +257,9 @@ fn element_wait_actionable_retries_until_live_state_converges() {
     let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
-        wait_predicate::ElementPredicate::Actionable(
-            crate::action_request::ActionRequest::headless(crate::action::Action::Click),
-        ),
+        wait_predicate::ElementPredicate::Actionable(action_request::ActionRequest::headless(
+            crate::actions::action::Action::Click,
+        )),
         5_000,
         &adapter,
         &crate::context::CommandContext::default(),
@@ -281,9 +282,9 @@ fn element_wait_actionable_retries_transient_observation_errors() {
     let value = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
-        wait_predicate::ElementPredicate::Actionable(
-            crate::action_request::ActionRequest::headless(crate::action::Action::Click),
-        ),
+        wait_predicate::ElementPredicate::Actionable(action_request::ActionRequest::headless(
+            crate::actions::action::Action::Click,
+        )),
         500,
         &adapter,
         &crate::context::CommandContext::default(),
@@ -314,11 +315,9 @@ fn element_wait_actionable_type_fails_on_uneditable_role() {
     let err = wait_for_element_test(
         "@e1".into(),
         Some(snapshot_id),
-        wait_predicate::ElementPredicate::Actionable(
-            crate::action_request::ActionRequest::headless(crate::action::Action::TypeText(
-                String::new(),
-            )),
-        ),
+        wait_predicate::ElementPredicate::Actionable(action_request::ActionRequest::headless(
+            crate::actions::action::Action::TypeText(String::new()),
+        )),
         50,
         &adapter,
         &crate::context::CommandContext::default(),
@@ -360,7 +359,7 @@ fn wait_actionable_rejects_unknown_action() {
 
 #[test]
 fn actionable_parse_mirrors_each_real_command_policy() {
-    use crate::interaction_policy::InteractionPolicy;
+    use crate::actions::interaction_policy::InteractionPolicy;
 
     let request_for = |name: Option<&str>| match wait_predicate::ElementPredicate::parse(
         Some("actionable"),

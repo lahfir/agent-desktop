@@ -16,7 +16,7 @@ pub(crate) fn for_window(bounds: Option<Rect>, deadline: Deadline) -> Result<Rec
             "CoreGraphics returned an invalid display identifier",
         )
     })?;
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     crate::system::cocoa_runtime::ensure_cocoa_multithreaded()?;
     let mut visible = ScreenRect {
         x: 0.0,
@@ -25,7 +25,7 @@ pub(crate) fn for_window(bounds: Option<Rect>, deadline: Deadline) -> Result<Rec
         height: 0.0,
     };
     let found = unsafe { agent_desktop_visible_frame(display_id, &mut visible) };
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     let rect = Rect {
         x: visible.x,
         y: visible.y,
@@ -51,14 +51,6 @@ fn valid(rect: Rect) -> bool {
         .all(f64::is_finite)
         && rect.width > 0.0
         && rect.height > 0.0
-}
-
-fn ensure_budget(deadline: Deadline) -> Result<(), AdapterError> {
-    if deadline.is_expired() {
-        Err(deadline.timeout_error())
-    } else {
-        Ok(())
-    }
 }
 
 unsafe extern "C" {

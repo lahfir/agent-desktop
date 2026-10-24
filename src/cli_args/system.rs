@@ -131,9 +131,15 @@ pub(crate) struct MoveWindowCliArgs {
     #[command(flatten)]
     #[serde(flatten)]
     pub scope: WindowScope,
-    #[arg(long, help = "New window X position")]
+    #[arg(
+        long,
+        help = "New window X position; write a negative value with = (--x=-100)"
+    )]
     pub x: f64,
-    #[arg(long, help = "New window Y position")]
+    #[arg(
+        long,
+        help = "New window Y position; write a negative value with = (--y=-100)"
+    )]
     pub y: f64,
 }
 

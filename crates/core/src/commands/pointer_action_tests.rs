@@ -1,10 +1,11 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps};
+use crate::refs::refs_store::RefStore;
+use crate::refs::refs_test_support::HomeGuard;
 use crate::refs::{RefEntry, RefMap};
-use crate::refs_store::RefStore;
-use crate::refs_test_support::HomeGuard;
 use crate::{
-    AdapterError, DeliverySemantics, ErrorCode, Rect, capability, hit_test::HitTestResult,
+    AdapterError, DeliverySemantics, ErrorCode, Rect, actions::capability,
+    adapter::hit_test::HitTestResult,
 };
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -59,6 +60,7 @@ fn point_ref_snapshot() -> String {
             native_id: None,
         },
         geometry: crate::RefGeometry {
+            bounds_space: None,
             bounds: None,
             bounds_hash: None,
         },
@@ -67,9 +69,9 @@ fn point_ref_snapshot() -> String {
             available_actions: vec![capability::CLICK.into()],
         },
         source: crate::RefSource {
-            source_app: None,
-            source_window_id: None,
-            source_window_title: None,
+            source_app: Some("Fixture".into()),
+            source_window_id: Some("w-42".into()),
+            source_window_title: Some("Window".into()),
             source_window_bounds_hash: None,
             source_surface: crate::adapter::SnapshotSurface::Window,
         },
@@ -117,7 +119,7 @@ impl ObservationOps for TerminalAfterRetryAdapter {
                 height: 4.0,
             }));
         }
-        std::thread::sleep(std::time::Duration::from_millis(120));
+        crate::wait::deadline::sleep(std::time::Duration::from_secs(6));
         Err(AdapterError::new(ErrorCode::StaleRef, "terminal target")
             .with_suggestion("Run 'snapshot' to refresh, then retry with the updated ref.")
             .with_disposition(DeliverySemantics::not_delivered()))
@@ -131,6 +133,7 @@ impl SystemOps for TerminalAfterRetryAdapter {}
 #[test]
 fn terminal_stale_ref_is_preserved_after_retry_budget_expires() {
     let _guard = HomeGuard::new();
+    let _clock = crate::wait::deadline::VirtualClock::freeze();
     let snapshot_id = point_ref_snapshot();
     let adapter = TerminalAfterRetryAdapter {
         bounds_reads: AtomicU32::new(0),
@@ -147,6 +150,7 @@ fn terminal_stale_ref_is_preserved_after_retry_budget_expires() {
         Err(err) => err,
     };
 
+    assert_eq!(deadline.remaining(), std::time::Duration::ZERO);
     assert_eq!(err.code(), "STALE_REF");
 }
 
@@ -294,3 +298,6 @@ fn an_unchanged_bounds_hash_after_scroll_stops_the_scroll_retries() {
     );
     assert_eq!(adapter.leases.load(Ordering::SeqCst), 1);
 }
+
+#[path = "pointer_action_focus_tests.rs"]
+mod focus_tests;

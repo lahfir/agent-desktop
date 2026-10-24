@@ -3,10 +3,12 @@ use crate::{
     adapter::PlatformAdapter,
     commands::helpers::{load_ref_entry, resolve_handle_within_deadline},
     context::CommandContext,
-    ref_resolve_deadline::POLL_INTERVAL,
     refs::RefEntry,
+    refs::ref_resolve_deadline::POLL_INTERVAL,
 };
 use serde_json::{Value, json};
+
+use crate::actionability::pointer_timeout::point_actionability_timeout;
 
 struct EntryPointResolve<'a> {
     ref_id: &'a str,
@@ -47,7 +49,10 @@ fn resolve_point_from_entry(
             });
         })?;
     context.trace_lazy("ref.resolve.ok", || json!({ "ref": ref_id }))?;
-    let (mut bounds, mut states) = pointer_live_observation(adapter, &handle, deadline)?;
+    let crate::PointerObservation {
+        mut bounds,
+        mut states,
+    } = adapter.observe_pointer(&handle, deadline)?;
     if !pointer_is_visible(bounds, &states) {
         if deadline.is_expired() {
             return Err(crate::AdapterError::timeout(
@@ -71,7 +76,9 @@ fn resolve_point_from_entry(
         };
         adapter.scroll_into_view(&handle, lease)?;
         handle = resolve_handle_within_deadline(adapter, entry, deadline)?;
-        (bounds, states) = pointer_live_observation(adapter, &handle, deadline)?;
+        let observation = adapter.observe_pointer(&handle, deadline)?;
+        bounds = observation.bounds;
+        states = observation.states;
         if !pointer_is_visible(bounds, &states) {
             return Err(crate::AdapterError::new(
                 crate::ErrorCode::ActionFailed,
@@ -127,24 +134,26 @@ fn resolve_point_from_entry(
     })
 }
 
-fn pointer_live_observation(
-    adapter: &dyn PlatformAdapter,
-    handle: &crate::adapter::NativeHandle,
-    deadline: crate::Deadline,
-) -> Result<(Option<crate::Rect>, Vec<String>), AppError> {
-    let bounds = adapter.get_element_bounds(handle, deadline)?;
-    let states = crate::adapter::optional_live_read(adapter.get_live_state(handle, deadline))?
-        .map(|state| state.states)
-        .unwrap_or_default();
-    Ok((bounds, states))
-}
-
 fn pointer_is_visible(bounds: Option<crate::Rect>, states: &[String]) -> bool {
-    !crate::state::has_state(states, crate::state::HIDDEN)
-        && !crate::state::has_state(states, crate::state::OFFSCREEN)
+    !crate::tree::state::has_state(states, crate::tree::state::HIDDEN)
+        && !crate::tree::state::has_state(states, crate::tree::state::OFFSCREEN)
         && bounds.is_some_and(|bounds| {
             bounds.validate().is_ok() && bounds.width > 0.0 && bounds.height > 0.0
         })
+}
+
+/// Runs what a pointer gesture does before its first pointer event. Nothing
+/// has reached the target by then, so a refusal or a timeout leaves the gesture
+/// undelivered whatever the steps before it delivered.
+pub(crate) fn before_first_event<T>(
+    phase: impl FnOnce() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    phase().map_err(|error| match error {
+        AppError::Adapter(error) => {
+            AppError::Adapter(error.with_disposition(crate::DeliverySemantics::not_delivered()))
+        }
+        other => other,
+    })
 }
 
 pub(crate) fn point_deadline(timeout_ms: Option<u64>) -> Result<crate::Deadline, AppError> {
@@ -202,7 +211,7 @@ pub(crate) fn wait_for_point_with_deadline<'a>(
                 if point_requires_scroll(&err)
                     && !(observed.is_some() && observed == last_scrolled_bounds_hash)
                 {
-                    scroll_point_target(&entry, deadline, adapter)?;
+                    scroll_point_target(args, &entry, deadline, adapter, context)?;
                     last_scrolled_bounds_hash = observed;
                     std::thread::sleep(POLL_INTERVAL.min(deadline.remaining()));
                     continue;
@@ -293,11 +302,14 @@ pub(crate) fn retry_leased_point_phase<T>(
 }
 
 fn scroll_point_target(
+    args: crate::commands::point_resolve::PointResolveArgs<'_>,
     entry: &RefEntry,
     deadline: crate::Deadline,
     adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
 ) -> Result<(), AppError> {
     let lease = adapter.acquire_interaction_lease(deadline)?;
+    focus_point_under_lease(args, &lease, adapter, context)?;
     let handle = resolve_handle_within_deadline(adapter, entry, deadline)?;
     adapter.scroll_into_view(&handle, &lease)?;
     Ok(())
@@ -313,18 +325,6 @@ fn point_requires_scroll(err: &AppError) -> bool {
         .and_then(|details| details.get("requires_scroll"))
         .and_then(Value::as_bool)
         .unwrap_or(false)
-}
-
-fn point_actionability_timeout(last_report: Option<Value>) -> AppError {
-    let mut details = json!({ "kind": "actionability_timeout" });
-    if let Some(last_report) = last_report
-        && let Some(object) = details.as_object_mut()
-    {
-        object.insert("last_report".into(), last_report);
-    }
-    crate::AdapterError::timeout("Pointer target did not become actionable within the wait budget")
-        .with_details(details)
-        .into()
 }
 
 fn point_error_report(error: &AppError) -> Value {

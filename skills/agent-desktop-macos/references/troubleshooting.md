@@ -1,6 +1,6 @@
 # macOS troubleshooting
 
-Each entry is a symptom, its cause, and the fix. Read `error.code`, `error.suggestion` and `error.disposition` in the JSON envelope first. Retry only when `disposition.retry` is `safe`.
+Each entry is a symptom, its cause, and the fix. Read `error.code`, `error.suggestion` and `error.disposition` in the JSON envelope first.
 
 ## PERM_DENIED
 
@@ -8,12 +8,7 @@ Each entry is a symptom, its cause, and the fix. Read `error.code`, `error.sugge
 
 **Cause.** The app that launched agent-desktop has no Accessibility permission (or Screen Recording, for `screenshot` and `session start --screenshots`). The grant belongs to the launching app, not to the shell. A new launcher, such as a different terminal or an IDE, needs its own grant.
 
-**Fix.**
-1. Run `agent-desktop permissions --guide`. It opens the correct page in System Settings with a panel that shows what to drag. Without it, run `agent-desktop permissions --request` and open the page yourself.
-2. In System Settings > Privacy & Security > Accessibility (or Screen Recording), drag the launching app into the list if it is not there.
-3. Turn on the launching app. If the built `agent-desktop` binary is listed on its own, turn it on too.
-4. Restart the launching app.
-5. Run `agent-desktop permissions` to confirm `granted`.
+**Fix.** Follow "First contact" in the macOS skill: `permissions --guide`, turn on the launching app (and the `agent-desktop` binary if it is listed on its own) in System Settings > Privacy & Security > Accessibility or Screen Recording, restart the launching app, then run `agent-desktop permissions` to confirm `granted`.
 
 For Automation, open Privacy & Security > Automation and allow the launching app to control System Events.
 
@@ -74,12 +69,6 @@ For Automation, open Privacy & Security > Automation and allow the launching app
 **Cause.** `select` proves success by a closed-to-open menu change. An already open menu hides that change.
 
 **Fix.** Dismiss the open menu with `press escape`, then run `select` again.
-
-## STALE_REF, AMBIGUOUS_TARGET, SNAPSHOT_NOT_FOUND
-
-**Cause.** The UI changed since the snapshot, two live elements match the ref, or the snapshot ID no longer exists.
-
-**Fix.** Run `snapshot` again and use the new refs. For an overlay, snapshot the overlay surface and not the window.
 
 ## APP_NOT_FOUND or WINDOW_NOT_FOUND
 

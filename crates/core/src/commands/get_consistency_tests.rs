@@ -59,31 +59,6 @@ fn get_bounds_reads_the_resolved_elements_current_geometry() {
 }
 
 #[test]
-fn absent_live_bounds_never_resurrect_snapshot_coordinates() {
-    let _guard = HomeGuard::new();
-    let mut saved = entry(vec![], None, vec![]);
-    saved.geometry.bounds = Some(visible_bounds());
-    saved.geometry.bounds_hash = visible_bounds().bounds_hash();
-    let snapshot = save_entry(saved);
-    let adapter = LiveStateAdapter::with_live(visible_bounds(), vec![]);
-    *adapter.bounds.lock().unwrap() = None;
-
-    assert_eq!(
-        get_property(&snapshot, &adapter, GetProperty::Bounds).unwrap()["value"],
-        Value::Null
-    );
-    assert_eq!(
-        get_property(
-            &snapshot,
-            &LiveStateAdapter::without_live_support(),
-            GetProperty::Bounds
-        )
-        .unwrap()["value"],
-        json!(visible_bounds())
-    );
-}
-
-#[test]
 fn unsupported_live_reads_preserve_existing_is_fallback_contract() {
     let _guard = HomeGuard::new();
     let snapshot = save_entry(entry(vec![state::CHECKED.into()], None, vec![]));

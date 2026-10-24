@@ -5,8 +5,8 @@ agent-desktop is a native Rust CLI and FFI library that gives AI agents structur
 ## Kinds of contributions that fit this project
 
 - **Bug fixes** — wrong JSON output, incorrect ref resolution, `STALE_REF` on a stable target, etc.
-- **New commands** — additions to the 60-command surface (56 operational, four held-input names fail closed) (follow the Extensibility Pattern below)
-- **Platform adapters** — the Windows adapter (shipped in v0.10.0, open to fixes and features) and the Linux adapter (planned), both implementing `PlatformAdapter`
+- **New commands** — additions to the 60-command surface (56 operational, four held-input names fail closed); see the steps in [CLAUDE.md](CLAUDE.md#architecture)
+- **Platform adapters** — fixes and features for the macOS, Windows and Linux adapters, each implementing `PlatformAdapter`
 - **App-specific quirks** — documented edge cases for specific apps (Electron, game engines, etc.) under `skills/`
 - **Docs and skill files** — keeping `skills/agent-desktop*/` accurate when behaviour changes
 
@@ -21,9 +21,12 @@ This project follows the guidelines in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 | Requirement | Notes |
 |---|---|
 | **Rust toolchain** | Pinned to 1.89.0 via `rust-toolchain.toml` (`rust-version` 1.89 is the MSRV). `rustup` picks the correct channel automatically. |
-| **macOS 13.0+** | Required to build and run the macOS adapter (`crates/macos/`). The Windows adapter (`crates/windows/`) builds on Windows only. The Linux crate is still a stub and compiles anywhere. |
-| **Accessibility permission** | Required for integration and E2E tests against real apps. Grant it in **System Settings > Privacy & Security > Accessibility** by adding the terminal you run tests from. |
-| **Screen Recording permission** | Required only for `screenshot` tests. Same path in System Settings. |
+| **macOS 13+** | Required to build and run the macOS adapter (`crates/macos/`), with the Xcode command-line tools. |
+| **Windows** | The Windows adapter (`crates/windows/`) builds on Windows only, with the MSVC build tools. |
+| **Linux** | The Linux adapter (`crates/linux/`) builds on Linux only. Its live tests need an AT-SPI session; see `tests/e2e-linux/README.md`. |
+| **Python 3** | `scripts/check-rust-file-size.sh` runs a Python helper and fails when no Python 3 is on `PATH`. |
+| **Accessibility permission** | Required on macOS for integration and E2E tests against real apps. Grant it in **System Settings > Privacy & Security > Accessibility** by adding the terminal you run tests from. |
+| **Screen Recording permission** | Required on macOS only for `screenshot` tests. Same path in System Settings. |
 
 ## Getting started
 
@@ -34,14 +37,15 @@ cd agent-desktop
 # Wire up the pre-commit hook (one time per clone)
 git config core.hooksPath .githooks
 
-# Every platform adapter compiles on its own OS only, so unscoped
-# workspace commands fail on every host. Scope cargo to the host package set
-# (this is the macOS set; on Windows use
-# -p agent-desktop-core -p agent-desktop-windows -p agent-desktop -p agent-desktop-ffi).
-HOST_PKGS="-p agent-desktop-core -p agent-desktop-macos -p agent-desktop-linux -p agent-desktop -p agent-desktop-ffi"
+# Every platform adapter compiles on its own OS only, so unscoped workspace
+# commands fail on every host. Scope cargo to the host package set.
+# macOS:
+HOST_PKGS=(-p agent-desktop-core -p agent-desktop-macos -p agent-desktop -p agent-desktop-ffi)
+# Windows: swap agent-desktop-macos for agent-desktop-windows.
+# Linux:   swap agent-desktop-macos for agent-desktop-linux.
 
 # Debug build
-cargo build $HOST_PKGS
+cargo build "${HOST_PKGS[@]}"
 
 # Release build (optimised, < 15 MB)
 cargo build --release -p agent-desktop
@@ -50,21 +54,23 @@ cargo build --release -p agent-desktop
 ./target/release/agent-desktop snapshot --app Finder -i
 ```
 
+`HOST_PKGS` is an array so that it expands to separate arguments in both bash and zsh, the macOS default shell.
+
 ## Dev workflow and quality gates
 
-All of these must pass before a PR is merged. The pre-commit hook runs the format, lint and library-test gates automatically (see Pre-commit hook). Set `HOST_PKGS` as shown in Getting started.
+All of these must pass before a PR is merged. Set `HOST_PKGS` as shown in Getting started.
 
 ```bash
 # Format check
 cargo fmt --all -- --check
 
 # Lint — zero warnings required
-cargo clippy $HOST_PKGS --all-targets -- -D warnings
+cargo clippy "${HOST_PKGS[@]}" --all-targets -- -D warnings
 
-# Unit tests (MockAdapter, golden fixtures)
-cargo test $HOST_PKGS --lib
+# Library unit tests (adapter stubs, golden fixtures); skips the agent-desktop binary crate
+cargo test "${HOST_PKGS[@]}" --lib
 
-# Binary-level command tests
+# Binary-level command tests (CLI contract, dispatch, batch, policy)
 cargo test -p agent-desktop
 
 # FFI integration tests (C-ABI, enum fuzzing, out-param zeroing)
@@ -73,33 +79,19 @@ cargo test -p agent-desktop-ffi --tests
 # Core isolation — output must contain no platform crate names
 cargo tree -p agent-desktop-core
 
-# E2E harness against the SwiftUI fixture app (requires --release build + AX permission)
-cargo build --release
-bash tests/e2e/run.sh
+# macOS only: E2E harness against the SwiftUI fixture app (needs an exclusive desktop and AX permission)
+AGENT_DESKTOP_E2E_EXCLUSIVE=1 bash tests/e2e/run.sh
 ```
 
-The E2E harness drives the release binary against a real SwiftUI/AppKit fixture and asserts every effect by independent observation — never by trusting `ok: true`. See `tests/e2e/README.md` for what it covers and how to add a scenario.
+CI and the pre-commit hook run `cargo test` through `scripts/cargo-test-isolated-home.sh test ...`, which gives cargo a throwaway `HOME` so tests never touch `~/.agent-desktop`. Use it the same way locally when you want that isolation.
 
-CI additionally checks that the release binary stays under 15 MB and that the committed C header `crates/ffi/include/agent_desktop.h` has not drifted from the Rust ABI declarations (the `ffi-header-drift` job).
+`tests/e2e/run.sh` builds the release CLI, macOS helper and FFI library itself and refuses to run without `AGENT_DESKTOP_E2E_EXCLUSIVE=1`, because headed cases move the real cursor. `tests/e2e/README.md` covers what it asserts and how to add a scenario.
+
+CI also enforces what a local run can miss: the 15 MB limit on each shipped executable, the Rust 1.89 MSRV check, drift of the committed C header `crates/ffi/include/agent_desktop.h` from the Rust ABI declarations (regenerate it with `scripts/update-ffi-header.sh`, which needs cbindgen 0.29.4), the `cargo-deny` dependency policy in `deny.toml`, secret scanning, CodeQL, and workflow linting.
 
 ## Pre-commit hook
 
-The repo ships a pre-commit hook at `.githooks/pre-commit`. After cloning, enable it once:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-On every commit that stages `.rs` or `.toml` files, the hook picks the package set for the host OS and runs:
-
-1. `scripts/check-rust-file-size.sh` (400 LOC cap per Rust file and the inline-comment ban; only `///` and `//!` are permitted)
-2. `scripts/check-no-phase-references.sh` (no phase, sub-phase or plan ids in `crates/**` or `src/**`)
-3. `scripts/check-stale-ref-constructor-misuse.sh`
-4. `cargo fmt --all -- --check`
-5. `cargo clippy` on the host package set with `--all-targets -- -D warnings`
-6. `scripts/cargo-test-isolated-home.sh test` on the host package set with `--lib`
-
-When changes touch `crates/ffi/`, the hook also runs the stub-adapter passthrough test and the cbindgen header-drift check (skipped when `cbindgen` 0.29.4 is not installed; CI still runs it).
+`.githooks/pre-commit` is the local mirror of the CI gates, and the script is the authoritative list. On a commit that stages `.rs` or `.toml` files it runs, over the package set for the host OS, the source-rule scripts in `scripts/` (`check-rust-file-size.sh`, `check-no-phase-references.sh`, `check-stale-ref-constructor-misuse.sh`), `cargo fmt --all -- --check`, clippy with `-D warnings`, and the `--lib` tests. When the commit touches `crates/ffi/` it also runs the stub-adapter passthrough test and the cbindgen header-drift check (skipped when cbindgen 0.29.4 is not installed; CI still runs it). A commit that only touches `scripts/`, `.githooks/`, `.github/workflows/` or `tests/e2e-linux/` runs the Bash 3 compatibility and no-phase-reference checks.
 
 To bypass in a genuine emergency:
 
@@ -109,77 +101,30 @@ git commit --no-verify
 SKIP_PRECOMMIT=1 git commit -m "..."
 ```
 
-## Coding standards
+## Engineering rules
 
-### Conventional Commits (required)
+[CLAUDE.md](CLAUDE.md) holds the engineering rules, and they bind people and coding agents alike: Conventional
+Commits, the 400-line cap per Rust file, no inline comments, no delivery-plan references in shipped source, one domain
+type per file, error handling, core isolation, and the steps for adding a command. The pre-commit hook and CI enforce
+most of them.
 
-Every commit title must begin with one of these prefixes:
-
-| Prefix | When to use |
-|---|---|
-| `feat:` | new capability |
-| `fix:` | bug fix |
-| `feat!:` / `BREAKING CHANGE:` footer | breaking API or CLI change |
-| `refactor:` | restructures code without changing behaviour |
-| `perf:` | measurable performance improvement |
-| `test:` | adds or fixes tests |
-| `docs:` | documentation only |
-| `ci:` | CI/CD changes |
-| `chore:` | maintenance, dependency bumps |
-| `style:` | formatting only |
-
-Format: `type: concise imperative description` — lowercase prefix, no capital after the colon, focus on the *why*.
-
-Examples: `feat: add scroll-to command`, `fix: prevent stale ref on window resize`, `ci: add binary size check`
-
-### File rules
-
-- **400 LOC hard limit per file.** If a file approaches 400 lines, split by responsibility. Generated files marked `@generated` are exempt — fix the generator, not the output.
-- **No inline comments.** Code must be self-documenting through naming. Use `///` doc-comments on public items when the name alone is insufficient. `//` and end-of-line `//` comments are rejected by the pre-commit hook.
-- **One struct/enum per file** for domain types. `node.rs` defines `AccessibilityNode`. `action.rs` defines `Action`.
-- **One command per file.** Each CLI command lives in its own file under `crates/core/src/commands/`. Filename matches the command name.
-- **No God objects.** No struct with more than 7 fields; no function with more than 5 parameters. Use builder patterns or config structs.
-- **Explicit `pub` boundaries.** Only `lib.rs` re-exports public items. Internal modules use `pub(crate)`. No wildcard re-exports.
-
-### Error handling
-
-- **Zero `unwrap()` in non-test code.** Propagate `Result`s with `?` or match explicitly. Panics are test-only.
-- Every error carries an `ErrorCode` (machine-readable), `message` (human-readable), an optional `suggestion`, and an optional `platform_detail`.
-
-### Core isolation (non-negotiable)
-
-`agent-desktop-core` must never import a platform crate. Platform crates must never import each other. The only legitimate wiring points are the binary crate (`src/`) and the FFI crate (`crates/ffi/`). CI enforces this with `cargo tree -p agent-desktop-core`.
-
-## Adding a new command
-
-Follow the Extensibility Pattern exactly — no step may be skipped:
-
-1. Create `crates/core/src/commands/{name}.rs` with a standalone `execute()` function.
-2. Register it in `crates/core/src/commands/mod.rs`.
-3. Add the CLI subcommand variant to `src/cli/mod.rs` and its argument struct under `src/cli_args/`.
-4. Add a `match` arm in `dispatch()` in the binary crate.
-5. If a new `Action` variant is needed, add it to `crates/core/src/action.rs`.
-6. If a new adapter method is needed, add it to the `PlatformAdapter` trait with a default of `Err(AdapterError::not_supported())`.
-
-No existing files are modified beyond these six registration points.
-
-**Mandatory skill update:** every new command or changed CLI flag must be reflected in the matching skill. Cross-platform behavior goes in the core skill, `skills/agent-desktop/` (its `references/` hold the per-command detail). macOS behavior goes in `skills/agent-desktop-macos/` and Windows behavior in `skills/agent-desktop-windows/`. Skill files are documentation that AI agents read, and they must stay in sync with the implementation.
+**Skills stay in sync.** Every new command or changed CLI flag must be reflected in the matching skill. Cross-platform behavior goes in the core skill, `skills/agent-desktop/` (its `references/` hold the per-command detail). Platform behavior goes in `skills/agent-desktop-macos/`, `skills/agent-desktop-windows/` or `skills/agent-desktop-linux/`, and C ABI changes in `skills/agent-desktop-ffi/`. The binary embeds these skills and AI agents read them, so they must match the implementation.
 
 ## Submitting a pull request
 
-1. **Pick the right base branch.** Branch from `main` for macOS, Windows and core work and open the PR into `main`. A platform phase still in progress (Linux) works on its own integration branch, `feat/linux-adapter`, with sub-phase branches `feat/linux-<n.n>-<slug>` that merge back into it, never into `main`.
+1. **Pick the right base branch.** Branch from `main` and open the PR into `main` for macOS, Windows, core and FFI work. Linux adapter work goes to the `feat/linux-adapter` integration branch instead: cut your branch from it and merge back into it, never into `main`.
 2. **Keep PRs focused.** One logical change per PR; separate refactors from features.
 3. **Make sure all quality gates pass** locally before pushing (see Dev workflow above).
-4. **Use a Conventional Commit title** for the PR title — it becomes the squash-merge commit message.
+4. **Use a Conventional Commit title** for the PR title. It becomes the squash-merge commit message.
 5. **Link related issues** with `Fixes #N` or `Refs #N` in the PR description.
 6. **Check that `cargo tree -p agent-desktop-core` is clean** if you touched any crate dependency.
 7. CI runs automatically on every push. A red CI is a blocker.
 
 ## Reporting bugs and security issues
 
-**Bugs and feature requests:** open an issue on [GitHub Issues](https://github.com/lahfir/agent-desktop/issues). Include the OS version, the `agent-desktop version` output, the exact command that failed, and the full JSON response.
+**Bugs and feature requests:** use the [issue templates](https://github.com/lahfir/agent-desktop/issues/new/choose); [SUPPORT.md](SUPPORT.md) says what to include.
 
-**Security vulnerabilities:** do **not** open a public issue. Use [GitHub private vulnerability reporting](https://github.com/lahfir/agent-desktop/security/advisories/new) for this repository. Include the affected version or commit, reproduction steps, expected impact, and any proof-of-concept details. See [SECURITY.md](SECURITY.md) for the full scope and response policy.
+**Security vulnerabilities:** do **not** open a public issue. Follow [SECURITY.md](SECURITY.md).
 
 ## License
 

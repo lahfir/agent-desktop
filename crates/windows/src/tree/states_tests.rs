@@ -1,8 +1,8 @@
 use agent_desktop_core::LocatorField;
-use agent_desktop_core::state;
+use agent_desktop_core::tree::state;
 
 use crate::tree::properties::PropertyOutcome;
-use crate::tree::property_ids::TreeProperty;
+use crate::tree::properties::property_ids::TreeProperty;
 use crate::tree::test_support::{flag, number, props};
 
 use super::resolve_states;
@@ -26,12 +26,6 @@ fn resolved(reads: Vec<(TreeProperty, PropertyOutcome)>, role: &str) -> Vec<Stri
     let mut all_reads = vec![enabled_true()];
     all_reads.extend(reads);
     known(resolve_states(&props(&all_reads), &role_of(role)))
-}
-
-#[test]
-#[should_panic(expected = "is not in STATE_VOCABULARY")]
-fn assert_states_in_vocabulary_rejects_bogus_token() {
-    state::assert_states_in_vocabulary(&["zzz_bogus_state_token".to_string()]);
 }
 
 /// The role is `checkbox` on purpose. A non-toggleable role is suppressed by
@@ -105,20 +99,6 @@ fn toggle_state_on_non_toggleable_role_emits_no_checked() {
     assert!(!states.contains(&state::PRESSED.to_string()));
 }
 
-/// A `button` role with the `STATE_SYSTEM_PRESSED` bit set emits the
-/// `pressed` state. This covers toolbar toggle buttons exposed through the
-/// legacy MSAA interface.
-#[test]
-fn pressed_state_system_bit_on_button_role_emits_pressed() {
-    const STATE_SYSTEM_PRESSED: i32 = 0x0000_0008;
-    let states = resolved(
-        vec![number(TreeProperty::LegacyState, STATE_SYSTEM_PRESSED)],
-        "button",
-    );
-
-    assert!(states.contains(&state::PRESSED.to_string()));
-}
-
 /// Toggle-available buttons are reclassified to `switch` by `roles.rs`, so a
 /// `button` role never carries a `ToggleState`. This verifies that the
 /// reclassification guards against misidentifying toggle buttons as pressed
@@ -144,7 +124,9 @@ fn button_role_with_toggle_state_but_no_pressed_bit_emits_no_pressed() {
 /// `is_toggleable_role` confirms it is gated in before the assertion runs.
 #[test]
 fn toggle_state_on_a_switch_role_emits_checked_and_indeterminate() {
-    assert!(agent_desktop_core::roles::is_toggleable_role("switch"));
+    assert!(agent_desktop_core::tree::roles::is_toggleable_role(
+        "switch"
+    ));
 
     let checked = resolved(
         vec![

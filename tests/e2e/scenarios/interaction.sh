@@ -21,7 +21,7 @@ interaction_suite() {
     local primary text_field click_before click_after before_number after_number click_output click_ok click_mechanism
     require_target primary button primary-button
     require_value click_before click-status
-    click_output="$(act_target "$primary" click 2>&1)"
+    click_output="$(act_target "$primary" click 2>/dev/null)"
     sleep 0.35
     require_value click_after click-status
     before_number="${click_before##*-}"
@@ -63,7 +63,7 @@ interaction_suite() {
 
     require_target scroll_area scrollarea scroll-area
     require_value scroll_before scroll-offset
-    scroll_output="$(act_target "$scroll_area" scroll --direction "$direction" --amount 10 2>&1)"
+    scroll_output="$(act_target "$scroll_area" scroll --direction "$direction" --amount 10 2>/dev/null)"
     sleep 0.4
     require_value scroll_after scroll-offset
     scroll_mechanism="$(printf '%s' "$scroll_output" | python3 "$json_tool" delivered-mechanism 2>/dev/null)"
@@ -88,7 +88,7 @@ note "Headed gesture fallback"
 require_target double_target button double-target
 "$bin" focus-window --app "$app" >/dev/null 2>&1
 require_value double_before double-status
-double_headless="$(act_target "$double_target" double-click 2>&1)"
+double_headless="$(act_target "$double_target" double-click 2>/dev/null)"
 sleep 0.3
 require_value double_after_headless double-status
 double_code="$(json_field "$double_headless" error.code)"
@@ -98,7 +98,7 @@ assert "headless double-click fails closed without moving the cursor" \
 
 "$bin" focus-window --app "$app" >/dev/null 2>&1
 MODE_FLAG="--headed"
-double_headed="$(act_target "$double_target" double-click 2>&1)"
+double_headed="$(act_target "$double_target" double-click 2>/dev/null)"
 MODE_FLAG=""
 sleep 0.35
 require_value double_after_headed double-status
@@ -117,7 +117,7 @@ assert "headed triple-click delivers a three-tap gesture" \
     "$([ "$triple_after" = "triple-clicked" ] && echo 1 || echo 0)" \
     "before=$triple_before after=$triple_after"
 
-hover_preposition="$("$bin" --headed mouse-move --xy 20,20 2>&1)"
+hover_preposition="$("$bin" --headed mouse-move --xy 20,20 2>/dev/null)"
 "$bin" focus-window --app "$app" >/dev/null 2>&1
 sleep 0.2
 assert "hover precondition positions the pointer outside the target" \
@@ -128,7 +128,7 @@ assert "hover baseline is clean after moving outside the target" \
     "$([ "$hover_before" != "hovered" ] && echo 1 || echo 0)" "status=$hover_before"
 require_target hover_target button hover-target
 MODE_FLAG="--headed"
-hover_output="$(act_target "$hover_target" hover 2>&1)"
+hover_output="$(act_target "$hover_target" hover 2>/dev/null)"
 MODE_FLAG=""
 sleep 0.6
 require_value hover_after hover-status

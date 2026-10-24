@@ -10,10 +10,10 @@ pub(crate) fn wait_for_menu(
     use std::time::Duration;
 
     loop {
-        let identity = crate::system::process_identity::require_core(&process)?;
+        let identity = crate::system::process::process_identity::require_core(&process)?;
         let instant = crate::tree::locator_deadline::from_operation(deadline)?;
         if is_menu_open(identity.pid(), instant)? == open {
-            crate::system::process_identity::require_core(&process)?;
+            crate::system::process::process_identity::require_core(&process)?;
             return Ok(());
         }
         if deadline.is_expired() {

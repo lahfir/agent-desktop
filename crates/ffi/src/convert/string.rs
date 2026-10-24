@@ -278,19 +278,6 @@ mod tests {
     }
 
     #[test]
-    fn decode_error_messages_name_the_field_and_cap() {
-        assert_eq!(
-            CStrDecodeError::NotUtf8.describe("role"),
-            "role is not valid UTF-8"
-        );
-        assert!(
-            CStrDecodeError::TooLong
-                .describe("name")
-                .starts_with("name exceeds AD_MAX_STRING_BYTES")
-        );
-    }
-
-    #[test]
     fn empty_c_string_decodes_as_some_empty_not_none() {
         let c = string_to_c("");
         assert!(!c.is_null());

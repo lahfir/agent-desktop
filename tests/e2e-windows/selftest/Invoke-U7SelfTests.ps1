@@ -12,7 +12,7 @@
     guard-less one, observe the danger the guard exists to prevent, then
     restore) before continuing.
 
-    Cases live in U7SelfTestCasesAssert.ps1 (1-6b) and
+    Cases live in U7SelfTestCasesAssert.ps1 (1-6c) and
     U7SelfTestCasesVerdict.ps1 (7-14), dot-sourced below - split purely to
     keep every file under the 400-line cap; this file is the one process
     entry point and owns the one exit call.

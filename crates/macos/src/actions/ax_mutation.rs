@@ -121,9 +121,9 @@ pub(crate) fn settle_uninformative_perform(
     operation: &str,
     error: i32,
     observed_effect: bool,
-) -> Result<crate::actions::chain_delivery::DeliveryOutcome, AdapterError> {
+) -> Result<crate::actions::chain::chain_delivery::DeliveryOutcome, AdapterError> {
     if observed_effect {
-        return Ok(crate::actions::chain_delivery::DeliveryOutcome::DeliveredVerified);
+        return Ok(crate::actions::chain::chain_delivery::DeliveryOutcome::DeliveredVerified);
     }
     Err(AdapterError::new(
         ErrorCode::ActionFailed,
@@ -165,7 +165,7 @@ mod tests {
         assert_eq!(
             super::settle_uninformative_perform("AXOpen", kAXErrorAttributeUnsupported, true)
                 .unwrap(),
-            crate::actions::chain_delivery::DeliveryOutcome::DeliveredVerified,
+            crate::actions::chain::chain_delivery::DeliveryOutcome::DeliveredVerified,
         );
     }
 
@@ -243,23 +243,22 @@ mod tests {
     }
 
     #[test]
-    fn perform_keeps_reporting_transport_failures_as_errors() {
-        let error = super::classify_perform("AXOpen", kAXErrorInvalidUIElement)
-            .expect_err("a stale element must still fail closed");
-        assert_eq!(error.code, ErrorCode::StaleRef);
-    }
-
-    #[test]
     fn invalid_element_is_stale_and_safe_to_retry_with_a_fresh_ref() {
-        let error = classify("AXPress", "perform", kAXErrorInvalidUIElement)
-            .expect_err("stale element must fail closed");
+        let errors = [
+            classify("AXPress", "perform", kAXErrorInvalidUIElement)
+                .expect_err("stale element must fail closed"),
+            super::classify_perform("AXOpen", kAXErrorInvalidUIElement)
+                .expect_err("a stale element must still fail closed"),
+        ];
 
-        assert_eq!(error.code, ErrorCode::StaleRef);
-        assert_eq!(
-            error.disposition.delivery(),
-            DeliveryDisposition::NotDelivered
-        );
-        assert_eq!(error.disposition.retry(), RetryDisposition::Safe);
+        for error in errors {
+            assert_eq!(error.code, ErrorCode::StaleRef);
+            assert_eq!(
+                error.disposition.delivery(),
+                DeliveryDisposition::NotDelivered
+            );
+            assert_eq!(error.disposition.retry(), RetryDisposition::Safe);
+        }
     }
 
     #[test]

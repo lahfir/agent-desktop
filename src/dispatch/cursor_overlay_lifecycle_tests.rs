@@ -41,12 +41,21 @@ impl InputOps for RecordingOverlayAdapter {
         &self,
         _content: &ClipboardContent,
         _lease: &InteractionLease,
-    ) -> Result<(), AdapterError> {
-        Ok(())
+    ) -> Result<agent_desktop_core::OperationReport, AdapterError> {
+        Ok(agent_desktop_core::OperationReport::delivered_unverified(
+            "test",
+            agent_desktop_core::OperationTarget::Clipboard,
+        ))
     }
 
-    fn clear_clipboard(&self, _lease: &InteractionLease) -> Result<(), AdapterError> {
-        Ok(())
+    fn clear_clipboard(
+        &self,
+        _lease: &InteractionLease,
+    ) -> Result<agent_desktop_core::OperationReport, AdapterError> {
+        Ok(agent_desktop_core::OperationReport::delivered_unverified(
+            "test",
+            agent_desktop_core::OperationTarget::Clipboard,
+        ))
     }
 }
 
@@ -124,8 +133,14 @@ impl ActionOps for FailingOverlayAdapter {
 }
 
 impl InputOps for FailingOverlayAdapter {
-    fn clear_clipboard(&self, _lease: &InteractionLease) -> Result<(), AdapterError> {
-        Ok(())
+    fn clear_clipboard(
+        &self,
+        _lease: &InteractionLease,
+    ) -> Result<agent_desktop_core::OperationReport, AdapterError> {
+        Ok(agent_desktop_core::OperationReport::delivered_unverified(
+            "test",
+            agent_desktop_core::OperationTarget::Clipboard,
+        ))
     }
 }
 
@@ -253,10 +268,8 @@ fn cursor_overlay_show_fires_even_when_the_mutating_command_errors() {
         &context,
     );
 
-    assert!(
-        result.is_err(),
-        "the blocked combo must still be rejected by the press command"
-    );
+    let error = result.expect_err("the blocked combo must still be rejected by the press command");
+    assert_eq!(error.code(), "POLICY_DENIED");
 
     let recorded = adapter.controls.lock().unwrap();
     assert_eq!(

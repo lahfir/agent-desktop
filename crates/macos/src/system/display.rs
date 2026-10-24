@@ -105,16 +105,16 @@ mod imp {
     fn raw_display_inventory(
         deadline: Deadline,
     ) -> Result<Vec<(u32, usize, DisplayInfo)>, AdapterError> {
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         let display_ids = CGDisplay::active_displays()
             .map_err(|_| AdapterError::internal("Failed to enumerate active displays"))?;
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         let main_id = CGDisplay::main().id;
         display_ids
             .into_iter()
             .enumerate()
             .map(|(raw_index, display_id)| {
-                ensure_budget(deadline)?;
+                deadline.ensure_remaining()?;
                 Ok((
                     display_id,
                     raw_index,
@@ -159,14 +159,6 @@ mod imp {
             ));
         }
         Ok(pixel_width / point_width)
-    }
-
-    fn ensure_budget(deadline: Deadline) -> Result<(), AdapterError> {
-        if deadline.is_expired() {
-            Err(deadline.timeout_error())
-        } else {
-            Ok(())
-        }
     }
 
     fn display_inventory_error(message: &str) -> AdapterError {

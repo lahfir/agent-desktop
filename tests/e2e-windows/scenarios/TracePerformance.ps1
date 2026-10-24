@@ -7,7 +7,7 @@
     scripted interaction are present, and cost is measured under the probe
     corpus methodology (min-of-seven, warm-up discarded, min/median/max
     reported) - the vehicle this platform can actually run, per
-    docs/phases.md's Definition of Done
+    probes/windows/FINDINGS.md A15-13
     (scripts/perf-baseline-compare.sh is macOS-bound and does not run
     here).
 
@@ -16,8 +16,8 @@
     new Lib.psm1 parameter: Lib.psm1 sits just under the 400-line cap
     (LibEnvelope.psm1 already grew for this same reason), and
     `AGENT_DESKTOP_SESSION` is not one of rule07's five protected identity
-    variables - CONCEPTS.md's own activation order is
-    "--session > AGENT_DESKTOP_SESSION > no session", so every existing
+    variables - CONCEPTS.md (Session) states that an explicit --session
+    takes precedence over AGENT_DESKTOP_SESSION, so every existing
     Find-Target/Invoke-Target/Invoke-Snapshot call already honors it once
     set, with no wrapper changes needed. The variable is always cleared in
     a `finally`, never left set for a later scenario. A value produced
@@ -111,8 +111,8 @@ function Invoke-TraceSegmentLegs {
 
 function Invoke-ArtifactModeLeg {
     <# ArtifactsMode::Full (--screenshots) copies each refmap into
-       <session>/trace/refmaps/<snapshot_id>.json - CONCEPTS.md's own
-       stated mitigation. The snapshot id proving this is the one the
+       <session>/trace/refmaps/<snapshot_id>.json, as CONCEPTS.md's
+       Replay Artifacts entry describes. The snapshot id proving this is the one the
        click's own ref actually resolved from, not merely "a" snapshot id
        under the session. #>
     param([Parameter(Mandatory = $true)][string]$App)

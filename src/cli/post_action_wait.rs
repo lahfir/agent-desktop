@@ -7,14 +7,14 @@ pub(crate) struct PostActionWaitArgs {
         short = 'w',
         global = true,
         conflicts_with = "wait_for_gone",
-        help = "Poll until an element matching the role:text selector appears, then return the snapshot"
+        help = "Poll until an element matching the role:text selector appears, then return the snapshot (snapshot and ref actions only)"
     )]
     pub wait_for: Option<String>,
     #[arg(
         long,
         global = true,
         conflicts_with = "wait_for",
-        help = "Poll until no element matches the role:text selector, then return the snapshot"
+        help = "Poll until no element matches the role:text selector, then return the snapshot (snapshot and ref actions only)"
     )]
     pub wait_for_gone: Option<String>,
     #[arg(

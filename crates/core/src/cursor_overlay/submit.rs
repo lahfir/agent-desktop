@@ -1,22 +1,24 @@
 use super::CursorPhase;
 use crate::{
     AdapterError, CommandContext, DeliveryDisposition, DeliverySemantics, MouseEvent,
-    PlatformAdapter, Point, Rect,
+    OperationReport, PlatformAdapter, Point, Rect,
 };
 
 const DISPATCH_RESERVE_MS: u64 = 100;
 
 pub(crate) fn travel_scope(
     lease: &crate::InteractionLease,
-) -> Option<crate::deadline::DeadlineScope> {
+) -> Option<crate::wait::deadline::DeadlineScope> {
     if lease.deadline().remaining_ms()
         <= crate::CURSOR_ARRIVAL_TIMEOUT_MS.saturating_add(DISPATCH_RESERVE_MS)
     {
         return None;
     }
-    Some(crate::deadline::enter_scope(Some(lease.deadline().capped(
-        std::time::Duration::from_millis(crate::CURSOR_ARRIVAL_TIMEOUT_MS),
-    ))))
+    Some(crate::wait::deadline::enter_scope(Some(
+        lease.deadline().capped(std::time::Duration::from_millis(
+            crate::CURSOR_ARRIVAL_TIMEOUT_MS,
+        )),
+    )))
 }
 
 /// Moves the drawn cursor to `destination` before an action; `pointer` arrives showing the
@@ -44,10 +46,11 @@ pub(crate) fn submit_travel(
     let _ = send(adapter, context, instruction);
 }
 
-pub(crate) fn input_was_delivered(result: &Result<(), AdapterError>) -> bool {
-    result
-        .as_ref()
-        .map_or_else(|error| confirms_delivery(error.disposition), |_| true)
+pub(crate) fn input_was_delivered(result: &Result<OperationReport, AdapterError>) -> bool {
+    result.as_ref().map_or_else(
+        |error| confirms_delivery(error.disposition),
+        |report| confirms_delivery(report.disposition()),
+    )
 }
 
 pub(crate) fn confirms_delivery(disposition: DeliverySemantics) -> bool {
@@ -116,7 +119,7 @@ pub(crate) fn cancel_drag(adapter: &dyn PlatformAdapter, context: &CommandContex
     else {
         return;
     };
-    let _scope = crate::deadline::enter_scope(Some(cleanup_deadline));
+    let _scope = crate::wait::deadline::enter_scope(Some(cleanup_deadline));
     let Some(session_id) = enabled_session(context) else {
         return;
     };
@@ -180,7 +183,7 @@ pub(crate) fn dispatch_mouse_event_with_cursor(
     event: MouseEvent,
     click: bool,
     lease: &crate::InteractionLease,
-) -> Result<(), AdapterError> {
+) -> Result<OperationReport, AdapterError> {
     let point = event.point.clone();
     crate::cursor_overlay::submit_travel(adapter, context, point.clone(), lease, click);
     let result = adapter.mouse_event(event, lease);

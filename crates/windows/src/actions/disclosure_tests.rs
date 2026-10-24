@@ -1,6 +1,6 @@
 use super::{DisclosureInput, ExpandKind, disclosure_judged_for, disclosure_plan, invoke_allowed};
 use crate::actions::chain::DeliveryOutcome;
-use crate::system::test_time::deadline;
+use crate::system::fixture::test_time::deadline;
 use agent_desktop_core::{ActionStepOutcome, DeliveryDisposition, ErrorCode, InteractionPolicy};
 use std::cell::Cell;
 
@@ -41,21 +41,23 @@ fn disclosure_plan_never_blindly_toggles_unknown_or_leaf() {
 
 #[test]
 fn expand_collapsed_delivers_verified() {
-    let pattern = Cell::new(0u8);
-    let steps = disclosure_judged_for(
-        deadline(5_000),
-        InteractionPolicy::headless(),
-        input(true, Some(ExpandKind::Collapsed), true, true),
-        || {
-            pattern.set(pattern.get() + 1);
-            Ok(DeliveryOutcome::DeliveredVerified)
-        },
-        || Ok(DeliveryOutcome::DeliveredVerified),
-    )
-    .expect("expand");
-    assert_eq!(pattern.get(), 1);
-    assert_eq!(steps[0].label(), "ExpandCollapsePattern.Expand");
-    assert_eq!(steps[0].verified(), Some(true));
+    for invoke_ok in [true, false] {
+        let pattern = Cell::new(0u8);
+        let steps = disclosure_judged_for(
+            deadline(5_000),
+            InteractionPolicy::headless(),
+            input(true, Some(ExpandKind::Collapsed), true, invoke_ok),
+            || {
+                pattern.set(pattern.get() + 1);
+                Ok(DeliveryOutcome::DeliveredVerified)
+            },
+            || Ok(DeliveryOutcome::DeliveredVerified),
+        )
+        .expect("expand");
+        assert_eq!(pattern.get(), 1, "invoke_ok = {invoke_ok}");
+        assert_eq!(steps[0].label(), "ExpandCollapsePattern.Expand");
+        assert_eq!(steps[0].verified(), Some(true));
+    }
 }
 
 #[test]

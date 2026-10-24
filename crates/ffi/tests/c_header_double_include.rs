@@ -13,6 +13,9 @@
 //! The test shells out to the system `cc`; it skips on platforms where
 //! that binary is not on PATH so cargo test still passes on bare CI images.
 
+#[path = "common/header_temp.rs"]
+mod header_temp;
+
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -46,8 +49,9 @@ fn committed_header_survives_double_include() {
         }
     };
 
-    let tmp = std::env::temp_dir().join("agent_desktop_double_include_test.c");
-    let obj = std::env::temp_dir().join("agent_desktop_double_include_test.o");
+    let directory = header_temp::HeaderTemp::new();
+    let tmp = directory.0.join("header.c");
+    let obj = directory.0.join("header.o");
     let src = r#"
 #include <stdint.h>
 #include <stdbool.h>

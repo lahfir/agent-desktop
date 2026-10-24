@@ -2,9 +2,9 @@ use crate::convert::string::{free_c_string, opt_string_to_c, string_to_c_lossy};
 use crate::types::{
     AdActionResult, AdElementState, action_step::AdActionStep, step_mechanism::AdStepMechanism,
 };
-use agent_desktop_core::action_result::ActionResult as CoreActionResult;
-use agent_desktop_core::action_step_outcome::ActionStepOutcome;
-use agent_desktop_core::step_mechanism::StepMechanism;
+use agent_desktop_core::actions::action_result::ActionResult as CoreActionResult;
+use agent_desktop_core::actions::action_step_outcome::ActionStepOutcome;
+use agent_desktop_core::actions::step_mechanism::StepMechanism;
 use std::ptr;
 
 pub(crate) fn action_result_to_c(r: &CoreActionResult) -> AdActionResult {
@@ -187,7 +187,7 @@ unsafe fn free_step_array(steps: *mut AdActionStep) {
 mod tests {
     use super::*;
     use crate::convert::string::c_to_string;
-    use agent_desktop_core::element_state::ElementState;
+    use agent_desktop_core::tree::element_state::ElementState;
 
     #[test]
     fn test_action_result_to_c_with_state() {
@@ -266,9 +266,9 @@ mod tests {
     #[test]
     fn action_result_to_c_preserves_steps() {
         let core_result = CoreActionResult::delivered_unverified("click").with_steps(vec![
-            agent_desktop_core::action_step::ActionStep::attempted("AXScrollToVisible")
+            agent_desktop_core::actions::action_step::ActionStep::attempted("AXScrollToVisible")
                 .with_mechanism(StepMechanism::SemanticApi),
-            agent_desktop_core::action_step::ActionStep::succeeded("AXPress")
+            agent_desktop_core::actions::action_step::ActionStep::succeeded("AXPress")
                 .with_mechanism(StepMechanism::SemanticApi)
                 .with_verified(true),
         ]);

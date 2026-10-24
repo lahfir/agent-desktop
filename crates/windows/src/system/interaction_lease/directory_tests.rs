@@ -50,7 +50,8 @@ fn set_owner(path: &Path, owner: &SidBuffer) {
 
 fn read_owner(path: &Path) -> SidBuffer {
     let handle = open_backup_semantics(path);
-    crate::system::token_sid::read_owner_sid(&handle).expect("GetSecurityInfo(owner) must succeed")
+    crate::system::runtime::token_sid::read_owner_sid(&handle)
+        .expect("GetSecurityInfo(owner) must succeed")
 }
 
 /// Enables a privilege already present-but-disabled on this process's token,
@@ -174,6 +175,31 @@ fn a_directory_with_an_inherited_users_ace_is_refused() {
         "lease_directory_untrusted"
     );
     std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_reparse_leaf_inserted_after_parent_creation_is_refused_before_acl_repair() {
+    let root = scratch_root("junction-race-root");
+    let target_root = scratch_root("junction-race-target");
+    author_container_inherit_users_ace(&target_root);
+    let requested = root.join("lockdir");
+
+    let raced = directory::with_create_race(&requested, &target_root, || {
+        directory::ensure_private(&requested)
+    });
+    let error = raced.expect_err("the raced junction must fail final-path validation");
+    assert_eq!(error.code, agent_desktop_core::ErrorCode::Internal);
+    assert_eq!(
+        error.details.as_ref().unwrap()["kind"],
+        "lease_directory_untrusted"
+    );
+
+    assert!(
+        directory::ensure_private(&target_root).is_err(),
+        "the foreign inherited ACE must remain on the junction target"
+    );
+    std::fs::remove_dir_all(&root).unwrap();
+    std::fs::remove_dir_all(&target_root).unwrap();
 }
 
 fn author_container_inherit_users_ace(root: &Path) {

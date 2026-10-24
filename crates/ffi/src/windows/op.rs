@@ -94,7 +94,7 @@ fn perform_window_op(
     };
     let lease = crate::operation::interaction_lease!(adapter.inner.as_ref());
     match adapter.inner.window_op(window, op, &lease) {
-        Ok(()) => AdResult::Ok,
+        Ok(_) => AdResult::Ok,
         Err(error) => {
             set_last_error(&error);
             crate::error::last_error_code()

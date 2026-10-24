@@ -13,7 +13,7 @@
     real WGC frame capture of the host's primary monitor - not merely an
     `IsSupported` check - built as a standalone scratch crate that links the
     `windows` crate directly (the exact API surface
-    crates/windows/src/system/capture_modern.rs and capture_d3d.rs use in
+    crates/windows/src/system/capture/capture_modern.rs and capture_d3d.rs use in
     production, transcribed rather than imported: those modules are
     `pub(crate)` inside a private `system` module and are not reachable from
     outside agent-desktop-windows).

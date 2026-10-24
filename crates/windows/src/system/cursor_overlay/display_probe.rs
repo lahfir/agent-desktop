@@ -14,7 +14,7 @@
 #[cfg(target_os = "windows")]
 use crate::system::cursor_overlay::monitors::OverlayMonitor;
 #[cfg(target_os = "windows")]
-use crate::system::win_rect::rect_of;
+use crate::system::runtime::win_rect::rect_of;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::{LPARAM, RECT};
 #[cfg(target_os = "windows")]

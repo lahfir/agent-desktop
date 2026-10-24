@@ -107,7 +107,7 @@ pub(crate) fn ax_role_and_subrole_to_str(ax_role: &str, ax_subrole: Option<&str>
     }
 }
 
-pub(crate) use agent_desktop_core::roles::{is_expandable_role, is_toggleable_role};
+pub(crate) use agent_desktop_core::tree::roles::{is_expandable_role, is_toggleable_role};
 
 pub(crate) fn accessible_name_from_subrole(subrole: Option<&str>) -> Option<&'static str> {
     match subrole {
@@ -238,7 +238,7 @@ mod tests {
             "AXToolTip",
         ] {
             assert!(
-                agent_desktop_core::roles::is_canonical_role(ax_role_to_str(native)),
+                agent_desktop_core::tree::roles::is_canonical_role(ax_role_to_str(native)),
                 "{native} emitted a noncanonical role"
             );
         }
@@ -333,7 +333,7 @@ mod tests {
         for (subrole, expected) in mappings {
             let mapped = ax_role_and_subrole_to_str("AXGroup", Some(subrole));
             assert_eq!(mapped, expected, "unexpected mapping for {subrole}");
-            assert!(agent_desktop_core::roles::is_canonical_role(mapped));
+            assert!(agent_desktop_core::tree::roles::is_canonical_role(mapped));
         }
     }
 }

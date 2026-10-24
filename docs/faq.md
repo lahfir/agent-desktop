@@ -2,7 +2,7 @@
 
 ## What is agent-desktop?
 
-agent-desktop gives any agent reliable computer use on the desktop. Agents see and operate desktop apps through OS accessibility trees, using structured JSON with stable refs instead of guessing from screenshots or pixel matching.
+agent-desktop gives any agent computer use on the desktop. Agents see and operate desktop apps through OS accessibility trees, using structured JSON with stable refs instead of guessing from screenshots or pixel matching.
 
 ## Does agent-desktop require screenshots or pixel matching?
 
@@ -22,7 +22,7 @@ No. The core workflow reads native accessibility trees and assigns refs to inter
 
 | Feature | Benefit |
 |---------|---------|
-| **Progressive Skeleton Traversal** | 78–96% token reduction on dense apps |
+| **Progressive Skeleton Traversal** | `snapshot --skeleton` returns a shallow overview and `--root @ref` drills into one region, so an agent reads only the part of a dense app it acts on |
 | **Headless-by-Default Actions** | Ref actions use accessibility APIs and block unintended physical side effects |
 | **Snapshot Refs** | Agents act on stable refs within a snapshot instead of guessing coordinates |
 | **Recovery Hints** | Errors include machine-readable codes and suggestions for the next agent step |
@@ -30,19 +30,8 @@ No. The core workflow reads native accessibility trees and assigns refs to inter
 
 ## Which platforms are supported?
 
-| | macOS | Windows | Linux |
-|---|:---:|:---:|:---:|
-| Accessibility tree | **Yes** | Yes\* | Planned |
-| Click / type / keyboard | **Yes** | **Yes** | Planned |
-| Mouse input | **Yes** | **Yes** | Planned |
-| Screenshot | **Yes** | **Yes** | Planned |
-| Clipboard | **Yes** | **Yes** | Planned |
-| App & window management | **Yes** | Yes\*\* | Planned |
-| Notifications | **Yes** | **Yes** | Planned |
-| Shell surfaces (`open-system-surface`) | Planned | **Yes** | Planned |
-
-\* On Windows, `list-surfaces` lists each process's `window`, `focused`, `sheet` and `menu` surfaces. `snapshot --surface` also reads the shell surfaces `taskbar`, `system-tray`, `system-tray-overflow`, `start-menu` and `action-center` without `--app`. `quick-settings` returns `PLATFORM_NOT_SUPPORTED` on every Windows build and names `action-center`, which carries those controls.
-\*\* `launch` on Windows takes an absolute path, or a bare name under System32 or the Windows directory, with or without `.exe`. It cannot resolve a display name such as "Google Chrome".
+macOS, Windows and Linux. The [platform table in the README](../README.md#platform-support) shows what each one
+supports, and `agent-desktop skills get platform` prints the full capability table for the OS the binary runs on.
 
 ## How do I install agent-desktop?
 

@@ -48,7 +48,7 @@ pub unsafe extern "C" fn ad_trace_export(
         };
 
         let effective_limit = if limit < 0 {
-            agent_desktop_core::trace_read::TRACE_EXPORT_DEFAULT_LIMIT
+            agent_desktop_core::trace::trace_read::TRACE_EXPORT_DEFAULT_LIMIT
         } else {
             limit as usize
         };

@@ -15,35 +15,49 @@ mod tests {
         })
     }
 
+    #[cfg(target_os = "macos")]
+    fn first_finder_window_id() -> String {
+        let list = run(&["list-windows", "--app", "Finder"]);
+        list["data"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find_map(|window| window["id"].as_str())
+            .unwrap_or_else(|| {
+                panic!(
+                    "precondition not met: Finder reports no windows; open a Finder window and rerun with --ignored: {list}"
+                )
+            })
+            .to_owned()
+    }
+
+    #[cfg(target_os = "macos")]
+    fn role_path(found: &serde_json::Value) -> Vec<&str> {
+        found["path"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|step| step.as_str()?.split(':').next())
+            .collect()
+    }
+
     /// Guards the native AX-to-CG window identity bridge used by snapshots.
     #[test]
     #[cfg(target_os = "macos")]
     #[ignore = "requires Accessibility permissions and running macOS apps"]
     fn snapshot_resolves_a_window_id_reported_by_list_windows() {
-        let list = run(&["list-windows", "--app", "Finder"]);
-        let ids: Vec<&str> = list["data"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|window| window["id"].as_str())
-            .collect();
-        if ids.is_empty() {
-            eprintln!(
-                "SKIP snapshot_resolves_a_window_id_reported_by_list_windows: Finder has no windows"
-            );
-            return;
-        }
+        let window_id = first_finder_window_id();
 
-        let snapshot = run(&["snapshot", "--app", "Finder"]);
+        let snapshot = run(&["snapshot", "--app", "Finder", "--window-id", &window_id]);
         assert_eq!(
             snapshot["ok"], true,
-            "snapshot must resolve a live window, got error {}",
+            "snapshot must resolve a window id reported by list-windows, got error {}",
             snapshot["error"]["code"]
         );
-        let resolved = snapshot["data"]["window"]["id"].as_str().unwrap_or("");
-        assert!(
-            ids.contains(&resolved),
-            "snapshot window id {resolved:?} must be reported by list-windows {ids:?}"
+        assert_eq!(
+            snapshot["data"]["window"]["id"].as_str(),
+            Some(window_id.as_str()),
+            "snapshot must resolve the window it was asked for"
         );
     }
 
@@ -52,28 +66,47 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[ignore = "requires Accessibility permissions and running macOS apps"]
     fn find_by_name_matches_the_element_that_reports_that_name() {
-        let by_role = run(&["find", "--app", "Finder", "--role", "button", "--first"]);
-        let matched = &by_role["data"]["match"];
-        let (Some(ref_id), Some(name)) = (matched["ref_id"].as_str(), matched["name"].as_str())
-        else {
-            eprintln!(
-                "SKIP find_by_name_matches_the_element_that_reports_that_name: no named button"
-            );
-            return;
-        };
-        if name.is_empty() || name.starts_with("(unnamed") {
-            eprintln!(
-                "SKIP find_by_name_matches_the_element_that_reports_that_name: unusable name"
-            );
-            return;
-        }
+        let window_id = first_finder_window_id();
+        let buttons = run(&[
+            "find",
+            "--app",
+            "Finder",
+            "--window-id",
+            &window_id,
+            "--role",
+            "button",
+        ]);
+        let named = buttons["data"]["matches"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|button| {
+                button["name"]
+                    .as_str()
+                    .is_some_and(|name| !name.is_empty() && !name.starts_with("(unnamed"))
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "precondition not met: Finder window {window_id} exposes no named button; open a Finder window with a toolbar and rerun with --ignored: {buttons}"
+                )
+            });
+        let name = named["name"].as_str().unwrap_or_default();
 
         let by_name = run(&[
-            "find", "--app", "Finder", "--role", "button", "--name", name, "--first",
+            "find",
+            "--app",
+            "Finder",
+            "--window-id",
+            &window_id,
+            "--role",
+            "button",
+            "--name",
+            name,
+            "--first",
         ]);
         assert_eq!(
-            by_name["data"]["match"]["ref_id"].as_str(),
-            Some(ref_id),
+            role_path(&by_name["data"]["match"]),
+            role_path(named),
             "find --name {name:?} must resolve the element that reported that name"
         );
     }
@@ -83,10 +116,21 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[ignore = "requires Accessibility permissions and running macOS apps"]
     fn a_ref_from_find_reresolves_through_get() {
-        let found = run(&["find", "--app", "Finder", "--role", "button", "--first"]);
+        let window_id = first_finder_window_id();
+        let found = run(&[
+            "find",
+            "--app",
+            "Finder",
+            "--window-id",
+            &window_id,
+            "--role",
+            "button",
+            "--first",
+        ]);
         let Some(ref_id) = found["data"]["match"]["ref_id"].as_str() else {
-            eprintln!("SKIP a_ref_from_find_reresolves_through_get: no button found");
-            return;
+            panic!(
+                "precondition not met: Finder exposes no button; open a Finder window and rerun with --ignored: {found}"
+            );
         };
 
         let got = run(&["get", ref_id, "--property", "role"]);
@@ -111,13 +155,6 @@ mod tests {
     }
 
     #[test]
-    fn version_command_outputs_json() {
-        let json = run(&["version"]);
-        assert_eq!(json["ok"], true);
-        assert!(json["data"]["version"].is_string());
-    }
-
-    #[test]
     fn snapshot_invalid_root_ref_format_returns_invalid_args() {
         let json = run(&["snapshot", "--app", "Finder", "--root", "bad-ref"]);
         assert_eq!(json["ok"], false);
@@ -126,20 +163,37 @@ mod tests {
 
     #[test]
     fn list_apps_inventory_matches_the_platform() {
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         {
             let json = run(&["list-apps"]);
-            assert_eq!(json["ok"], true, "list-apps is live on Windows");
+            assert_eq!(
+                json["ok"], true,
+                "list-apps is live on this platform: {json}"
+            );
             assert!(
                 json["data"]["apps"].is_array(),
-                "list-apps returns an apps array on Windows"
+                "list-apps returns an apps array on this platform: {json}"
             );
         }
         #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             let json = run(&["list-apps"]);
-            assert_eq!(json["ok"], false);
-            assert_eq!(json["error"]["code"], "PLATFORM_NOT_SUPPORTED");
+            if json["ok"] == true {
+                assert!(
+                    json["data"]["apps"].is_array(),
+                    "list-apps returns an apps array on Linux"
+                );
+            } else {
+                assert_eq!(
+                    json["error"]["code"], "PLATFORM_NOT_SUPPORTED",
+                    "the only failure a session without a bus may report: {json}"
+                );
+                let message = json["error"]["message"].as_str().unwrap_or_default();
+                assert!(
+                    message.contains("AT-SPI accessibility bus is not available"),
+                    "the failure names the missing bus: {json}"
+                );
+            }
         }
     }
 }

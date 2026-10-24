@@ -75,9 +75,9 @@ impl InputOps for TransientOcclusionAdapter {
         &self,
         params: DragParams,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         *self.captured.lock().unwrap() = Some(params);
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -118,7 +118,8 @@ fn drag_retries_transient_post_focus_occlusion_without_holding_lease() {
 
     let value = execute(args, &adapter, &CommandContext::default().with_headed(true)).unwrap();
 
-    assert_eq!(value["dragged"], true);
+    assert_eq!(value["disposition"]["delivery"], "delivered_unverified");
+    assert!(value.get("dragged").is_none());
     assert_eq!(adapter.lease_acquisitions.load(Ordering::SeqCst), 2);
     assert!(!adapter.lease_held.load(Ordering::SeqCst));
     assert!(adapter.captured.lock().unwrap().is_some());

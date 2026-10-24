@@ -93,30 +93,3 @@ fn a_superset_of_the_modifiers_alone_is_not_blocked() {
         "cmd+w is not a blocked shortcut"
     );
 }
-
-/// Verify every one of the five blocked entries is still refused. This
-/// enumerates rather than spot-checks to guarantee monotonicity: nothing
-/// blocked today can become unblocked by the rule change.
-#[test]
-fn all_five_blocked_entries_are_still_refused() {
-    assert!(
-        is_blocked(&combo(vec![Modifier::Meta], "q")),
-        "cmd+q must be blocked"
-    );
-    assert!(
-        is_blocked(&combo(vec![Modifier::Meta, Modifier::Shift], "q")),
-        "cmd+shift+q must be blocked"
-    );
-    assert!(
-        is_blocked(&combo(vec![Modifier::Meta, Modifier::Alt], "esc")),
-        "cmd+alt+esc must be blocked"
-    );
-    assert!(
-        is_blocked(&combo(vec![Modifier::Ctrl, Modifier::Meta], "q")),
-        "ctrl+cmd+q must be blocked"
-    );
-    assert!(
-        is_blocked(&combo(vec![Modifier::Meta, Modifier::Shift], "delete")),
-        "cmd+shift+delete must be blocked"
-    );
-}

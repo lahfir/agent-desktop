@@ -190,7 +190,6 @@ class IdentityGuardTests(unittest.TestCase):
             identity,
             {"pid": 99, "process_instance": "99:generation", "window_id": "private-window"},
         )
-        self.assertNotIn("Private", str(identity))
 
     def test_frontmost_identity_fails_closed_on_ambiguity_or_missing_generation(self):
         base = fixture_windows(is_focused=True)

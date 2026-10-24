@@ -2,15 +2,9 @@ use super::{
     SELECT_LABEL, SelectOps, SelectPlan, push_order, resolve_select_verification, select_judged_for,
 };
 use crate::actions::chain::DeliveryOutcome;
-use crate::actions::value_write::gated_value_compare;
-use crate::system::test_time::deadline;
-use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
+use crate::system::fixture::test_time::deadline;
 use agent_desktop_core::{ActionStepOutcome, AdapterError, ErrorCode};
 use std::cell::Cell;
-
-fn known_flag(value: bool) -> PropertyOutcome {
-    PropertyOutcome::Known(PropertyValue::Flag(value))
-}
 
 fn plan(self_match: bool, needs_expand: bool, value_chars: usize) -> SelectPlan {
     SelectPlan {
@@ -44,7 +38,7 @@ fn self_match_selects_and_verifies_is_selected() {
     )
     .expect("self select");
     assert_eq!(select.get(), 1);
-    assert_eq!(steps[0].label(), SELECT_LABEL);
+    assert_eq!(steps[0].label(), "SelectionItemPattern.Select");
     assert_eq!(steps[0].verified(), Some(true));
     assert!(matches!(steps[0].outcome, ActionStepOutcome::Succeeded));
 }
@@ -203,29 +197,9 @@ fn container_value_verification_outranks_is_selected() {
         resolve_select_verification(Some(Some(false)), Some(true)),
         Some(false)
     );
-}
-
-#[test]
-fn is_password_skips_value_read_and_falls_back_to_is_selected() {
-    let reads = Cell::new(0u8);
-    let gated = gated_value_compare(known_flag(true), "marker-value", || {
-        reads.set(reads.get() + 1);
-        Ok("marker-value".into())
-    })
-    .expect("gate");
-    assert_eq!(gated, None);
-    assert_eq!(reads.get(), 0);
     assert_eq!(
         resolve_select_verification(Some(None), Some(true)),
-        Some(true)
+        Some(true),
+        "a withheld container value falls back to the is-selected read"
     );
-
-    let unknown_reads = Cell::new(0u8);
-    let unknown = gated_value_compare(PropertyOutcome::Unknown, "marker", || {
-        unknown_reads.set(unknown_reads.get() + 1);
-        Ok("marker".into())
-    })
-    .expect("unknown");
-    assert_eq!(unknown, None);
-    assert_eq!(unknown_reads.get(), 0);
 }

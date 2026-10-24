@@ -6,7 +6,7 @@ import time
 import unittest
 from unittest import mock
 
-from json_tool import command_delivered_mechanism, run_bounded
+from json_tool import command_delivered_mechanism, command_get, run_bounded
 
 
 class RunBoundedTests(unittest.TestCase):
@@ -82,39 +82,41 @@ class RunBoundedTests(unittest.TestCase):
         self.assertFalse(result.output_limited)
         self.assertIsNone(result.termination_error)
 
-    def test_kills_the_process_group_at_the_absolute_timeout(self):
-        result = run_bounded(
-            [
-                sys.executable,
-                "-c",
-                "import subprocess,sys,time; "
-                "subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); "
-                "time.sleep(30)",
-            ],
-            timeout_seconds=0.2,
-            max_capture_bytes=1024,
-        )
-
-        self.assertEqual(result.returncode, 124)
-        self.assertTrue(result.timed_out)
-        self.assertLess(result.wall_ms, 2000)
-
     def test_descendant_holding_output_pipe_cannot_extend_the_deadline(self):
-        result = run_bounded(
-            [
-                sys.executable,
-                "-c",
-                "import subprocess,sys,time; "
-                "subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); "
-                "print('ready', flush=True); time.sleep(30)",
-            ],
-            timeout_seconds=0.2,
-            max_capture_bytes=1024,
-        )
+        descendant_pid = None
+        try:
+            result = run_bounded(
+                [
+                    sys.executable,
+                    "-c",
+                    "import subprocess,sys,time; "
+                    "child = subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); "
+                    "print(f'ready child={child.pid}', flush=True); time.sleep(30)",
+                ],
+                timeout_seconds=0.2,
+                max_capture_bytes=1024,
+            )
 
-        self.assertTrue(result.timed_out)
-        self.assertIn("ready", result.stdout)
-        self.assertLess(result.wall_ms, 2000)
+            self.assertEqual(result.returncode, 124)
+            self.assertTrue(result.timed_out)
+            self.assertIn("ready", result.stdout)
+            self.assertLess(result.wall_ms, 2000)
+            descendant_pid = int(result.stdout.split("child=", 1)[1].splitlines()[0])
+            deadline = time.monotonic() + 1
+            while time.monotonic() < deadline:
+                try:
+                    os.kill(descendant_pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.01)
+            else:
+                self.fail(f"output-pipe descendant {descendant_pid} survived the deadline kill")
+        finally:
+            if descendant_pid is not None:
+                try:
+                    os.kill(descendant_pid, 9)
+                except ProcessLookupError:
+                    pass
 
     def test_timeout_kills_term_ignoring_descendant_after_leader_exits(self):
         child_pid = None
@@ -174,6 +176,24 @@ class RunBoundedTests(unittest.TestCase):
         self.assertEqual(result.returncode, 125)
         self.assertTrue(result.output_limited)
         self.assertLessEqual(len(result.stdout.encode()), 4096)
+
+
+class CommandGetTests(unittest.TestCase):
+    def render_path(self, payload, path):
+        with mock.patch("json_tool.read_json", return_value=payload), mock.patch(
+            "builtins.print"
+        ) as output:
+            command_get(path)
+        return output.call_args.args[0]
+
+    def test_missing_list_index_renders_empty_so_a_stopped_batch_has_no_later_entry(self):
+        payload = {"data": {"results": [{"ok": True}, {"ok": False}]}}
+
+        self.assertEqual(self.render_path(payload, "data.results.1.ok"), "False")
+        self.assertEqual(self.render_path(payload, "data.results.2.ok"), "")
+
+    def test_missing_object_key_renders_empty(self):
+        self.assertEqual(self.render_path({"ok": True}, "data.stopped"), "")
 
 
 if __name__ == "__main__":

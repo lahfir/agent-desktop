@@ -1,9 +1,12 @@
 use crate::{
     AppError,
     context::CommandContext,
-    refs_store::RefStore,
+    refs::refs_store::RefStore,
     session::resolve_active_session,
-    trace_read::{ExportOptions, ReadOptions, export_html, read_merged},
+    trace::trace_read::{
+        ExportOptions, ReadOptions, empty_trace_dir_error, export_html_for_command,
+        read_merged_for_command,
+    },
 };
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -43,22 +46,20 @@ fn resolve_trace_session(context: &CommandContext) -> Result<(String, RefStore),
     Ok((session_id, store))
 }
 
-fn empty_trace_dir_error(session_id: &str) -> AppError {
-    AppError::invalid_input_with_suggestion(
-        format!("Session '{session_id}' has an empty trace directory"),
-        "Run `session start` with tracing enabled before recording commands.",
-    )
-}
-
 fn show(context: &CommandContext, limit: usize, event: Option<String>) -> Result<Value, AppError> {
     let (session_id, store) = resolve_trace_session(context)?;
     let trace_dir = store.trace_dir();
-    let merged = read_merged(
+    let merged = read_merged_for_command(
         &trace_dir,
         &ReadOptions {
             limit,
             event_prefix: event,
         },
+        Some((
+            std::process::id(),
+            crate::trace::trace_file::process_start_ms(),
+            "trace",
+        )),
     )?;
     if merged.segments.is_empty() {
         return Err(empty_trace_dir_error(&session_id));
@@ -85,10 +86,15 @@ fn show(context: &CommandContext, limit: usize, event: Option<String>) -> Result
 
 fn export(context: &CommandContext, limit: usize, out: Option<PathBuf>) -> Result<Value, AppError> {
     let (session_id, store) = resolve_trace_session(context)?;
-    let (_html, stats) = export_html(
+    let (_html, stats) = export_html_for_command(
         &store.trace_dir(),
         &session_id,
         &ExportOptions { limit, out },
+        Some((
+            std::process::id(),
+            crate::trace::trace_file::process_start_ms(),
+            "trace",
+        )),
     )?;
     let mut body = json!({
         "path": stats.path,

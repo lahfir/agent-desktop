@@ -37,13 +37,13 @@ pub(crate) struct DragCliArgs {
     #[arg(
         long = "drop-delay",
         value_name = "MS",
-        help = "Hold over the destination this many ms before releasing, so the drop target activates (macOS); default 500"
+        help = "Hold over the destination this many ms before releasing, so the drop target activates; default 500 (150 on Linux)"
     )]
     pub drop_delay: Option<u64>,
     #[arg(
         long = "timeout-ms",
         default_value_t = 5000,
-        help = "Maximum ref-resolution and transient-actionability wait in milliseconds; terminal failures return immediately"
+        help = "Drag action budget in milliseconds, including resolution, actionability, pickup, duration and drop delay; allow headroom for completion"
     )]
     #[serde(default = "default_ref_timeout_ms")]
     pub timeout_ms: u64,

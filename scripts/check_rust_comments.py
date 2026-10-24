@@ -44,6 +44,25 @@ def quoted_string_end(source, start):
     return len(source)
 
 
+def char_literal_end(source, start):
+    prefix_length = 2 if source.startswith("b'", start) else 1
+    if source[start : start + prefix_length] not in ("'", "b'"):
+        return None
+    if prefix_length == 2 and start > 0 and (
+        source[start - 1].isalnum() or source[start - 1] == "_"
+    ):
+        return None
+    cursor = start + prefix_length
+    if cursor >= len(source):
+        return None
+    if source[cursor] == "\\":
+        end = source.find("'", cursor + 2)
+        return None if end < 0 or end - cursor > 12 else end + 1
+    if source[cursor] != "'" and source.startswith("'", cursor + 1):
+        return cursor + 2
+    return None
+
+
 def block_comment_end(source, start):
     cursor = start + 2
     depth = 1
@@ -68,6 +87,8 @@ def forbidden_comments(source):
         string_end = raw_string_end(source, cursor)
         if string_end is None:
             string_end = quoted_string_end(source, cursor)
+        if string_end is None:
+            string_end = char_literal_end(source, cursor)
         if string_end is not None:
             segment = source[cursor:string_end]
             line += segment.count("\n")

@@ -123,7 +123,7 @@ function Set-NativeForegroundWindow {
     <#
     .SYNOPSIS
         Stages OS foreground onto WindowHandle with a raw SetForegroundWindow
-        - the AttachThreadInput dance crate::system::test_support::
+        - the AttachThreadInput dance crate::system::fixture::test_support::
         stage_foreground uses, ported rather than reimplemented from
         scratch: SetForegroundWindow alone is routinely refused by Windows
         when the caller is not the thread that currently owns foreground, so
@@ -184,7 +184,7 @@ function Wait-NativeForegroundToSettle {
     .SYNOPSIS
         Polls raw GetForegroundWindow until it stops moving for
         RequiredStableReads consecutive reads, or BudgetSeconds elapses -
-        the same settle proof crate::system::test_support::
+        the same settle proof crate::system::fixture::test_support::
         wait_for_foreground_to_settle makes, because a newly spawned window
         is not steady: Windows grants it foreground a variable time after
         creation, so a control's "who owns foreground" premise has to be

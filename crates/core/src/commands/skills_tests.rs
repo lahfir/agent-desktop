@@ -10,6 +10,7 @@ fn list_returns_known_skills() {
     assert!(arr.iter().any(|s| s["name"] == "agent-desktop-ffi"));
     assert!(arr.iter().any(|s| s["name"] == "agent-desktop-windows"));
     assert!(arr.iter().any(|s| s["name"] == "agent-desktop-macos"));
+    assert!(arr.iter().any(|s| s["name"] == "agent-desktop-linux"));
 }
 
 #[test]
@@ -24,6 +25,7 @@ fn list_marks_platform_skills_and_the_one_for_this_build() {
     };
     assert_eq!(entry("agent-desktop-macos")["platform"], "macos");
     assert_eq!(entry("agent-desktop-windows")["platform"], "windows");
+    assert_eq!(entry("agent-desktop-linux")["platform"], "linux");
     assert!(entry("agent-desktop").get("platform").is_none());
     assert_eq!(
         entry("agent-desktop-macos")["current"],
@@ -32,6 +34,10 @@ fn list_marks_platform_skills_and_the_one_for_this_build() {
     assert_eq!(
         entry("agent-desktop-windows")["current"],
         cfg!(target_os = "windows")
+    );
+    assert_eq!(
+        entry("agent-desktop-linux")["current"],
+        cfg!(target_os = "linux")
     );
 }
 
@@ -46,6 +52,8 @@ fn the_platform_alias_serves_this_build_s_platform_skill() {
         assert_eq!(result.expect("macos")["skill"], "agent-desktop-macos");
     } else if cfg!(target_os = "windows") {
         assert_eq!(result.expect("windows")["skill"], "agent-desktop-windows");
+    } else if cfg!(target_os = "linux") {
+        assert_eq!(result.expect("linux")["skill"], "agent-desktop-linux");
     } else {
         let err = result.expect_err("no platform skill on this OS yet");
         assert!(format!("{err}").contains("no platform skill"));
@@ -146,6 +154,26 @@ fn get_specific_reference() {
 }
 
 #[test]
+fn linux_dropdown_recovery_uses_window_text_waits_and_root_reads() {
+    let result = get(GetArgs {
+        name: "linux".into(),
+        full: false,
+        reference: Some("shell-tray-and-notifications".into()),
+    })
+    .unwrap();
+    let content = result["content"].as_str().unwrap();
+    let dropdown = content
+        .split("GTK4 list-backed dropdowns")
+        .nth(1)
+        .expect("the shipped guide must distinguish dropdowns from menus")
+        .split("## GNOME Shell")
+        .next()
+        .unwrap();
+    assert!(dropdown.contains("wait --text"));
+    assert!(dropdown.contains("snapshot --root"));
+}
+
+#[test]
 fn unknown_skill_errors() {
     let err = get(GetArgs {
         name: "nope".into(),
@@ -216,7 +244,7 @@ fn walk_markdowns_inner(root: &Path, dir: &Path, found: &mut Vec<String>) {
 }
 
 #[test]
-fn shipped_first_time_setup_names_both_platforms() {
+fn shipped_first_time_setup_names_every_platform() {
     let section = first_time_setup_section(SKILL_DESKTOP_REF_WORKFLOWS);
     assert!(
         section.contains("macOS"),
@@ -226,6 +254,10 @@ fn shipped_first_time_setup_names_both_platforms() {
         section.contains("Windows"),
         "the embedded setup section regressed to macOS-only instructions; \
          a Windows reader is sent to an affordance that does not exist"
+    );
+    assert!(
+        section.contains("Linux"),
+        "setup must keep its Linux branch"
     );
 }
 

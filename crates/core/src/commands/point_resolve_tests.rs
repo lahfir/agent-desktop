@@ -12,12 +12,12 @@ fn resolve_test_point(
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     ErrorCode, Rect,
+    actions::capability,
     adapter::NativeHandle,
-    capability,
-    hit_test::HitTestResult,
+    adapter::hit_test::HitTestResult,
+    refs::refs_store::RefStore,
+    refs::refs_test_support::HomeGuard,
     refs::{RefEntry, RefMap},
-    refs_store::RefStore,
-    refs_test_support::HomeGuard,
 };
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -93,6 +93,7 @@ fn ref_snapshot(pid: u32) -> String {
             native_id: None,
         },
         geometry: crate::RefGeometry {
+            bounds_space: None,
             bounds: None,
             bounds_hash: None,
         },
@@ -254,6 +255,7 @@ fn focus_ref_entry() -> RefEntry {
             native_id: None,
         },
         geometry: crate::RefGeometry {
+            bounds_space: None,
             bounds: None,
             bounds_hash: None,
         },

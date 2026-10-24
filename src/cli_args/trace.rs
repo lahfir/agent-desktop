@@ -33,7 +33,7 @@ pub(crate) struct TraceExportArgs {
     pub out: Option<PathBuf>,
     #[arg(
         long,
-        default_value_t = agent_desktop_core::trace_read::TRACE_EXPORT_DEFAULT_LIMIT,
+        default_value_t = agent_desktop_core::trace::trace_read::TRACE_EXPORT_DEFAULT_LIMIT,
         help = "Embed the last N merged events (0 for all; default 5000)"
     )]
     pub limit: usize,

@@ -1,15 +1,12 @@
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode};
 
 #[test]
-fn transient_element_error_keeps_the_partial_scan() {
-    let mut collected = vec!["first"];
+fn transient_element_error_is_skipped_so_the_scan_continues() {
     let error = AdapterError::new(ErrorCode::AppUnresponsive, "element read failed");
 
-    super::tolerate_element_error(error, Deadline::standard().expect("deadline"))
-        .expect("skip element");
-    collected.push("third");
+    let result = super::tolerate_element_error(error, Deadline::standard().expect("deadline"));
 
-    assert_eq!(collected, ["first", "third"]);
+    assert!(result.is_ok());
 }
 
 #[test]

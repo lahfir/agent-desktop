@@ -1,16 +1,16 @@
 use super::test_support::entry;
 use super::*;
 use crate::AppInfo;
-use crate::action::Action;
+use crate::actions::action::Action;
+use crate::actions::capability;
 use crate::adapter::NativeHandle;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
-use crate::capability;
 use crate::refs::RefMap;
-use crate::refs_test_support::HomeGuard;
+use crate::refs::refs_test_support::HomeGuard;
 use crate::{AdapterError, ErrorCode, WindowInfo, WindowOp};
 use std::sync::{
-    Arc,
-    atomic::{AtomicU32, Ordering},
+    Arc, Mutex,
+    atomic::{AtomicBool, AtomicU32, Ordering},
 };
 
 struct DropProbe(Arc<AtomicU32>);
@@ -80,11 +80,11 @@ impl SystemOps for TargetedWindowAdapter {
         win: &WindowInfo,
         op: WindowOp,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         assert_eq!(win.id, "w-real");
         assert!(matches!(op, WindowOp::Restore));
         self.operated.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -133,11 +133,11 @@ impl SystemOps for RestoreWithoutWindowAdapter {
         win: &WindowInfo,
         op: WindowOp,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         assert_eq!(win.pid, 42);
         assert!(matches!(op, WindowOp::Restore));
         self.op_count.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -224,7 +224,6 @@ fn restore_fails_closed_when_no_window_is_currently_listed() {
         },
         &adapter,
         WindowOp::Restore,
-        "restored",
     )
     .unwrap_err();
 
@@ -249,135 +248,16 @@ fn window_id_targets_one_window_in_an_ambiguous_app_inventory() {
         },
         &adapter,
         WindowOp::Restore,
-        "restored",
     )
     .unwrap();
 
-    assert_eq!(value["restored"], true);
+    assert_eq!(value["action"], "test");
+    assert!(value.get("restored").is_none());
     assert_eq!(adapter.operated.load(Ordering::SeqCst), 1);
 }
 
-struct CountingPipelineAdapter {
-    resolves: AtomicU32,
-    live_reads: AtomicU32,
-    executes: AtomicU32,
-    drops: Arc<AtomicU32>,
-}
-
-impl CountingPipelineAdapter {
-    fn new() -> Self {
-        Self {
-            resolves: AtomicU32::new(0),
-            live_reads: AtomicU32::new(0),
-            executes: AtomicU32::new(0),
-            drops: Arc::new(AtomicU32::new(0)),
-        }
-    }
-}
-
-impl ObservationOps for CountingPipelineAdapter {
-    fn resolve_element_strict(
-        &self,
-        _entry: &RefEntry,
-        _deadline: crate::Deadline,
-    ) -> Result<NativeHandle, AdapterError> {
-        self.resolves.fetch_add(1, Ordering::SeqCst);
-        Ok(NativeHandle::new(DropProbe(Arc::clone(&self.drops))))
-    }
-
-    fn get_live_element(
-        &self,
-        _handle: &NativeHandle,
-        _deadline: crate::Deadline,
-    ) -> Result<crate::adapter::LiveElement, AdapterError> {
-        self.live_reads.fetch_add(1, Ordering::SeqCst);
-        Ok(crate::adapter::LiveElement {
-            identity: crate::adapter::live_identity("OK"),
-            state: crate::element_state::ElementState {
-                role: "button".into(),
-                states: vec![],
-                value: None,
-                enabled: Some(true),
-                hidden: Some(false),
-                offscreen: Some(false),
-            },
-            states_complete: true,
-            bounds: Some(crate::Rect {
-                x: 1.0,
-                y: 1.0,
-                width: 20.0,
-                height: 20.0,
-            }),
-            available_actions: vec![capability::CLICK.into()],
-        })
-    }
-
-    fn get_element_bounds(
-        &self,
-        _handle: &NativeHandle,
-        _deadline: crate::Deadline,
-    ) -> Result<Option<crate::Rect>, AdapterError> {
-        Ok(Some(crate::Rect {
-            x: 1.0,
-            y: 1.0,
-            width: 20.0,
-            height: 20.0,
-        }))
-    }
-
-    fn hit_test(
-        &self,
-        _handle: &NativeHandle,
-        _point: crate::Point,
-        _deadline: crate::Deadline,
-    ) -> Result<crate::hit_test::HitTestResult, AdapterError> {
-        Ok(crate::hit_test::HitTestResult::ReachesTarget)
-    }
-}
-
-impl ActionOps for CountingPipelineAdapter {
-    fn execute_action(
-        &self,
-        _handle: &NativeHandle,
-        _request: ActionRequest,
-        _lease: &crate::InteractionLease,
-    ) -> Result<crate::action_result::ActionResult, AdapterError> {
-        self.executes.fetch_add(1, Ordering::SeqCst);
-        Ok(crate::action_result::ActionResult::delivered_unverified(
-            "click",
-        ))
-    }
-}
-
-impl InputOps for CountingPipelineAdapter {}
-
-impl SystemOps for CountingPipelineAdapter {
-    crate::adapter::guarded_interaction_lease!();
-}
-
-#[test]
-fn ref_action_pipeline_resolves_under_lease_before_dispatch() {
-    let _guard = HomeGuard::new();
-    let store = crate::refs_store::RefStore::new().unwrap();
-    let mut refmap = RefMap::new();
-    refmap.allocate(entry());
-    let snapshot_id = store.save_new_snapshot(&refmap).unwrap();
-    let adapter = CountingPipelineAdapter::new();
-
-    execute_ref_action_result_with_context(
-        "@e1",
-        Some(&snapshot_id),
-        &adapter,
-        ActionRequest::headless(Action::Click),
-        &CommandContext::default(),
-    )
-    .unwrap();
-
-    assert_eq!(adapter.resolves.load(Ordering::SeqCst), 1);
-    assert_eq!(adapter.live_reads.load(Ordering::SeqCst), 1);
-    assert_eq!(adapter.executes.load(Ordering::SeqCst), 1);
-    assert_eq!(adapter.drops.load(Ordering::SeqCst), 1);
-}
+#[path = "helpers_pipeline_lease_tests.rs"]
+mod pipeline_lease_tests;
 
 #[path = "helpers_resolution_budget_tests.rs"]
 mod resolution_budget_tests;

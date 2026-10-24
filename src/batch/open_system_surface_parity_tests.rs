@@ -134,9 +134,9 @@ fn an_adapter_without_any_desktop_capability_answers_identically_in_both_paths()
     assert_eq!(entry["error"]["code"], "PLATFORM_NOT_SUPPORTED");
     assert_eq!(cli_error.code(), ErrorCode::PlatformNotSupported.as_str());
     assert_eq!(
-        serde_json::to_value(agent_desktop_core::output::ErrorPayload::from_app_error(
-            &cli_error
-        ))
+        serde_json::to_value(
+            agent_desktop_core::response::output::ErrorPayload::from_app_error(&cli_error)
+        )
         .unwrap(),
         entry["error"],
         "the batch entry carries the same error payload the CLI envelope emits, \

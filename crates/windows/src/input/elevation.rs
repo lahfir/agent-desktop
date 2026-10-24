@@ -24,7 +24,7 @@
 
 use agent_desktop_core::{AdapterError, ErrorCode, ProcessId};
 
-use crate::system::hresult::{E_ACCESSDENIED, com_hresult_detail};
+use crate::system::runtime::hresult::{E_ACCESSDENIED, com_hresult_detail};
 
 /// The ref-addressed focus-and-integrity gate a physical dispatch leg calls
 /// before injecting into a known target process: `Ok` when the target is

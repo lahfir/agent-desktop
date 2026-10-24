@@ -1,6 +1,6 @@
 use crate::{
     AppError,
-    action::Action,
+    actions::action::Action,
     adapter::PlatformAdapter,
     commands::combo::{ensure_combo_allowed, parse_combo_normalized},
     context::CommandContext,
@@ -34,10 +34,10 @@ pub fn execute(
         let process = crate::commands::helpers::process_identity(&live)?;
         if context.physical_input_policy().is_headed() {
             match &window {
-                Some(window) => {
-                    crate::headed_focus::focus_exact_window(window, adapter, context, &lease)?
-                }
-                None => crate::headed_focus::focus_process_window(
+                Some(window) => crate::actions::headed_focus::focus_exact_window(
+                    window, adapter, context, &lease,
+                )?,
+                None => crate::actions::headed_focus::focus_process_window(
                     process.clone(),
                     adapter,
                     context,
@@ -45,7 +45,13 @@ pub fn execute(
                 )?,
             };
         }
-        adapter.press_key_for_app(process, &combo, context.physical_input_policy(), &lease)?
+        if !context.physical_input_policy().is_headed()
+            && let Some(window) = &window
+        {
+            adapter.press_key_for_window(window, &combo, context.physical_input_policy(), &lease)?
+        } else {
+            adapter.press_key_for_app(process, &combo, context.physical_input_policy(), &lease)?
+        }
     } else {
         let lease = adapter.acquire_interaction_lease(deadline)?;
         let handle = crate::adapter::NativeHandle::null();
@@ -76,7 +82,7 @@ fn target_app(
             Some(window_id),
             deadline,
         )?;
-        let app = crate::app_lookup::resolve_app_owning(&window, adapter, deadline)?;
+        let app = crate::system::app_lookup::resolve_app_owning(&window, adapter, deadline)?;
         return Ok(Some((app, Some(window))));
     }
     args.app

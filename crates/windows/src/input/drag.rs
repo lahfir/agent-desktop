@@ -14,12 +14,11 @@ use std::time::Duration;
 use agent_desktop_core::{AdapterError, Deadline, DeliverySemantics, DragParams, ErrorCode, Point};
 
 use crate::input::drag_state::DragReleaseGuard;
-use crate::input::mouse::sleep_bounded;
-use crate::input::mouse_coord::{self, NormalizedPoint};
-use crate::input::mouse_send::{
+use crate::input::mouse::mouse_coord::{self, NormalizedPoint};
+use crate::input::mouse::mouse_send::{
     MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, button_input, move_input, post_mouse_inputs,
 };
-use crate::system::permissions::ensure_budget;
+use crate::input::mouse::sleep_bounded;
 
 const DEFAULT_DURATION_MS: u64 = 300;
 const PICKUP_DELAY_MS: u64 = 200;
@@ -49,9 +48,9 @@ fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterEr
     let origin = mouse_coord::normalize_point(&params.from);
     let destination = mouse_coord::normalize_point(&params.to);
 
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     post_mouse_inputs(&[move_input(origin)]);
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     sleep_bounded(deadline, Duration::from_millis(PICKUP_DELAY_MS))?;
 
     let mut guard = DragReleaseGuard::new(origin);
@@ -60,13 +59,13 @@ fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterEr
     guard.mark_delivered();
 
     let outcome = (|| -> Result<(), AdapterError> {
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         sleep_bounded(deadline, Duration::from_millis(PICKUP_DELAY_MS))?;
 
         for index in 1..=steps {
             let progress = index as f64 / steps as f64;
             let point = interpolate(&params.from, &params.to, progress);
-            ensure_budget(deadline)?;
+            deadline.ensure_remaining()?;
             post_mouse_inputs(&[move_input(mouse_coord::normalize_point(&point))]);
             guard.mark_delivered();
             sleep_bounded(deadline, step_delay)?;
@@ -74,13 +73,13 @@ fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterEr
 
         dwell_over_destination(destination, drop_delay_ms, deadline, &mut guard)?;
 
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         post_mouse_inputs(&[move_input(destination)]);
         guard.mark_delivered();
         post_mouse_inputs(&[button_input(MOUSEEVENTF_LEFTUP)]);
         guard.mark_delivered();
         guard.disarm();
-        ensure_budget(deadline)
+        deadline.ensure_remaining()
     })();
 
     outcome.map_err(|error| guard.enrich_error(error))
@@ -94,7 +93,7 @@ fn dwell_over_destination(
 ) -> Result<(), AdapterError> {
     let mut remaining_ms = delay_ms;
     while remaining_ms > 0 {
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         post_mouse_inputs(&[move_input(destination)]);
         guard.mark_delivered();
         let tick_ms = remaining_ms.min(DWELL_TICK_MS);

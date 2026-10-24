@@ -17,6 +17,7 @@ fn action_availability_makes_toggle_and_expand_applicable() {
             native_id: None,
         },
         geometry: crate::RefGeometry {
+            bounds_space: None,
             bounds: None,
             bounds_hash: None,
         },

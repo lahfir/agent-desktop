@@ -1,5 +1,5 @@
 use agent_desktop_core::Rect;
-use agent_desktop_core::state;
+use agent_desktop_core::tree::state;
 
 use super::{AXElement, NodeAttrs};
 
@@ -18,7 +18,7 @@ pub(crate) fn states_from_element(
     let mut states = Vec::new();
     if ctx
         .focused
-        .is_some_and(|focused| super::capabilities::same_element(el, focused))
+        .is_some_and(|focused| super::properties::capabilities::same_element(el, focused))
         || attrs.states.control.focused == Some(true)
     {
         states.push(state::FOCUSED.into());

@@ -1,8 +1,8 @@
 use super::{PressArgs, execute};
 use crate::AdapterError;
 use crate::KeyCombo;
-use crate::action_request::ActionRequest;
-use crate::action_result::ActionResult;
+use crate::actions::action_request::ActionRequest;
+use crate::actions::action_result::ActionResult;
 use crate::adapter::{ActionOps, InputOps, NativeHandle, ObservationOps, SystemOps};
 use crate::context::CommandContext;
 use std::sync::Mutex;
@@ -64,9 +64,9 @@ struct CapturingAdapter {
 impl ObservationOps for CapturingAdapter {
     fn observe_tree(
         &self,
-        root: crate::live_locator::ObservationRoot<'_>,
-        _request: &crate::live_locator::ObservationRequest,
-    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+        root: crate::locator::live_locator::ObservationRoot<'_>,
+        _request: &crate::locator::live_locator::ObservationRequest,
+    ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
         assert_eq!(self.dispatches.load(std::sync::atomic::Ordering::SeqCst), 1);
         crate::adapter::observed_tree(&root, saved_tree())
     }
@@ -255,7 +255,7 @@ fn saved_tree() -> crate::AccessibilityNode {
 
 #[test]
 fn press_waits_in_requested_app_without_repeating_delivery() {
-    let _home = crate::refs_test_support::HomeGuard::new();
+    let _home = crate::refs::refs_test_support::HomeGuard::new();
     for (query, gone, expected_error) in [
         (":Saved!", false, None),
         (":Missing", true, None),

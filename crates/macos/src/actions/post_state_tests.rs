@@ -1,5 +1,7 @@
 use super::*;
-use crate::tree::{node_attr_states::NodeAttrStates, node_attrs::NodeAttrs};
+use crate::tree::{
+    properties::node_attr_states::NodeAttrStates, properties::node_attrs::NodeAttrs,
+};
 
 fn transient_observation_error() -> AdapterError {
     incomplete_live_evidence().with_details(serde_json::json!({
@@ -96,7 +98,7 @@ fn element_state_from_attrs_includes_offscreen_when_window_bounds_supplied() {
     assert!(
         state
             .states
-            .contains(&agent_desktop_core::state::OFFSCREEN.to_string())
+            .contains(&agent_desktop_core::tree::state::OFFSCREEN.to_string())
     );
 }
 
@@ -115,7 +117,7 @@ fn element_state_from_attrs_omits_offscreen_without_window_bounds() {
     assert!(
         !state
             .states
-            .contains(&agent_desktop_core::state::OFFSCREEN.to_string())
+            .contains(&agent_desktop_core::tree::state::OFFSCREEN.to_string())
     );
 }
 
@@ -167,7 +169,7 @@ fn complete_visibility_evidence_does_not_require_an_expanded_attribute() {
         let mut attrs = attrs_with_bounds(bounds);
         attrs.role = Some("AXMenuButton".into());
         let canonical = LocatorField::Known(if hidden {
-            vec![agent_desktop_core::state::HIDDEN.into()]
+            vec![agent_desktop_core::tree::state::HIDDEN.into()]
         } else {
             Vec::new()
         });
@@ -190,6 +192,7 @@ fn optional_identity_gaps_do_not_poison_complete_actionability_evidence() {
         identifiers: agent_desktop_core::IdentifierEvidence::unknown(),
         states: LocatorField::Known(Vec::new()),
         ref_evidence: agent_desktop_core::LocatorRefEvidence {
+            window_bounds: LocatorField::Absent,
             bounds: LocatorField::Known(Rect {
                 x: 0.0,
                 y: 0.0,

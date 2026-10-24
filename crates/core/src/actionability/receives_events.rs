@@ -7,9 +7,9 @@ use super::{
 };
 use crate::{
     AdapterError, ErrorCode, Point,
-    action_request::ActionRequest,
+    actions::action_request::ActionRequest,
+    adapter::hit_test::HitTestResult,
     adapter::{NativeHandle, PlatformAdapter},
-    hit_test::HitTestResult,
 };
 use serde_json::json;
 

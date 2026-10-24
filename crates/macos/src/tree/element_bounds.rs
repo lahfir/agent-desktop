@@ -27,8 +27,8 @@ pub(crate) fn read_bounds_with_deadline(
     element: &AXElement,
     deadline: std::time::Instant,
 ) -> Result<Option<Rect>, agent_desktop_core::AdapterError> {
-    let point = super::resolve_ax_read::read_point(element, "AXPosition", deadline)?;
-    let size = super::resolve_ax_read::read_size(element, "AXSize", deadline)?;
+    let point = super::resolve::resolve_ax_read::read_point(element, "AXPosition", deadline)?;
+    let size = super::resolve::resolve_ax_read::read_size(element, "AXSize", deadline)?;
     Ok(point
         .zip(size)
         .and_then(|(point, size)| rect_from_parts(point, size)))
@@ -46,9 +46,9 @@ pub(crate) fn owning_window_bounds(
     element: &AXElement,
     deadline: Deadline,
 ) -> Result<Option<Rect>, AdapterError> {
-    crate::tree::attributes::set_messaging_timeout(element, deadline)?;
+    crate::tree::properties::attributes::set_messaging_timeout(element, deadline)?;
     let window = first_owning_container(|attribute| {
-        crate::tree::attributes::copy_element_attr_result(element, attribute, deadline)
+        crate::tree::properties::attributes::copy_element_attr_result(element, attribute, deadline)
     })
     .map_err(|(attribute, error)| read_error(attribute, error))?;
     if deadline.is_expired() {
@@ -111,7 +111,7 @@ pub(crate) fn ancestor_viewport(
     }
     let instant = super::locator_deadline::from_operation(deadline)?;
     let mut current = super::surface_read::element(element, "AXParent", instant)?;
-    for _ in 0..super::element::ABSOLUTE_MAX_DEPTH {
+    for _ in 0..super::properties::element::ABSOLUTE_MAX_DEPTH {
         let Some(parent) = current else {
             return Ok(viewport);
         };

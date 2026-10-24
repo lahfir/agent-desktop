@@ -1,6 +1,7 @@
 use agent_desktop_core::{AdapterError, DeliverySemantics, ErrorCode};
 
 const MAX_BRIDGE_BYTES: usize = 1024 * 1024;
+const MAX_LAUNCH_TIME_DELTA_SECONDS: f64 = 5.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TerminationOutcome {
@@ -28,14 +29,44 @@ struct BytesResult {
     length: usize,
 }
 
+/// Only a launch date that is present and disagrees with the expected
+/// identity is conflicting evidence. NSWorkspace reports no launch date for
+/// a process it did not start, and the bridge passes that absence
+/// separately, so any present value — epoch, negative, or infinite — keeps
+/// the same refusal rule the direct comparison applied.
+#[cfg(target_os = "macos")]
+pub(crate) fn termination_launch_time_conflict(
+    expected: f64,
+    observed: f64,
+    present: bool,
+) -> bool {
+    present && (observed - expected).abs() > MAX_LAUNCH_TIME_DELTA_SECONDS
+}
+
+#[cfg(target_os = "macos")]
+extern "C" fn termination_launch_time_conflict_ffi(
+    expected: f64,
+    observed: f64,
+    present: bool,
+) -> bool {
+    std::panic::catch_unwind(|| termination_launch_time_conflict(expected, observed, present))
+        .unwrap_or(true)
+}
+
 #[cfg(target_os = "macos")]
 pub(crate) fn terminate(
     pid: i32,
     expected_launch_time: f64,
     force: bool,
 ) -> Result<TerminationOutcome, AdapterError> {
-    let result =
-        unsafe { agent_desktop_terminate_application(pid, expected_launch_time, u8::from(force)) };
+    let result = unsafe {
+        agent_desktop_terminate_application(
+            pid,
+            expected_launch_time,
+            u8::from(force),
+            termination_launch_time_conflict_ffi,
+        )
+    };
     match result.status {
         0 => Ok(TerminationOutcome::Accepted),
         1 => Ok(TerminationOutcome::Missing),
@@ -169,6 +200,7 @@ unsafe extern "C" {
         pid: i32,
         expected_launch_time: f64,
         force: u8,
+        launch_time_conflict: extern "C" fn(f64, f64, bool) -> bool,
     ) -> TerminateResult;
     fn agent_desktop_app_finished_launching(pid: i32) -> i32;
     fn agent_desktop_ensure_cocoa_multithreaded() -> u8;
@@ -200,16 +232,6 @@ pub(crate) fn workspace_snapshot_json() -> Result<Vec<u8>, AdapterError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn termination_outcomes_are_closed_and_distinct() {
-        assert_ne!(TerminationOutcome::Accepted, TerminationOutcome::Rejected);
-        assert_ne!(TerminationOutcome::Missing, TerminationOutcome::Rejected);
-        assert_ne!(
-            TerminationOutcome::IdentityMismatch,
-            TerminationOutcome::Rejected
-        );
-    }
 
     #[cfg(target_os = "macos")]
     #[test]
@@ -265,6 +287,47 @@ mod tests {
             assert!(details.get(key).is_none(), "{key} is omitted, not null");
         }
         assert_eq!(details["status"], 1);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn absent_launch_date_never_conflicts_with_termination() {
+        assert!(!termination_launch_time_conflict(
+            1_700_000_000.25,
+            0.0,
+            false
+        ));
+        assert!(!termination_launch_time_conflict(
+            1_700_000_000.25,
+            1_700_000_006.0,
+            false
+        ));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn present_launch_date_keeps_the_five_second_refusal() {
+        let expected = 1_700_000_000.25;
+
+        assert!(termination_launch_time_conflict(expected, 0.0, true));
+        assert!(termination_launch_time_conflict(expected, -4.0, true));
+        assert!(termination_launch_time_conflict(
+            expected,
+            f64::INFINITY,
+            true
+        ));
+        assert!(termination_launch_time_conflict(
+            expected,
+            1_700_000_006.0,
+            true
+        ));
+        assert!(!termination_launch_time_conflict(expected, expected, true));
+        assert!(!termination_launch_time_conflict(
+            expected,
+            1_700_000_005.25,
+            true
+        ));
+        assert!(!termination_launch_time_conflict(expected, f64::NAN, true));
     }
 
     #[cfg(target_os = "macos")]

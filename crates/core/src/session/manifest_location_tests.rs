@@ -1,5 +1,5 @@
 use super::*;
-use crate::refs_test_support::HomeGuard;
+use crate::refs::refs_test_support::HomeGuard;
 
 /// `SESSION_MANIFEST_FILE` is public so a platform crate can read the
 /// manifest as bytes without restating its name, which pins the constant to

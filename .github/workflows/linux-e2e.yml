@@ -1,0 +1,24 @@
+name: linux-e2e
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  linux-e2e:
+    name: Linux live e2e
+    runs-on: ${{ vars.LINUX_E2E_RUNNER }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Live harness (the gate exits 2 without a session)
+        run: bash tests/e2e-linux/run.sh
+      - name: Private session checks
+        run: bash scripts/test-private-session.sh

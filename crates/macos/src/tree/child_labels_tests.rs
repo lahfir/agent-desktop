@@ -134,7 +134,12 @@ fn direct_names_skip_child_label_reads_for_every_role() {
         ..Default::default()
     };
 
-    assert!(!should_read_child_label("button", &evidence));
+    for role in ["button", "row", "cell", "link", "textfield"] {
+        assert!(
+            !should_read_child_label(role, &evidence),
+            "{role} with an explicit label must not read child content"
+        );
+    }
 }
 
 #[cfg(target_os = "macos")]

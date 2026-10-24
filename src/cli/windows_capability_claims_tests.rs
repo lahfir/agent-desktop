@@ -12,17 +12,6 @@ const WINDOWS_SKILL_PACKAGE: &str = concat!(
     include_str!("../../skills/agent-desktop-windows/references/troubleshooting.md"),
 );
 
-/// Commands the Windows table documents as unavailable that a Windows
-/// adapter behaviour backs with a refusal, pinned so the row and the
-/// behaviour cannot drift apart.
-///
-/// `cursor-overlay` was listed here while nothing rendered on Windows. It
-/// renders now, so the entry is gone - and its removal is the point: the
-/// row buckets on the status cell reading "Works", and the prose that
-/// briefly replaced that word made this list certify the opposite of what
-/// the skill documented, silently.
-const MUST_STAY_UNAVAILABLE_ON_WINDOWS: &[&str] = &[];
-
 /// Commands the Windows table documents as unavailable that no adapter method
 /// backs: core refuses them on every platform before dispatch reaches an
 /// adapter, so the behavioural pin cannot cover them and must not pretend to.
@@ -49,27 +38,12 @@ fn windows_skill_capability_claims_resolve_against_dispatch() {
             "the Windows skill claims '{name}' but dispatch has no such command"
         );
     }
-    for name in MUST_STAY_UNAVAILABLE_ON_WINDOWS {
-        assert!(
-            !working.contains(&(*name).to_owned()),
-            "the Windows skill claims '{name}' works; the adapter does not implement it"
-        );
-        assert!(
-            unavailable.contains(&(*name).to_owned()),
-            "the Windows skill stopped documenting '{name}' as unavailable on Windows"
-        );
-    }
 
     let documented: BTreeSet<&str> = unavailable.iter().map(String::as_str).collect();
-    let accounted: BTreeSet<&str> = MUST_STAY_UNAVAILABLE_ON_WINDOWS
-        .iter()
-        .copied()
-        .chain(REFUSED_BY_CORE_ON_EVERY_PLATFORM.iter().copied())
-        .collect();
+    let accounted: BTreeSet<&str> = REFUSED_BY_CORE_ON_EVERY_PLATFORM.iter().copied().collect();
     assert_eq!(
         documented, accounted,
-        "every command the Windows table documents as unavailable must be either \
-         behaviourally pinned in MUST_STAY_UNAVAILABLE_ON_WINDOWS or declared in \
+        "every command the Windows table documents as unavailable must be declared in \
          REFUSED_BY_CORE_ON_EVERY_PLATFORM; an unaccounted row is never verified"
     );
 }

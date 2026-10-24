@@ -14,10 +14,10 @@ use crate::notifications::session::ActionCenterSession;
 use crate::notifications::toast_support::{
     self, StagedToast, TOAST_BODY_SECOND, TOAST_TITLE_SECOND,
 };
-use crate::system::raise_oracle::{responded_since, witness_desktop};
-use crate::system::test_support::{SHELL_SURFACE_LOCK, or_skip_shell};
+use crate::system::fixture::test_support::{SHELL_SURFACE_LOCK, or_skip_shell};
+use crate::system::shell::raise_oracle::{responded_since, witness_desktop};
 
-use crate::system::test_time::{deadline, headed};
+use crate::system::fixture::test_time::{deadline, headed};
 
 /// With exactly one staged entry and its own identity the substitute is
 /// faithful and the gate answers true; a fabricated identity the sole entry

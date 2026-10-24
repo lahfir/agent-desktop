@@ -308,7 +308,7 @@ fn parse_trace(args: Value) -> Result<TraceArgs, AppError> {
             TraceAction::Export(TraceExportArgs {
                 limit: args
                     .limit
-                    .unwrap_or(agent_desktop_core::trace_read::TRACE_EXPORT_DEFAULT_LIMIT),
+                    .unwrap_or(agent_desktop_core::trace::trace_read::TRACE_EXPORT_DEFAULT_LIMIT),
                 out: args.out,
             })
         }

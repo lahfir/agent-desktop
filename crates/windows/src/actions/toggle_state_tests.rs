@@ -2,12 +2,13 @@ use super::{
     CheckUncheckPlan, ToggleAvailability, ToggleKind, check_uncheck_judged_for, toggle_judged_for,
 };
 use crate::actions::chain::DeliveryOutcome;
-use crate::system::test_time::deadline;
+use crate::system::fixture::test_time::deadline;
 use agent_desktop_core::{ActionStepOutcome, ErrorCode, InteractionPolicy};
 use std::cell::Cell;
 
 #[test]
 fn toggle_change_observed_is_verified() {
+    let toggle = Cell::new(0u8);
     let steps = toggle_judged_for(
         deadline(5_000),
         InteractionPolicy::headless(),
@@ -15,10 +16,14 @@ fn toggle_change_observed_is_verified() {
             toggle_ok: true,
             invoke_ok: false,
         },
-        || Ok(DeliveryOutcome::DeliveredVerified),
+        || {
+            toggle.set(toggle.get() + 1);
+            Ok(DeliveryOutcome::DeliveredVerified)
+        },
         || Ok(DeliveryOutcome::NotDelivered),
     )
     .expect("toggle");
+    assert_eq!(toggle.get(), 1);
     assert_eq!(steps[0].label(), "TogglePattern.Toggle");
     assert!(matches!(steps[0].outcome, ActionStepOutcome::Succeeded));
     assert_eq!(steps[0].verified(), Some(true));
@@ -34,22 +39,6 @@ fn toggle_no_change_is_unverified() {
             invoke_ok: false,
         },
         || Ok(DeliveryOutcome::DeliveredUnverified),
-        || Ok(DeliveryOutcome::NotDelivered),
-    )
-    .expect("toggle");
-    assert_eq!(steps[0].verified(), Some(false));
-}
-
-#[test]
-fn toggle_before_unreadable_is_unverified() {
-    let steps = toggle_judged_for(
-        deadline(5_000),
-        InteractionPolicy::headless(),
-        ToggleAvailability {
-            toggle_ok: true,
-            invoke_ok: false,
-        },
-        || Ok(DeliveryOutcome::from_delivery(true, false)),
         || Ok(DeliveryOutcome::NotDelivered),
     )
     .expect("toggle");

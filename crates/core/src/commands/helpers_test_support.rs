@@ -9,6 +9,7 @@ pub(super) fn entry() -> RefEntry {
     };
     let mut entry = crate::adapter::minimal_ref_entry("button", Some("OK"));
     entry.geometry = crate::RefGeometry {
+        bounds_space: None,
         bounds: Some(bounds),
         bounds_hash: bounds.bounds_hash(),
     };
@@ -30,7 +31,7 @@ pub(in crate::commands) fn save_one_ref_snapshot(role: &str, available_action: &
     entry.capabilities.available_actions = vec![available_action.into()];
     let mut refmap = crate::refs::RefMap::new();
     refmap.allocate(entry);
-    crate::refs_store::RefStore::new()
+    crate::refs::refs_store::RefStore::new()
         .unwrap()
         .save_new_snapshot(&refmap)
         .unwrap()

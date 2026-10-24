@@ -1,10 +1,6 @@
 //! Display enumeration and selection helpers for screenshot targeting.
 
-#![allow(dead_code)]
-
 use agent_desktop_core::{AdapterError, Deadline, DisplayInfo, ErrorCode, Rect};
-
-use super::permissions::ensure_budget;
 
 /// Enumerates the active monitors and reports each with bounds, the primary
 /// flag, and `scale` derived from **effective** DPI - the applied value, not
@@ -16,7 +12,7 @@ use super::permissions::ensure_budget;
 /// multi-monitor path is unverified until it runs on a rig with more than one
 /// monitor.
 pub(crate) fn list_displays_live(deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::Foundation::{LPARAM, RECT};
@@ -62,7 +58,7 @@ pub(crate) fn list_displays_live(deadline: Deadline) -> Result<Vec<DisplayInfo>,
             };
             state.displays.push(DisplayInfo {
                 id: format!("monitor-{}", monitor as usize),
-                bounds: crate::system::win_rect::rect_of(&info.rcMonitor),
+                bounds: crate::system::runtime::win_rect::rect_of(&info.rcMonitor),
                 is_primary: primary,
                 scale,
             });
@@ -157,7 +153,7 @@ fn enumeration_failed() -> AdapterError {
 }
 
 pub(crate) fn display_at(index: usize, deadline: Deadline) -> Result<DisplayInfo, AdapterError> {
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     let displays = list_displays_live(deadline)?;
     displays.into_iter().nth(index).ok_or_else(|| {
         AdapterError::new(ErrorCode::InvalidArgs, "display index out of range")
@@ -169,7 +165,7 @@ pub(crate) fn capture_selection(
     expected: &DisplayInfo,
     deadline: Deadline,
 ) -> Result<(usize, DisplayInfo), AdapterError> {
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     let displays = list_displays_live(deadline)?;
     let (index, live) = displays
         .into_iter()
@@ -191,7 +187,7 @@ pub(crate) fn display_for_bounds(
     bounds: Option<Rect>,
     deadline: Deadline,
 ) -> Result<DisplayInfo, AdapterError> {
-    ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     let displays = list_displays_live(deadline)?;
     select_display(&displays, bounds).cloned()
 }

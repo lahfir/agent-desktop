@@ -19,47 +19,9 @@
 ///   AX accessibility permission must be granted and a target app must be open.
 mod common;
 
-use common::{AdResult, CStr, ad_execute_by_ref, ad_free_string, ad_snapshot, default_action};
-use std::sync::Mutex;
-
-static HOME_LOCK: Mutex<()> = Mutex::new(());
-
-struct TestHome {
-    _lock: std::sync::MutexGuard<'static, ()>,
-    dir: std::path::PathBuf,
-    prev: Option<std::ffi::OsString>,
-}
-
-impl TestHome {
-    fn new() -> Self {
-        let lock = HOME_LOCK.lock().unwrap();
-        let dir = std::env::temp_dir().join(format!(
-            "agent-desktop-ffi-roundtrip-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let prev = std::env::var_os("HOME");
-        unsafe { std::env::set_var("HOME", &dir) };
-        Self {
-            _lock: lock,
-            dir,
-            prev,
-        }
-    }
-}
-
-impl Drop for TestHome {
-    fn drop(&mut self) {
-        match self.prev.as_ref() {
-            Some(prev) => unsafe { std::env::set_var("HOME", prev) },
-            None => unsafe { std::env::remove_var("HOME") },
-        }
-        let _ = std::fs::remove_dir_all(&self.dir);
-    }
-}
+use common::{
+    AdResult, CStr, ad_execute_by_ref, ad_free_string, ad_snapshot, default_action, with_adapter,
+};
 
 /// Verifies the error-envelope contract at the C boundary when no refmap exists.
 ///
@@ -73,9 +35,7 @@ impl Drop for TestHome {
 /// path; pinning either would make this test flaky.
 #[test]
 fn stale_ref_returns_ok_false_error_envelope() {
-    let _home = TestHome::new();
-
-    with_adapter_raw(|adapter| unsafe {
+    with_adapter(|adapter| unsafe {
         let ref_id = std::ffi::CString::new("@smissing:e1").unwrap();
         let action = default_action();
         let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
@@ -146,9 +106,7 @@ fn stale_ref_returns_ok_false_error_envelope() {
 #[test]
 #[ignore = "requires AX permission, a live app, and exclusive interactive UI control"]
 fn snapshot_execute_by_ref_live_roundtrip() {
-    let _home = TestHome::new();
-
-    with_adapter_raw(|adapter| unsafe {
+    with_adapter(|adapter| unsafe {
         let mut snap_out: *mut std::os::raw::c_char = std::ptr::null_mut();
         let rc = ad_snapshot(adapter, std::ptr::null(), 0, 6, true, false, &mut snap_out);
 
@@ -212,13 +170,4 @@ fn find_first_ref_in_tree(snap: &serde_json::Value) -> Option<String> {
         let s = value.get("ref")?.as_str()?;
         (s.starts_with("@s") && s.contains(":e")).then(|| s.to_owned())
     })
-}
-
-fn with_adapter_raw<F: FnOnce(*mut common::AdAdapter)>(body: F) {
-    unsafe {
-        let adapter = common::ad_adapter_create();
-        assert!(!adapter.is_null(), "ad_adapter_create must not return null");
-        body(adapter);
-        common::ad_adapter_destroy(adapter);
-    }
 }

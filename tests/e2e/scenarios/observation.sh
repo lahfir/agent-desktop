@@ -30,7 +30,7 @@ namespace_ref="$(target_ref "$namespaced_target")"
 namespace_snapshot="$(target_snapshot "$namespaced_target")"
 require_value namespace_noise toggle-status
 "$bin" find --app "$app" --role button --name reset-delayed-button --first >/dev/null 2>&1
-namespace_get="$(get_target "$namespaced_target" --property role 2>&1)"
+namespace_get="$(get_target "$namespaced_target" --property role 2>/dev/null)"
 namespace_ok="$(json_field "$namespace_get" ok)"
 namespace_role="$(json_field "$namespace_get" data.value)"
 assert "find ref re-resolves only through its returned snapshot_id" \
@@ -40,7 +40,7 @@ assert "find ref re-resolves only through its returned snapshot_id" \
 note "Strict resolution never silently chooses the wrong twin"
 require_target twin_target button twin-control
 require_value twin_before twin-status
-twin_output="$(act_target "$twin_target" click 2>&1)"
+twin_output="$(act_target "$twin_target" click 2>/dev/null)"
 sleep 0.35
 require_value twin_after twin-status
 twin_ok="$(json_field "$twin_output" ok)"

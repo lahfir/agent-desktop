@@ -9,7 +9,7 @@ pub(crate) struct DragTargetArgs {
     #[arg(
         long,
         name = "from-xy",
-        help = "Source coordinates as x,y; requires --headed"
+        help = "Source coordinates as x,y; requires --headed; write a negative value with = (--from-xy=-100,50)"
     )]
     pub from_xy: Option<String>,
     #[arg(long, help = "Destination element ref; requires --headed")]
@@ -17,7 +17,7 @@ pub(crate) struct DragTargetArgs {
     #[arg(
         long,
         name = "to-xy",
-        help = "Destination coordinates as x,y; requires --headed"
+        help = "Destination coordinates as x,y; requires --headed; write a negative value with = (--to-xy=-100,50)"
     )]
     pub to_xy: Option<String>,
 }

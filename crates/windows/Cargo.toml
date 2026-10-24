@@ -51,6 +51,8 @@ windows-sys = { version = "0.61", features = [
   "Win32_System_IO",
   "Win32_System_Memory",
   "Win32_System_Pipes",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_Networking_WinSock",
   "Win32_Graphics_Gdi",
   "Win32_Graphics_Dwm",
   "Win32_UI_Input_KeyboardAndMouse",

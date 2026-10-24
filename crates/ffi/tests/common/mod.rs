@@ -5,10 +5,10 @@ pub use agent_desktop_ffi::error::AdResult;
 pub use agent_desktop_ffi::{
     AdAction, AdActionResult, AdActionStep, AdAdapter, AdAppList, AdDirection, AdDragParams,
     AdElementState, AdExactRefEntry, AdExactSurfaceInfo, AdExactSurfaceList, AdExactWindowInfo,
-    AdExactWindowList, AdFindQuery, AdIdentifierKind, AdKeyCombo, AdNativeHandle,
-    AdNotificationActionRequest, AdNotificationIdentity, AdOptionalU64, AdOptionalUsize, AdPoint,
-    AdPolicyKind, AdRect, AdRefEntry, AdScrollParams, AdWaitArgs, AdWaitMode, AdWaitPredicate,
-    AdWaitScope, AdWaitSurfaceModes,
+    AdExactWindowList, AdFindQuery, AdKeyCombo, AdNativeHandle, AdNotificationActionRequest,
+    AdNotificationIdentity, AdOptionalU64, AdOptionalUsize, AdPoint, AdPolicyKind, AdRect,
+    AdRefEntry, AdScrollParams, AdWaitArgs, AdWaitMode, AdWaitPredicate, AdWaitScope,
+    AdWaitSurfaceModes,
 };
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
@@ -232,7 +232,7 @@ pub fn with_isolated_home<F: FnOnce()>(body: F) {
 
 pub fn default_exact_ref_entry() -> AdExactRefEntry {
     let mut entry: AdExactRefEntry = unsafe { std::mem::zeroed() };
-    entry.version = 1;
+    entry.version = agent_desktop_ffi::AD_EXACT_REF_ENTRY_VERSION;
     entry.size = std::mem::size_of::<AdExactRefEntry>() as u32;
     entry
 }

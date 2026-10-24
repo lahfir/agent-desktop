@@ -170,7 +170,9 @@ namespace AgentDeskFixtureApp
         /// rather than disposing keeps <c>reset-removable</c> able to bring
         /// the exact same control (and therefore the exact same
         /// <c>AutomationId</c>) back for the next leg without re-registering
-        /// it.
+        /// it. Clicking <c>removable-row</c> writes <c>removable-status</c>,
+        /// the independent readout a leg reads to prove a click on a removed
+        /// ref delivered nothing and a click on a fresh ref delivered.
         /// </summary>
         private static void BuildRemovableRow(GroupBox card, int y)
         {
@@ -179,7 +181,13 @@ namespace AgentDeskFixtureApp
             removableRow.Text = "Removable row";
             removableRow.Location = new Point(226, y);
             removableRow.Size = new Size(150, 26);
+            removableRow.Click += delegate { FixtureStatus.SetValue("removable-status", "row-clicked"); };
             card.Controls.Add(removableRow);
+
+            TextBox removableStatus = FixtureStatus.Create("removable-status");
+            removableStatus.Location = new Point(386, y);
+            removableStatus.Width = 180;
+            card.Controls.Add(removableStatus);
 
             Button removeRow = new Button();
             FixtureIdentity.Assign(removeRow, "remove-row");

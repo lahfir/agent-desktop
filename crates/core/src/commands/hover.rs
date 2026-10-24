@@ -3,10 +3,14 @@ use crate::{
     adapter::PlatformAdapter,
     commands::{
         helpers::{apply_post_action_wait, validate_post_action_wait},
-        point_resolve::{PointResolveArgs, require_cursor_policy},
+        operation_response::operation_response,
+        point_resolve::{
+            PointResolveArgs, ResolvedPoint, require_cursor_policy, require_pointer_capability,
+        },
         pointer_action::{
-            PointResolveAttempt, ensure_point_deadline, focus_point_under_lease, point_deadline,
-            resolve_point_under_lease, retry_leased_point_phase, wait_for_point_with_deadline,
+            PointResolveAttempt, before_first_event, ensure_point_deadline,
+            focus_point_under_lease, point_deadline, resolve_point_under_lease,
+            retry_leased_point_phase, wait_for_point_with_deadline,
         },
     },
     context::CommandContext,
@@ -32,6 +36,7 @@ pub fn execute(
         ));
     }
     require_cursor_policy(context, "hover")?;
+    require_pointer_capability(adapter)?;
     validate_post_action_wait(context)?;
     let deadline = point_deadline(args.timeout_ms)?;
     let point_args = PointResolveArgs {
@@ -41,44 +46,48 @@ pub fn execute(
         headed_requirement: crate::HeadedRequirement::FocusedWindowAndCursor,
     };
     let auto_wait = args.timeout_ms.is_some_and(|timeout_ms| timeout_ms > 0);
-    if auto_wait {
-        wait_for_point_with_deadline(point_args, deadline, adapter, context)?;
-    }
-    let (resolved, lease) = retry_leased_point_phase(args.timeout_ms, deadline, || {
-        let lease = adapter.acquire_interaction_lease(deadline)?;
-        let focused = focus_point_under_lease(point_args, &lease, adapter, context)?;
-        let first = resolve_point_under_lease(
-            PointResolveAttempt {
-                args: point_args,
-                stability: None,
-                allow_scroll: !auto_wait,
-            },
+    let (resolved, lease) = before_first_event(|| {
+        if auto_wait {
+            wait_for_point_with_deadline(point_args, deadline, adapter, context)?;
+        }
+        let (resolved, lease) = retry_leased_point_phase(args.timeout_ms, deadline, || {
+            let lease = adapter.acquire_interaction_lease(deadline)?;
+            let focused = focus_point_under_lease(point_args, &lease, adapter, context)?;
+            let first = resolve_point_under_lease(
+                PointResolveAttempt {
+                    args: point_args,
+                    stability: None,
+                    allow_scroll: !auto_wait,
+                },
+                deadline,
+                &lease,
+                adapter,
+                context,
+            )?;
+            let mut resolved = resolve_point_under_lease(
+                PointResolveAttempt {
+                    args: point_args,
+                    stability: Some(first.bounds_hash),
+                    allow_scroll: false,
+                },
+                deadline,
+                &lease,
+                adapter,
+                context,
+            )?;
+            resolved.focused = focused;
+            Ok((resolved, lease))
+        })?;
+        confirm_receiver(&resolved, deadline, adapter)?;
+        ensure_point_deadline(
             deadline,
-            &lease,
-            adapter,
-            context,
+            Some(json!({
+                "status": "actionable",
+                "point": { "x": resolved.point.x, "y": resolved.point.y }
+            })),
         )?;
-        let mut resolved = resolve_point_under_lease(
-            PointResolveAttempt {
-                args: point_args,
-                stability: Some(first.bounds_hash),
-                allow_scroll: false,
-            },
-            deadline,
-            &lease,
-            adapter,
-            context,
-        )?;
-        resolved.focused = focused;
         Ok((resolved, lease))
     })?;
-    ensure_point_deadline(
-        deadline,
-        Some(json!({
-            "status": "actionable",
-            "point": { "x": resolved.point.x, "y": resolved.point.y }
-        })),
-    )?;
     let result = crate::cursor_overlay::dispatch_mouse_event_with_cursor(
         adapter,
         context,
@@ -91,13 +100,27 @@ pub fn execute(
         false,
         &lease,
     );
-    result?;
-    let mut response = json!({ "hovered": true, "x": resolved.point.x, "y": resolved.point.y });
+    let mut response = operation_response(
+        &result?,
+        json!({ "x": resolved.point.x, "y": resolved.point.y }),
+    )?;
     if resolved.focused {
         response["focused"] = json!(true);
     }
     drop(lease);
     apply_post_action_wait(response, resolved.source_entry.as_ref(), adapter, context)
+}
+
+fn confirm_receiver(
+    resolved: &ResolvedPoint,
+    deadline: crate::Deadline,
+    adapter: &dyn PlatformAdapter,
+) -> Result<(), AppError> {
+    let Some(entry) = resolved.source_entry.as_ref() else {
+        return Ok(());
+    };
+    adapter.confirm_pointer_receiver(entry, resolved.point.clone(), deadline)?;
+    Ok(())
 }
 
 #[cfg(test)]

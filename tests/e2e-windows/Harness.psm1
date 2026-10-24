@@ -25,7 +25,7 @@ function Enter-IsolatedEnvironment {
     .SYNOPSIS
         Stands up a private suite root under the host temp directory,
         stamped with the creating pid, and points HOME at that root - the
-        one variable crates/core/src/refs.rs's home_dir() prefers over
+        one variable crates/core/src/refs/mod.rs's home_dir() prefers over
         USERPROFILE on every platform, so isolation needs no other identity
         variable touched. USERNAME, COMPUTERNAME, USERPROFILE, LOCALAPPDATA
         and APPDATA are deliberately left at their real values: the capture-

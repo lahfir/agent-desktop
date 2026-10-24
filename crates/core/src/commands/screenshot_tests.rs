@@ -2,7 +2,7 @@ use crate::{
     AdapterError, ImageBuffer, ImageFormat, Rect, WindowInfo,
     adapter::{ActionOps, InputOps, ObservationOps, ScreenshotTarget, SystemOps, WindowFilter},
     commands::screenshot::{self, ScreenshotArgs},
-    display_info::DisplayInfo,
+    system::display_info::DisplayInfo,
 };
 use std::{path::PathBuf, sync::Mutex};
 
@@ -10,6 +10,7 @@ struct ScreenshotAdapter {
     displays: Vec<DisplayInfo>,
     windows: Vec<WindowInfo>,
     target: Mutex<Option<ScreenshotTarget>>,
+    stopped: bool,
 }
 
 impl ScreenshotAdapter {
@@ -20,6 +21,7 @@ impl ScreenshotAdapter {
             displays: vec![display("main", true, 2.0), display("secondary", false, 1.0)],
             windows: vec![window("w-41", 700), focused],
             target: Mutex::new(None),
+            stopped: false,
         }
     }
 
@@ -69,6 +71,18 @@ impl SystemOps for ScreenshotAdapter {
 
     fn list_displays(&self, _deadline: crate::Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
         Ok(self.displays.clone())
+    }
+
+    fn process_state(
+        &self,
+        _process: crate::ProcessIdentity,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::system::process_state::ProcessState, AdapterError> {
+        Ok(if self.stopped {
+            crate::system::process_state::ProcessState::Unresponsive
+        } else {
+            crate::system::process_state::ProcessState::Running
+        })
     }
 }
 
@@ -189,7 +203,78 @@ fn missing_window_returns_an_error_without_capturing() {
 
     let error = screenshot::execute(request, &adapter).expect_err("missing window");
 
-    assert_eq!(error.code(), "INVALID_ARGS");
+    assert_eq!(error.code(), "WINDOW_NOT_FOUND");
+    assert!(adapter.take_target().is_none());
+}
+
+#[test]
+fn missing_window_of_a_stopped_app_is_unresponsive_not_missing() {
+    let mut adapter = ScreenshotAdapter::new();
+    adapter.stopped = true;
+    adapter.windows.clear();
+    let mut request = args();
+    request.app = Some("Example".into());
+    request.window_id = Some("w-42".into());
+
+    let error = screenshot::execute(request, &adapter).expect_err("stopped app");
+
+    assert_eq!(error.code(), "APP_UNRESPONSIVE");
+    assert!(adapter.take_target().is_none());
+}
+
+#[test]
+fn argument_and_target_errors_carry_a_suggestion_and_a_safe_disposition() {
+    let mut out_of_range = args();
+    out_of_range.screen = Some(9);
+    let mut missing_window = args();
+    missing_window.window_id = Some("w-404".into());
+
+    for request in [out_of_range, missing_window] {
+        let error = screenshot::execute(request, &ScreenshotAdapter::new())
+            .expect_err("the target does not exist");
+        let crate::AppError::Adapter(adapter) = error else {
+            panic!("an adapter error");
+        };
+        assert!(
+            adapter.suggestion.is_some(),
+            "{} carries no suggestion",
+            adapter.message
+        );
+        assert_eq!(
+            adapter.disposition,
+            crate::DeliverySemantics::not_delivered()
+        );
+    }
+}
+
+#[test]
+fn incomplete_process_identity_carries_a_suggestion_and_a_safe_disposition() {
+    let mut incomplete = window("w-42", 700);
+    incomplete.process_instance = None;
+    let adapter = ScreenshotAdapter {
+        displays: vec![display("main", true, 2.0)],
+        windows: vec![incomplete],
+        target: Mutex::new(None),
+        stopped: false,
+    };
+    let mut request = args();
+    request.window_id = Some("w-42".into());
+
+    let error =
+        screenshot::execute(request, &adapter).expect_err("the process identity is incomplete");
+
+    assert_eq!(error.code(), "ACTION_NOT_SUPPORTED");
+    let crate::AppError::Adapter(adapter_error) = error else {
+        panic!("an adapter error");
+    };
+    assert_eq!(
+        adapter_error.suggestion.as_deref(),
+        Some("Refresh the target with 'list-windows', then retry")
+    );
+    assert_eq!(
+        adapter_error.disposition,
+        crate::DeliverySemantics::not_delivered()
+    );
     assert!(adapter.take_target().is_none());
 }
 
@@ -255,3 +340,6 @@ fn output_path() -> PathBuf {
         std::thread::current().id()
     ))
 }
+
+#[path = "screenshot_output_tests.rs"]
+mod output_tests;

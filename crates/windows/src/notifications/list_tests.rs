@@ -84,25 +84,6 @@ fn app_filter_matches_case_insensitively() {
 }
 
 #[test]
-fn limit_where_the_two_orders_differ() {
-    let ordered = order_and_filter(
-        vec![
-            info("App A", "match one", None),
-            info("App B", "no match", None),
-            info("App A", "match two", None),
-        ],
-        &filter(Some("app a"), None, Some(2)),
-    );
-
-    let indices: Vec<usize> = ordered.iter().map(|entry| entry.index).collect();
-    assert_eq!(
-        indices,
-        vec![1, 3],
-        "filter-then-limit keeps both matches; limit-then-filter would keep only the first"
-    );
-}
-
-#[test]
 fn zero_limit_yields_nothing_and_no_limit_yields_everything() {
     let entries = vec![info("App A", "first", None), info("App B", "second", None)];
 

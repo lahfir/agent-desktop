@@ -1,9 +1,7 @@
 use super::*;
 
-const NOTEPAD: &str =
-    include_str!("../../../../docs/plans/2026-07-27-002-captures/notepad-com.json");
-const EXPLORER: &str =
-    include_str!("../../../../docs/plans/2026-07-27-002-captures/explorer-com.json");
+const NOTEPAD: &str = include_str!("testdata/notepad-com.json");
+const EXPLORER: &str = include_str!("testdata/explorer-com.json");
 
 fn captures() -> [(&'static str, &'static str); 2] {
     [(CAPTURE_FILES[0], NOTEPAD), (CAPTURE_FILES[1], EXPLORER)]

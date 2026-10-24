@@ -11,8 +11,7 @@
     measured false here (Invoke-SplitIntegrityActivationLeg) - Windows
     gates `SetForegroundWindow` by a foreground-lock-timeout heuristic, not
     by Mandatory Integrity Control, so a Medium `focus-window` against the
-    High fixture genuinely succeeds. `docs/phases.md`'s window-activation
-    bullet is corrected in this same PR.
+    High fixture genuinely succeeds.
 
     Every staged Medium/Low process here is spawned through
     `Start-StagedIntegrityProcess` (StagedProcess.psm1), never through
@@ -131,8 +130,8 @@ function Invoke-InheritedHandleSetLeg {
     Enter-Stage -Lock ForegroundStage -Body {
         $result = Start-StagedIntegrityProcess -IntegrityLevel Medium -ReportOwnHandles -InheritLeaseHandle $LeaseHandle -TimeoutSeconds 15
         Assert-StagingConfirmedMedium -Staging $result
-        if ($null -eq $result.ChildReportedInheritableHandles) {
-            throw 'Invoke-InheritedHandleSetLeg: the staged child reported no handle set at all'
+        if ($null -eq $result.ChildReportedInheritableHandles -or @($result.ChildReportedInheritableHandles).Count -eq 0) {
+            throw "Invoke-InheritedHandleSetLeg: the staged child reported no handle set at all - a live child always owns its stdio handles, so an empty report means the report did not happen (ExitCode=$($result.ExitCode), TimedOut=$($result.TimedOut), StdErr='$($result.StdErr)')"
         }
         $leaked = @($result.ChildReportedInheritableHandles | Where-Object {
                 ($result.HarnessInheritableHandlesBeforeSpawn -contains $_) -and (-not ($result.ExpectedInheritableHandles -contains $_))
@@ -233,7 +232,7 @@ function Invoke-SplitIntegrityWriteLeg {
 }
 
 function Invoke-SplitIntegrityActivationLeg {
-    <# `docs/phases.md`'s window-activation bullet states Medium->High
+    <# The window-activation expectation was that Medium->High
        `focus-window` "silently no-ops" and surfaces `ACTION_FAILED` /
        `not_delivered` - measured live, against a genuine Medium-integrity
        process with a foreground precondition that rules out a no-op
@@ -243,8 +242,7 @@ function Invoke-SplitIntegrityActivationLeg {
        being gated by the foreground-lock-timeout heuristic (recent input,
        `AllowSetForegroundWindow`), not by Mandatory Integrity Control the
        way `SendInput`/`PostMessage` are - UIPI does not cover this API.
-       The documented bullet is corrected in `docs/phases.md` in this same
-       PR; this leg asserts the measured behavior rather than the
+       This leg asserts the measured behavior rather than the
        disproven one, with the same independent-oracle discipline every
        other leg here uses: a raw GetForegroundWindow read, not the
        command's own envelope. The whole body runs inside its own

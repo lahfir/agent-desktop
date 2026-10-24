@@ -52,6 +52,9 @@ pub(crate) struct SessionGcArgs {
         help = "Only remove sessions whose ended_at/created_at age exceeds this many seconds"
     )]
     pub older_than: Option<u64>,
-    #[arg(long, help = "Only consider sessions that already have ended_at set")]
+    #[arg(
+        long,
+        help = "Only consider sessions that already have ended_at set, and remove them even when their trace was written in the last few minutes"
+    )]
     pub ended: bool,
 }

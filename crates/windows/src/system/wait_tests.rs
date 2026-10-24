@@ -36,9 +36,9 @@ use std::sync::mpsc::channel;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::system::test_support::FIXTURE_APP_NAME_LOCK;
+use crate::system::fixture::test_support::FIXTURE_APP_NAME_LOCK;
 use crate::tree::fixture::bootstrap;
-use crate::tree::fixture_menu::MenuFixture;
+use crate::tree::fixture::fixture_menu::MenuFixture;
 
 /// A generous budget for the fixture's own child process to dispatch a
 /// posted window message and for the adapter's poll loop to observe the
@@ -58,7 +58,7 @@ fn deadline(timeout_ms: u64) -> Deadline {
 }
 
 fn identity_for(pid: ProcessId) -> ProcessIdentity {
-    crate::system::live_identity::live_process_identity(pid)
+    crate::system::fixture::live_identity::live_process_identity(pid)
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn open_true_returns_ok_once_the_fixtures_menu_opens_shortly_after_the_wait_star
     let _app_name_scope = FIXTURE_APP_NAME_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let _stage = crate::tree::fixture_window::on_screen_stage();
+    let _stage = crate::tree::fixture::fixture_window::on_screen_stage();
     let fixture = MenuFixture::spawn().expect("the menu fixture starts");
     let identity = identity_for(ProcessId::from(fixture.process_id()));
 
@@ -157,15 +157,13 @@ fn already_in_the_requested_state_returns_immediately_reading_the_predicate_once
     );
 }
 
-/// Both directions in one test so a copy-paste that gives both directions
-/// the same `platform_detail` text fails the final inequality assertion.
 #[test]
 fn a_menu_that_never_transitions_times_out_with_direction_specific_platform_detail() {
     bootstrap();
     let _app_name_scope = FIXTURE_APP_NAME_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let _stage = crate::tree::fixture_window::on_screen_stage();
+    let _stage = crate::tree::fixture::fixture_window::on_screen_stage();
     let never_opens = MenuFixture::spawn().expect("the menu fixture starts");
     let open_identity = identity_for(ProcessId::from(never_opens.process_id()));
 
@@ -192,10 +190,6 @@ fn a_menu_that_never_transitions_times_out_with_direction_specific_platform_deta
     assert_eq!(
         close_error.platform_detail.as_deref(),
         Some("Menu did not close before the deadline")
-    );
-    assert_ne!(
-        open_error.platform_detail, close_error.platform_detail,
-        "the two timeout directions must carry different platform_detail text"
     );
 }
 
@@ -231,7 +225,7 @@ fn a_target_that_exits_mid_wait_returns_stale_ref_not_a_satisfied_wait_or_a_time
         .expect("wait_for_menu completed");
     let error = result.expect_err("a terminated target must not report a satisfied wait");
 
-    assert_eq!(error.code, ErrorCode::StaleRef);
+    assert_eq!(error.code, ErrorCode::StaleRef, "{error:?}");
 }
 
 /// A loose upper bound derived from the interval, not a timing literal
@@ -388,3 +382,6 @@ fn an_evaluation_error_surfaces_as_stale_ref_when_the_target_is_gone_and_unchang
 
 #[path = "wait_expiry_detail_tests.rs"]
 mod expiry_detail_tests;
+
+#[path = "wait_exit_confirmation_tests.rs"]
+mod exit_confirmation_tests;

@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     AdapterError, CommandContext, Deadline, DeliverySemantics, InteractionLease, MouseButton,
-    MouseEvent, MouseEventKind, Point, Rect,
+    MouseEvent, MouseEventKind, OperationReport, Point, Rect,
     adapter::{ActionOps, InputOps, ObservationOps, SystemOps},
 };
 use std::sync::Mutex;
@@ -278,7 +278,7 @@ impl InputOps for OverlayCaptureAdapter {
         &self,
         _event: MouseEvent,
         _lease: &InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         self.input_index.store(
             self.presented.lock().unwrap().len() as u32,
             Ordering::SeqCst,
@@ -287,7 +287,7 @@ impl InputOps for OverlayCaptureAdapter {
             let error = AdapterError::internal("input failed").with_disposition(disposition);
             return Err(error);
         }
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -312,7 +312,7 @@ fn lease_with_timeout_ms(timeout_ms: u64) -> InteractionLease {
 
 fn run_travel_helper(
     input_failure: Option<DeliverySemantics>,
-) -> (Result<(), AdapterError>, Vec<CursorPhase>, u32) {
+) -> (Result<OperationReport, AdapterError>, Vec<CursorPhase>, u32) {
     let adapter = OverlayCaptureAdapter::with_failure(input_failure);
     let context = overlay_context();
     let lease = lease_with_timeout_ms(5_000);

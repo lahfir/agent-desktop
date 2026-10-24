@@ -7,6 +7,7 @@ mod hit_test_evidence;
 mod live;
 mod occluder;
 mod pointer_delivery;
+pub(crate) mod pointer_timeout;
 mod receives_events;
 mod report;
 mod requirements;
@@ -35,9 +36,9 @@ pub(crate) use stability::StabilityExpectation;
 pub(crate) use status::ActionabilityStatus;
 
 #[cfg(test)]
-#[path = "../actionability_tests.rs"]
+#[path = "actionability_tests.rs"]
 mod tests;
 
 #[cfg(test)]
-#[path = "../actionability_live_tests.rs"]
+#[path = "actionability_live_tests.rs"]
 mod live_tests;

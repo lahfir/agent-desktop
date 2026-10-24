@@ -1,8 +1,8 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    AdapterError, Rect, adapter::NativeHandle, refs::RefEntry, refs::RefMap, refs_store::RefStore,
-    refs_test_support::HomeGuard,
+    AdapterError, Rect, adapter::NativeHandle, refs::RefEntry, refs::RefMap,
+    refs::refs_store::RefStore, refs::refs_test_support::HomeGuard,
 };
 use std::sync::Mutex;
 
@@ -88,6 +88,7 @@ fn live_bounds() -> Rect {
 fn entry_with_bounds(bounds: Option<Rect>) -> RefEntry {
     let mut entry = crate::adapter::minimal_ref_entry("textfield", Some("text-input"));
     entry.geometry = crate::RefGeometry {
+        bounds_space: None,
         bounds,
         bounds_hash: bounds.and_then(|b| b.bounds_hash()),
     };
@@ -139,7 +140,7 @@ fn bounds_falls_back_to_snapshot_geometry_when_no_live_read_is_available() {
     )
     .unwrap();
 
-    assert_eq!(result["value"]["y"], -322.0);
+    assert_eq!(result["value"], json!(stale_snapshot_bounds()));
     assert_eq!(result["live"], false);
 }
 

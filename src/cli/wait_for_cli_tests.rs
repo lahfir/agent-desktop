@@ -126,17 +126,14 @@ fn validate_accepts_supported_command_with_constraining_selector() {
 }
 
 #[test]
-fn typed_metadata_couples_name_and_wait_support_to_each_variant() {
+fn typed_metadata_names_each_variant() {
     let hover = command(&["hover", "@e1"]);
     let drag = command(&["drag", "--from", "@e1", "--to", "@e2"]);
     let find = command(&["find", "--role", "button"]);
 
     assert_eq!(hover.name(), "hover");
-    assert!(hover.supports_post_action_wait());
     assert_eq!(drag.name(), "drag");
-    assert!(drag.supports_post_action_wait());
     assert_eq!(find.name(), "find");
-    assert!(!find.supports_post_action_wait());
 }
 
 #[cfg(target_os = "macos")]

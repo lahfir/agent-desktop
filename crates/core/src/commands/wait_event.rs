@@ -1,10 +1,11 @@
+use crate::commands::wait_event_filter::{signal_filter, validate_signal_scope};
 use crate::{
-    AdapterError, AppError, ErrorCode, EventKind, ProcessIdentity, SignalBaseline, SignalFilter,
-    UiEvent, adapter::PlatformAdapter, commands::wait_event_input::EventWaitInput, diff_signals,
-    process_state::ProcessState, signals::merge_signal_baseline,
+    AdapterError, AppError, ErrorCode, EventKind, ProcessIdentity, SignalBaseline, UiEvent,
+    adapter::PlatformAdapter, commands::wait_event_input::EventWaitInput, diff_signals,
+    system::process_state::ProcessState, wait::signals::merge_signal_baseline,
 };
 use serde_json::{Value, json};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Baseline-diff event wait: captures a `SignalBaseline` at wait start, polls
 /// for a fresh one, and matches the first `diff_signals` event whose kind
@@ -19,6 +20,15 @@ pub(crate) fn wait_for_event(
     let requested = parse_event_kind(&input.event)?;
     let start = Instant::now();
     let deadline = crate::Deadline::at(start, input.timeout_ms)?;
+    if deadline.is_expired() {
+        return timeout_err(
+            &input.event,
+            input.app.as_ref(),
+            input.timeout_ms,
+            seeded_baseline.as_ref().and_then(|seed| seed.as_ref().ok()),
+            None,
+        );
+    }
     let filter = match signal_filter(
         &input,
         &requested,
@@ -32,15 +42,25 @@ pub(crate) fn wait_for_event(
         {
             return unresolved_target_result(&requested, input.app.as_deref(), start);
         }
+        Err(AppError::Adapter(err)) if crate::commands::wait_timeout::is_deadline_expired(&err) => {
+            return timeout_err(
+                &input.event,
+                input.app.as_ref(),
+                input.timeout_ms,
+                seeded_baseline.as_ref().and_then(|seed| seed.as_ref().ok()),
+                None,
+            );
+        }
         Err(err) => return Err(err),
     };
     let disappearance = is_disappearance_class(&requested);
+    let mut scheduler = super::wait_scheduler::WaitScheduler::new(adapter, &filter, deadline);
     let (mut baseline, mut last_error) = match seeded_baseline {
         Some(Ok(baseline)) => {
             validate_signal_scope(&filter, &baseline)?;
             (Some(baseline), None)
         }
-        Some(Err(error)) if is_retryable(&error.code) => (None, Some(error_evidence(&error))),
+        Some(Err(error)) if is_retryable(&error) => (None, Some(error_evidence(&error))),
         Some(Err(error)) => return Err(AppError::Adapter(error)),
         None => (None, None),
     };
@@ -105,7 +125,7 @@ pub(crate) fn wait_for_event(
                     }
                 }
             }
-            Err(err) if is_retryable(&err.code) => {
+            Err(err) if is_retryable(&err) => {
                 last_error = Some(error_evidence(&err));
             }
             Err(err) => return Err(AppError::Adapter(err)),
@@ -121,15 +141,8 @@ pub(crate) fn wait_for_event(
                 last_error,
             );
         }
-        std::thread::sleep(remaining.min(Duration::from_millis(200)));
+        scheduler.wait(deadline);
     }
-}
-
-fn is_appearance_class(kind: &EventKind) -> bool {
-    matches!(
-        kind,
-        EventKind::AppLaunched | EventKind::WindowOpened | EventKind::SurfaceAppeared { .. }
-    )
 }
 
 fn is_disappearance_class(kind: &EventKind) -> bool {
@@ -192,107 +205,6 @@ fn confirm_app_terminated(
     }
 }
 
-fn signal_filter(
-    input: &EventWaitInput,
-    requested: &EventKind,
-    seeded_baseline: Option<&Result<SignalBaseline, AdapterError>>,
-    adapter: &dyn PlatformAdapter,
-    deadline: crate::Deadline,
-) -> Result<SignalFilter, AppError> {
-    let Some(app) = input.app.as_deref() else {
-        return Ok(SignalFilter::default());
-    };
-    let with_process = |process: Option<crate::ProcessIdentity>| SignalFilter {
-        app: input.app.clone(),
-        process,
-    };
-    if matches!(requested, EventKind::AppLaunched) {
-        return Ok(with_process(None));
-    }
-    let successful_seed = seeded_baseline.and_then(|baseline| baseline.as_ref().ok());
-    let seeded_process = successful_seed
-        .map(|baseline| process_from_baseline(baseline, app))
-        .transpose()?
-        .flatten();
-    if let Some(process) = seeded_process {
-        return Ok(with_process(Some(process)));
-    }
-    if successful_seed.is_some() && matches!(requested, EventKind::AppTerminated) {
-        return Ok(with_process(None));
-    }
-    match crate::commands::helpers::resolve_app(Some(app), adapter, deadline) {
-        Ok(resolved) => Ok(with_process(Some(
-            crate::commands::helpers::process_identity(&resolved)?,
-        ))),
-        Err(AppError::Adapter(err))
-            if err.code == ErrorCode::AppNotFound && is_appearance_class(requested) =>
-        {
-            Ok(with_process(None))
-        }
-        Err(err) => Err(err),
-    }
-}
-
-fn process_from_baseline(
-    baseline: &SignalBaseline,
-    app: &str,
-) -> Result<Option<crate::ProcessIdentity>, AppError> {
-    let mut matches = baseline
-        .apps
-        .iter()
-        .filter(|candidate| candidate.matches_identifier(app));
-    let Some(first) = matches.next() else {
-        return Ok(None);
-    };
-    if matches.next().is_some() {
-        return Err(AdapterError::ambiguous_target(format!(
-            "Multiple application instances matched '{app}' in the event baseline"
-        ))
-        .into());
-    }
-    crate::commands::helpers::process_identity(first).map(Some)
-}
-
-fn validate_signal_scope(filter: &SignalFilter, baseline: &SignalBaseline) -> Result<(), AppError> {
-    let Some(expected) = filter.process.as_ref() else {
-        return Ok(());
-    };
-    let observed = baseline
-        .apps
-        .iter()
-        .map(|app| (app.pid, app.process_instance.as_deref()))
-        .chain(
-            baseline
-                .windows
-                .iter()
-                .map(|window| (window.pid, window.process_instance.as_deref())),
-        )
-        .chain(
-            baseline
-                .surfaces
-                .iter()
-                .map(|surface| (surface.pid, Some(surface.process_instance.as_str()))),
-        );
-    if let Some((pid, instance)) = observed.into_iter().find(|(pid, instance)| {
-        *pid == expected.pid && *instance != Some(expected.instance.as_str())
-    }) {
-        return Err(AdapterError::new(
-            ErrorCode::StaleRef,
-            "Target process identity changed during event observation",
-        )
-        .with_details(json!({
-            "kind": "process_changed",
-            "expected_pid": expected.pid,
-            "observed_pid": pid,
-            "observed_instance_matches": instance == Some(expected.instance.as_str()),
-            "retryable": false,
-        }))
-        .with_disposition(crate::DeliverySemantics::not_delivered())
-        .into());
-    }
-    Ok(())
-}
-
 fn find_match<'a>(
     events: &'a [UiEvent],
     requested: &EventKind,
@@ -323,11 +235,14 @@ fn find_match<'a>(
     })
 }
 
-fn is_retryable(code: &ErrorCode) -> bool {
+/// Whether a capture error is worth polling past: the transient codes, minus
+/// the ones that say they settle. An `APP_UNRESPONSIVE` that names a stopped
+/// scoped target carries `retryable: false` and ends the wait at once.
+fn is_retryable(error: &AdapterError) -> bool {
     matches!(
-        code,
+        error.code,
         ErrorCode::Timeout | ErrorCode::ElementNotFound | ErrorCode::AppUnresponsive
-    )
+    ) && error.permits_retry_by_default()
 }
 
 fn error_evidence(error: &AdapterError) -> Value {
@@ -380,3 +295,7 @@ fn timeout_err(
 #[cfg(test)]
 #[path = "wait_event_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "wait_event_stopped_tests.rs"]
+mod stopped_tests;

@@ -31,6 +31,7 @@
     "agent",
     "macos",
     "windows",
+    "linux",
     "a11y"
   ]
 }

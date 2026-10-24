@@ -52,7 +52,7 @@
  * mismatch means the header and dylib are incompatible and the consumer should
  * refuse to proceed rather than risk undefined behaviour.
  */
-#define AD_ABI_VERSION_MAJOR 5
+#define AD_ABI_VERSION_MAJOR 6
 
 /**
  * Maximum byte length (excluding the NUL terminator) accepted for any
@@ -81,7 +81,7 @@
 
 #define AD_ELEMENT_STATE_SIZE 32
 
-#define AD_EXACT_REF_ENTRY_VERSION 1
+#define AD_EXACT_REF_ENTRY_VERSION 2
 
 #define AD_EXACT_REF_ENTRY_SIZE 224
 
@@ -142,6 +142,12 @@
 #define AD_MAX_REF_ACTIONS 32
 
 #define AD_MAX_REF_PATH_DEPTH 128
+
+#define AD_BOUNDS_SPACE_UNKNOWN 0
+
+#define AD_BOUNDS_SPACE_SCREEN 1
+
+#define AD_BOUNDS_SPACE_WINDOW 2
 
 #define AD_REF_GEOMETRY_SIZE 48
 
@@ -670,6 +676,12 @@ typedef struct AdRefGeometry {
   uint64_t bounds_hash;
   bool has_bounds;
   bool has_bounds_hash;
+  /**
+   * Coordinate frame of `bounds`; use an `AD_BOUNDS_SPACE_*` constant.
+   * macOS and Windows geometry must be screen-relative. Linux geometry
+   * must be window-relative.
+   */
+  int32_t bounds_space;
 } AdRefGeometry;
 
 typedef struct AdStringSlice {
@@ -1353,7 +1365,7 @@ AdResult ad_execute_by_ref_timeout(const struct AdAdapter *adapter,
  * interactive elements, persists the refmap to disk, and writes the JSON envelope into `*out`.
  *
  * The JSON shape matches `agent-desktop snapshot`:
- * `{"version":"2.4","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","complete":true,"tree":{...}}}`.
+ * `{"version":"2.5","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","complete":true,"tree":{...}}}`.
  *
  * `data.complete` is always present. A snapshot that exhausts its observation
  * budget still succeeds with `"complete":false` and the tree it did observe,
@@ -2219,6 +2231,7 @@ _Static_assert(sizeof(AdStringSlice) == AD_STRING_SLICE_SIZE, "AdStringSlice ABI
 _Static_assert(sizeof(AdRefCapabilities) == AD_REF_CAPABILITIES_SIZE, "AdRefCapabilities ABI size changed");
 _Static_assert(sizeof(AdRefGeometry) == AD_REF_GEOMETRY_SIZE, "AdRefGeometry ABI size changed");
 _Static_assert(offsetof(AdRefGeometry, bounds_hash) == 32, "AdRefGeometry.bounds_hash offset changed");
+_Static_assert(offsetof(AdRefGeometry, bounds_space) == 44, "AdRefGeometry.bounds_space offset changed");
 _Static_assert(sizeof(AdRefSource) == AD_REF_SOURCE_SIZE, "AdRefSource ABI size changed");
 _Static_assert(offsetof(AdRefSource, window_bounds_hash) == 24, "AdRefSource.window_bounds_hash offset changed");
 _Static_assert(sizeof(AdRefScope) == AD_REF_SCOPE_SIZE, "AdRefScope ABI size changed");

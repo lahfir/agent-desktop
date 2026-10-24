@@ -26,9 +26,9 @@ fn request_with(deadline: Deadline, force_renderer_accessibility: bool) -> Obser
 /// "clean native walk" and a "settled Chromium shell" fixture depending on
 /// what the caller passes for `chromium_root`.
 fn small_complete_outcome() -> WalkOutcome {
-    crate::tree::walker_fake::walk(
-        &crate::tree::walker_fake::FakeTree::default(),
-        crate::tree::walker_fake::budget(10),
+    crate::tree::walk::walker_fake::walk(
+        &crate::tree::walk::walker_fake::FakeTree::default(),
+        crate::tree::walk::walker_fake::budget(10),
     )
 }
 
@@ -83,7 +83,7 @@ fn a_freshly_created_fixture_window_passes_reverification() {
     crate::tree::fixture::ensure_test_apartment();
     let fixture = crate::tree::fixture::HostedFixture::spawn().expect("a fixture host starts");
     let window = agent_desktop_core::WindowInfo {
-        id: format!("w-{}", fixture.handle()),
+        id: crate::system::window::window_ops::window_id(fixture.handle() as _),
         title: "agent-desktop fixture".into(),
         app: "fixture.exe".into(),
         pid: agent_desktop_core::ProcessId::from(fixture.process_id()),
@@ -101,7 +101,7 @@ fn a_freshly_created_fixture_window_passes_reverification() {
     let result = re_verify_root(ObservationRoot::Window(&window));
     assert!(
         result.is_ok(),
-        "a live fixture root must pass the liveness gate"
+        "a live fixture root must pass the liveness gate: {result:?}"
     );
 }
 
@@ -124,7 +124,7 @@ fn a_clean_complete_walk_still_fails_when_root_reverification_fails() {
             outcome: small_complete_outcome(),
             walk_duration: Duration::ZERO,
         },
-        |_| Err(window_gone()),
+        |_| Err(window_identity_changed()),
     )
     .expect_err("a failing reverification must not be swallowed by a clean-looking walk");
 
@@ -149,9 +149,37 @@ fn the_force_path_still_reverifies_before_returning_the_tree() {
             outcome: small_complete_outcome(),
             walk_duration: Duration::ZERO,
         },
-        |_| Err(window_gone()),
+        |_| Err(window_identity_changed()),
     )
     .expect_err("the force-renderer-accessibility path must not skip liveness");
+
+    assert_eq!(error.code, ErrorCode::WindowNotFound);
+}
+
+#[test]
+fn a_partial_tree_is_rejected_when_root_ownership_changes() {
+    let adapter = crate::adapter::WindowsAdapter::new();
+    let window = window_for(1, "gen-1");
+    let request = request_with(Deadline::after(5_000).unwrap(), false);
+    let fake = crate::tree::walk::walker_fake::FakeTree::default().with_chain(&[1, 2, 3]);
+    let outcome = crate::tree::walk::walker_fake::walk(
+        &fake,
+        crate::tree::walk::walker_fake::budget(10).with_max_raw_depth(1),
+    );
+    assert!(!outcome.tree.is_complete());
+
+    let error = finish_observation(
+        ObservationRoot::Window(&window),
+        request,
+        &adapter,
+        CompletedWalk {
+            chromium_root: false,
+            outcome,
+            walk_duration: Duration::ZERO,
+        },
+        |_| Err(window_identity_changed()),
+    )
+    .expect_err("a partial tree must not bypass root ownership verification");
 
     assert_eq!(error.code, ErrorCode::WindowNotFound);
 }

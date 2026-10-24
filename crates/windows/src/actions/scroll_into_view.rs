@@ -26,14 +26,13 @@ mod imp {
         LADDER_SCROLL_LABEL, VisibilitySample, ancestor_ladder, apply_ladder_seam,
         observe_visibility, visibility_verified,
     };
-    use crate::system::permissions::ensure_budget;
     use crate::tree::automation::{ERR_NONE, UiaFailure, automation_client, failure_of};
     use crate::tree::element::{UIAElement, uia_element};
     use crate::tree::live_read::corroborate_verified_process;
+    use crate::tree::properties::property_ids::TreeProperty;
     use crate::tree::properties::{read_one, rect_has_area};
-    use crate::tree::property_ids::TreeProperty;
-    use crate::tree::walker_source::{nearest_scroll_viewport, viewport_bounds};
-    use agent_desktop_core::native_handle::NativeHandle;
+    use crate::tree::walk::walker_source::{nearest_scroll_viewport, viewport_bounds};
+    use agent_desktop_core::adapter::native_handle::NativeHandle;
     use std::time::{Duration, Instant};
     use uiautomation::core::UITreeWalker;
     use uiautomation::patterns::UIScrollItemPattern;
@@ -69,7 +68,7 @@ mod imp {
     ) -> Result<ScrollIntoViewDone, AdapterError> {
         let element = uia_element(handle)?;
         let deadline = lease.deadline();
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         corroborate_verified_process(element)?;
         scroll_into_view_element(element, deadline)
     }
@@ -294,7 +293,7 @@ mod imp {
 #[cfg(not(target_os = "windows"))]
 mod imp {
     use super::{AdapterError, DeliveryOutcome, InteractionLease};
-    use agent_desktop_core::native_handle::NativeHandle;
+    use agent_desktop_core::adapter::native_handle::NativeHandle;
 
     pub(crate) struct ScrollIntoViewDone {
         pub(crate) label: &'static str,

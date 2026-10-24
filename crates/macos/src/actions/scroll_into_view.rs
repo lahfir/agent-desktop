@@ -1,6 +1,6 @@
 #[cfg(target_os = "macos")]
 mod imp {
-    use crate::actions::chain_delivery::DeliveryOutcome;
+    use crate::actions::chain::chain_delivery::DeliveryOutcome;
     use crate::tree::AXElement;
     use agent_desktop_core::{
         AdapterError, Deadline, DeliverySemantics, Direction, ErrorCode, InteractionPolicy, Rect,
@@ -85,7 +85,15 @@ mod imp {
         let instant = crate::tree::locator_deadline::from_operation(deadline)?;
         let bounds = crate::tree::element_bounds::read_bounds_with_deadline(element, instant)?
             .ok_or_else(|| AdapterError::new(ErrorCode::ActionFailed, "Target has no bounds"))?;
-        let viewport = match crate::actions::scroll::find_scroll_area(element, deadline)? {
+        let found = crate::actions::scroll::find_scroll_area(element, deadline)?;
+        let found_is_target = found
+            .as_ref()
+            .is_some_and(|area| crate::tree::same_element(area, element));
+        let scroll_area = match viewport_seed(found_is_target) {
+            ViewportSeed::Target => found,
+            ViewportSeed::Parent => enclosing_scroll_area(element, deadline)?,
+        };
+        let viewport = match scroll_area {
             Some(viewport) => viewport,
             None => require_window(crate::tree::surface_read::element(
                 element, "AXWindow", instant,
@@ -97,6 +105,35 @@ mod imp {
                     AdapterError::new(ErrorCode::ActionFailed, "Target viewport has no bounds")
                 })?;
         Ok(direction_for_visibility(bounds, viewport_bounds))
+    }
+
+    pub(super) enum ViewportSeed {
+        Target,
+        Parent,
+    }
+
+    /// Revealing a target scrolls the scroll area that encloses it, which is
+    /// always a strict ancestor: a scroll-area target seeded as its own search
+    /// root is compared against its own bounds and can never yield a scroll
+    /// direction. The element-seeded `find_scroll_area` walk runs exactly as
+    /// before; only when it returns the target itself is the search repeated
+    /// from the target's parent.
+    pub(super) fn viewport_seed(found_is_target: bool) -> ViewportSeed {
+        if found_is_target {
+            ViewportSeed::Parent
+        } else {
+            ViewportSeed::Target
+        }
+    }
+
+    fn enclosing_scroll_area(
+        element: &AXElement,
+        deadline: Deadline,
+    ) -> Result<Option<AXElement>, AdapterError> {
+        match crate::actions::scroll_read::element(element, "AXParent", deadline)? {
+            Some(parent) => crate::actions::scroll::find_scroll_area(&parent, deadline),
+            None => Ok(None),
+        }
     }
 
     pub(super) fn require_window(window: Option<AXElement>) -> Result<AXElement, AdapterError> {
@@ -217,7 +254,7 @@ mod imp {
     }
 
     fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {
-        crate::tree::attributes::set_messaging_timeout(element, deadline)
+        crate::tree::properties::attributes::set_messaging_timeout(element, deadline)
     }
 
     fn after_delivery(error: AdapterError) -> AdapterError {

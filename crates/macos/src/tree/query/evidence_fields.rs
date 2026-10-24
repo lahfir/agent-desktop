@@ -2,7 +2,7 @@ use agent_desktop_core::{
     LocatorField, NameEvidence, NameSlotStatus, SlotStatus, resolve_description, resolve_name,
 };
 
-use crate::tree::node_attribute_status::{
+use crate::tree::properties::node_attribute_status::{
     DESCRIPTION, LABEL, NodeAttributeStatus, PLACEHOLDER, TITLE, TITLE_ELEMENT, VALUE,
 };
 
@@ -84,7 +84,7 @@ mod tests {
     fn failed_subrole_read_cannot_prove_a_canonical_role_or_state() {
         let mut status = NodeAttributeStatus::default();
         status.record_slot_error(
-            crate::tree::node_attribute_status::SUBROLE,
+            crate::tree::properties::node_attribute_status::SUBROLE,
             accessibility_sys::kAXErrorCannotComplete,
         );
 

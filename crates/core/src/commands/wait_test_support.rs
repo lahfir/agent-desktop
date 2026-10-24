@@ -6,9 +6,9 @@ use crate::{
     AdapterError, AppError, Rect,
     adapter::NativeHandle,
     context::CommandContext,
-    element_state::ElementState,
+    refs::refs_store::RefStore,
     refs::{RefEntry, RefMap},
-    refs_store::RefStore,
+    tree::element_state::ElementState,
 };
 use serde_json::Value;
 
@@ -47,7 +47,7 @@ pub(super) fn wait_for_element_test(
 ) -> Result<Value, AppError> {
     wait_for_element(
         ElementWaitInput {
-            ref_id: crate::ref_token::qualify_for_test(&ref_id, snapshot_id.as_deref()),
+            ref_id: crate::refs::ref_token::qualify_for_test(&ref_id, snapshot_id.as_deref()),
             predicate,
             timeout_ms,
         },
@@ -80,7 +80,7 @@ impl ObservationOps for PredicateAdapter {
             }),
             states_complete: true,
             bounds: self.bounds,
-            available_actions: vec![crate::capability::CLICK.into()],
+            available_actions: vec![crate::actions::capability::CLICK.into()],
         })
     }
 
@@ -121,7 +121,7 @@ impl ObservationOps for PredicateAdapter {
         _handle: &NativeHandle,
         _deadline: crate::Deadline,
     ) -> Result<Option<Vec<String>>, AdapterError> {
-        Ok(Some(vec![crate::capability::CLICK.into()]))
+        Ok(Some(vec![crate::actions::capability::CLICK.into()]))
     }
 
     fn hit_test(
@@ -129,8 +129,8 @@ impl ObservationOps for PredicateAdapter {
         _handle: &NativeHandle,
         _point: crate::Point,
         _deadline: crate::Deadline,
-    ) -> Result<crate::hit_test::HitTestResult, AdapterError> {
-        Ok(crate::hit_test::HitTestResult::ReachesTarget)
+    ) -> Result<crate::adapter::hit_test::HitTestResult, AdapterError> {
+        Ok(crate::adapter::hit_test::HitTestResult::ReachesTarget)
     }
 }
 
@@ -172,6 +172,7 @@ fn save_ref_in_store(store: RefStore, states: Vec<String>) -> String {
             native_id: None,
         },
         geometry: crate::RefGeometry {
+            bounds_space: None,
             bounds: None,
             bounds_hash: None,
         },

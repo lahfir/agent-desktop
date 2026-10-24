@@ -22,7 +22,7 @@ fn focus_app(pid: i32, deadline: Deadline) -> Result<bool, AdapterError> {
     }
     prepare(&app, deadline)?;
     let attribute = CFString::new("AXFrontmost");
-    let error = crate::tree::ax_ipc::set_attribute_value(
+    let error = crate::tree::properties::ax_ipc::set_attribute_value(
         &app,
         attribute.as_concrete_TypeRef(),
         CFBoolean::true_value().as_CFTypeRef(),
@@ -67,10 +67,10 @@ pub(crate) fn focus_window_impl(
         window.app,
         window.title
     );
-    let pid = crate::system::process_identity::to_pid_t(window.pid)?;
-    let element = crate::system::window_resolve::window_element_for_info(window, deadline)?;
+    let pid = crate::system::process::process_identity::to_pid_t(window.pid)?;
+    let element = crate::system::window::window_resolve::window_element_for_info(window, deadline)?;
     let focused = focus_app(pid, deadline)?;
-    crate::system::window_ops::raise_window(&element, deadline).map_err(|error| {
+    crate::system::window::window_ops::raise_window(&element, deadline).map_err(|error| {
         crate::actions::DeliveryTracker::from_delivered_units(usize::from(focused)).annotate(error)
     })?;
     verify_app_focused(pid, deadline).map_err(after_delivery)
@@ -113,8 +113,9 @@ fn read_boolean(
     deadline: Deadline,
 ) -> Result<bool, AdapterError> {
     prepare(element, deadline)?;
-    let result = crate::tree::attributes::copy_bool_attr_result(element, attribute, deadline);
-    ensure_remaining(deadline)?;
+    let result =
+        crate::tree::properties::attributes::copy_bool_attr_result(element, attribute, deadline);
+    deadline.ensure_remaining()?;
     match result {
         Ok(Some(value)) => Ok(value),
         Ok(None) => Ok(false),
@@ -134,7 +135,7 @@ fn wait_until(
         if read_boolean(element, attribute, deadline)? {
             return Ok(());
         }
-        ensure_remaining(deadline)?;
+        deadline.ensure_remaining()?;
         if Instant::now() >= local_deadline {
             return Err(
                 AdapterError::timeout(timeout_message).with_details(serde_json::json!({
@@ -150,16 +151,7 @@ fn wait_until(
 
 #[cfg(target_os = "macos")]
 fn prepare(element: &crate::tree::AXElement, deadline: Deadline) -> Result<(), AdapterError> {
-    crate::tree::attributes::set_messaging_timeout(element, deadline)
-}
-
-#[cfg(target_os = "macos")]
-fn ensure_remaining(deadline: Deadline) -> Result<(), AdapterError> {
-    if deadline.is_expired() {
-        Err(deadline.timeout_error())
-    } else {
-        Ok(())
-    }
+    crate::tree::properties::attributes::set_messaging_timeout(element, deadline)
 }
 
 #[cfg(target_os = "macos")]

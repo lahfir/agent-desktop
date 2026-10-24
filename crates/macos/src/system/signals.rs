@@ -33,7 +33,7 @@ pub(crate) fn capture_signal_baseline_impl(
     let windows = if filter.app.is_some() && apps.is_empty() {
         Vec::new()
     } else {
-        crate::system::app_inventory::list_windows_until(
+        crate::system::app::app_inventory::list_windows_until(
             &WindowFilter {
                 focused_only: false,
                 app: filter.app.clone(),
@@ -63,19 +63,19 @@ pub(crate) fn capture_signal_baseline_impl(
 #[cfg(target_os = "macos")]
 fn matching_apps(filter: &SignalFilter, deadline: Instant) -> Result<Vec<AppInfo>, AdapterError> {
     if let Some(name) = &filter.app {
-        return crate::system::app_inventory::list_apps_scoped_until(name, None, deadline);
+        return crate::system::app::app_inventory::list_apps_scoped_until(name, None, deadline);
     }
     if filter.process.is_some() {
-        return crate::system::app_inventory::stabilize_apps_until(deadline, || {
-            let inventory = crate::system::app_inventory::list_apps_inventory_until(deadline)?;
+        return crate::system::app::app_inventory::stabilize_apps_until(deadline, || {
+            let inventory = crate::system::app::app_inventory::list_apps_inventory_until(deadline)?;
             let apps = filter_apps(filter, inventory.apps);
             if apps.is_empty() {
-                crate::system::workspace_apps::require_complete(&inventory.skipped)?;
+                crate::system::app::workspace_apps::require_complete(&inventory.skipped)?;
             }
             Ok(apps)
         });
     }
-    let all = crate::system::app_inventory::list_apps_complete_until(deadline)?;
+    let all = crate::system::app::app_inventory::list_apps_complete_until(deadline)?;
     ensure_before_deadline(deadline)?;
     Ok(filter_apps(filter, all))
 }
@@ -104,9 +104,9 @@ fn filter_apps(filter: &SignalFilter, all: Vec<AppInfo>) -> Vec<AppInfo> {
 fn cap_ax_messaging(apps: &[AppInfo], deadline: Instant) -> Result<(), AdapterError> {
     for app in apps {
         remaining_before_deadline(deadline)?;
-        let pid = crate::system::process_identity::to_pid_t(app.pid)?;
+        let pid = crate::system::process::process_identity::to_pid_t(app.pid)?;
         let element = crate::tree::element_for_pid(pid);
-        crate::tree::attributes::set_messaging_timeout(&element, deadline)?;
+        crate::tree::properties::attributes::set_messaging_timeout(&element, deadline)?;
     }
     ensure_before_deadline(deadline)
 }
@@ -123,7 +123,7 @@ fn surfaces_for_apps(
     let mut surfaces = Vec::new();
     for app in apps {
         ensure_before_deadline(deadline)?;
-        let pid = crate::system::process_identity::to_pid_t(app.pid)?;
+        let pid = crate::system::process::process_identity::to_pid_t(app.pid)?;
         for info in crate::tree::surface_inventory::list_surfaces_for_pid(pid, deadline)? {
             if let Some(kind) = map_surface_kind(&info.kind) {
                 let process_instance = app.process_instance.clone().ok_or_else(|| {

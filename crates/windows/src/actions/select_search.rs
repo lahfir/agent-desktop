@@ -8,6 +8,10 @@ pub(crate) const MAX_SELECT_NODES: usize = 2_048;
 pub(crate) const MAX_SELECT_DEPTH: u8 = 8;
 const MAX_REALIZE_SCROLLS: u32 = 16;
 
+fn select_node_budget_has_room(visited: usize, pending: usize, staged: usize) -> bool {
+    visited.saturating_add(pending).saturating_add(staged) < MAX_SELECT_NODES
+}
+
 /// One realize scroll attempt: either expose a searchable window or stop.
 pub(crate) enum RealizeScrollStep {
     Window { end_of_range: bool },
@@ -54,18 +58,18 @@ mod imp {
     use super::{
         AdapterError, Deadline, ErrorCode, MAX_REALIZE_SCROLLS, MAX_SELECT_DEPTH, MAX_SELECT_NODES,
         RealizeScrollStep, UIAElement, accept_selection_match, drive_realize_scrolls,
+        select_node_budget_has_room,
     };
     use crate::actions::mutation::{classify_success, classify_write};
     use crate::actions::scroll::SCROLL_LABEL;
-    use crate::system::permissions::ensure_budget;
     use crate::tree::automation::automation_client;
     use crate::tree::automation::uia_failure_error;
-    use crate::tree::element_properties::ElementProperties;
     use crate::tree::name_evidence::{name_fields, read_label};
+    use crate::tree::properties::element_properties::ElementProperties;
+    use crate::tree::properties::property_ids::TreeProperty;
     use crate::tree::properties::read_one;
-    use crate::tree::property_ids::TreeProperty;
-    use crate::tree::walker::TreeSource;
-    use crate::tree::walker_source::{UiaTreeSource, same_element};
+    use crate::tree::walk::walker::TreeSource;
+    use crate::tree::walk::walker_source::{UiaTreeSource, same_element};
     use agent_desktop_core::LocatorField;
     use uiautomation::patterns::UIScrollPattern;
     use uiautomation::types::ScrollAmount;
@@ -80,11 +84,11 @@ mod imp {
         let source = UiaTreeSource::for_root(root)?;
         let prepared = source.prepare_root(root)?;
         let mut stack = Vec::new();
-        push_children(&source, &prepared, 1, &mut stack)?;
+        push_children(&source, (&prepared, 1), deadline, 0, &mut stack)?;
         let mut visited = 0_usize;
         let mut found = prior.cloned();
         while let Some((candidate, depth)) = stack.pop() {
-            ensure_budget(deadline)?;
+            deadline.ensure_remaining()?;
             visited = visited.saturating_add(1);
             if visited > MAX_SELECT_NODES {
                 return Err(node_budget_error());
@@ -99,7 +103,13 @@ mod imp {
                 }
             }
             if depth < MAX_SELECT_DEPTH {
-                push_children(&source, &candidate, depth.saturating_add(1), &mut stack)?;
+                push_children(
+                    &source,
+                    (&candidate, depth.saturating_add(1)),
+                    deadline,
+                    visited,
+                    &mut stack,
+                )?;
             }
         }
         Ok(found)
@@ -122,7 +132,7 @@ mod imp {
         drive_realize_scrolls(
             MAX_REALIZE_SCROLLS,
             || {
-                ensure_budget(deadline)?;
+                deadline.ensure_remaining()?;
                 let before = pattern.get_vertical_scroll_percent().ok();
                 match pattern.scroll(ScrollAmount::NoAmount, ScrollAmount::SmallIncrement) {
                     Ok(()) => {
@@ -172,10 +182,12 @@ mod imp {
 
     fn push_children(
         source: &UiaTreeSource,
-        parent: &UIAElement,
-        child_depth: u8,
+        (parent, child_depth): (&UIAElement, u8),
+        deadline: Deadline,
+        visited: usize,
         stack: &mut Vec<(UIAElement, u8)>,
     ) -> Result<(), AdapterError> {
+        deadline.ensure_remaining()?;
         let mut child = match source.first_child(parent) {
             Ok(child) => Some(child),
             Err(failure) if failure.is_exhaustion() => None,
@@ -185,6 +197,10 @@ mod imp {
         };
         let mut siblings = Vec::new();
         while let Some(current) = child {
+            if !select_node_budget_has_room(visited, stack.len(), siblings.len()) {
+                return Err(node_budget_error());
+            }
+            deadline.ensure_remaining()?;
             let next = match source.next_sibling(&current) {
                 Ok(next) => Some(next),
                 Err(failure) if failure.is_exhaustion() => None,
@@ -251,7 +267,8 @@ pub(crate) use imp::{
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_SELECT_DEPTH, RealizeScrollStep, accept_selection_match, drive_realize_scrolls,
+        MAX_SELECT_DEPTH, MAX_SELECT_NODES, RealizeScrollStep, accept_selection_match,
+        drive_realize_scrolls, select_node_budget_has_room,
     };
     use agent_desktop_core::{AdapterError, ErrorCode};
     use std::cell::Cell;
@@ -259,6 +276,13 @@ mod tests {
     #[test]
     fn select_search_depth_budget_is_eight() {
         assert_eq!(MAX_SELECT_DEPTH, 8);
+    }
+
+    #[test]
+    fn sibling_staging_reserves_space_with_visited_and_pending_nodes() {
+        assert!(select_node_budget_has_room(MAX_SELECT_NODES - 1, 0, 0));
+        assert!(!select_node_budget_has_room(MAX_SELECT_NODES - 1, 1, 0));
+        assert!(!select_node_budget_has_room(1_000, 1_000, 48));
     }
 
     #[test]

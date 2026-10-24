@@ -134,7 +134,10 @@ pub use types::ref_entry::{
     AD_MAX_REF_ACTIONS, AD_MAX_REF_PATH_DEPTH, AD_MAX_REF_STATES, AD_REF_ENTRY_SIZE, AdRefEntry,
     ad_ref_entry_size,
 };
-pub use types::ref_geometry::{AD_REF_GEOMETRY_SIZE, AdRefGeometry};
+pub use types::ref_geometry::{
+    AD_BOUNDS_SPACE_SCREEN, AD_BOUNDS_SPACE_UNKNOWN, AD_BOUNDS_SPACE_WINDOW, AD_REF_GEOMETRY_SIZE,
+    AdRefGeometry,
+};
 pub use types::ref_identity::{AD_REF_IDENTITY_SIZE, AdRefIdentity};
 pub use types::ref_process::{AD_REF_PROCESS_SIZE, AdRefProcess};
 pub use types::ref_scope::{AD_REF_SCOPE_SIZE, AdRefScope};

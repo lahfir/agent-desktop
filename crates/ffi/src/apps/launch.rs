@@ -3,7 +3,9 @@ use crate::convert::window::{exact_window_info_to_c, validate_exact_window_info}
 use crate::error::{AdResult, set_last_error};
 use crate::ffi_try::trap_panic;
 use crate::types::AdExactWindowInfo;
-use agent_desktop_core::{AdapterError, ErrorCode, WindowInfo, launch_result::LaunchResult};
+use agent_desktop_core::{
+    AdapterError, ErrorCode, WindowInfo, system::launch_result::LaunchResult,
+};
 use std::os::raw::c_char;
 
 /// The C entry points hand back one window, so a launch that produced none is
@@ -52,7 +54,7 @@ pub unsafe extern "C" fn ad_launch_app_exact(
             }
         };
         let adapter = crate::adapter::acquire_adapter!(adapter);
-        let options = agent_desktop_core::launch_options::LaunchOptions {
+        let options = agent_desktop_core::system::launch_options::LaunchOptions {
             timeout_ms,
             ..Default::default()
         };
@@ -109,7 +111,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-    use agent_desktop_core::launch_options::LaunchOptions;
+    use agent_desktop_core::system::launch_options::LaunchOptions;
     use agent_desktop_core::{ActionOps, InputOps, ObservationOps, SystemOps};
     use agent_desktop_core::{
         AdapterError, Deadline, InteractionLease, ProcessId, WindowInfo, WindowState,

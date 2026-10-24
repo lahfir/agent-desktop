@@ -65,9 +65,9 @@ impl InputOps for OccludedTargetAdapter {
         &self,
         event: MouseEvent,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         *self.moved_to.lock().unwrap() = Some(event);
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 
@@ -165,7 +165,8 @@ fn headed_hover_retries_transient_post_focus_occlusion_without_holding_lease() {
 
     let value = execute(args, &adapter, &CommandContext::default().with_headed(true)).unwrap();
 
-    assert_eq!(value["hovered"], true);
+    assert_eq!(value["disposition"]["delivery"], "delivered_unverified");
+    assert!(value.get("hovered").is_none());
     assert_eq!(
         adapter.hit_tests.load(std::sync::atomic::Ordering::SeqCst),
         3
@@ -234,9 +235,9 @@ impl InputOps for BackgroundTargetAdapter {
         &self,
         event: MouseEvent,
         _lease: &crate::InteractionLease,
-    ) -> Result<(), AdapterError> {
+    ) -> Result<crate::OperationReport, AdapterError> {
         *self.moved_to.lock().unwrap() = Some(event);
-        Ok(())
+        Ok(crate::adapter::test_report())
     }
 }
 

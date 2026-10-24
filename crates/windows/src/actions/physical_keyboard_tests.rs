@@ -1,11 +1,10 @@
 use super::{
     focus_lost_before_delivery, press_key_from_gate, press_key_global, type_text_from_gate,
 };
-use crate::actions::physical_target::ensure_keyboard_policy;
 use crate::input::keyboard_send_fake_sink as key_sink;
-use crate::system::test_time::deadline;
+use crate::system::fixture::test_time::deadline;
 use agent_desktop_core::{
-    ActionStepOutcome, DeliveryDisposition, ErrorCode, InteractionPolicy, KeyCombo, StepMechanism,
+    ActionStepOutcome, DeliveryDisposition, ErrorCode, KeyCombo, StepMechanism,
 };
 
 fn combo() -> KeyCombo {
@@ -13,18 +12,6 @@ fn combo() -> KeyCombo {
         key: "a".into(),
         modifiers: vec![],
     }
-}
-
-#[test]
-fn headless_keyboard_policy_is_denied_before_injection() {
-    key_sink::reset();
-    let error = ensure_keyboard_policy(InteractionPolicy::headless()).expect_err("headless");
-    assert_eq!(error.code, ErrorCode::PolicyDenied);
-    assert_eq!(
-        error.disposition.delivery(),
-        DeliveryDisposition::NotDelivered
-    );
-    assert!(key_sink::recorded().is_empty());
 }
 
 #[test]

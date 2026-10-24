@@ -1,28 +1,20 @@
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode};
 
 #[test]
-fn hard_ax_error_falls_through_to_the_next_dismiss_strategy() {
+fn hard_ax_error_is_not_a_success_and_does_not_abort_the_strategy_list() {
     let deadline = Deadline::standard().expect("deadline");
-    let outcomes = [
+
+    let failed = super::strategy_succeeded(
         Err(AdapterError::new(
             ErrorCode::ActionFailed,
             "AXDismiss failed",
         )),
-        Ok(true),
-    ];
-    let mut attempts = 0;
-    let mut dismissed = false;
+        deadline,
+    );
+    let succeeded = super::strategy_succeeded(Ok(true), deadline);
 
-    for outcome in outcomes {
-        attempts += 1;
-        if super::strategy_succeeded(outcome, deadline).expect("strategy result") {
-            dismissed = true;
-            break;
-        }
-    }
-
-    assert!(dismissed);
-    assert_eq!(attempts, 2);
+    assert!(!failed.expect("a hard AX error falls through to the next strategy"));
+    assert!(succeeded.expect("strategy result"));
 }
 
 #[test]

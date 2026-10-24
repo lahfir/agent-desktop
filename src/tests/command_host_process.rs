@@ -34,6 +34,32 @@ fn future_deadline() -> u64 {
     time.tv_sec as u64 * 1_000_000_000 + time.tv_nsec as u64 + 60_000_000_000
 }
 
+struct TestDir(std::path::PathBuf);
+
+impl TestDir {
+    fn new() -> Self {
+        use std::os::unix::fs::DirBuilderExt;
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let path = std::path::Path::new("/tmp").join(format!(
+            "ad-host-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&path)
+            .unwrap();
+        Self(path)
+    }
+}
+
+impl Drop for TestDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 struct HostProcess(std::process::Child);
 
 impl Drop for HostProcess {
@@ -45,19 +71,8 @@ impl Drop for HostProcess {
 
 #[test]
 fn socket_host_survives_a_bad_client_and_serves_separate_invocations() {
-    use std::os::unix::fs::DirBuilderExt;
-    let directory = std::path::Path::new("/tmp").join(format!(
-        "ad-host-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::DirBuilder::new()
-        .mode(0o700)
-        .create(&directory)
-        .unwrap();
+    let scratch = TestDir::new();
+    let directory = scratch.0.clone();
     let socket = directory.join("h.sock");
     let mut child = HostProcess(
         Command::new(env!("CARGO_BIN_EXE_agent-desktop"))
@@ -247,43 +262,36 @@ fn unread_reply_exits_without_shutdown_flush_or_next_dispatch() {
         0
     );
     let output: OwnedFd = sender.into();
+    let scratch = TestDir::new();
     let mut child = Command::new(env!("CARGO_BIN_EXE_agent-desktop"))
         .env("AGENT_DESKTOP_INTERNAL_COMMAND_HOST", "1")
         .env_remove("AGENT_DESKTOP_SESSION")
-        .env(
-            "AGENT_DESKTOP_HOME",
-            std::env::temp_dir().join(format!("ad-host-output-{}", std::process::id())),
-        )
+        .env("AGENT_DESKTOP_HOME", &scratch.0)
         .stdin(Stdio::piped())
         .stdout(Stdio::from(output))
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child
-        .stdin
-        .as_mut()
-        .unwrap()
+    let pid = child.id();
+    let mut stdin = child.stdin.take().unwrap();
+    stdin
         .write_all(b"[\"skills\",\"get\",\"desktop\",\"--full\"]\n[\"version\"]\n")
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(20);
-    let status = loop {
-        if let Some(status) = child.try_wait().unwrap() {
-            break status;
-        }
-        if Instant::now() >= deadline {
-            child.kill().unwrap();
-            child.wait().unwrap();
+    let mut stderr = child.stderr.take().unwrap();
+    let (exited, exit) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = exited.send(child.wait());
+    });
+    let status = match exit.recv_timeout(Duration::from_secs(20)) {
+        Ok(status) => status.unwrap(),
+        Err(_) => {
+            unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
             panic!("host failed to exit while its output remained unread");
         }
-        std::thread::sleep(Duration::from_millis(20));
     };
+    drop(stdin);
     let mut diagnostics = String::new();
-    child
-        .stderr
-        .take()
-        .unwrap()
-        .read_to_string(&mut diagnostics)
-        .unwrap();
+    stderr.read_to_string(&mut diagnostics).unwrap();
     assert_eq!(status.code(), Some(1), "{diagnostics}");
     assert!(diagnostics.contains("timed out"), "{diagnostics}");
     let mut bytes = Vec::new();

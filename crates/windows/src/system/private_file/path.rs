@@ -22,6 +22,7 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_SHARE_WRITE, READ_CONTROL,
 };
 
+use super::dacl;
 use super::owner;
 use super::{invalid_input, permission_denied};
 
@@ -54,20 +55,33 @@ enum MissingComponents {
 /// field is intentionally never read after construction.
 pub(super) struct PinnedDirectoryChain {
     _handles: Vec<File>,
+    created_leaf: bool,
 }
 
 pub(super) fn ensure_private_directory_chain(path: &Path) -> std::io::Result<PinnedDirectoryChain> {
     let chain = walk_directory_components(path, MissingComponents::Create)?;
-    let directory = open_directory_no_follow(path, FILE_READ_ATTRIBUTES | READ_CONTROL)?;
+    let directory = open_directory_no_follow(
+        path,
+        FILE_READ_ATTRIBUTES | READ_CONTROL | windows_sys::Win32::Storage::FileSystem::WRITE_DAC,
+    )?;
     require_verified_directory(&directory)?;
-    owner::require_owned_by_eligible_principal(&directory, "private file parent")?;
+    owner::require_actual_owner_by_eligible_principal(&directory, "private file parent")?;
+    if chain.created_leaf {
+        dacl::protect_directory(&directory)?;
+    }
+    dacl::require_private(&directory)?;
     Ok(chain)
 }
 
-pub(super) fn require_reparse_free_directory_chain(
+pub(super) fn require_private_directory_chain(
     path: &Path,
 ) -> std::io::Result<PinnedDirectoryChain> {
-    walk_directory_components(path, MissingComponents::Reject)
+    let chain = walk_directory_components(path, MissingComponents::Reject)?;
+    let directory = open_directory_no_follow(path, FILE_READ_ATTRIBUTES | READ_CONTROL)?;
+    require_verified_directory(&directory)?;
+    owner::require_actual_owner_by_eligible_principal(&directory, "private file parent")?;
+    dacl::require_private(&directory)?;
+    Ok(chain)
 }
 
 fn walk_directory_components(
@@ -76,6 +90,7 @@ fn walk_directory_components(
 ) -> std::io::Result<PinnedDirectoryChain> {
     let mut current = PathBuf::new();
     let mut handles = Vec::new();
+    let mut created_leaf = false;
     for component in path.components() {
         match component {
             Component::CurDir => continue,
@@ -90,36 +105,41 @@ fn walk_directory_components(
             }
             Component::RootDir | Component::Normal(_) => current.push(component.as_os_str()),
         }
-        handles.push(pin_directory_component(&current, missing)?);
+        let (handle, created) = pin_directory_component(&current, missing)?;
+        handles.push(handle);
+        created_leaf = created;
     }
-    Ok(PinnedDirectoryChain { _handles: handles })
+    Ok(PinnedDirectoryChain {
+        _handles: handles,
+        created_leaf,
+    })
 }
 
 fn pin_directory_component(
     component_path: &Path,
     missing: MissingComponents,
-) -> std::io::Result<File> {
+) -> std::io::Result<(File, bool)> {
     match open_directory_no_follow(component_path, DIRECTORY_PIN_ACCESS) {
         Ok(directory) => {
             require_verified_directory(&directory)?;
-            Ok(directory)
+            Ok((directory, false))
         }
         Err(error)
             if error.kind() == ErrorKind::NotFound && missing == MissingComponents::Create =>
         {
-            create_directory_component(component_path)?;
+            let created = create_directory_component(component_path)?;
             let directory = open_directory_no_follow(component_path, DIRECTORY_PIN_ACCESS)?;
             require_verified_directory(&directory)?;
-            Ok(directory)
+            Ok((directory, created))
         }
         Err(error) => Err(error),
     }
 }
 
-fn create_directory_component(component_path: &Path) -> std::io::Result<()> {
+fn create_directory_component(component_path: &Path) -> std::io::Result<bool> {
     match std::fs::create_dir(component_path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == ErrorKind::AlreadyExists => Ok(()),
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => Ok(false),
         Err(error) => Err(error),
     }
 }

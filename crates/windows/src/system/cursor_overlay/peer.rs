@@ -57,7 +57,7 @@ pub(crate) fn terminate_pipe_server(_pipe: isize) -> bool {
 #[cfg(target_os = "windows")]
 mod imp {
     use crate::system::cursor_overlay::image_identity;
-    use crate::system::token_sid::{SidBuffer, TokenSource, token_user_sid};
+    use crate::system::runtime::token_sid::{SidBuffer, TokenSource, token_user_sid};
     use std::os::windows::ffi::OsStringExt;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::Security::TOKEN_QUERY;

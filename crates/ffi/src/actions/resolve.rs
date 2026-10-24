@@ -230,7 +230,34 @@ unsafe fn decode_core_ref_entry(
         ));
     }
 
-    Ok(CoreRefEntry {
+    let bounds_space = match entry.geometry.bounds_space {
+        crate::AD_BOUNDS_SPACE_UNKNOWN => None,
+        crate::AD_BOUNDS_SPACE_SCREEN => Some(agent_desktop_core::BoundsSpace::Screen),
+        crate::AD_BOUNDS_SPACE_WINDOW => Some(agent_desktop_core::BoundsSpace::Window),
+        _ => {
+            return Err(AdapterError::new(
+                ErrorCode::InvalidArgs,
+                "invalid geometry.bounds_space",
+            ));
+        }
+    };
+    let required_space = if cfg!(target_os = "linux") {
+        agent_desktop_core::BoundsSpace::Window
+    } else {
+        agent_desktop_core::BoundsSpace::Screen
+    };
+    if bounds_hash.is_some() && bounds_space != Some(required_space) {
+        let frame = if cfg!(target_os = "linux") {
+            "window"
+        } else {
+            "screen"
+        };
+        return Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
+            format!("Ref geometry requires {frame}-relative bounds on this platform"),
+        ));
+    }
+    let decoded = CoreRefEntry {
         process: RefProcess {
             pid: agent_desktop_core::ProcessId::new(entry.process.pid),
             process_instance: Some(process_instance),
@@ -244,6 +271,7 @@ unsafe fn decode_core_ref_entry(
             native_id,
         },
         geometry: RefGeometry {
+            bounds_space,
             bounds,
             bounds_hash,
         },
@@ -263,7 +291,16 @@ unsafe fn decode_core_ref_entry(
             path_is_absolute: entry.scope.path_is_absolute,
             path,
         },
-    })
+    };
+    if !agent_desktop_core::refs::ref_identity::has_meaningful_identity(&decoded)
+        && (bounds_space != Some(required_space) || bounds.is_none())
+    {
+        return Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
+            format!("Geometry-only refs require {required_space:?}-relative bounds"),
+        ));
+    }
+    Ok(decoded)
 }
 
 fn process_identity(

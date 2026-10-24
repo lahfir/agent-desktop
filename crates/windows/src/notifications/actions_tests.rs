@@ -1,6 +1,6 @@
 use agent_desktop_core::{ErrorCode, InteractionPolicy, NotificationIdentity, NotificationInfo};
 
-use super::{dismiss_all_failures, require_foreground_policy, verify_identity};
+use super::{dismiss_all_failures, require_foreground_policy, verify_notification_identity};
 
 fn info(app: &str, title: &str) -> NotificationInfo {
     NotificationInfo {
@@ -16,8 +16,8 @@ fn info(app: &str, title: &str) -> NotificationInfo {
 fn an_empty_identity_defers_to_the_index() {
     let identity = NotificationIdentity::default();
 
-    assert!(verify_identity(1, Some(&identity), &info("App A", "Reminder")).is_ok());
-    assert!(verify_identity(1, None, &info("App A", "Reminder")).is_ok());
+    assert!(verify_notification_identity(1, Some(&identity), &info("App A", "Reminder")).is_ok());
+    assert!(verify_notification_identity(1, None, &info("App A", "Reminder")).is_ok());
 }
 
 #[test]
@@ -27,7 +27,7 @@ fn a_matching_identity_is_accepted() {
         expected_title: Some("Reminder".into()),
     };
 
-    assert!(verify_identity(1, Some(&identity), &info("App A", "Reminder")).is_ok());
+    assert!(verify_notification_identity(1, Some(&identity), &info("App A", "Reminder")).is_ok());
 }
 
 #[test]
@@ -37,8 +37,9 @@ fn a_mismatched_identity_is_notification_not_found_and_names_only_the_index() {
         expected_title: Some("Reminder".into()),
     };
 
-    let error = verify_identity(2, Some(&identity), &info("App B", "Moved in underneath"))
-        .expect_err("the surface reordered under the caller");
+    let error =
+        verify_notification_identity(2, Some(&identity), &info("App B", "Moved in underneath"))
+            .expect_err("the surface reordered under the caller");
 
     assert_eq!(error.code, ErrorCode::NotificationNotFound);
     assert!(error.message.contains("index 2"));
@@ -56,8 +57,8 @@ fn a_title_only_identity_is_verified_against_the_title() {
         expected_title: Some("Reminder".into()),
     };
 
-    assert!(verify_identity(1, Some(&identity), &info("App A", "Reminder")).is_ok());
-    assert!(verify_identity(1, Some(&identity), &info("App A", "Other")).is_err());
+    assert!(verify_notification_identity(1, Some(&identity), &info("App A", "Reminder")).is_ok());
+    assert!(verify_notification_identity(1, Some(&identity), &info("App A", "Other")).is_err());
 }
 
 #[test]

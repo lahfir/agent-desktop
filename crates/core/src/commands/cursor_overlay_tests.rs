@@ -1,6 +1,6 @@
 use super::*;
 use crate::commands::session::{self, SessionAction};
-use crate::refs_test_support::HomeGuard;
+use crate::refs::refs_test_support::HomeGuard;
 
 #[test]
 fn session_and_overlay_responses_show_portable_activation_guidance() {

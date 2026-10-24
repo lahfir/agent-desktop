@@ -71,7 +71,7 @@ unsafe fn get_core_tree(
 
     match adapter.inner.get_tree(window, &core_opts, deadline) {
         Ok(tree) => {
-            let shaped = agent_desktop_core::ref_alloc::transform_tree(
+            let shaped = agent_desktop_core::refs::ref_alloc::transform_tree(
                 tree,
                 core_opts.include_bounds,
                 core_opts.interactive_only,

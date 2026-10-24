@@ -6,7 +6,7 @@ const BODY: u32 = 0xFF20_3040;
 const INK: [f64; 3] = [1.0, 1.0, 1.0];
 
 fn opaque_card(width: i32, height: i32) -> Surface {
-    let mut surface = Surface::transparent(width, height);
+    let mut surface = Surface::try_transparent(width, height).expect("bounded test surface");
     for pixel in &mut surface.pixels {
         *pixel = BODY;
     }

@@ -38,7 +38,7 @@ use std::sync::OnceLock;
 use windows_sys::Win32::Security::{SID_AND_ATTRIBUTES, TOKEN_GROUPS, TokenGroups};
 
 use super::permission_denied;
-use crate::system::token_sid::{
+use crate::system::runtime::token_sid::{
     SidBuffer, TokenSource, read_process_token_information, token_owner_sid, token_user_sid,
 };
 
@@ -65,12 +65,33 @@ impl OwnerEligibleSids {
     pub(super) fn contains(&self, candidate: &SidBuffer) -> bool {
         self.entries.iter().any(|sid| sid.matches(candidate))
     }
+
+    pub(super) fn entries(&self) -> Vec<SidBuffer> {
+        self.entries.clone()
+    }
 }
 
 pub(super) fn require_owned_by_eligible_principal(file: &File, what: &str) -> std::io::Result<()> {
     let eligible = process_owner_eligible_sids()?;
     let actual = actual_owner_for_comparison(file)?;
-    if !eligible.contains(&actual) {
+    require_owner_in_set(&actual, eligible, what)
+}
+
+pub(super) fn require_actual_owner_by_eligible_principal(
+    file: &File,
+    what: &str,
+) -> std::io::Result<()> {
+    let eligible = process_owner_eligible_sids()?;
+    let actual = file_owner_sid(file)?;
+    require_owner_in_set(&actual, eligible, what)
+}
+
+fn require_owner_in_set(
+    actual: &SidBuffer,
+    eligible: &OwnerEligibleSids,
+    what: &str,
+) -> std::io::Result<()> {
+    if !eligible.contains(actual) {
         return Err(permission_denied(format!(
             "{what} is owned by a foreign principal, not this process's token user, token \
              owner, or an owner-eligible token group; if a different principal owns this path \
@@ -144,7 +165,7 @@ fn actual_owner_for_comparison(file: &File) -> std::io::Result<SidBuffer> {
 }
 
 pub(super) fn file_owner_sid(file: &File) -> std::io::Result<SidBuffer> {
-    crate::system::token_sid::read_owner_sid(file)
+    crate::system::runtime::token_sid::read_owner_sid(file)
 }
 
 #[cfg(test)]
@@ -193,6 +214,6 @@ pub(super) mod forced_foreign_owner {
     }
 
     pub(in super::super) fn with_forced_foreign_owner<R>(run: impl FnOnce() -> R) -> R {
-        crate::system::test_support::with_flag(&FORCE_FOREIGN_OWNER, true, run)
+        crate::system::fixture::test_support::with_flag(&FORCE_FOREIGN_OWNER, true, run)
     }
 }

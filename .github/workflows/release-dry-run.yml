@@ -1,3 +1,10 @@
+# Rehearsal of the release build. It is its own workflow, not a mode of release.yml,
+# because a workflow that checks out a ref chosen at dispatch time while running on the
+# default branch, and shares caches with other runs, can have those caches poisoned
+# (CodeQL actions/cache-poisoning/poisonable-step). No runtime condition removes that.
+# So this one holds read-only contents permission, uses no caches, and reaches no
+# publishing job.
+
 name: Release Dry Run
 
 on:
@@ -13,8 +20,24 @@ on:
       - '.github/workflows/release-dry-run.yml'
       - 'npm/**'
       - 'crates/ffi/Cargo.toml'
+      - 'crates/ffi/src/**'
+      - 'crates/ffi/include/**'
+      - 'crates/linux/src/input/clipboard/**'
+      - 'crates/linux/src/bin/**'
+      - 'scripts/check-elf-glibc-floor.sh'
+      - 'scripts/check-elf-glibc-floor-selftest.sh'
+      - 'scripts/check-linux-archive-contents.sh'
+      - 'scripts/ffi-archive-readme-linux.md'
+      - 'scripts/private-session.sh'
+      - 'tests/linux-dist/**'
+      - 'tests/ffi-python/**'
+      - 'scripts/ci-ffi-helper-discovery-smoke.sh'
 
 permissions: {}
+
+concurrency:
+  group: release-dry-run-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -23,9 +46,12 @@ jobs:
   cli:
     name: Dry-run CLI (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      GLIBC_FLOOR: '2.35'
     strategy:
       fail-fast: false
       matrix:
@@ -34,14 +60,45 @@ jobs:
             runner: macos-latest
           - target: x86_64-apple-darwin
             runner: macos-latest
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            container: ubuntu:22.04@sha256:0a9887931b0e38af2e3487ed39e29436b0535c4f3f52e57745baaf79d1898956
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+            container: ubuntu:22.04@sha256:0a9887931b0e38af2e3487ed39e29436b0535c4f3f52e57745baaf79d1898956
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
           - target: aarch64-pc-windows-msvc
             runner: windows-11-arm
     steps:
+      - name: Install container build tools
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl build-essential git xz-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Install rustup (container)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64) TRIPLE=x86_64-unknown-linux-gnu ;;
+            aarch64) TRIPLE=aarch64-unknown-linux-gnu ;;
+          esac
+          BASE="https://static.rust-lang.org/rustup/dist/${TRIPLE}"
+          curl --proto '=https' --tlsv1.2 -fsSLO "${BASE}/rustup-init"
+          echo "$(curl --proto '=https' --tlsv1.2 -fsSL "${BASE}/rustup-init.sha256" | cut -d' ' -f1)  rustup-init" | sha256sum -c -
+          chmod +x rustup-init
+          ./rustup-init -y --default-toolchain none --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" toolchain install
 
       - name: Install Rust toolchain
         run: |
@@ -54,12 +111,40 @@ jobs:
           cargo build --locked --release -p agent-desktop --target ${{ matrix.target }}
           cargo build --locked --release -p agent-desktop-macos --bin agent-desktop-macos-helper --target ${{ matrix.target }}
 
+      - name: Build release binary (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cargo build --locked --release -p agent-desktop --target ${{ matrix.target }}
+          cargo build --locked --release -p agent-desktop-linux --bins --target ${{ matrix.target }}
+
       - name: Build release binary (Windows)
         if: runner.os == 'Windows'
         run: cargo build --locked --release -p agent-desktop --target ${{ matrix.target }}
 
+      - name: Check glibc floor and size (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          LIMIT=$((15 * 1024 * 1024))
+          for FILE in agent-desktop agent-desktop-linux-clipboard-owner; do
+            PATH_TO="target/${{ matrix.target }}/release/${FILE}"
+            scripts/check-elf-glibc-floor.sh "${PATH_TO}" "${GLIBC_FLOOR}"
+            SIZE=$(stat -c%s "${PATH_TO}")
+            echo "${FILE} size: ${SIZE} bytes"
+            if [ "$SIZE" -gt "$LIMIT" ]; then
+              echo "FAIL: shipped executable ${FILE} exceeds 15MB limit (${SIZE} bytes)"
+              exit 1
+            fi
+          done
+
       - name: Smoke-run the built binary (macOS)
         if: runner.os == 'macOS'
+        run: target/${{ matrix.target }}/release/agent-desktop version
+
+      - name: Smoke-run the built binary (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
         run: target/${{ matrix.target }}/release/agent-desktop version
 
       - name: Smoke-run the built binary (Windows)
@@ -79,6 +164,18 @@ jobs:
           printf 'agent-desktop\nagent-desktop-macos-helper\n' | sort > expected.txt
           diff -u expected.txt listing.txt
           shasum -a 256 "${TARBALL}" > "${TARBALL}.sha256"
+
+      - name: Create tarball (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version || format('0.0.0-pr{0}', github.event.pull_request.number) }}
+        run: |
+          TARBALL="agent-desktop-v${VERSION}-${{ matrix.target }}.tar.gz"
+          tar -czf "${TARBALL}" -C "target/${{ matrix.target }}/release" \
+            agent-desktop agent-desktop-linux-clipboard-owner
+          scripts/check-linux-archive-contents.sh cli "${TARBALL}"
+          sha256sum "${TARBALL}" > "${TARBALL}.sha256"
 
       - name: Create tarball (Windows)
         if: runner.os == 'Windows'
@@ -108,21 +205,55 @@ jobs:
   ffi:
     name: Dry-run FFI (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      GLIBC_FLOOR: '2.35'
     strategy:
       fail-fast: false
       matrix:
         include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            container: ubuntu:22.04@sha256:0a9887931b0e38af2e3487ed39e29436b0535c4f3f52e57745baaf79d1898956
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+            container: ubuntu:22.04@sha256:0a9887931b0e38af2e3487ed39e29436b0535c4f3f52e57745baaf79d1898956
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
           - target: aarch64-pc-windows-msvc
             runner: windows-11-arm
     steps:
+      - name: Install container build tools
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl build-essential git xz-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Install rustup (container)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64) TRIPLE=x86_64-unknown-linux-gnu ;;
+            aarch64) TRIPLE=aarch64-unknown-linux-gnu ;;
+          esac
+          BASE="https://static.rust-lang.org/rustup/dist/${TRIPLE}"
+          curl --proto '=https' --tlsv1.2 -fsSLO "${BASE}/rustup-init"
+          echo "$(curl --proto '=https' --tlsv1.2 -fsSL "${BASE}/rustup-init.sha256" | cut -d' ' -f1)  rustup-init" | sha256sum -c -
+          chmod +x rustup-init
+          ./rustup-init -y --default-toolchain none --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" toolchain install
 
       - name: Install Rust toolchain
         run: |
@@ -134,7 +265,51 @@ jobs:
           cargo build --locked --profile release-ffi
           -p agent-desktop-ffi --target ${{ matrix.target }}
 
-      - name: Stage and verify archive contents
+      - name: Build Linux clipboard owner for FFI consumers
+        if: runner.os == 'Linux'
+        shell: bash
+        run: cargo build --locked --release -p agent-desktop-linux --bins --target ${{ matrix.target }}
+
+      - name: Check glibc floor (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          scripts/check-elf-glibc-floor.sh "target/${{ matrix.target }}/release-ffi/libagent_desktop_ffi.so" "${GLIBC_FLOOR}"
+          scripts/check-elf-glibc-floor.sh "target/${{ matrix.target }}/release/agent-desktop-linux-clipboard-owner" "${GLIBC_FLOOR}"
+
+      - name: Stage and verify archive contents (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version || format('0.0.0-pr{0}', github.event.pull_request.number) }}
+        run: |
+          STAGE="agent-desktop-ffi-v${VERSION}-${{ matrix.target }}"
+          mkdir -p "$STAGE/lib" "$STAGE/include"
+          cp "target/${{ matrix.target }}/release-ffi/libagent_desktop_ffi.so" "$STAGE/lib/"
+          cp "target/${{ matrix.target }}/release/agent-desktop-linux-clipboard-owner" "$STAGE/lib/"
+          chmod +x "$STAGE/lib/agent-desktop-linux-clipboard-owner"
+          cp crates/ffi/include/agent_desktop.h "$STAGE/include/"
+          cp LICENSE "$STAGE/"
+          cat > "$STAGE/README.md" <<EOF
+          # agent-desktop FFI cdylib — v${VERSION} (${{ matrix.target }})
+
+          - \`lib/libagent_desktop_ffi.so\` — shared library
+          - \`include/agent_desktop.h\` — committed C ABI header
+          - \`LICENSE\` — Apache-2.0
+
+          Docs: https://github.com/lahfir/agent-desktop/tree/main/skills/agent-desktop-ffi
+          EOF
+          cat scripts/ffi-archive-readme-linux.md >> "$STAGE/README.md"
+          # shellcheck disable=SC2016
+          echo '- `lib/agent-desktop-linux-clipboard-owner` — clipboard owner helper, colocated for library-image discovery' >> "$STAGE/README.md"
+          (cd "$STAGE" && sha256sum lib/* include/* LICENSE > SHA256SUMS)
+          tar -czf "${STAGE}.tar.gz" "${STAGE}"
+          (cd "$STAGE" && sha256sum -c SHA256SUMS)
+          scripts/check-linux-archive-contents.sh ffi "${STAGE}.tar.gz"
+          sha256sum "${STAGE}.tar.gz" > "${STAGE}.tar.gz.sha256"
+
+      - name: Stage and verify archive contents (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         env:
           VERSION: ${{ inputs.version || format('0.0.0-pr{0}', github.event.pull_request.number) }}
@@ -157,5 +332,123 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dry-run-ffi-${{ matrix.target }}
-          path: agent-desktop-ffi-v*.zip
+          path: |
+            agent-desktop-ffi-v*.zip
+            agent-desktop-ffi-v*.tar.gz
+            agent-desktop-ffi-v*.tar.gz.sha256
           retention-days: 1
+
+  linux-archives:
+    name: Linux archive contents (${{ matrix.target }})
+    needs: [cli, ffi]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            npm_key: linux-x64
+          - target: aarch64-unknown-linux-gnu
+            npm_key: linux-arm64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download this target's CLI and FFI archives
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: "dry-run-{binary,ffi}-${{ matrix.target }}"
+          merge-multiple: true
+          path: archives
+
+      - name: Check the helper is in all three channels
+        run: |
+          scripts/check-linux-archive-contents.sh all \
+            archives/agent-desktop-v*-${{ matrix.target }}.tar.gz \
+            archives/agent-desktop-ffi-v*-${{ matrix.target }}.tar.gz \
+            ${{ matrix.npm_key }}
+
+  linux-consumer:
+    defaults:
+      run:
+        shell: bash
+    name: Linux consumer (${{ matrix.target }})
+    needs: [cli, ffi]
+    if: ${{ !cancelled() }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Download this architecture's CLI and FFI archives
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: "dry-run-{binary,ffi}-${{ matrix.target }}"
+          merge-multiple: true
+          path: archives
+
+      - name: Extract both archives into clean directories
+        run: |
+          set -euo pipefail
+          for KIND in agent-desktop-v agent-desktop-ffi-v; do
+            ARCHIVE=$(ls archives/${KIND}*-${{ matrix.target }}.tar.gz)
+            DIR="extracted/${KIND}"
+            mkdir -p "$DIR"
+            tar -xzf "$ARCHIVE" -C "$DIR"
+          done
+          find extracted -maxdepth 3 | sort
+
+      - name: Install the session and observer packages
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            at-spi2-core dbus-x11 xvfb x11-utils openbox gnome-calculator \
+            python3-gi gir1.2-atspi-2.0 gir1.2-gtk-3.0 gcc
+
+      - name: Deterministic packaged owner contracts
+        run: |
+          python3 -I -m unittest discover -s tests/ffi-python -p 'test_linux_helper.py'
+          python3 -I -m unittest discover -s tests/linux-dist -p 'test_*.py'
+
+      - name: FFI library-adjacent helper discovery from this archive
+        run: |
+          set -euo pipefail
+          FFI_DIR=$(ls -d extracted/agent-desktop-ffi-v/agent-desktop-ffi-v*)
+          mkdir -p target/release-ffi target/release
+          cp "$FFI_DIR/lib/libagent_desktop_ffi.so" target/release-ffi/
+          cp "$FFI_DIR/lib/agent-desktop-linux-clipboard-owner" target/release/
+          AGENT_DESKTOP_WM_ROOT=/ scripts/private-session.sh --wm -- \
+            scripts/ci-ffi-helper-discovery-smoke.sh
+
+      - name: Real C consumer against the extracted FFI archive
+        run: |
+          AGENT_DESKTOP_WM_ROOT=/ scripts/private-session.sh --wm -- \
+            tests/linux-dist/run-consumer.sh "$(ls -d extracted/agent-desktop-ffi-v/agent-desktop-ffi-v*)"
+
+      - name: Packed npm install from the extracted CLI archive
+        run: |
+          AGENT_DESKTOP_WM_ROOT=/ scripts/private-session.sh --wm -- \
+            tests/linux-dist/run-npm-install.sh "archives"

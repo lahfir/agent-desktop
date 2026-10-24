@@ -248,5 +248,4 @@ Invoke-SelfTest 'a freshly-created lease directory validates against the real pr
     New-PrivateLeaseDirectory -LeafDirectory $leaf
     $restored = Enter-DesktopLease -TimeoutSeconds 5
     Exit-DesktopLease
-    Assert-True $true 'lease directory restored to its protected form for any later run'
 }

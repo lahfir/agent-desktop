@@ -1,5 +1,5 @@
-#import "../../crates/macos/src/system/cursor_overlay_chrome_bridge.m"
-#import "../../crates/macos/src/system/cursor_overlay_image_bridge.m"
+#import "../../crates/macos/src/system/cursor_overlay/cursor_overlay_chrome_bridge.m"
+#import "../../crates/macos/src/system/cursor_overlay/cursor_overlay_image_bridge.m"
 #import <unistd.h>
 #import <sys/time.h>
 

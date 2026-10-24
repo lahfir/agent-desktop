@@ -159,7 +159,7 @@ fn focus_confirmation_resets_after_transient_wrong_window() {
         focused_window_supported: true,
     };
 
-    let value = crate::window_focus::wait_for_focused_window_with_poll_interval(
+    let value = crate::system::window_focus::wait_for_focused_window_with_poll_interval(
         &adapter,
         &target.id,
         None,

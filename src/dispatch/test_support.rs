@@ -28,6 +28,11 @@ impl HomeGuard {
             HOME_ID.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&path).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
         let previous = std::env::var_os("AGENT_DESKTOP_HOME");
         unsafe { std::env::set_var("AGENT_DESKTOP_HOME", &path) };
         Self {

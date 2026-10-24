@@ -1,4 +1,4 @@
-use super::parse_combo;
+use super::{parse_combo, parse_combo_normalized};
 use crate::Modifier;
 
 #[test]
@@ -39,10 +39,10 @@ fn parse_combo_accepts_long_form_modifier_aliases() {
 
 #[test]
 fn parse_combo_rejects_unknown_modifier_with_invalid_args_code() {
-    let err = parse_combo("win+k").expect_err("unknown modifier must fail");
+    let err = parse_combo("hyper+k").expect_err("unknown modifier must fail");
     assert_eq!(err.code(), "INVALID_ARGS");
     assert!(
-        err.to_string().contains("win"),
+        err.to_string().contains("hyper"),
         "error must name the unknown modifier, got: {}",
         err
     );
@@ -62,4 +62,31 @@ fn parse_combo_key_is_preserved_verbatim_without_lowercasing() {
         "parse_combo must NOT lowercase the key — normalization is the caller's responsibility"
     );
     assert_eq!(combo.modifiers, vec![Modifier::Meta]);
+}
+
+#[test]
+fn parse_combo_accepts_super_and_win_as_meta() {
+    for raw in ["super+e", "win+e"] {
+        let combo = parse_combo(raw).expect("platform name for the meta key");
+        assert_eq!(combo.modifiers, vec![Modifier::Meta], "{raw}");
+    }
+}
+
+#[test]
+fn bare_uppercase_letter_means_the_shifted_key() {
+    let combo = parse_combo_normalized("H").expect("H is valid");
+    assert_eq!(combo.key, "h");
+    assert_eq!(combo.modifiers, vec![Modifier::Shift]);
+    let explicit = parse_combo_normalized("shift+H").expect("shift+H is valid");
+    assert_eq!(explicit.modifiers, vec![Modifier::Shift]);
+    let chord = parse_combo_normalized("Ctrl+A").expect("Ctrl+A is valid");
+    assert_eq!(chord.key, "a");
+    assert_eq!(chord.modifiers, vec![Modifier::Ctrl]);
+    assert!(parse_combo_normalized("h").unwrap().modifiers.is_empty());
+    assert!(
+        parse_combo_normalized("Return")
+            .unwrap()
+            .modifiers
+            .is_empty()
+    );
 }

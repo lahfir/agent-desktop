@@ -33,13 +33,14 @@ pub fn execute(
         GetProperty::Title => ("title", json!(entry.identity.name), None),
         GetProperty::Text => {
             let live = optional_live_read(adapter.get_live_value(&handle, deadline).map(Some))?;
-            let value = crate::accname::non_blank(live.unwrap_or(entry.identity.value));
-            let name = crate::accname::non_blank(entry.identity.name);
-            let readable = if crate::role_text::value_is_the_readable_text(&entry.identity.role) {
-                value.or(name)
-            } else {
-                name.or(value)
-            };
+            let value = crate::tree::accname::non_blank(live.unwrap_or(entry.identity.value));
+            let name = crate::tree::accname::non_blank(entry.identity.name);
+            let readable =
+                if crate::tree::role_text::value_is_the_readable_text(&entry.identity.role) {
+                    value.or(name)
+                } else {
+                    name.or(value)
+                };
             ("text", json!(readable), None)
         }
         GetProperty::Value => {

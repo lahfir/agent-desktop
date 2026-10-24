@@ -172,14 +172,15 @@ function Invoke-CursorOverlayForegroundLeg {
 
                 <# Sensitivity control: prove the oracle is live, not stuck. #>
                 $others = @(Get-NativeTopLevelWindows | Where-Object { $_.Handle -ne $fixtureHandle -and $_.Handle -ne [IntPtr]::Zero })
-                if ($others.Count -gt 0) {
-                    [void](Set-NativeForegroundWindow -WindowHandle $others[0].Handle)
-                    $stolen = Get-NativeForegroundWindowHandle
-                    if ($stolen -eq $fixtureHandle) {
-                        throw 'sensitivity control: stealing foreground away did not change the oracle reading - Get-NativeForegroundWindowHandle would never fail this leg'
-                    }
-                    [void](Set-NativeForegroundWindow -WindowHandle $fixtureHandle)
+                if ($others.Count -eq 0) {
+                    throw 'sensitivity control: no second top-level window exists to steal foreground to - the foreground oracle was never shown to be live, so a pass would be unfalsifiable'
                 }
+                [void](Set-NativeForegroundWindow -WindowHandle $others[0].Handle)
+                $stolen = Get-NativeForegroundWindowHandle
+                if ($stolen -eq $fixtureHandle) {
+                    throw 'sensitivity control: stealing foreground away did not change the oracle reading - Get-NativeForegroundWindowHandle would never fail this leg'
+                }
+                [void](Set-NativeForegroundWindow -WindowHandle $fixtureHandle)
             }
         }
         Add-Pass -Leg 'cursor-overlay-no-foreground-steal'

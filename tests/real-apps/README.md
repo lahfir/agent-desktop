@@ -4,12 +4,10 @@ Use the public Agent Desktop CLI directly. The model must read the original JSON
 and select refs itself. Do not insert Python/jq tree extraction, a custom ref
 picker, raw AX mutations, or AppleScript into the evaluated interaction workflow.
 
-Follow [the native reliability plan](../../docs/plans/2026-09-19-native-reliability-evaluation-plan.md).
-The current trajectory and required outcomes are frozen in [acceptance v1](acceptance-v1.md).
-The earlier provisional numeric ratings are withdrawn; no measured overall score
-has been established.
-Numbers is the target. Fixture tests provide deterministic regressions, not proof
-of Numbers task completion.
+The required task outcomes and gates are frozen in [acceptance v1](acceptance-v1.md),
+which excludes the Numbers cases (N1-N8) from active qualification; the Numbers
+protocol below stays the reproducible way to run them. Fixture tests provide
+deterministic regressions, not proof of Numbers task completion.
 
 ## Ownership and evidence
 
@@ -51,9 +49,16 @@ failure. Endpoint pointer equality alone is insufficient side-effect evidence.
 
 `ax_probe.swift` is a diagnostic helper, not the model's driver. It reads native
 attributes/actions/settable flags through ApplicationServices without Agent
-Desktop internals. It requires an exact owned window title and process ID.
+Desktop internals. It requires the process ID and an exact owned window title
+that starts with `AD Reliability`. It also lists parameterized attribute names
+and reads AXIdentifier and AXDOMIdentifier. Inspect parameterized attributes
+before concluding that an editor exposes no write path. Ordinary setters
+can be no-ops while the element still advertises an operation such as
+`AXReplaceRangeWithText` (Numbers' cell editor advertises AXStringForRange,
+AXAttributedStringForRange, AXLineForIndex, AXReplaceRangeWithText,
+AXBoundsForRange and AXRangeForLine).
 
-Compile with `swiftc ax_probe.swift -o /tmp/ad-ax-probe`. Examples:
+Compile with `swiftc tests/real-apps/ax_probe.swift -o /tmp/ad-ax-probe`. Examples:
 
 ```
 /tmp/ad-ax-probe PID 'AD Reliability.numbers' inspect 'seed-target'
@@ -62,7 +67,10 @@ Compile with `swiftc ax_probe.swift -o /tmp/ad-ax-probe`. Examples:
 
 Reserve `press`, `select`, and `set` for separate raw AX trials on equivalent
 clean starting states. Never use them to rescue the CLI workflow or blindly
-repeat an uncertain action. Native success alone is not proof of effect.
+repeat an uncertain action. Native success alone is not proof of effect. These
+operations target one `AXCell` or `AXMenuButton` by exact title or description;
+`select` is Numbers-specific and writes `AXSelectedCells` on the `AXTable` whose
+title contains `Eval Grid`.
 
 ## Repeat sheet transitions without response rewriting
 
@@ -74,12 +82,17 @@ state namespace, run:
 bash tests/real-apps/numbers-sheets.sh /absolute/candidate w-123 @snapshot:e1 @snapshot:e2 5
 ```
 
-Use actual qualified refs, not the placeholders above. Start with Eval Other
-active so the first click is a transition. The script reuses the same refs for
-ten transitions, prints and saves unchanged JSON, captures every transition,
-and waits for both selected and unselected values. Any command failure stops
-the run; a failed click gets a diagnostic screenshot but is never retried.
-It performs no setup, response parsing, app activation or physical input.
+The arguments are `BINARY` (absolute path), `WINDOW_ID`, `SHEET_1_REF`,
+`OTHER_SHEET_REF`, and an optional `CYCLES` (default 5, at most 15). The
+environment must set `AGENT_DESKTOP_HOME` to an absolute path. Use actual
+qualified refs, not the placeholders above. Start with Eval Other active so the
+first click is a transition. The script reuses the same refs for two
+transitions per cycle, prints unchanged JSON and saves it with the screenshots
+under the `/tmp/ad-numbers-sheets.*` evidence directory it announces, captures
+every transition, and waits for both selected and unselected values. Any
+command failure stops the run; a failed click gets a diagnostic screenshot but
+is never retried. It performs no setup, response parsing, app activation or
+physical input.
 
 Completion is not a passing score: inspect every `get`/`is` pair and screenshot,
 and independently verify active sheet and unchanged guard cells. Reset and
@@ -115,26 +128,35 @@ replacement. It does not retry, commit or prove continuous headless operation.
 Close only the printed fixture PID with `kill -TERM PID` after the test. A
 successful custom receiver proves parameter transport; it does not prove that
 AppKit's default receiver or Numbers can perform the operation in the background.
-
-This protocol does not claim that the planned repeated acceptance gate has run.
+The cross-process argument is a dictionary: `AXReplacementRange` (an AXValue
+CFRange in UTF-16 units) and `AXReplacementText` (a CFString), read by AppKit's
+`_NSAccessibilityResultForReplaceRangeWithText`. Native success plus `true` does
+not mean the text changed. Plain background NSTextView (`--standard`) and Numbers
+both return them and leave the value unchanged; only the custom receiver changes it.
+A surrogate-pair check replacing `A😀B` logged UTF-16 range `{0, 4}`.
+AppKit's default path goes through the current input context. That context is nil
+for a non-key window, even after the text view becomes first responder (`--standard-focused`).
+No production write path uses this operation: no Numbers background write was shown to work.
 
 ## Nested scroll regression
 
-Compile `nested_scroll_fixture.m` with `clang -framework AppKit` and launch the
-resulting executable directly. It creates only an owned background window named
-AD Reliability Nested Scroll. Discover that window and the Clipped target ref
+Compile `nested_scroll_fixture.m` with
+`clang -framework AppKit tests/real-apps/nested_scroll_fixture.m -o /tmp/ad-nested-scroll-fixture`
+and launch the resulting executable directly. It creates only an owned
+background window named AD Reliability Nested Scroll. Discover that window and the Clipped target ref
 through the public CLI. Capture a window screenshot before and after `scroll-to`
 on the discovered ref. Before, the button is outside its scroll viewport but
 inside its window; after, the button must actually be visible. Merely returning
-`verified: true` or reading window-relative offscreen state is not a valid oracle.
-The old implementation incorrectly returned a verified skipped step without
-moving anything. Record original command output and inspect both screenshots.
+`verified: true` or reading window-relative offscreen state is not a valid oracle:
+the failure this regression guards against is a verified skipped step that moves
+nothing. Record original command output and inspect both screenshots.
 Close only the fixture's printed PID with `kill -TERM PID` after the trial.
 
 ## Additional Xcode coverage
 
-The second-app probe uses only `/tmp/ad-native-eval/AD Reliability.swift` in
-background Xcode. Discover Source Editor through skeleton/root, replace its
+The second-app probe uses only an owned `AD Reliability.swift` file in
+background Xcode (the raw AX helper rejects windows whose title does not start
+with `AD Reliability`). Discover Source Editor through skeleton/root, replace its
 value, insert text on the same ref, and verify screenshots plus exact disk
 contents. Closing by the original Close ref and reopening as separate setup
 checks persistence; do not count setup as CLI task completion. Preserve rejected
@@ -145,17 +167,15 @@ The raw AX helper can inspect controls by exact title or description and invoke
 It records foreground endpoints, not continuous monitoring. An uncertain native
 return never authorizes a fallback action or automatic replay.
 
-See [the Xcode evidence ledger](../../docs/solutions/runtime-errors/2026-09-19-xcode-headless-evaluation.md)
-for successful persistence, menu failures, and the stale-window classification gap.
-
 ## Observe headless side effects during a trial
 
-Compile `headless_probe.swift` with `swiftc`, then run
-`headless-probe PID 60` in a separate terminal/process. Start evaluated commands
+Compile it with `swiftc tests/real-apps/headless_probe.swift -o /tmp/ad-headless-probe`,
+then run `/tmp/ad-headless-probe PID 60` (running target PID, then a duration of
+up to 300 seconds) in a separate terminal/process. Start evaluated commands
 only after its original JSON reports `event: ready`. It observes workspace
 activation notifications, session-wide input counters and pointer samples until
 the bounded duration expires. It performs no actions and records no key contents.
-`headless-probe --self-test` verifies counter arithmetic including rollover.
+`/tmp/ad-headless-probe --self-test` verifies counter arithmetic including rollover.
 
 Inspect its final JSON alongside action outputs. A target activation invalidates
 the headless claim. Other app activations and input increments are environmental
@@ -163,3 +183,29 @@ activity with unknown attribution, not proof of either agent input or clean inpu
 isolation. Pointer sampling can miss a move-and-return between samples. Unknown
 foreground (`-1`), missing pointer samples or an exited target cannot pass a clean
 monitoring gate. This observer improves evidence but is not an automatic score.
+
+## Retained identity against the fixture
+
+`retained-identity-probe.swift` is a read-only raw AX observer for the SwiftUI
+fixture's ref-churn view (`tests/fixture-app/RefChurnView.swift`). Compile it
+with `swiftc tests/real-apps/retained-identity-probe.swift -o /tmp/ad-retained-probe`
+and run `/tmp/ad-retained-probe PID` against a running `AgentDeskFixture`. It
+requires exactly one window with one `shared-title` field reading `Alpha` and
+one `stable-editor`, retains the native `Alpha` element, prints `ready`, and
+then reads stage labels from stdin. After each of `initial`, `filtered`,
+`restored`, `edited`, and `cleared` it reports whether the retained element is
+still a member of the live window tree and asserts that it is only in the tree
+at `initial`; `quit` exits. Drive the fixture with raw Agent Desktop commands
+between stages; the probe never mutates anything.
+
+## Selection delivery fixture
+
+`selection_delivery_fixture.swift` creates an owned background window named
+`AD Reliability Selection Delivery`. Compile it with
+`swiftc tests/real-apps/selection_delivery_fixture.swift -o /tmp/ad-selection-fixture`
+and run it directly; it logs `READY pid=<PID>`. Its row accepts a direct
+selected-state write but always reads back unselected, and its table container
+independently accepts a selected-rows write. Each write is logged as
+`MUTATION direct-selection <bool>` or `MUTATION container-selection <count>`,
+so a trial can show which delivery path a `click` on the row took and whether
+the fallback was attempted. Close only the printed PID with `kill -TERM PID`.

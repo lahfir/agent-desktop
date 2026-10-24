@@ -41,7 +41,7 @@ pub unsafe extern "C" fn ad_dismiss_notification(
             index,
             app_filter: filter.as_deref(),
             identity: &identity,
-            policy: agent_desktop_core::interaction_policy::InteractionPolicy::headless(),
+            policy: agent_desktop_core::actions::interaction_policy::InteractionPolicy::headless(),
         };
         match adapter.inner.dismiss_notification(request, &lease) {
             Ok(_) => AdResult::Ok,

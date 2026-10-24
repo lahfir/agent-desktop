@@ -17,9 +17,9 @@ mod imp {
         el: &AXElement,
         name: &str,
         deadline: agent_desktop_core::Deadline,
-    ) -> Result<crate::actions::chain_delivery::DeliveryOutcome, AdapterError> {
+    ) -> Result<crate::actions::chain::chain_delivery::DeliveryOutcome, AdapterError> {
         use crate::actions::activation_effect;
-        use crate::actions::chain_delivery::DeliveryOutcome;
+        use crate::actions::chain::chain_delivery::DeliveryOutcome;
         use ax_mutation::PerformSignal;
 
         if advertises_action(el, name, deadline) == Some(false) {
@@ -27,8 +27,11 @@ mod imp {
         }
         let before = activation_effect::focus_state(el, deadline);
         let action = CFString::new(name);
-        let error =
-            crate::tree::ax_ipc::perform_action(el, action.as_concrete_TypeRef(), deadline)?;
+        let error = crate::tree::properties::ax_ipc::perform_action(
+            el,
+            action.as_concrete_TypeRef(),
+            deadline,
+        )?;
         let signal = match ax_mutation::classify_perform(name, error) {
             Ok(signal) => signal,
             Err(failure)
@@ -63,7 +66,7 @@ mod imp {
         deadline: agent_desktop_core::Deadline,
     ) -> Option<bool> {
         let mut usage = crate::tree::observation_usage::ObservationUsage::with_defaults();
-        let read = crate::tree::capabilities::copy_action_names_with_status(
+        let read = crate::tree::properties::capabilities::copy_action_names_with_status(
             el,
             std::time::Instant::now() + deadline.remaining(),
             &mut usage,
@@ -90,8 +93,8 @@ mod imp {
         _el: &AXElement,
         _name: &str,
         _deadline: agent_desktop_core::Deadline,
-    ) -> Result<crate::actions::chain_delivery::DeliveryOutcome, AdapterError> {
-        Ok(crate::actions::chain_delivery::DeliveryOutcome::NotDelivered)
+    ) -> Result<crate::actions::chain::chain_delivery::DeliveryOutcome, AdapterError> {
+        Ok(crate::actions::chain::chain_delivery::DeliveryOutcome::NotDelivered)
     }
 }
 

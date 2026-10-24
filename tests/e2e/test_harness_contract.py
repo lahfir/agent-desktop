@@ -12,7 +12,6 @@ SOURCED_SUITE_FILES = [
     *sorted((E2E_ROOT / "scenarios").glob("*.sh")),
 ]
 
-
 class HarnessContractTests(unittest.TestCase):
     def test_sourced_suite_has_one_canonical_exit_path(self):
         exits = []
@@ -40,20 +39,19 @@ class HarnessContractTests(unittest.TestCase):
         self.assertIsNotNone(finish)
         self.assertNotIn("abort_suite", finish.group("body"))
 
-    def test_shell_harness_never_permanently_removes_artifacts(self):
-        permanent_delete = re.compile(r"(?m)(?:^|[;&|({])\s*rm(?:\s|$)")
-        offenders = []
-        shell_paths = [
-            *E2E_ROOT.glob("*.sh"),
-            *(E2E_ROOT / "scenarios").glob("*.sh"),
-            *(E2E_ROOT.parent / "fixture-app").glob("*.sh"),
-            *(E2E_ROOT.parent.parent / "scripts").glob("*.sh"),
+    def test_json_parsed_captures_read_stdout_only(self):
+        offenders = [
+            f"{path.name}:{number}"
+            for path in SOURCED_SUITE_FILES
+            for number, line in enumerate(path.read_text().splitlines(), 1)
+            if '2>&1)"' in line
         ]
-        for path in sorted(shell_paths):
-            if permanent_delete.search(path.read_text()):
-                offenders.append(path.name)
-
-        self.assertEqual(offenders, [])
+        self.assertEqual(
+            offenders,
+            [],
+            "the JSON envelope is on stdout; a capture that merges stderr "
+            "breaks json_tool when the binary logs a warning",
+        )
 
     def test_denied_automation_skips_when_notification_center_cannot_be_closed(self):
         source = (E2E_ROOT / "scenarios" / "acceptance.sh").read_text()
@@ -79,12 +77,15 @@ class HarnessContractTests(unittest.TestCase):
 
     def test_multi_agent_probe_runs_before_the_interaction_lease_is_released(self):
         source = (E2E_ROOT / "run.sh").read_text()
+        lease_holder = source.index('exec python3 "$here/interaction_lock.py"')
         probe = source.index("cursor-multi-agent-probe.py")
-        finish = source.index("\nfinish", probe)
-        self.assertLess(probe, finish)
+        finishes = [match.start() for match in re.finditer(r"^finish$", source, re.MULTILINE)]
 
-        probe_source = (E2E_ROOT.parent.parent / "scripts/cursor-multi-agent-probe.py").read_text()
-        self.assertIn("pass_fds=cli_pass_fds", probe_source)
+        self.assertEqual(len(finishes), 1)
+        self.assertLess(lease_holder, probe)
+        self.assertLess(probe, finishes[0])
+        for line in source[probe:finishes[0]].splitlines():
+            self.assertNotRegex(line, r"\b(exit|exec)\b|release_exclusive_lock")
 
     def test_native_runner_builds_locked_canonical_artifacts_before_desktop_lock(self):
         source = (E2E_ROOT / "run.sh").read_text()
@@ -155,57 +156,309 @@ cleanup
         self.assertLess(body.index('verify_immutable_binary "$ffi_dylib"'), decision)
         self.assertLess(body.index('verify_immutable_binary "$ffi_helper"'), decision)
 
-    def test_recoverable_trash_moves_artifact_with_available_backend(self):
+    def test_cleanup_removes_owned_artifact_and_leaves_sibling(self):
         with tempfile.TemporaryDirectory() as root:
             root_path = Path(root)
             artifact = root_path / "artifact"
             artifact.mkdir()
-            trash_dir = root_path / "trash"
-            trash_dir.mkdir()
-            bin_dir = root_path / "bin"
-            bin_dir.mkdir()
-            trash = bin_dir / "trash"
-            trash.write_text('#!/bin/sh\n/bin/mv "$1" "$FAKE_TRASH/"\n')
-            trash.chmod(0o700)
+            sibling = root_path / "sibling"
+            sibling.mkdir()
 
-            result = self.run_trash_helper(artifact, bin_dir, trash_dir)
+            result = self.run_cleanup_helper(str(artifact))
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse(artifact.exists())
-            self.assertTrue((trash_dir / artifact.name).is_dir())
+            self.assertTrue(sibling.is_dir())
 
-    def test_recoverable_trash_retains_artifact_without_backend(self):
-        with tempfile.TemporaryDirectory() as root:
-            artifact = Path(root) / "artifact"
-            artifact.mkdir()
+    def test_cleanup_refuses_empty_path(self):
+        result = self.run_cleanup_helper("")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("refused an empty path", result.stderr)
 
-            result = self.run_trash_helper(artifact, Path(root) / "missing", Path(root))
-
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertTrue(artifact.is_dir())
-            self.assertIn("retained artifact", result.stderr)
-
-    def run_trash_helper(self, artifact: Path, path: Path, trash_dir: Path):
+    def run_cleanup_helper(self, artifact: str):
         script = f'''
 source "{E2E_ROOT / "harness.sh"}"
-host_home="{artifact.parent}"
-host_tmp="{artifact.parent}"
-PATH="{path}"
-if trash_recoverably "{artifact}"; then
-    test ! -e "{artifact}"
-else
-    test -e "{artifact}"
-fi
+remove_artifact "{artifact}"
 '''
-        env = os.environ.copy()
-        env["FAKE_TRASH"] = str(trash_dir)
         return subprocess.run(
             ["/bin/bash", "-c", script],
             capture_output=True,
             check=False,
             text=True,
-            env=env,
         )
+
+
+ERROR_CODE_SOURCE = E2E_ROOT.parent.parent / "crates" / "core" / "src" / "response" / "error_code.rs"
+ERROR_CONTRACT = E2E_ROOT / "scenarios" / "error_contract.sh"
+CONTENTION_GUARD = "check_fixture_contention || { finish; exit 1; }"
+
+
+def core_error_codes():
+    return set(re.findall(r'=> "([A-Z_]+)"', ERROR_CODE_SOURCE.read_text()))
+
+
+def envelope_calls(source):
+    return re.findall(
+        r'assert_error_envelope\s+"[^"]*"\s+([A-Z_]+)\s+(\S+)\s+(\S+(?:\s+"")?)',
+        source,
+    )
+
+
+class ErrorContractLegTests(unittest.TestCase):
+    def test_error_contract_runs_after_surfaces_behind_the_contention_guard(self):
+        run_source = (E2E_ROOT / "run.sh").read_text()
+        surfaces = run_source.index("source \"$here/scenarios/surfaces.sh\"")
+        source_line = 'source "$here/scenarios/error_contract.sh"'
+        registered = run_source.index(source_line)
+        guard = run_source.rindex(CONTENTION_GUARD, 0, registered)
+        self.assertLess(surfaces, guard)
+        between = run_source[guard + len(CONTENTION_GUARD) : registered].strip().splitlines()
+        self.assertEqual(
+            between, ["# shellcheck source=tests/e2e/scenarios/error_contract.sh"]
+        )
+        self.assertLess(registered, run_source.index('source "$here/scenarios/trace_performance.sh"'))
+        self.assertLess(registered, run_source.index("cursor-multi-agent-probe.py"))
+
+    def test_error_contract_codes_exist_in_the_core_enum(self):
+        known = core_error_codes()
+        self.assertIn("INVALID_ARGS", known)
+        source = ERROR_CONTRACT.read_text()
+        used = {code for code, _, _ in envelope_calls(source)}
+        used |= set(re.findall(r'error\.code\)?"?\s*\]?\s*=\s*"([A-Z_]+)"', source))
+        self.assertTrue(used)
+        self.assertEqual(used - known, set())
+
+    def test_error_contract_leg_uses_exit_code_and_code_together(self):
+        calls = envelope_calls(ERROR_CONTRACT.read_text())
+        self.assertGreaterEqual(len(calls), 5)
+        for code, exit_code, _ in calls:
+            self.assertRegex(exit_code, r"^[12]$", code)
+        self.assertIn(("INVALID_ARGS", "2"), {(c, e) for c, e, _ in calls})
+
+    def test_batch_leg_pins_continue_and_stop_semantics(self):
+        source = ERROR_CONTRACT.read_text()
+        self.assertIn('run_timed "$bin" batch "$payload"\n', source)
+        self.assertIn('run_timed "$bin" batch "$payload" --stop-on-error', source)
+        self.assertIn("data.stopped.reason", source)
+        self.assertIn("data.not_started_entries", source)
+        self.assertIn("error.details.batch_index", source)
+        self.assertIn('json_field "$(get_target "$field" --property value)" data.value', source)
+
+    def test_batch_malformed_run_uses_a_value_the_field_does_not_already_hold(self):
+        source = ERROR_CONTRACT.read_text()
+        runtime_first = re.findall(r"runtime (\S+)\)", source)
+        malformed_first = re.findall(r"malformed (\S+)\)", source)
+        self.assertEqual(len(malformed_first), 1)
+        self.assertNotIn(malformed_first[0], runtime_first)
+        self.assertNotEqual(malformed_first[0], "batch-last")
+
+    def test_no_scenario_forces_a_blocked_combo(self):
+        for path in sorted((E2E_ROOT / "scenarios").glob("*.sh")):
+            for number, line in enumerate(path.read_text().splitlines(), start=1):
+                if re.search(r"\bpress\b", line) and "--force" in line:
+                    self.fail(f"{path.name}:{number} presses with --force")
+
+    def run_helpers(self, body: str):
+        with tempfile.TemporaryDirectory() as directory:
+            mock_bin = Path(directory) / "agent-desktop"
+            mock_bin.write_text(
+                "#!/bin/sh\n"
+                'printf \'%s\' \'{"ok":false,"error":{"code":"INVALID_ARGS",'
+                '"disposition":{"delivery":"not_delivered"}}}\'\n'
+                "exit 1\n"
+            )
+            mock_bin.chmod(0o700)
+            script = (
+                'source "$1"\n'
+                'bin="$2"\n'
+                f'json_tool="{E2E_ROOT / "json_tool.py"}"\n'
+                "pass=0; fail=0; failures=(); skip=0; skips=()\n"
+                "okmsg() { pass=$((pass + 1)); }\n"
+                "badmsg() { fail=$((fail + 1)); }\n"
+                "sleep() { :; }\n" + body + '\nprintf "pass=%s fail=%s" "$pass" "$fail"\n'
+            )
+            return subprocess.run(
+                ["bash", "-c", script, "helpers", str(E2E_ROOT / "lib.sh"), str(mock_bin)],
+                capture_output=True,
+                check=True,
+                text=True,
+            ).stdout
+
+    def test_assert_error_envelope_passes_only_when_every_part_matches(self):
+        output = self.run_helpers(
+            'assert_error_envelope match INVALID_ARGS 1 not_delivered click\n'
+            'assert_error_envelope wrong-code ELEMENT_NOT_FOUND 1 not_delivered click\n'
+            'assert_error_envelope wrong-exit INVALID_ARGS 2 not_delivered click\n'
+            'assert_error_envelope wrong-delivery INVALID_ARGS 1 delivered click\n'
+            'assert_error_envelope delivery-unchecked INVALID_ARGS 1 "" click'
+        )
+        self.assertTrue(output.endswith("pass=2 fail=3"), output)
+
+    def test_await_value_waits_for_the_expected_readout_without_a_fixed_sleep(self):
+        output = self.run_helpers(
+            'counter="$(mktemp)"; echo 0 > "$counter"\n'
+            'find_value() { n=$(<"$counter"); echo $((n + 1)) > "$counter"; '
+            '[ "$n" -ge 3 ] && printf done || printf stale; }\n'
+            'await_value readout done >/dev/null && echo reached=yes || echo reached=no\n'
+            'find_value() { printf stale; }\n'
+            'await_value readout done >/dev/null && echo never=yes || echo never=no'
+        )
+        self.assertIn("reached=yes", output)
+        self.assertIn("never=no", output)
+
+
+SCENARIOS = E2E_ROOT / "scenarios"
+KEYBOARD = SCENARIOS / "keyboard.sh"
+REF_CHURN = SCENARIOS / "ref_churn.sh"
+RELIABILITY = SCENARIOS / "reliability.sh"
+INTERACTION = SCENARIOS / "interaction.sh"
+
+
+def literal_error_codes(source):
+    used = {code for code, _, _ in envelope_calls(source)}
+    return used | set(re.findall(r'code"?\s*\]?\s*=\s*"([A-Z_]+)"', source))
+
+
+class KeyboardAndRefChurnLegTests(unittest.TestCase):
+    def test_keyboard_runs_after_error_contract_behind_the_contention_guard(self):
+        run_source = (E2E_ROOT / "run.sh").read_text()
+        error_contract = run_source.index('source "$here/scenarios/error_contract.sh"')
+        source_line = 'source "$here/scenarios/keyboard.sh"'
+        registered = run_source.index(source_line)
+        guard = run_source.rindex(CONTENTION_GUARD, 0, registered)
+        self.assertLess(error_contract, guard)
+        between = run_source[guard + len(CONTENTION_GUARD) : registered].strip().splitlines()
+        self.assertEqual(between, ["# shellcheck source=tests/e2e/scenarios/keyboard.sh"])
+        self.assertLess(registered, run_source.index('source "$here/scenarios/trace_performance.sh"'))
+        self.assertLess(registered, run_source.index("cursor-multi-agent-probe.py"))
+
+    def test_ref_churn_runs_after_the_probe_on_its_own_fixture_process(self):
+        run_source = (E2E_ROOT / "run.sh").read_text()
+        probe = run_source.index("cursor-multi-agent-probe.py")
+        source_line = 'source "$here/scenarios/ref_churn.sh"'
+        registered = run_source.index(source_line)
+        self.assertLess(probe, registered)
+        self.assertLess(registered, run_source.index("\nfinish", registered))
+        preceding = run_source[:registered].rstrip().splitlines()[-2:]
+        self.assertEqual(preceding[-1], "# shellcheck source=tests/e2e/scenarios/ref_churn.sh")
+        self.assertNotIn(CONTENTION_GUARD, "\n".join(preceding))
+
+    def test_ref_churn_scenario_cleans_up_its_own_fixture(self):
+        source = REF_CHURN.read_text()
+        self.assertIn('close-app "$app" --force', source)
+        self.assertIn('pgrep -x "$app"', source)
+        self.assertIn("fixture_owned=1", source)
+        self.assertIn("fixture_owned=0", source)
+        self.assertLess(source.index("fixture_owned=1"), source.index("fixture_owned=0"))
+
+    def test_ref_churn_pins_both_command_host_variants(self):
+        source = REF_CHURN.read_text()
+        self.assertIn("ref_churn_suite 0\n", source)
+        self.assertIn("ref_churn_suite 1", source)
+        self.assertIn('local -x AGENT_DESKTOP_INTERNAL_HOST_CLIENT="$host_client"', source)
+        self.assertIn('"$code" = "STALE_REF"', source)
+        self.assertIn('"$delivery" = "not_delivered"', source)
+
+    def test_ref_churn_reads_the_fixture_readouts_not_the_command_result(self):
+        source = REF_CHURN.read_text()
+        self.assertIn('--text "Beta stored: Beta"', source)
+        self.assertIn('wait_target "$stable" value 3000 --value stable-ok', source)
+        self.assertIn("data.found", source)
+
+    def test_interaction_scroll_asserts_without_a_defect_skip(self):
+        source = INTERACTION.read_text()
+        self.assertNotIn("skipmsg", source)
+        self.assertIn('assert "[$mode] scroll moves content"', source)
+        self.assertIn('"$scroll_before" != "$scroll_after"', source)
+
+    def test_ref_churn_stale_ref_skip_is_gated_on_the_default_cli_signature(self):
+        source = REF_CHURN.read_text()
+        gate = re.search(
+            r'if \[ "\$host_client" = "0" \] && \[ "\$ok" = "True" \]; then'
+            r'\s*skipmsg "([^"]+)"',
+            source,
+        )
+        self.assertIsNotNone(gate)
+        self.assertIn(
+            "docs/solutions/best-practices/identity-fingerprint-against-os-reorder-2026-04-16.md",
+            gate.group(1),
+        )
+        self.assertIn("crates/core/src/refs/ref_identity.rs", gate.group(1))
+        self.assertLess(
+            source.index("stale ref: known product defect"),
+            source.index(
+                'assert "$label stale ref is refused STALE_REF, not delivered"'
+            ),
+        )
+
+    def test_ref_churn_close_app_failure_fails_and_still_ends_its_own_process(self):
+        source = REF_CHURN.read_text()
+        self.assertNotIn('skipmsg "$label close-app', source)
+        self.assertIn('close_output="$("$bin" close-app "$app" --force 2>/dev/null)"', source)
+        self.assertIn('badmsg "$label fixture still running after close-app', source)
+        self.assertIn('kill -0 "$1"', source)
+        self.assertIn('kill -9 "$churn_pid"', source)
+        self.assertIn(
+            'assert "$label own fixture process is gone after teardown"', source
+        )
+
+    def test_unknown_app_skip_is_gated_on_the_duplicate_pid_inventory_signature(self):
+        source = ERROR_CONTRACT.read_text()
+        self.assertIn('[ "$(json_field "$1" "$2.code")" = "TIMEOUT" ]', source)
+        self.assertIn('= "global_window_inventory_unstable" ]', source)
+        self.assertIn('"$2.details.skipped.0.field")" = "duplicate_pid" ]', source)
+        self.assertIn("crates/macos/src/system/appkit_bridge.m", source)
+        self.assertIn(
+            'assert_error_envelope "unknown app is APP_NOT_FOUND" APP_NOT_FOUND 1 not_delivered',
+            source,
+        )
+        self.assertIn('inventory_duplicate_pid_refusal "$RUN_JSON" data.results.1.error', source)
+
+    def test_ref_churn_sibling_skip_is_gated_on_the_default_cli_alias(self):
+        source = REF_CHURN.read_text()
+        gate = re.search(
+            r'if \[ "\$host_client" = "0" \] && \[ "\$ok" = "True" \]; then'
+            r'\s*skipmsg "\$label sibling kept its value: ([^"]+)"',
+            source,
+        )
+        self.assertIsNotNone(gate)
+        self.assertIn("identity-fingerprint-against-os-reorder-2026-04-16.md", gate.group(1))
+        self.assertIn('assert "$label sibling kept its value (independent readout)"', source)
+
+    def test_ref_churn_host_run_stops_the_command_host_it_started(self):
+        source = REF_CHURN.read_text()
+        self.assertIn('for host_pid in $(pgrep -fx "$raw_bin" 2>/dev/null); do', source)
+        self.assertIn(
+            'assert "$label the command host it started is stopped and holds no desktop lease"',
+            source,
+        )
+
+    def test_removed_element_leg_accepts_only_stale_ref_not_delivered(self):
+        source = RELIABILITY.read_text()
+        self.assertNotIn("STALE_REF|TIMEOUT", source)
+        self.assertIn('"$stale_code" = "STALE_REF"', source)
+        self.assertIn('"$stale_delivery" = "not_delivered"', source)
+        self.assertIn('"$row_gone" = "1"', source)
+
+    def test_new_legs_use_error_codes_that_exist_in_the_core_enum(self):
+        known = core_error_codes()
+        for path in (KEYBOARD, REF_CHURN, RELIABILITY):
+            used = literal_error_codes(path.read_text())
+            self.assertEqual(used - known, set(), path.name)
+        self.assertIn("STALE_REF", literal_error_codes(REF_CHURN.read_text()))
+        self.assertIn("STALE_REF", literal_error_codes(RELIABILITY.read_text()))
+        self.assertEqual(
+            literal_error_codes(KEYBOARD.read_text()), {"POLICY_DENIED", "INVALID_ARGS"}
+        )
+
+    def test_press_scenario_observes_the_field_not_the_command(self):
+        source = KEYBOARD.read_text()
+        self.assertIn("await_value text-echo", source)
+        self.assertIn('"$observed" = "$expected"', source)
+        self.assertIn("press cmd+a", source)
+        self.assertIn('press_expect "press cmd+a then delete empties the field" delete ""', source)
+        self.assertIn("POLICY_DENIED 1 not_delivered", source)
+        self.assertIn("INVALID_ARGS 1 not_delivered", source)
 
 
 if __name__ == "__main__":

@@ -73,9 +73,8 @@ mod imp {
         after_delivery, delivery_occurred, gated, invoke_available, invoke_pattern_delivered,
     };
     use crate::actions::mutation::{classify_success, classify_write};
-    use crate::system::permissions::ensure_budget;
+    use crate::tree::properties::property_ids::TreeProperty;
     use crate::tree::properties::read_one;
-    use crate::tree::property_ids::TreeProperty;
     use uiautomation::patterns::UITogglePattern;
 
     pub(crate) fn toggle_steps(
@@ -174,7 +173,7 @@ mod imp {
         mut invoke: impl FnMut() -> Result<bool, AdapterError>,
     ) -> Result<Vec<ActionStep>, AdapterError> {
         let want_checked = plan.want_checked;
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         let before = read_state();
         if before.is_some_and(|state| state.matches_checked(want_checked)) {
             return Ok(vec![build_step(
@@ -185,7 +184,7 @@ mod imp {
         let mut steps = Vec::new();
         if plan.toggle_ok {
             for attempt in 0..2 {
-                ensure_budget(deadline)?;
+                deadline.ensure_remaining()?;
                 if !toggle()? {
                     break;
                 }
@@ -207,7 +206,7 @@ mod imp {
             }
         }
         if plan.invoke_ok && !delivery_occurred(&steps) {
-            ensure_budget(deadline)?;
+            deadline.ensure_remaining()?;
             if invoke()? {
                 let verified = poll_checked(want_checked, deadline, &mut read_state, None)
                     .map_err(after_delivery)?;

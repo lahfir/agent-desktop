@@ -1,6 +1,6 @@
 use super::*;
 use agent_desktop_core::{
-    Deadline, ErrorCode, ProcessId, ProcessIdentity, process_state::ProcessState,
+    Deadline, ErrorCode, ProcessId, ProcessIdentity, system::process_state::ProcessState,
 };
 use std::cell::Cell;
 use std::time::{Duration, Instant};
@@ -80,19 +80,19 @@ fn still_active_code_without_wait_gate_would_look_exited() {
 #[test]
 fn hresult_from_win32_matches_facility_win32_shape() {
     assert_eq!(
-        crate::system::hresult::hresult_from_win32(5),
+        crate::system::runtime::hresult::hresult_from_win32(5),
         0x8007_0005_u32 as i32
     );
-    assert_eq!(crate::system::hresult::hresult_from_win32(0), 0);
+    assert_eq!(crate::system::runtime::hresult::hresult_from_win32(0), 0);
 }
 
 #[cfg(target_os = "windows")]
 fn identity_for_pid(pid: ProcessId) -> ProcessIdentity {
-    crate::system::live_identity::live_process_identity(pid)
+    crate::system::fixture::live_identity::live_process_identity(pid)
 }
 
 #[cfg(target_os = "windows")]
-use crate::system::test_time::deadline;
+use crate::system::fixture::test_time::deadline;
 
 #[cfg(target_os = "windows")]
 #[test]

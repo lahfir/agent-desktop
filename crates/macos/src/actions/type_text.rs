@@ -56,7 +56,8 @@ fn write_selected_text(
 
 fn is_text_target(element: &AXElement, deadline: Deadline) -> Result<bool, AdapterError> {
     prepare(element, deadline)?;
-    let result = crate::tree::attributes::copy_string_attr_result(element, "AXRole", deadline);
+    let result =
+        crate::tree::properties::attributes::copy_string_attr_result(element, "AXRole", deadline);
     if deadline.is_expired() {
         return Err(deadline.timeout_error());
     }
@@ -74,7 +75,7 @@ fn is_text_target(element: &AXElement, deadline: Deadline) -> Result<bool, Adapt
 }
 
 fn prepare(element: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {
-    crate::tree::attributes::set_messaging_timeout(element, deadline)
+    crate::tree::properties::attributes::set_messaging_timeout(element, deadline)
 }
 
 #[cfg(not(target_os = "macos"))]

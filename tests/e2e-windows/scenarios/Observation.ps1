@@ -100,7 +100,7 @@ function Invoke-ObservationScenario {
         <# outline-tree itself is a bare Panel wearing only a ControlType
            override (tests/fixture-app-windows/FixtureCardsCollections.cs):
            it advertises no action beyond SetFocus, so is_ref_able
-           (crates/core/src/ref_alloc.rs) never gives it a ref, by design -
+           (crates/core/src/refs/ref_alloc.rs) never gives it a ref, by design -
            outline-parent is the outline's own actionable evidence, not its
            container. scroll-area is the tree's genuinely ref-able
            container (advertises Scroll), so it is the drill-down root this
@@ -160,7 +160,7 @@ function Invoke-ObservationScenario {
            exactly this refusal-tier assertion. #>
         $movedEnvelope = Invoke-Target -Target $staleTwin -Action 'click'
         try {
-            Assert-Envelope -Envelope $movedEnvelope -ErrorCode 'AMBIGUOUS_TARGET'
+            Assert-Envelope -Envelope $movedEnvelope -ErrorCode 'AMBIGUOUS_TARGET' -Delivery 'not_delivered' -Retry 'safe'
             Add-Pass -Leg 'twins-ambiguous-after-move'
         } catch {
             Add-Fail -Leg 'twins-ambiguous-after-move' -Reason $_.Exception.Message

@@ -30,19 +30,19 @@ observation, actions and capture there fail or return nothing.
 
 | Group | Commands | Status on Windows |
 |-------|----------|-------------------|
-| Observation | `snapshot`, `find`, `get`, `is`, `screenshot` | Works; surfaces are `window`, `focused`, a Chromium modal reached as `sheet`, and an open application menu reached as `menu` |
-| Surfaces | `list-surfaces` | Works; per-process inventory of `window`, `focused` and `sheet` surfaces plus a `menu` surface carrying `item_count` when a menu is open |
-| Shell surfaces | `open-system-surface` | Works; raises `start-menu`, `taskbar`, `system-tray`, `system-tray-overflow` or `action-center` and returns the window identity `snapshot --surface <kind>` consumes; `quick-settings` returns `PLATFORM_NOT_SUPPORTED` naming `action-center` |
-| Ref interaction | `click`, `right-click`, `type`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll`, `scroll-to` | Works; semantic delivery in headless and `--headed` modes alike, except `right-click`, which is a physical click and returns `POLICY_DENIED` unless `--headed` (`type` also requires focus permission and returns `POLICY_DENIED` under strict headless) |
-| Multi-click and focus | `double-click`, `triple-click`, `focus` | Works with global `--headed`; focus is headed-required (A3-4, A19-5) |
-| Keyboard and mouse | `press`, `hover`, `drag`, `mouse-click`, `mouse-move`, `mouse-wheel` | Works; cursor-moving input requires `--headed`; `press --app` synthesizes into the foreground queue after verification (fails closed headless if not already frontmost; non-interactive callers report `delivered_unverified`) |
-| Held input | `key-down`, `key-up`, `mouse-down`, `mouse-up` | Fails closed with `ACTION_NOT_SUPPORTED` on every platform until a daemon owns held-input lifetime |
-| App and window | `launch`, `close-app`, `list-windows`, `list-apps`, `focus-window`, `resize-window`, `move-window`, `minimize`, `maximize`, `restore` | Works; `launch` resolves an absolute path or a bare name, with or without `.exe`, under System32 or the Windows directory (A21-1), not display names |
+| Observation | `snapshot`, `find`, `get`, `is`, `screenshot` | Works. Surfaces are `window`, `focused`, a Chromium modal as `sheet`, and an open application menu as `menu` |
+| Surfaces | `list-surfaces` | Works. Lists `window`, `focused` and `sheet` per process, plus `menu` with `item_count` while a menu is open |
+| Shell surfaces | `open-system-surface` | Works for `start-menu`, `taskbar`, `system-tray`, `system-tray-overflow` and `action-center`, and returns the window `snapshot --surface <kind>` reads. `quick-settings` returns `PLATFORM_NOT_SUPPORTED` naming `action-center` |
+| Ref interaction | `click`, `right-click`, `type`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll`, `scroll-to` | Works, semantic in headless and `--headed` mode. `right-click` and `type` need `--headed` and return `POLICY_DENIED` headless |
+| Multi-click and focus | `double-click`, `triple-click`, `focus` | Works with global `--headed` only |
+| Keyboard and mouse | `press`, `hover`, `drag`, `mouse-click`, `mouse-move`, `mouse-wheel` | Works. Cursor-moving input needs `--headed`. First Contact covers `press --app` |
+| Held input | `key-down`, `key-up`, `mouse-down`, `mouse-up` | Fails closed on every platform with `ACTION_NOT_SUPPORTED`. A headless `mouse-down` or `mouse-up` returns `POLICY_DENIED` first |
+| App and window | `launch`, `close-app`, `list-windows`, `list-apps`, `focus-window`, `resize-window`, `move-window`, `minimize`, `maximize`, `restore` | Works. First Contact covers the name `launch` takes |
 | Displays | `list-displays` | Works |
 | Clipboard | `clipboard-get`, `clipboard-set`, `clipboard-clear` | Works; typed text and image content |
-| Wait | `wait` | Works for ms, `--element`, `--window`, `--text`, `--menu`, `--menu-closed`, `--event`, and `--notification` predicates |
-| Notifications | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` | Works over the Action Center; the commands that raise shell chrome take the foreground, so pass `--headed` when the center is closed |
-| Cursor overlay | `cursor-overlay` | Works; `enable` renders a click-through overlay and `data.rendered` is the renderer's own pipe acknowledgement, not merely a spawned process. `disable` carries no `rendered` field. See `references/shell-and-overlay.md` |
+| Wait | `wait` | Works for ms, `--element`, `--window`, `--text`, `--menu`, `--menu-closed`, `--event` and `--notification` |
+| Notifications | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` | Works over the Action Center. Pass `--headed` when the center is closed |
+| Cursor overlay | `cursor-overlay` | Works. `enable` returns `data.rendered: true` only after the renderer acknowledges over its pipe. See `references/shell-and-overlay.md` |
 | System | `status`, `permissions`, `version`, `batch`, `skills`, `session`, `trace` | Works |
 
 ## First Contact
@@ -57,23 +57,24 @@ observation, actions and capture there fail or return nothing.
   `focus-window` by reflex: it steals the user's foreground.
 - **No permission dialog exists.** `permissions` reports `automation` as
   `not_required`. Elevation boundaries are the only access control.
-- **Chromium and Electron apps read thin before they settle.** Pass
+- **Chromium and Electron apps read thin before they settle.** Pass a longer
   `--timeout-ms` to `snapshot` instead of concluding the tree is empty.
-- **Headless by default.** Ref actions stay semantic. Only `--headed` commands
-  verify exact-window focus and synthesize physical input. `alt+f4`, `win+l`,
-  `win+d`, `alt+tab`, `win+r`, `win+x`, `win+e`, `ctrl+shift+esc` and modifier
-  supersets are refused without `--force`.
-- **`type` needs focus permission.** It is physical keystroke synthesis, so a
-  strict-headless `type` returns `POLICY_DENIED`. It ends
-  `delivered_unverified` (`verification_scope: "unavailable"`) when the field
-  exposes no readable Text selection, and can verify when one is readable:
-  confirm with a fresh `get`.
+- **Blocked shortcuts.** `alt+f4`, `win+l`, `win+d`, `alt+tab`, `win+r`,
+  `win+x`, `win+e`, `ctrl+shift+esc` and their modifier supersets are refused
+  without `--force`. In combos, `cmd` and `meta` are the Windows key, so
+  `meta+c` is a shell shortcut. Write `ctrl+c` to copy.
+- **`type` needs `--headed`.** It is keystroke synthesis through `SendInput`,
+  so a strict-headless `type` returns `POLICY_DENIED`. Use `set-value`, or pass
+  `--headed`. It ends `delivered_unverified` (`verification_scope:
+  "unavailable"`) when the field exposes no readable Text selection, and can
+  verify when one is readable: confirm with a fresh `get`.
 - **`press --app` writes to the foreground queue** with no per-process
   targeting. A headless press to a non-frontmost app fails closed. A
   non-interactive caller (service, scheduled task, CI job) gets
   `delivered_unverified`.
-- **`launch` needs an absolute path** or a bare name under System32 or the
-  Windows directory (`notepad` or `notepad.exe`), not a display name. Use `list-apps` to find a running app.
+- **`launch` takes an absolute path or a bare name** under System32 or the
+  Windows directory, with or without `.exe` (`notepad` or `notepad.exe`), not
+  a display name. Use `list-apps` to find a running app.
 - **Notifications:** `list-notifications` with the Action Center closed needs
   `--headed`. Single-item `dismiss-notification` and `notification-action` need
   `--headed` and `--expected-app` or `--expected-title` for the entry at INDEX.
@@ -90,16 +91,8 @@ observation, actions and capture there fail or return nothing.
 
 ## What differs on Windows
 
-- Ref actions are semantic UI Automation calls, in headless and `--headed` mode, except `right-click`, `double-click`, `triple-click`, `type` and `focus`, which are physical or focus-stealing and need `--headed`.
-- Notifications work over the Action Center and need `--headed`.
-- `launch` takes an absolute path or a bare name under System32 or the Windows
-  directory, with or without `.exe`, not a display name.
-- Held-input commands fail closed on every platform.
-- The cursor overlay renders only for headless semantic actions.
-- In key combos, `cmd` and `meta` are the Windows key, so `meta+c` is a shell
-  shortcut. Write `ctrl+c` to copy.
-- Headless `type` is refused with `POLICY_DENIED`: use `set-value`, or pass
-  `--headed` to type through `SendInput`. `focus` also needs `--headed`.
+- Ref actions are semantic UI Automation calls in headless and `--headed` mode, except `right-click`, `double-click`, `triple-click`, `type` and `focus`, which are physical or take focus and need `--headed`.
+- The cursor overlay plays its per-action travel only for headless semantic actions. A `--headed` action moves the real cursor instead.
 
 ## References
 

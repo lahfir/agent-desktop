@@ -3,13 +3,13 @@ use agent_desktop_core::{
 };
 
 use super::automation::root_from_hwnd;
+use super::properties::property_ids::TreeProperty;
+use super::properties::property_outcome::PropertyOutcome;
 use super::properties::read_one;
-use super::property_ids::TreeProperty;
-use super::property_outcome::PropertyOutcome;
-use crate::system::menu_state::{MenuLocation, locate_menu};
-use crate::system::window_enum::{EnumeratedWindow, WindowHandle, enumerate_top_level};
-use crate::system::window_identity::{live_window_owner, live_window_title};
-use crate::system::window_ops::{is_foreground_window, passes_filter};
+use crate::system::menu::menu_state::{MenuLocation, locate_menu};
+use crate::system::window::window_enum::{EnumeratedWindow, WindowHandle, enumerate_top_level};
+use crate::system::window::window_identity::{live_window_owner, live_window_title};
+use crate::system::window::window_ops::{is_foreground_window, passes_filter};
 
 /// The surfaces the named process presents right now.
 ///
@@ -35,7 +35,7 @@ pub(crate) fn list_surfaces_for_process(
     process: ProcessIdentity,
     deadline: Deadline,
 ) -> Result<Vec<SurfaceInfo>, AdapterError> {
-    crate::system::permissions::ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     require_live_process(&process)?;
     let windows = windows_of(process.pid, deadline)?;
     let observed: Vec<ObservedWindow> = windows
@@ -47,7 +47,7 @@ pub(crate) fn list_surfaces_for_process(
             sheet: is_modal_sheet(window.handle, deadline),
         })
         .collect();
-    crate::system::permissions::ensure_budget(deadline)?;
+    deadline.ensure_remaining()?;
     let located = locate_menu(process.pid, deadline);
     let (mut surfaces, menu) = inventory_with_menu(observed, process.pid, located)?;
     if let Some(menu) = menu {
@@ -79,7 +79,7 @@ fn windows_of(pid: ProcessId, deadline: Deadline) -> Result<Vec<EnumeratedWindow
     let mut seen = 0usize;
     enumerate_top_level(|window| {
         if seen > 0 {
-            if let Err(error) = crate::system::permissions::ensure_budget(deadline) {
+            if let Err(error) = deadline.ensure_remaining() {
                 *failure.borrow_mut() = Some(error);
                 return false;
             }

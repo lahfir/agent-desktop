@@ -1,10 +1,37 @@
 use super::{SCROLL_LABEL, ScrollPlan, axis_name, scroll_effect_verified, scroll_judged_for};
-use crate::system::test_time::deadline;
+use crate::system::fixture::test_time::deadline;
+use crate::tree::actions::resolve_actions;
+use crate::tree::properties::ElementProperties;
+use crate::tree::properties::property_ids::TreeProperty;
+use crate::tree::properties::property_outcome::{PropertyOutcome, PropertyValue};
 use agent_desktop_core::{
     ActionStepOutcome, AdapterError, DeliveryDisposition, DeliverySemantics, Direction, ErrorCode,
-    Rect,
+    Rect, actions::capability,
 };
 use std::cell::Cell;
+
+fn only_scroll_available_reads() -> Vec<(TreeProperty, PropertyOutcome)> {
+    let flags = [
+        TreeProperty::InvokeAvailable,
+        TreeProperty::ToggleAvailable,
+        TreeProperty::ExpandCollapseAvailable,
+        TreeProperty::SelectionItemAvailable,
+        TreeProperty::ValueAvailable,
+        TreeProperty::RangeValueAvailable,
+        TreeProperty::ScrollAvailable,
+        TreeProperty::ScrollItemAvailable,
+        TreeProperty::IsKeyboardFocusable,
+    ];
+    let mut reads: Vec<_> = flags
+        .into_iter()
+        .map(|property| {
+            let on = property == TreeProperty::ScrollAvailable;
+            (property, PropertyOutcome::Known(PropertyValue::Flag(on)))
+        })
+        .collect();
+    reads.push((TreeProperty::LegacyDefaultAction, PropertyOutcome::Absent));
+    reads
+}
 
 fn plan(amount: u32, axis_scrollable: bool) -> ScrollPlan {
     ScrollPlan {
@@ -17,6 +44,10 @@ fn plan(amount: u32, axis_scrollable: bool) -> ScrollPlan {
 
 #[test]
 fn down_times_three_issues_three_vertical_small_increments() {
+    let advertised = resolve_actions(&ElementProperties::from_reads(only_scroll_available_reads()));
+    let known = advertised.known().expect("Known actions");
+    assert!(known.iter().any(|action| action == capability::SCROLL));
+
     let calls = Cell::new(0u8);
     let mut scroll_once = || {
         calls.set(calls.get() + 1);

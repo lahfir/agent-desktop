@@ -41,10 +41,10 @@ mod imp {
     };
     use crate::actions::chain::{after_delivery, gated};
     use crate::actions::mutation::{classify_success, classify_write};
-    use crate::tree::element_properties::ElementProperties;
+    use crate::tree::properties::element_properties::ElementProperties;
+    use crate::tree::properties::property_ids::TreeProperty;
+    use crate::tree::properties::property_outcome::PropertyOutcome;
     use crate::tree::properties::read_one;
-    use crate::tree::property_ids::TreeProperty;
-    use crate::tree::property_outcome::PropertyOutcome;
     use uiautomation::patterns::{UIRangeValuePattern, UIValuePattern};
 
     pub(crate) fn set_value_steps(
@@ -303,7 +303,7 @@ mod imp {
 #[cfg(not(target_os = "windows"))]
 mod imp {
     use super::{ActionStep, AdapterError, Deadline, InteractionPolicy, UIAElement};
-    use crate::tree::property_outcome::PropertyOutcome;
+    use crate::tree::properties::property_outcome::PropertyOutcome;
 
     pub(crate) fn set_value_steps(
         _element: &UIAElement,

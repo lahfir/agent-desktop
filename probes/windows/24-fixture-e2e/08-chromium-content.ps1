@@ -37,7 +37,7 @@
          via `is --property checked`.
       5. Menu: a bounded attempt (Alt-tap and a content-area right-click via
          raw `SendInput`) evaluated against the two sources
-         `crates/windows/src/system/menu_state.rs`'s `menu_is_open` composes
+         `crates/windows/src/system/menu/menu_state.rs`'s `menu_is_open` composes
          - `GetGUIThreadInfo` per-thread flags and a UIA Menu/MenuBar/
          MenuItem search - read here directly rather than through the
          product, plus a host-wide search for another Chromium/Electron
@@ -411,7 +411,7 @@ function Measure-A24SemanticClick {
 # ------------------------------------------------------------ leg e: menu (raw two-source oracle + host search)
 
 function Get-A24ClassicMenuMode {
-    <# Mirrors `crates/windows/src/system/menu_state.rs`'s `classic_menu_mode_active`:
+    <# Mirrors `crates/windows/src/system/menu/menu_state.rs`'s `classic_menu_mode_active`:
        every thread of the target pid read through `GetGUIThreadInfo`,
        looking for GUI_INMENUMODE|GUI_POPUPMENUMODE|GUI_SYSTEMMENUMODE. #>
     param([Parameter(Mandatory = $true)][int]$ProcessId)

@@ -20,4 +20,15 @@ assert.equal(body.state.recent_actions[0].operation,"UNCHECK");
 assert.ok(!("steps" in body.state.recent_actions[0]));
 assert.ok(!("post_state" in body.state.recent_actions[0]));
 assert.ok(!("details" in body.state.recent_actions[0]));
+const secret="synthetic-private-input-7391";
+const privateTurn={step:1,operation:"TYPE_TEXT",target:"textfield Account",ref:"@ref",confidence:0.95,
+  ok:true,delivery:"delivered_verified",route:"set-value",truncated:false,changed:true,
+  text:secret,error:{message:secret},details:{value:secret},steps:[{value:secret}],post_state:{value:secret}};
+for (const values of [false,true]) {
+  const request=buildRequest("fill Account",{app:"Fixture"},actionSpace([]),[privateTurn],{values});
+  assert.ok(!JSON.stringify(request).includes(secret));
+  assert.deepEqual(request.state.recent_actions,[{step:1,operation:"TYPE_TEXT",target:"textfield Account",ref:"@ref",
+    confidence:0.95,ok:true,delivery:"delivered_verified",route:"set-value",truncated:false,changed:true}]);
+}
+assert.equal(privateTurn.text,secret);
 console.log("ok");

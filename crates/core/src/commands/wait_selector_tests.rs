@@ -2,7 +2,7 @@ use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
     AccessibilityNode, AdapterError, ErrorCode, WindowInfo, adapter::WindowFilter,
-    context::CommandContext, refs_store::RefStore, refs_test_support::HomeGuard,
+    context::CommandContext, refs::refs_store::RefStore, refs::refs_test_support::HomeGuard,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -45,9 +45,9 @@ struct StaticTreeAdapter {
 impl ObservationOps for StaticTreeAdapter {
     fn observe_tree(
         &self,
-        root: crate::live_locator::ObservationRoot<'_>,
-        _request: &crate::live_locator::ObservationRequest,
-    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+        root: crate::locator::live_locator::ObservationRoot<'_>,
+        _request: &crate::locator::live_locator::ObservationRequest,
+    ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
         crate::adapter::observed_tree(&root, self.tree.clone())
     }
 
@@ -95,9 +95,9 @@ struct FlippingTreeAdapter {
 impl ObservationOps for FlippingTreeAdapter {
     fn observe_tree(
         &self,
-        root: crate::live_locator::ObservationRoot<'_>,
-        _request: &crate::live_locator::ObservationRequest,
-    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+        root: crate::locator::live_locator::ObservationRoot<'_>,
+        _request: &crate::locator::live_locator::ObservationRequest,
+    ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
         let tree = if call == 0 {
             self.before.clone()

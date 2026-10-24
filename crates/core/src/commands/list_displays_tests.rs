@@ -2,7 +2,7 @@ use crate::{
     AdapterError, Rect,
     adapter::{ActionOps, InputOps, ObservationOps, SystemOps},
     commands::list_displays,
-    display_info::DisplayInfo,
+    system::display_info::DisplayInfo,
 };
 
 struct DisplayAdapter {
@@ -35,10 +35,13 @@ fn list_displays_returns_adapter_displays() {
         }],
     };
     let value = list_displays::execute(&adapter).expect("list-displays");
-    let displays: Vec<DisplayInfo> = serde_json::from_value(value).expect("deserialize");
+    let displays = value.as_array().expect("list-displays returns an array");
     assert_eq!(displays.len(), 1);
-    assert!(displays[0].is_primary);
-    assert_eq!(displays[0].scale, 2.0);
+    assert_eq!(displays[0]["id"], "1");
+    assert_eq!(displays[0]["is_primary"], true);
+    assert_eq!(displays[0]["scale"], 2.0);
+    assert_eq!(displays[0]["bounds"]["width"], 1440.0);
+    assert_eq!(displays[0]["bounds"]["height"], 900.0);
 }
 
 #[test]

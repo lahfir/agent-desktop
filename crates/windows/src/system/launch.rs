@@ -1,22 +1,23 @@
 use agent_desktop_core::{
     AdapterError, Deadline, DeliverySemantics, ErrorCode, ProcessId, RendererKind, WindowFilter,
-    WindowInfo, launch_options::LaunchOptions, launch_result::LaunchResult,
+    WindowInfo, system::launch_options::LaunchOptions, system::launch_result::LaunchResult,
 };
 #[cfg(test)]
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Duration;
 
-use super::app_ops::{ProcessRow, process_snapshot};
-#[cfg(target_os = "windows")]
-use super::hresult::win32_last_error;
+#[cfg(test)]
+use self::launch_attach::matching_processes;
+use self::launch_attach::prepare;
+use super::app_ops::ProcessRow;
 use super::launch_path::{
-    child_environment_block, image_file_name, launch_identifier, resolve_executable,
-    validate_launch_options,
+    child_environment_block, image_file_name, launch_identifier, validate_launch_options,
 };
-use super::permissions::ensure_budget;
 use super::process_identity;
-use super::window_ops::list_windows_live;
+#[cfg(target_os = "windows")]
+use super::runtime::hresult::win32_last_error;
+use super::window::window_ops::list_windows_live;
 
 pub(crate) fn launch_app_impl(
     id: &str,
@@ -30,29 +31,11 @@ pub(crate) fn launch_app_impl(
     } else {
         parent_deadline.capped(Duration::from_millis(options.timeout_ms))
     };
-    ensure_budget(deadline).map_err(before_launch)?;
-    let image = image_file_name(id);
-    let matches = matching_processes(image).map_err(before_launch)?;
-    if options.attach_if_running {
-        if matches.len() > 1 {
-            return Err(before_launch(ambiguous_apps(&matches)));
-        }
-        if let Some(row) = matches.into_iter().next() {
-            let token = process_identity::token_for_pid(row.pid)
-                .map_err(before_launch)?
-                .ok_or_else(|| {
-                    before_launch(AdapterError::new(
-                        ErrorCode::AppUnresponsive,
-                        "Running process has no exact process instance token",
-                    ))
-                })?;
-            let window = observe_window(row.pid, &token, options, deadline)?;
-            return Ok(launch_result(id, row.pid, token, window));
-        }
-    } else if let Some(row) = matches.first() {
-        return Err(before_launch(already_running_error(row.pid, &matches)));
+    deadline.ensure_remaining().map_err(before_launch)?;
+    let (executable, attached) = prepare(id, options, deadline).map_err(before_launch)?;
+    if let Some(attached) = attached {
+        return Ok(attached);
     }
-    let executable = resolve_executable(id).map_err(before_launch)?;
     let (pid, token) = create_process(&executable, options, deadline)?;
     let window = observe_window(pid, &token, options, deadline)?;
     Ok(launch_result(id, pid, token, window))
@@ -108,11 +91,11 @@ fn launch_result(
 #[cfg(target_os = "windows")]
 fn detect_renderer_from_window(window: &WindowInfo) -> Option<RendererKind> {
     const CHROMIUM_WINDOW_CLASS: &str = "Chrome_WidgetWin_1";
-    let handle = super::window_ops::parse_handle(&window.id);
+    let handle = super::window::window_ops::parse_handle(&window.id);
     if handle.is_null() {
         return None;
     }
-    super::window_ops::window_class_name(handle)
+    super::window::window_ops::window_class_name(handle)
         .filter(|class| class == CHROMIUM_WINDOW_CLASS)
         .map(|_| RendererKind::Chromium)
 }
@@ -175,13 +158,6 @@ fn exact_window(
     Ok(Some(window))
 }
 
-fn matching_processes(image: &str) -> Result<Vec<ProcessRow>, AdapterError> {
-    Ok(process_snapshot()?
-        .into_iter()
-        .filter(|row| row.name.eq_ignore_ascii_case(image))
-        .collect())
-}
-
 /// Refuses a relative working directory before it reaches `CreateProcessW`.
 ///
 /// The child's current directory sits early in the default DLL search order,
@@ -209,7 +185,7 @@ fn create_process(
         CREATE_UNICODE_ENVIRONMENT, CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW,
     };
 
-    ensure_budget(deadline).map_err(before_launch)?;
+    deadline.ensure_remaining().map_err(before_launch)?;
     let app_wide = to_wide(executable).map_err(before_launch)?;
     let command_line = command_line_for(executable, &options.args).map_err(before_launch)?;
     let mut command_wide = to_wide_str(&command_line).map_err(before_launch)?;
@@ -240,7 +216,7 @@ fn create_process(
         .as_ref()
         .map(|wide| wide.as_ptr())
         .unwrap_or(std::ptr::null());
-    ensure_budget(deadline).map_err(before_launch)?;
+    deadline.ensure_remaining().map_err(before_launch)?;
     let ok = unsafe {
         CreateProcessW(
             app_wide.as_ptr(),
@@ -398,3 +374,6 @@ mod tests;
 #[cfg(all(test, target_os = "windows"))]
 #[path = "launch_lease_isolation_tests.rs"]
 mod launch_lease_isolation_tests;
+
+#[path = "launch_attach.rs"]
+pub(crate) mod launch_attach;

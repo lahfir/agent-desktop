@@ -25,7 +25,11 @@ mod imp {
         }
         let action = CFString::new(name);
         run_mutation(el, name, ax_mutation::PERFORM_API, deadline, |deadline| {
-            crate::tree::ax_ipc::perform_action(el, action.as_concrete_TypeRef(), deadline)
+            crate::tree::properties::ax_ipc::perform_action(
+                el,
+                action.as_concrete_TypeRef(),
+                deadline,
+            )
         })
     }
 
@@ -47,7 +51,7 @@ mod imp {
             "AXUIElementSetAttributeValue",
             deadline,
             |deadline| {
-                crate::tree::ax_ipc::set_attribute_value(
+                crate::tree::properties::ax_ipc::set_attribute_value(
                     el,
                     cf_attr.as_concrete_TypeRef(),
                     cf_val.as_CFTypeRef(),
@@ -71,7 +75,7 @@ mod imp {
             "AXUIElementSetAttributeValue",
             deadline,
             |deadline| {
-                crate::tree::ax_ipc::set_attribute_value(
+                crate::tree::properties::ax_ipc::set_attribute_value(
                     el,
                     cf_attr.as_concrete_TypeRef(),
                     cf_val.as_CFTypeRef(),
@@ -96,8 +100,11 @@ mod imp {
         deadline: agent_desktop_core::Deadline,
     ) -> Result<bool, AdapterError> {
         let cf_attr = CFString::new(attr);
-        let (err, settable) =
-            crate::tree::ax_ipc::is_attribute_settable(el, cf_attr.as_concrete_TypeRef(), deadline);
+        let (err, settable) = crate::tree::properties::ax_ipc::is_attribute_settable(
+            el,
+            cf_attr.as_concrete_TypeRef(),
+            deadline,
+        );
         ensure_read_finished(deadline)?;
         classify_settable_read(attr, err, settable)
     }
@@ -119,8 +126,11 @@ mod imp {
         deadline: agent_desktop_core::Deadline,
     ) -> Result<(), AdapterError> {
         let cf_attr = CFString::new(kAXValueAttribute);
-        let (read, current) =
-            crate::tree::ax_ipc::copy_attribute_value(el, cf_attr.as_concrete_TypeRef(), deadline);
+        let (read, current) = crate::tree::properties::ax_ipc::copy_attribute_value(
+            el,
+            cf_attr.as_concrete_TypeRef(),
+            deadline,
+        );
         ensure_read_finished(deadline)?;
         if read != kAXErrorSuccess {
             if !current.is_null() {
@@ -154,7 +164,7 @@ mod imp {
                     "AXUIElementSetAttributeValue",
                     deadline,
                     |deadline| {
-                        crate::tree::ax_ipc::set_attribute_value(
+                        crate::tree::properties::ax_ipc::set_attribute_value(
                             el,
                             cf_attr.as_concrete_TypeRef(),
                             cf_value.as_CFTypeRef(),
@@ -182,7 +192,7 @@ mod imp {
         element: &AXElement,
         deadline: agent_desktop_core::Deadline,
     ) -> Result<(), AdapterError> {
-        crate::tree::attributes::set_messaging_timeout(element, deadline)
+        crate::tree::properties::attributes::set_messaging_timeout(element, deadline)
     }
 
     fn run_mutation(
@@ -213,7 +223,7 @@ mod imp {
         if error == kAXErrorSuccess {
             return Ok(settable);
         }
-        if crate::tree::ax_absence::is_absent_attribute_error(error) {
+        if crate::tree::properties::ax_absence::is_absent_attribute_error(error) {
             return Ok(false);
         }
         Err(read_failure(attribute, error))
@@ -274,9 +284,13 @@ mod imp {
     ) -> Result<Option<String>, AdapterError> {
         use accessibility_sys::kAXRoleAttribute;
         prepare(el, deadline)?;
-        let read_deadline = crate::tree::ax_ipc::AxDeadline::absolute(deadline)?;
+        let read_deadline = crate::tree::properties::ax_ipc::AxDeadline::absolute(deadline)?;
         let role = crate::tree::read_recovery::read(read_deadline, || {
-            crate::tree::attributes::copy_string_attr_result(el, kAXRoleAttribute, read_deadline)
+            crate::tree::properties::attributes::copy_string_attr_result(
+                el,
+                kAXRoleAttribute,
+                read_deadline,
+            )
         })
         .map_err(|error| read_failure(kAXRoleAttribute, error))?;
         ensure_read_finished(deadline)?;

@@ -126,24 +126,3 @@ fn selected_refs_reresolvable(fixture: &Fixture, resolution: &LocatorResolution)
             })
         })
 }
-
-#[cfg(test)]
-mod tests {
-    use agent_desktop_core::Rect;
-
-    #[test]
-    fn duplicate_names_require_the_selected_nodes_bounds() {
-        let selected = Rect {
-            x: 10.0,
-            y: 20.0,
-            width: 30.0,
-            height: 40.0,
-        };
-        let sibling = Rect {
-            x: 50.0,
-            ..selected
-        };
-
-        assert_ne!(selected.bounds_hash(), sibling.bounds_hash());
-    }
-}

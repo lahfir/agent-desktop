@@ -1,5 +1,5 @@
 use super::*;
-use crate::{AccessibilityNode, IdentityPredicate, LocatorQuery, search_text};
+use crate::{AccessibilityNode, IdentityPredicate, LocatorQuery, tree::search_text};
 
 fn node(role: &str, name: Option<&str>, value: Option<&str>) -> AccessibilityNode {
     AccessibilityNode {
@@ -16,13 +16,6 @@ fn node(role: &str, name: Option<&str>, value: Option<&str>) -> AccessibilityNod
         subtree_truncated: false,
         children: vec![],
     }
-}
-
-#[test]
-fn parse_selector_role_and_text() {
-    let query = parse_selector("button:Submit");
-    assert_eq!(query.identity.role.as_deref(), Some("button"));
-    assert_eq!(query.has_text.as_deref(), Some("submit"));
 }
 
 #[test]

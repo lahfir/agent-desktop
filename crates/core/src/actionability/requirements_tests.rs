@@ -33,7 +33,7 @@ fn pointer_delivery_is_selected_from_live_semantic_capability_evidence() {
     assert_eq!(
         requirements.pointer_delivery(
             &Action::Click,
-            &[crate::capability::CLICK.into()],
+            &[crate::actions::capability::CLICK.into()],
             crate::InteractionPolicy::headless(),
         ),
         PointerDelivery::Semantic
@@ -45,7 +45,7 @@ fn pointer_delivery_is_selected_from_live_semantic_capability_evidence() {
     assert_eq!(
         requirements.pointer_delivery(
             &Action::DoubleClick,
-            &[crate::capability::CLICK.into()],
+            &[crate::actions::capability::CLICK.into()],
             crate::InteractionPolicy::headless(),
         ),
         PointerDelivery::Physical
@@ -53,7 +53,7 @@ fn pointer_delivery_is_selected_from_live_semantic_capability_evidence() {
     assert_eq!(
         requirements.pointer_delivery(
             &Action::Click,
-            &[crate::capability::CLICK.into()],
+            &[crate::actions::capability::CLICK.into()],
             crate::InteractionPolicy::headed(),
         ),
         PointerDelivery::Physical

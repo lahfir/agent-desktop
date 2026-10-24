@@ -1,13 +1,12 @@
 use super::{ClickGate, ClickSpec, click_from_gate};
-use crate::actions::physical_target::{delivery_point, ensure_headed_click_policy};
-use crate::input::mouse_send::{
+use crate::actions::physical_target::delivery_point;
+use crate::input::mouse::mouse_send::{
     MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE,
 };
 use crate::input::mouse_send_fake_sink as mouse_sink;
-use crate::system::test_time::deadline;
+use crate::system::fixture::test_time::deadline;
 use agent_desktop_core::{
-    ActionStepOutcome, DeliveryDisposition, ErrorCode, InteractionPolicy, MouseButton, Point, Rect,
-    StepMechanism,
+    ActionStepOutcome, DeliveryDisposition, ErrorCode, MouseButton, Point, Rect, StepMechanism,
 };
 
 const MOUSEEVENTF_RIGHTDOWN: u32 = 0x0008;
@@ -35,18 +34,6 @@ fn delivery_point_rejects_a_verified_point_outside_live_bounds() {
     let stale = Point { x: 9.0, y: 30.0 };
     let error = delivery_point(bounds(), Some(&stale)).unwrap_err();
     assert_eq!(error.code, ErrorCode::StaleRef);
-}
-
-#[test]
-fn headless_multi_click_is_policy_denied_before_injection() {
-    mouse_sink::reset();
-    let error = ensure_headed_click_policy(InteractionPolicy::headless()).expect_err("headless");
-    assert_eq!(error.code, ErrorCode::PolicyDenied);
-    assert_eq!(
-        error.disposition.delivery(),
-        DeliveryDisposition::NotDelivered
-    );
-    assert!(mouse_sink::recorded().is_empty());
 }
 
 #[test]

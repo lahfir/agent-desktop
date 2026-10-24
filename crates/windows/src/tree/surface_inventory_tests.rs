@@ -14,17 +14,17 @@
 use super::list_surfaces_for_process;
 use crate::adapter::WindowsAdapter;
 use crate::system::app_ops::process_snapshot;
+use crate::system::fixture::test_support::{FIXTURE_APP_NAME_LOCK, settles_to, stage_foreground};
 use crate::system::process_identity::token_for_pid;
-use crate::system::test_support::{FIXTURE_APP_NAME_LOCK, settles_to, stage_foreground};
-use crate::system::window_enum::enumerate_top_level;
-use crate::system::window_identity::live_window_owner;
-use crate::system::window_ops::passes_filter;
+use crate::system::window::window_enum::enumerate_top_level;
+use crate::system::window::window_identity::live_window_owner;
+use crate::system::window::window_ops::passes_filter;
 use crate::tree::automation::root_from_hwnd;
+use crate::tree::fixture::fixture_menu::{CONTEXT_MENU_ITEM_COUNT, MenuFixture};
+use crate::tree::fixture::fixture_modal::ModalFixture;
 use crate::tree::fixture::{HostedFixture, bootstrap};
-use crate::tree::fixture_menu::{CONTEXT_MENU_ITEM_COUNT, MenuFixture};
-use crate::tree::fixture_modal::ModalFixture;
 use crate::tree::test_support::rooted_child_count as rooted_child_count_of;
-use crate::tree::walker_fake::deadline;
+use crate::tree::walk::walker_fake::deadline;
 use agent_desktop_core::{
     ObservationOps, ProcessId, ProcessIdentity, SnapshotSurface, SurfaceInfo,
 };
@@ -116,7 +116,7 @@ fn the_fixture_window_is_a_window_surface_whose_id_snapshots() {
 fn the_foreground_window_is_also_a_focused_surface() {
     bootstrap();
     let _app_name_scope = app_name_lock();
-    let _stage = crate::tree::fixture_window::on_screen_stage();
+    let _stage = crate::tree::fixture::fixture_window::on_screen_stage();
     let fixture = HostedFixture::spawn().expect("the fixture spawns");
     if !stage_foreground(fixture.handle()) {
         eprintln!("skip focused leg: the OS declined the fixture window the foreground");
@@ -147,7 +147,7 @@ fn the_foreground_window_is_also_a_focused_surface() {
 fn a_staged_modal_presents_a_sheet_surface_distinct_from_its_owner_window() {
     bootstrap();
     let _app_name_scope = app_name_lock();
-    let _stage = crate::tree::fixture_window::on_screen_stage();
+    let _stage = crate::tree::fixture::fixture_window::on_screen_stage();
     let modal = ModalFixture::spawn().expect("the modal fixture spawns");
     modal.open();
     assert!(modal.wait_for_modal_state(true, STATE_TIMEOUT));
@@ -194,7 +194,7 @@ fn a_staged_modal_presents_a_sheet_surface_distinct_from_its_owner_window() {
 fn an_open_menu_presents_a_menu_surface_with_the_staged_item_count() {
     bootstrap();
     let _app_name_scope = app_name_lock();
-    let _stage = crate::tree::fixture_window::on_screen_stage();
+    let _stage = crate::tree::fixture::fixture_window::on_screen_stage();
     let menu = MenuFixture::spawn().expect("the menu fixture spawns");
     let inventory = || {
         list_surfaces_for_process(identity_for(menu.process_id()), deadline())

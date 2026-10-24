@@ -1,7 +1,8 @@
 use std::collections::VecDeque;
 
 use agent_desktop_core::{
-    ActionStep, AdapterError, DeliverySemantics, ErrorCode, action_step_outcome::ActionStepOutcome,
+    ActionStep, AdapterError, DeliverySemantics, ErrorCode,
+    actions::action_step_outcome::ActionStepOutcome,
 };
 
 use super::{CheckTarget, run_check};
@@ -144,6 +145,8 @@ fn unchecking_a_radio_that_ignores_the_write_does_not_press_it() {
     assert_eq!(error.code, ErrorCode::ActionFailed);
     assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
     assert_eq!(target.clicks, 0);
+    let suggestion = error.suggestion.as_deref().unwrap_or_default();
+    assert!(suggestion.contains("sibling radio"), "{suggestion}");
 }
 
 #[test]
@@ -156,14 +159,6 @@ fn a_refused_write_records_the_attempted_step_before_the_click() {
         [("AXValue".into(), None), ("AXPress".into(), Some(true))]
     );
     assert!(matches!(steps[0].outcome, ActionStepOutcome::Attempted));
-}
-
-#[test]
-fn unchecking_a_radio_that_ignores_the_write_suggests_a_sibling() {
-    let mut target = Scripted::new(&[Some(true), Some(true)], &[Some(true)], true);
-    let error = run_check(&mut target, false, false).unwrap_err();
-    let suggestion = error.suggestion.as_deref().unwrap_or_default();
-    assert!(suggestion.contains("sibling radio"), "{suggestion}");
 }
 
 #[test]

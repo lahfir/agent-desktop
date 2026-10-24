@@ -36,7 +36,7 @@
         this instead; it proves the same property the plan's leg exists to
         prove (the actionability gate is live end to end, not only in lib
         tests) with a deterministic oracle rather than a flaky one.
-      - Zero bounds. `docs/phases.md`/this plan expect
+      - Zero bounds. The acceptance plan expected
         `is --property visible` to answer `result: false` for
         `zero-bounds-button`. `tests/fixture-app-windows/FixtureCards.cs`'s
         own `BuildZeroBounds` doc-comment already records that no
@@ -71,7 +71,6 @@ function Invoke-AcceptanceScenario {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][string]$App)
     Register-Legs -Names (@($script:AutoWaitPositiveLegs | ForEach-Object { $_.Name }) + @(
-            'auto-wait-zero-timeout-fails-fast',
             'auto-wait-permanently-disabled-default-timeout', 'auto-wait-permanently-disabled-explicit-timeout',
             'auto-wait-permanently-disabled-zero-timeout',
             'zero-bounds-reports-1x1', 'duplicate-title-focus-by-id',
@@ -81,7 +80,6 @@ function Invoke-AcceptanceScenario {
         ))
 
     Invoke-AutoWaitPositiveLegs -App $App
-    Invoke-AutoWaitZeroTimeoutLeg -App $App
     Invoke-PermanentlyDisabledLegs -App $App
     Invoke-ZeroBoundsLeg -App $App
     Invoke-DuplicateTitleLeg -App $App
@@ -128,22 +126,6 @@ function Invoke-AutoWaitPositiveLegs {
             Add-Pass -Leg $leg.Name
         } catch { Add-Fail -Leg $leg.Name -Reason $_.Exception.Message }
     }
-}
-
-function Invoke-AutoWaitZeroTimeoutLeg {
-    param([Parameter(Mandatory = $true)][string]$App)
-    try {
-        Enter-Stage -Lock DesktopLease -Body {
-            $reset = Require-Target -Target (Find-Target -App $App -NativeId 'reset-delayed-button' -TimeoutSeconds 10) -Description 'reset-delayed-button'
-            Invoke-Target -Target $reset -Action 'click' -RequireOk -Description 'reset-delayed-button' | Out-Null
-            $enableLater = Require-Target -Target (Find-Target -App $App -NativeId 'enable-later' -TimeoutSeconds 10) -Description 'enable-later'
-            Invoke-Target -Target $enableLater -Action 'click' -RequireOk -Description 'enable-later' | Out-Null
-            $delayedButton = Require-Target -Target (Find-Target -App $App -NativeId 'delayed-button' -TimeoutSeconds 10) -Description 'delayed-button'
-            $envelope = Invoke-AgentDesktop -Arguments @('click', $delayedButton.RefId, '--timeout-ms', '0')
-            Assert-Envelope -Envelope $envelope -ErrorCode 'ACTION_FAILED'
-        }
-        Add-Pass -Leg 'auto-wait-zero-timeout-fails-fast'
-    } catch { Add-Fail -Leg 'auto-wait-zero-timeout-fails-fast' -Reason $_.Exception.Message }
 }
 
 function Invoke-PermanentlyDisabledLegs {

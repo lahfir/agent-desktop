@@ -1,5 +1,5 @@
 use super::*;
-use crate::{context::CommandContext, refs_test_support::HomeGuard};
+use crate::{context::CommandContext, refs::refs_test_support::HomeGuard};
 
 #[test]
 fn named_profiles_inherit_session_mode_and_share_snapshots() {

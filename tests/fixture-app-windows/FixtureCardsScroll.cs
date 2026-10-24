@@ -35,7 +35,7 @@ namespace AgentDeskFixtureApp
                 // A bare Label carries no pattern beyond SetFocus (measured
                 // live: find --native-id resolves it, but it never earns a
                 // ref - is_ref_able requires an interactive role or an
-                // action beyond SetFocus, per crates/core/src/ref_alloc.rs -
+                // action beyond SetFocus, per crates/core/src/refs/ref_alloc.rs -
                 // so scroll-to, which is ref-only, has no way to target a
                 // below-fold row at all. The same ControlTypeOverrideHost
                 // used for menu-fire-item below wires a no-op Invoke here,

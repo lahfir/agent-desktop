@@ -10,7 +10,7 @@
 
 use agent_desktop_core::{
     Action, ActionResult, ActionStep, AdapterError, Deadline, ErrorCode, InteractionLease,
-    InteractionPolicy, NativeHandle, action_request::ActionRequest,
+    InteractionPolicy, NativeHandle, actions::action_request::ActionRequest,
 };
 
 /// Availability flags for the Click chain's two rungs, bundled so
@@ -44,11 +44,10 @@ mod imp {
     use crate::actions::select::select_steps;
     use crate::actions::toggle_state::{check_steps, toggle_steps, uncheck_steps};
     use crate::actions::value_write::{clear_steps, set_value_steps};
-    use crate::system::permissions::ensure_budget;
     use crate::tree::element::{UIAElement, uia_element};
     use crate::tree::live_read::corroborate_verified_process;
+    use crate::tree::properties::property_ids::TreeProperty;
     use crate::tree::properties::read_one;
-    use crate::tree::property_ids::TreeProperty;
     use agent_desktop_core::LocatorField;
     use uiautomation::patterns::UILegacyIAccessiblePattern;
 
@@ -64,7 +63,7 @@ mod imp {
             return null_handle_action(&request.action, deadline);
         }
         let element = uia_element(handle)?;
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         corroborate_verified_process(element)?;
         match &request.action {
             Action::Click => execute_click(element, request.policy, deadline),

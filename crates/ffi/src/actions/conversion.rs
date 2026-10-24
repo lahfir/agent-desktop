@@ -174,13 +174,24 @@ mod tests {
     #[test]
     fn key_combo_rejects_modifier_count_exceeding_cap() {
         let key = string_to_c("a");
+        let modifiers = [
+            AdModifier::Meta as i32,
+            AdModifier::Ctrl as i32,
+            AdModifier::Alt as i32,
+            AdModifier::Shift as i32,
+            AdModifier::Meta as i32,
+        ];
         let combo = AdKeyCombo {
             key,
-            modifiers: ptr::null(),
-            modifier_count: 5,
+            modifiers: modifiers.as_ptr(),
+            modifier_count: modifiers.len() as u32,
         };
         let result = unsafe { key_combo_from_c(&combo) };
-        assert!(result.is_err());
+        let message = result.expect_err("five modifiers must be rejected");
+        assert!(
+            message.contains("MAX_MODIFIERS_PER_COMBO"),
+            "got: {message}"
+        );
         unsafe { free_c_string(key as *mut _) };
     }
 

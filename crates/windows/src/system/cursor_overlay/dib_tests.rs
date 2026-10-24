@@ -1,4 +1,5 @@
 use super::Dib;
+use windows_sys::Win32::Graphics::Gdi::{GdiFlush, GetPixel};
 
 /// The surface has to be exactly the size that was asked for, because both
 /// callers index it by their own width and would read past the end - or paint
@@ -22,16 +23,21 @@ fn a_surface_with_no_area_is_refused_rather_than_half_made() {
 
 /// The storage is the bitmap's own, so a write through the slice is what the
 /// drawing calls will see. If this were a copy, the label pass would draw its
-/// glyphs into a buffer nobody reads and the card would come out blank.
+/// glyphs into a buffer nobody reads and the card would come out blank. GDI
+/// reads the pixel back through the surface's own DC, which a heap copy could
+/// never satisfy.
 #[test]
 fn writes_through_the_slice_reach_the_bitmaps_own_storage() {
     let mut dib = Dib::create(4, 4).expect("a small surface can be made on a desktop session");
 
     dib.pixels()[7] = 0x00AB_CDEF;
 
+    unsafe { GdiFlush() };
+    let colorref = unsafe { GetPixel(dib.dc(), 3, 1) };
     assert_eq!(
-        dib.pixels()[7],
-        0x00AB_CDEF,
-        "the slice must alias the bitmap rather than copy out of it"
+        colorref, 0x00EF_CDAB,
+        "GDI must read back the pixel written through the slice (COLORREF is BGR)"
     );
+    let untouched = unsafe { GetPixel(dib.dc(), 0, 0) };
+    assert_eq!(untouched, 0, "only the written pixel may change");
 }

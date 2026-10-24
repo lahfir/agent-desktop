@@ -98,8 +98,10 @@ mod tests {
 
     #[test]
     fn test_panic_is_caught_and_returns_internal() {
-        let r = trap_panic(|| -> AdResult { panic!("synthetic panic") });
-        assert_eq!(r, AdResult::ErrInternal);
+        let first = trap_panic(|| -> AdResult { panic!("first") });
+        assert_eq!(first, AdResult::ErrInternal);
+        let second = trap_panic(|| -> AdResult { panic!("second") });
+        assert_eq!(second, AdResult::ErrInternal);
     }
 
     #[test]
@@ -107,13 +109,6 @@ mod tests {
         crate::error::clear_last_error();
         let _ = trap_panic(|| -> AdResult { panic!("synthetic panic") });
         assert_eq!(crate::error::last_error_code(), AdResult::ErrInternal);
-    }
-
-    #[test]
-    fn test_two_sequential_panics_do_not_leak() {
-        let _ = trap_panic(|| -> AdResult { panic!("first") });
-        let r = trap_panic(|| -> AdResult { panic!("second") });
-        assert_eq!(r, AdResult::ErrInternal);
     }
 
     #[test]

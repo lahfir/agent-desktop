@@ -4,7 +4,7 @@
 //!
 //! Three independent checks port all three things
 //! `ensure_unix_runtime_directory` / `validate_unix_runtime_directory` do
-//! (`crates/core/src/interaction_lease.rs:163-203`) to a platform where
+//! (`crates/core/src/session/interaction_lease.rs:163-203`) to a platform where
 //! `mkdir` does not yield euid ownership: an owner check that accepts
 //! either `TokenOwner` or `TokenUser` - the two shapes an elevated
 //! administrator's own created directories actually carry on this platform -
@@ -13,13 +13,15 @@
 //! read-back that admits only `SYSTEM`, `BUILTIN\Administrators` and the
 //! token user.
 
+#[cfg(test)]
+use std::cell::RefCell;
 use std::fs::{File, OpenOptions};
 use std::io::ErrorKind;
 use std::os::windows::fs::OpenOptionsExt;
 use std::os::windows::io::AsRawHandle;
 use std::path::{Path, PathBuf};
 
-use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, HANDLE};
+use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::Security::Authorization::{GetSecurityInfo, SE_FILE_OBJECT};
 use windows_sys::Win32::Security::{ACL, DACL_SECURITY_INFORMATION};
 use windows_sys::Win32::Storage::FileSystem::{
@@ -29,10 +31,15 @@ use windows_sys::Win32::System::SystemInformation::GetSystemWindowsDirectoryW;
 
 use super::dacl;
 use super::sid;
-use crate::system::token_sid::read_owner_sid;
+use crate::system::runtime::token_sid::read_owner_sid;
 use agent_desktop_core::{AdapterError, ErrorCode};
 
 const EXTENDED_LENGTH_PREFIX: &str = r"\\?\";
+
+#[cfg(test)]
+thread_local! {
+    static CREATE_RACE: RefCell<Option<(PathBuf, PathBuf)>> = const { RefCell::new(None) };
+}
 
 /// `GetSystemWindowsDirectoryW`'s drive joined to `ProgramData\agent-desktop`.
 /// Reads no environment variable, so an isolated `%TEMP%`/`%LOCALAPPDATA%`
@@ -121,6 +128,9 @@ fn grow_and_retry_wide_buffer(
 pub(super) fn ensure_private(directory: &Path) -> Result<(), AdapterError> {
     let freshly_created = create_if_absent(directory)?;
     let handle = open_backup_semantics(directory)?;
+    validate_is_directory(&handle)?;
+    validate_final_path(&handle, directory)?;
+    validate_owner(&handle)?;
     if freshly_created {
         let system = sid::well_known_system_sid().map_err(io_untrusted)?;
         let administrators = sid::well_known_administrators_sid().map_err(io_untrusted)?;
@@ -139,12 +149,42 @@ pub(super) fn ensure_private(directory: &Path) -> Result<(), AdapterError> {
 /// before creating rather than read off `create_dir_all`'s result, which
 /// does not distinguish "created" from "already there".
 fn create_if_absent(directory: &Path) -> Result<bool, AdapterError> {
-    let existed_before = std::fs::symlink_metadata(directory).is_ok();
-    match std::fs::create_dir_all(directory) {
-        Ok(()) => Ok(!existed_before),
+    let parent = directory
+        .parent()
+        .ok_or_else(|| untrusted("lock directory path has no parent"))?;
+    std::fs::create_dir_all(parent).map_err(io_untrusted)?;
+    #[cfg(test)]
+    inject_create_race(directory);
+    match std::fs::create_dir(directory) {
+        Ok(()) => Ok(true),
         Err(error) if error.kind() == ErrorKind::AlreadyExists => Ok(false),
-        Err(error) if error.raw_os_error() == Some(ERROR_ALREADY_EXISTS as i32) => Ok(false),
         Err(error) => Err(io_untrusted(error)),
+    }
+}
+
+#[cfg(test)]
+pub(super) fn with_create_race<R>(directory: &Path, target: &Path, run: impl FnOnce() -> R) -> R {
+    CREATE_RACE.with(|race| {
+        let previous = race.replace(Some((directory.to_owned(), target.to_owned())));
+        let result = run();
+        race.replace(previous);
+        result
+    })
+}
+
+#[cfg(test)]
+fn inject_create_race(directory: &Path) {
+    let target = CREATE_RACE.with(|race| {
+        let matches = race
+            .borrow()
+            .as_ref()
+            .is_some_and(|(expected, _)| expected == directory);
+        matches
+            .then(|| race.borrow_mut().take().map(|(_, target)| target))
+            .flatten()
+    });
+    if let Some(target) = target {
+        crate::system::private_file::tests::create_junction(directory, &target);
     }
 }
 

@@ -3,12 +3,12 @@
 //! a producer can be correct while the slot it fills is never threaded, which
 //! is exactly the shape the states plumbing had before it was built.
 
-use agent_desktop_core::state;
+use agent_desktop_core::tree::state;
 
 use crate::tree::properties::PropertyOutcome;
-use crate::tree::property_ids::TreeProperty;
+use crate::tree::properties::property_ids::TreeProperty;
 use crate::tree::test_support::flag;
-use crate::tree::walker_fake::{FakeTree, budget, walk};
+use crate::tree::walk::walker_fake::{FakeTree, budget, walk};
 
 fn enabled_true() -> (TreeProperty, PropertyOutcome) {
     flag(TreeProperty::IsEnabled, true)

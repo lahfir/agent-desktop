@@ -1,4 +1,5 @@
 use super::*;
+use crate::system::close_outcome::CloseOutcome;
 use crate::system::process_identity;
 use agent_desktop_core::{DeliveryDisposition, ProcessId};
 
@@ -37,7 +38,7 @@ fn close_requires_a_creation_time_token() {
 }
 
 #[cfg(target_os = "windows")]
-use crate::system::test_time::deadline;
+use crate::system::fixture::test_time::deadline;
 
 #[cfg(target_os = "windows")]
 fn app_for_pid(name: &str, pid: ProcessId) -> AppInfo {
@@ -70,7 +71,9 @@ fn graceful_hosted_fixture_ok_only_after_independently_observed_gone() {
     let app = app_for_pid("fixture-host", pid);
     let instance = app.process_instance.clone().expect("token");
 
-    close_app_impl(&app, false, deadline(10_000)).expect("graceful close");
+    let outcome = close_app_impl(&app, false, deadline(10_000)).expect("graceful close");
+
+    assert_eq!(outcome, CloseOutcome::Exited);
 
     assert!(
         super::process_observed_gone(pid, &instance).expect("gone check"),
@@ -88,7 +91,9 @@ fn force_terminates_wm_close_ignoring_process_and_verifies_exit() {
     let app = app_for_pid("fixture-host", pid);
     let instance = app.process_instance.clone().expect("token");
 
-    close_app_impl(&app, true, deadline(10_000)).expect("force close");
+    let outcome = close_app_impl(&app, true, deadline(10_000)).expect("force close");
+
+    assert_eq!(outcome, CloseOutcome::Exited);
 
     assert!(
         super::process_observed_gone(pid, &instance).expect("gone check"),
@@ -142,7 +147,9 @@ fn already_dead_pid_is_benign_ok() {
     let app = app_for_pid("cmd.exe", pid);
     let _ = child.wait();
 
-    close_app_impl(&app, false, deadline(10_000)).expect("already dead is Ok");
+    let outcome = close_app_impl(&app, false, deadline(10_000)).expect("already dead is Ok");
+
+    assert_eq!(outcome, CloseOutcome::AlreadyGone);
 }
 
 #[cfg(target_os = "windows")]
@@ -154,8 +161,10 @@ fn race_windows_gone_because_process_died_is_benign_ok() {
     let app = app_for_pid("fixture-host", pid);
     fixture.terminate();
 
-    close_app_impl(&app, false, deadline(10_000))
+    let outcome = close_app_impl(&app, false, deadline(10_000))
         .expect("empty window set after death must follow the handle check, not ACTION_FAILED");
+
+    assert_eq!(outcome, CloseOutcome::AlreadyGone);
 }
 
 #[cfg(target_os = "windows")]
@@ -212,7 +221,10 @@ fn mismatched_creation_token_is_benign_ok_without_killing_live_pid() {
         presentation: None,
     };
 
-    close_app_impl(&app, true, deadline(10_000)).expect("token mismatch is already-gone");
+    let outcome =
+        close_app_impl(&app, true, deadline(10_000)).expect("token mismatch is already-gone");
+
+    assert_eq!(outcome, CloseOutcome::AlreadyGone);
 
     assert!(
         process_still_alive(pid, &live),

@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+import threading
 from ctypes import (
     POINTER,
     c_bool,
@@ -267,8 +268,67 @@ def main() -> None:
     ad_adapter_destroy(adapter)
     ok("ad_adapter_destroy() — no crash, no leak")
 
+    if os.environ.get("AD_EXPECT_REAL") == "1":
+        print("\nLeg 5 — real adapter snapshots a named app on the main and a worker thread")
+        app = os.environ.get("AD_APP", "gnome-calculator").encode()
+        adapter = ad_adapter_create()
+        if not adapter:
+            fail("ad_adapter_create() returned null for the real-adapter leg")
+
+        def real_snapshot():
+            out = c_char_p()
+            rc = ad_snapshot(adapter, app, 0, 10, True, False, byref(out))
+            raw = out.value
+            if raw is not None:
+                ad_free_string(out)
+            if rc != 0:
+                return False, f"ad_snapshot() returned rc={rc} (AD_RESULT code {rc})"
+            try:
+                envelope = json.loads(raw)
+            except (TypeError, json.JSONDecodeError) as exc:
+                return False, f"ad_snapshot() output is not valid JSON: {exc}"
+            if envelope.get("ok") is not True:
+                code = (envelope.get("error") or {}).get("code", "")
+                return False, f"ad_snapshot() returned ok:false, error.code={code!r}"
+            data = envelope.get("data") or {}
+            if data.get("complete") is not True:
+                return False, "ad_snapshot() returned an incomplete tree"
+            if (data.get("ref_count") or 0) < 1:
+                return False, "ad_snapshot() allocated no refs"
+            return True, f"ref_count={data['ref_count']}"
+
+        passed, message = real_snapshot()
+        if not passed:
+            ad_adapter_destroy(adapter)
+            fail(f"real adapter snapshot on the main thread failed: {message}")
+        ok(f"main thread: {app.decode()} snapshot ok:true {message}")
+
+        worker_result = []
+
+        def worker():
+            worker_result.append(real_snapshot())
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join(120)
+        ad_adapter_destroy(adapter)
+        if thread.is_alive() or not worker_result:
+            fail("real adapter snapshot on a worker thread did not complete")
+        passed, message = worker_result[0]
+        if not passed:
+            fail(f"real adapter snapshot on a worker thread failed: {message}")
+        ok(f"worker thread: {app.decode()} snapshot ok:true {message}")
+
+    if os.environ.get("AD_EXPECT_LINUX_HELPER") == "1":
+        from linux_helper import verify
+        try:
+            verify(lib, os.environ["AD_HELPER_EMPTY_PATH"])
+        except AssertionError as error:
+            fail(str(error))
+        ok("library-adjacent Linux owner set/read/clear with empty PATH")
+
     if os.environ.get("AD_EXPECT_MACOS_HELPER") == "1":
-        print("\nLeg 5 — non-colocated Python host discovers the dylib-adjacent macOS helper")
+        print("\nLeg 6 — non-colocated Python host discovers the dylib-adjacent packaged helper")
         adapter = ad_adapter_create()
         if not adapter:
             fail("ad_adapter_create() returned null for helper discovery leg")
@@ -284,7 +344,7 @@ def main() -> None:
                 ad_adapter_destroy(adapter)
                 ok(
                     "ctypes host reached the authenticated packaged helper; "
-                    f"pasteboard access was unavailable in this host ({message!r})"
+                    f"clipboard access was unavailable in this host ({message!r})"
                 )
                 print("\nAll legs passed.")
                 return

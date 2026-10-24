@@ -1,5 +1,5 @@
 use super::*;
-use crate::tree::property_outcome::PropertyValue;
+use crate::tree::properties::property_outcome::PropertyValue;
 use crate::tree::test_support::text;
 
 const MARKER: &str = "zzmarkerzz";

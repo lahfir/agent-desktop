@@ -20,8 +20,7 @@
 //! `NotifyWinEvent` - the cross-process legacy-control value bridge in this
 //! environment did not converge within any bound this test could use, which
 //! is a fact about how production `get --property value` behaves against a
-//! legacy out-of-process control, not only about this test's harness; it is
-//! recorded as a residual in `docs/dogfood-reports/`. The same mutation
+//! legacy out-of-process control, not only about this test's harness. The same mutation
 //! against a `LocalFixture` control is observed on the very next read, which
 //! is the narrower, in-process claim this module's tests actually establish.
 //! `fixture.rs`'s warning on `LocalFixture` - "never use it to validate the
@@ -33,9 +32,9 @@ use crate::tree::automation::{automation_client, root_from_hwnd};
 use crate::tree::element::UIAElement;
 use crate::tree::fixture::{CONTENT_MARKER, LocalFixture, ensure_test_apartment};
 use crate::tree::live_read::{live_value, read_live_element};
+use crate::tree::properties::property_ids::TreeProperty;
 use crate::tree::properties::{PropertyOutcome, PropertyValue, read_live};
-use crate::tree::property_ids::TreeProperty;
-use crate::tree::walker_fake::deadline;
+use crate::tree::walk::walker_fake::deadline;
 use std::ffi::c_void;
 use std::time::{Duration, Instant};
 use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowExW, GetWindowTextW, SetWindowTextW};

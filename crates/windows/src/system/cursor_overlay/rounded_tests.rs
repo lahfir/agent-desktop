@@ -8,7 +8,7 @@ const RIM: [f64; 3] = [0.07, 0.07, 0.09];
 const ACCENT: [f64; 3] = [0.26, 0.60, 1.0];
 
 fn surface() -> Surface {
-    Surface::transparent(200, 200)
+    Surface::try_transparent(200, 200).expect("bounded test surface")
 }
 
 fn mapping(scale: f64) -> SurfaceMapping {

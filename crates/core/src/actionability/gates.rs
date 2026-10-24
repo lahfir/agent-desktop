@@ -3,18 +3,26 @@ use super::{
     check_result::{fail, fail_terminal, pass, unknown},
     evidence::ActionabilityEvidence,
 };
-use crate::{ErrorCode, Rect, action::Action, action_request::ActionRequest, capability};
+use crate::{
+    ErrorCode, Rect, actions::action::Action, actions::action_request::ActionRequest,
+    actions::capability,
+};
 
 pub(super) fn visibility(
     evidence: &ActionabilityEvidence,
     requires_geometry: bool,
+    delivered_without_pointer: bool,
 ) -> ActionabilityCheck {
     match evidence.state.hidden {
         Some(true) => return fail("visible", "live hidden state is true"),
         None if !evidence.states_complete => {
             return unknown("visible", "live hidden state unavailable");
         }
-        None if crate::state::has_state(&evidence.state.states, crate::state::HIDDEN) => {
+        None if crate::tree::state::has_state(
+            &evidence.state.states,
+            crate::tree::state::HIDDEN,
+        ) =>
+        {
             return fail("visible", "canonical hidden state is present");
         }
         None => {}
@@ -25,13 +33,30 @@ pub(super) fn visibility(
         None if !evidence.states_complete => {
             return unknown("visible", "live offscreen state unavailable");
         }
-        None if crate::state::has_state(&evidence.state.states, crate::state::OFFSCREEN) => {
+        None if crate::tree::state::has_state(
+            &evidence.state.states,
+            crate::tree::state::OFFSCREEN,
+        ) =>
+        {
             return fail("visible", "canonical offscreen state is present");
         }
         None => {}
         Some(false) => {}
     }
+    if delivered_without_pointer
+        && evidence.nonspatial
+        && evidence.states_complete
+        && evidence.state.hidden == Some(false)
+    {
+        return pass("visible");
+    }
     if !requires_geometry && evidence.state.offscreen.is_none() && evidence.bounds.is_some() {
+        return pass("visible");
+    }
+    if (!requires_geometry || delivered_without_pointer)
+        && evidence.bounds.is_none()
+        && evidence.state.visible_without_bounds() == Some(true)
+    {
         return pass("visible");
     }
     let Some(bounds) = evidence.bounds else {
@@ -41,6 +66,18 @@ pub(super) fn visibility(
         return fail("visible", "bounds are zero-sized");
     }
     pass("visible")
+}
+
+pub(super) fn stability_without_pointer(
+    evidence: &ActionabilityEvidence,
+    expectation: super::stability::StabilityExpectation,
+) -> ActionabilityCheck {
+    if evidence.bounds.is_none() && evidence.state.offscreen == Some(false) {
+        let mut check = pass("stable");
+        check.reason = Some("no pointer use; not measurable without bounds".to_owned());
+        return check;
+    }
+    stability(expectation, evidence.bounds)
 }
 
 pub(super) fn stability(
@@ -86,7 +123,7 @@ pub(super) fn stability(
         if observed_hash == expected {
             pass("stable")
         } else {
-            unknown("stable", "bounds changed since snapshot")
+            unknown("stable", "live bounds stability has not been sampled")
         }
     };
     let mut check = check;
@@ -206,7 +243,7 @@ fn combo_select_applies(evidence: &ActionabilityEvidence) -> bool {
 
 #[cfg(test)]
 pub(crate) fn states_are_enabled(states: &[String]) -> bool {
-    !crate::state::has_state(states, crate::state::DISABLED)
+    !crate::tree::state::has_state(states, crate::tree::state::DISABLED)
 }
 
 pub(crate) fn bounds_are_visible(bounds: Option<Rect>) -> bool {
@@ -214,3 +251,7 @@ pub(crate) fn bounds_are_visible(bounds: Option<Rect>) -> bool {
         bounds.validate().is_ok() && bounds.width > 0.0 && bounds.height > 0.0
     })
 }
+
+#[cfg(test)]
+#[path = "gates_tests.rs"]
+mod tests;

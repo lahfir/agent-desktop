@@ -91,40 +91,41 @@ fn ad_wait_command_error_writes_error_envelope_into_out() {
         let mut out: *mut std::os::raw::c_char = std::ptr::null_mut();
         let rc = ad_wait(adapter, &args, &mut out);
 
-        match rc {
-            AdResult::Ok => {
-                assert!(!out.is_null(), "Ok result must set out");
-                ad_free_string(out);
-            }
-            _ => {
-                assert!(
-                    !out.is_null(),
-                    "command-level error must write error envelope into *out, got rc={rc:?}"
-                );
-                let s = CStr::from_ptr(out).to_string_lossy();
-                let val: serde_json::Value =
-                    serde_json::from_str(&s).expect("error envelope must be valid JSON");
-                assert_eq!(
-                    val["ok"].as_bool(),
-                    Some(false),
-                    "error envelope ok must be false, got: {s}"
-                );
-                assert_eq!(
-                    val["command"].as_str(),
-                    Some("wait"),
-                    "command field must be 'wait', got: {s}"
-                );
-                assert!(
-                    val["error"].is_object(),
-                    "error envelope must carry an error object, got: {s}"
-                );
-                assert_eq!(
-                    ad_last_error_code(),
-                    rc,
-                    "last-error code must match returned AdResult (errno invariant)"
-                );
-                ad_free_string(out);
-            }
-        }
+        assert_ne!(
+            rc,
+            AdResult::Ok,
+            "waiting for a nonexistent element with timeout 0 must fail"
+        );
+        assert!(
+            !out.is_null(),
+            "command-level error must write error envelope into *out, got rc={rc:?}"
+        );
+        let s = CStr::from_ptr(out).to_string_lossy();
+        let val: serde_json::Value =
+            serde_json::from_str(&s).expect("error envelope must be valid JSON");
+        assert_eq!(
+            val["ok"].as_bool(),
+            Some(false),
+            "error envelope ok must be false, got: {s}"
+        );
+        assert_eq!(
+            val["command"].as_str(),
+            Some("wait"),
+            "command field must be 'wait', got: {s}"
+        );
+        assert!(
+            val["error"].is_object(),
+            "error envelope must carry an error object, got: {s}"
+        );
+        assert!(
+            val["error"]["code"].as_str().is_some_and(|c| !c.is_empty()),
+            "error.code must be a non-empty string, got: {s}"
+        );
+        assert_eq!(
+            ad_last_error_code(),
+            rc,
+            "last-error code must match returned AdResult (errno invariant)"
+        );
+        ad_free_string(out);
     });
 }

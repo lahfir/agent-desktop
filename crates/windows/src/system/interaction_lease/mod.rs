@@ -56,13 +56,11 @@ pub(crate) fn adopt_inherited(
 
 /// The path a production acquisition resolves to. Pure path computation -
 /// no directory creation, no validation - so a test proving the environment
-/// cannot move it needs nothing more than a live process token. Exercised
-/// only by tests today (an environment-independence check and an
-/// adapter-resolves-the-real-path check both need it as an independent
-/// oracle), so it has no production caller yet; kept `pub(crate)` rather than
-/// `#[cfg(test)]` because it is a stable resolver, not test scaffolding, and
-/// a future diagnostic surface is the obvious next caller.
-#[allow(dead_code)]
+/// cannot move it needs nothing more than a live process token. Test-only:
+/// the environment-independence check and the adapter-resolves-the-real-path
+/// check use it as an independent oracle for the path `acquire` and
+/// `adopt_inherited` resolve.
+#[cfg(test)]
 pub(crate) fn canonical_lock_path() -> Result<PathBuf, AdapterError> {
     lock_path_under(&directory::canonical_root()?)
 }

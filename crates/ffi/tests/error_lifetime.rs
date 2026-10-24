@@ -11,6 +11,8 @@ unsafe extern "C" {
         timeout_ms: u64,
         out: *mut agent_desktop_ffi::AdExactWindowInfo,
     ) -> AdResult;
+    fn ad_app_list_count(list: *const agent_desktop_ffi::AdAppList) -> u32;
+    fn ad_exact_window_list_count(list: *const agent_desktop_ffi::AdExactWindowList) -> u32;
     fn ad_last_error_message() -> *const std::os::raw::c_char;
     fn ad_last_error_details() -> *const std::os::raw::c_char;
     fn ad_last_error_code() -> AdResult;
@@ -39,6 +41,10 @@ fn last_error_pointer_survives_across_successful_calls() {
             let next = ad_adapter_create();
             assert!(!next.is_null());
             ad_adapter_destroy(next);
+        }
+        for _ in 0..5 {
+            let _ = ad_app_list_count(std::ptr::null());
+            let _ = ad_exact_window_list_count(std::ptr::null());
         }
 
         let later_msg_ptr = ad_last_error_message();

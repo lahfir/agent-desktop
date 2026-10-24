@@ -140,7 +140,7 @@ pub unsafe extern "C" fn ad_mouse_event(
         let adapter = crate::adapter::acquire_adapter!(adapter);
         let lease = crate::operation::interaction_lease!(adapter.inner.as_ref());
         match adapter.inner.mouse_event(core_event, &lease) {
-            Ok(()) => AdResult::Ok,
+            Ok(_) => AdResult::Ok,
             Err(e) => {
                 error::set_last_error(&e);
                 error::last_error_code()
@@ -194,7 +194,7 @@ pub unsafe extern "C" fn ad_mouse_event_with_modifiers(
         let adapter = crate::adapter::acquire_adapter!(adapter);
         let lease = crate::operation::interaction_lease!(adapter.inner.as_ref());
         match adapter.inner.mouse_event(core_event, &lease) {
-            Ok(()) => AdResult::Ok,
+            Ok(_) => AdResult::Ok,
             Err(e) => {
                 error::set_last_error(&e);
                 error::last_error_code()
@@ -252,7 +252,7 @@ pub unsafe extern "C" fn ad_mouse_wheel(
         let adapter = crate::adapter::acquire_adapter!(adapter);
         let lease = crate::operation::interaction_lease!(adapter.inner.as_ref());
         match adapter.inner.mouse_event(event, &lease) {
-            Ok(()) => AdResult::Ok,
+            Ok(_) => AdResult::Ok,
             Err(err) => {
                 error::set_last_error(&err);
                 error::last_error_code()

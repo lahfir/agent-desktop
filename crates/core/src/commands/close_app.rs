@@ -1,4 +1,4 @@
-use crate::{AppError, adapter::PlatformAdapter};
+use crate::{AppError, adapter::PlatformAdapter, commands::operation_response::operation_response};
 use serde_json::{Value, json};
 
 pub struct CloseAppArgs {
@@ -27,13 +27,14 @@ pub fn execute(args: CloseAppArgs, adapter: &dyn PlatformAdapter) -> Result<Valu
         &expected,
         lease.deadline(),
     )?;
-    adapter.close_app(&live, args.force, &lease)?;
-    Ok(json!({
-        "app": args.app,
-        "method": if args.force { "force" } else { "graceful" },
-        "requested": true,
-        "closed": true
-    }))
+    let report = adapter.close_app(&live, args.force, &lease)?;
+    operation_response(
+        &report,
+        json!({
+            "app": args.app,
+            "method": if args.force { "force" } else { "graceful" },
+        }),
+    )
 }
 
 fn protected_process_error(app: &str) -> AppError {

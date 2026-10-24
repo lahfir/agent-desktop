@@ -27,8 +27,14 @@ impl agent_desktop_core::ObservationOps for SeenSetBatchAdapter {
 impl agent_desktop_core::ActionOps for SeenSetBatchAdapter {}
 
 impl agent_desktop_core::InputOps for SeenSetBatchAdapter {
-    fn clear_clipboard(&self, _lease: &InteractionLease) -> Result<(), AdapterError> {
-        Ok(())
+    fn clear_clipboard(
+        &self,
+        _lease: &InteractionLease,
+    ) -> Result<agent_desktop_core::OperationReport, AdapterError> {
+        Ok(agent_desktop_core::OperationReport::delivered_unverified(
+            "test",
+            agent_desktop_core::OperationTarget::Clipboard,
+        ))
     }
 }
 

@@ -7,9 +7,9 @@ struct MaterializeTimeoutAdapter {
 impl ObservationOps for MaterializeTimeoutAdapter {
     fn observe_tree(
         &self,
-        root: crate::live_locator::ObservationRoot<'_>,
-        _request: &crate::live_locator::ObservationRequest,
-    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+        root: crate::locator::live_locator::ObservationRoot<'_>,
+        _request: &crate::locator::live_locator::ObservationRequest,
+    ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
         if self.observations.fetch_add(1, Ordering::SeqCst) > 0 {
             return Err(AdapterError::timeout("final snapshot timed out"));
         }
@@ -48,9 +48,9 @@ struct MaterializeMissAdapter {
 impl ObservationOps for MaterializeMissAdapter {
     fn observe_tree(
         &self,
-        root: crate::live_locator::ObservationRoot<'_>,
-        _request: &crate::live_locator::ObservationRequest,
-    ) -> Result<crate::live_locator::ObservedTree, AdapterError> {
+        root: crate::locator::live_locator::ObservationRoot<'_>,
+        _request: &crate::locator::live_locator::ObservationRequest,
+    ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
         let tree = match self.observations.fetch_add(1, Ordering::SeqCst) {
             0 => window_node(vec![button_node("saved")]),
             1 => window_node(vec![button_node("newest")]),

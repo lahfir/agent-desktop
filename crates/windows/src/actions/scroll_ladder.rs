@@ -11,7 +11,6 @@ use agent_desktop_core::{AdapterError, Deadline, DeliverySemantics, Direction, E
 
 use crate::actions::chain::DeliveryOutcome;
 use crate::actions::scroll::SCROLL_LABEL;
-use crate::system::permissions::ensure_budget;
 use crate::tree::element::UIAElement;
 
 pub(crate) const MAX_ANCESTOR_SCROLLS: usize = 10;
@@ -140,7 +139,9 @@ pub(crate) fn ladder_judged_for(
 ) -> Result<DeliveryOutcome, AdapterError> {
     let mut scrolled = false;
     for attempt in 0..MAX_ANCESTOR_SCROLLS {
-        ensure_budget(deadline).map_err(|error| budget_disposition(scrolled, error))?;
+        deadline
+            .ensure_remaining()
+            .map_err(|error| budget_disposition(scrolled, error))?;
         let Some(direction) =
             next_direction().map_err(|error| budget_disposition(scrolled, error))?
         else {
@@ -176,13 +177,12 @@ mod imp {
         visibility_verified,
     };
     use crate::actions::mutation::{classify_success, classify_write};
-    use crate::system::permissions::ensure_budget;
     use crate::tree::automation::automation_client;
     use crate::tree::live_read::corroborate_verified_process;
+    use crate::tree::properties::property_ids::TreeProperty;
+    use crate::tree::properties::property_outcome::{PropertyOutcome, PropertyValue};
     use crate::tree::properties::read_one;
-    use crate::tree::property_ids::TreeProperty;
-    use crate::tree::property_outcome::{PropertyOutcome, PropertyValue};
-    use crate::tree::walker_source::{nearest_scroll_viewport, viewport_bounds};
+    use crate::tree::walk::walker_source::{nearest_scroll_viewport, viewport_bounds};
     use agent_desktop_core::{ErrorCode, LocatorField, Rect};
     use uiautomation::patterns::UIScrollPattern;
 
@@ -193,7 +193,7 @@ mod imp {
         element: &UIAElement,
         deadline: Deadline,
     ) -> Result<Option<DeliveryOutcome>, AdapterError> {
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         corroborate_verified_process(element)?;
         let client = automation_client()?;
         let Some(walker) = client.get_raw_view_walker().ok() else {
@@ -201,7 +201,7 @@ mod imp {
         };
         match nearest_scroll_viewport(element, &walker, deadline) {
             Ok(None) => Ok(None),
-            Err(crate::tree::walker_source::BudgetExpired) => Err(deadline.timeout_error()),
+            Err(crate::tree::walk::walker_source::BudgetExpired) => Err(deadline.timeout_error()),
             Ok(Some(ancestor)) => {
                 scroll_ancestor_until_visible(element, &ancestor, deadline).map(Some)
             }
@@ -242,7 +242,7 @@ mod imp {
         deadline: Deadline,
         context: &str,
     ) -> Result<VisibilitySample, AdapterError> {
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         corroborate_verified_process(element)?;
         let bounds = match read_one(element, TreeProperty::BoundingRectangle).bounds() {
             LocatorField::Known(bounds) => Some(bounds),
@@ -277,7 +277,7 @@ mod imp {
         direction: &Direction,
         deadline: Deadline,
     ) -> Result<(), AdapterError> {
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         corroborate_verified_process(ancestor)?;
         let pattern = match ancestor.0.get_pattern::<UIScrollPattern>() {
             Ok(pattern) => pattern,

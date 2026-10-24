@@ -2,7 +2,7 @@
 title: A test that cannot fail is not coverage
 date: 2026-08-01
 category: best-practices
-module: crates/core/src/accname.rs, crates/windows/src/tree, crates/windows/examples/uia_tree_dump
+module: crates/core/src/tree/accname.rs, crates/windows/src/tree, crates/windows/examples/uia_tree_dump
 problem_type: process_gap
 component: tooling
 symptoms:
@@ -24,14 +24,16 @@ tags: [testing, tautology, ci, exhaustiveness, com-free-seam, windows, coverage]
 ## Problem
 
 The Windows vocabulary work shipped, and two review passes plus the
-implementer's own pass then found five tests that were green for reasons
-unrelated to what they claimed to prove:
+implementer's own pass then found tests, in eight shapes, that were green for
+reasons unrelated to what they claimed to prove:
 
-1. **Tautology.** `accname_tests.rs`'s
-   `the_uncertainty_aware_and_plain_entry_points_agree_on_every_input` asserts
-   `resolve_name(&value, &NameSlotStatus::default()).known().cloned() ==
+1. **Tautology.** `accname_tests.rs` carried
+   `the_uncertainty_aware_and_plain_entry_points_agree_on_every_input`, which
+   asserted `resolve_name(&value, &NameSlotStatus::default()).known().cloned() ==
    compute_name(&value)`. `compute_name` (`accname.rs:84-88`) is defined as
-   exactly that call. The assertion is `x == x` wearing an agreement claim.
+   exactly that call, so the assertion was `x == x` wearing an agreement claim.
+   The test was dropped in `e549527c`, which removed tests that restate a
+   stronger test; no `agree` test remains in `accname_tests.rs`.
 2. **Impossible input.** `states_tests.rs` fed the states producer
    `role == "button"` with `ToggleAvailable` true. `roles.rs`'s `button_role`
    reclassifies any toggle-available `Button` to `Role::Switch` before states
@@ -53,7 +55,7 @@ unrelated to what they claimed to prove:
    which properties actually carry target text elsewhere in the walk — a text
    property added to `WALK_SET` without a matching `VALUE_BEARING` entry would
    leak silently.
-6. **Test-only mirror.** `crates/windows/src/tree/hit_test.rs`'s pre-probe
+6. **Test-only mirror.** `crates/windows/src/tree/hit_test/mod.rs`'s pre-probe
    guard ladder was inlined directly in production, and its `#[cfg(test)]`
    coverage (`guard_zero_area`, `guard_point_outside_bounds`,
    `guard_outside_virtual_screen`) re-typed the same boolean expressions
@@ -68,9 +70,9 @@ unrelated to what they claimed to prove:
    `#[cfg(test)]` and omitted the policy gate, omitted the payload preflight,
    and passed `|_| Ok(())` where production passed the real verifier.
    Deleting either guard from the shipped path left the whole suite green.
-   This is worse than shape 6: a mirror re-types an *expression*, but a
+   This is worse than shape 6. A mirror re-types an *expression*; a
    test-only entry point re-types the *function*, so it drifts on every
-   dimension at once and reads like real coverage in the test's own name.
+   dimension at once and passes as coverage under its own name.
    The fix is not a better test but a better seam — make the production
    function take the varying part as a parameter (here, the verifier) and
    have the test supply its own, so there is only one gate and the test
@@ -78,8 +80,8 @@ unrelated to what they claimed to prove:
 
 8. **A setup guard that returns instead of asserting.** Four live
    `press_key_for_app` tests opened with `if !stage_as_foreground(&fixture) {
-   return; }`, where staging performs a real OS activation that this same
-   sub-phase documents as able not to land. On any run where it did not, each
+   return; }`, where staging performs a real OS activation that the Windows
+   activation capture (`A21-6`) records as able not to land. On any run where it did not, each
    test returned before its first assertion and libtest reported a pass — and
    one of the four was the only test proving the method was wired through the
    trait at all. This is the hardest shape to see in review, because the early
@@ -101,11 +103,7 @@ against the states producer in isolation, without checking what the role
 mapper actually hands it, and never noticed the mapper had closed the gap
 first. Shapes 3 and 4 are the same defect at different distances: a test the
 runner never builds, and a test that reaches the runner but not the real call
-site, both fail to intersect the code path they claim to cover — see
-[Never ship platform code that CI cannot execute](never-ship-platform-code-that-ci-cannot-execute.md)
-for the lane-flags half of this and
-[A verification gate is code and needs its own test](a-verification-gate-is-code-and-needs-its-own-test.md)
-for the gate that already names shape 3. Shape 5 is a duplicate-source-of-truth
+site, both fail to intersect the code path they claim to cover. Shape 5 is a duplicate-source-of-truth
 bug: a test that checks one hand-kept list against another proves the copies
 match each other, never that either is complete. Shape 6 is adjacent to shape
 1's delegation trick but sharper: the test did not call the production
@@ -117,10 +115,10 @@ production proved nothing, because the test's own mirror never moved.
 
 None of the fixes were "delete the test":
 
-1. **Label it, don't pretend.** The delegation guard is worth keeping as a
-   structural, advisory guard against re-divergence — but its doc comment
-   should say that, distinct from the genuinely falsifiable precedence tests
-   beside it.
+1. **Remove it.** The delegation guard was not kept. `e549527c` dropped it as a
+   restatement of a stronger test, and `compute_name` (`accname.rs:84-88`)
+   still delegates, so the precedence tests in `accname_tests.rs` carry the
+   coverage on their own.
 2. **Cover the reachable shape, and keep the unreachable one as a named
    regression test.** `button_role_with_toggle_state_but_no_pressed_bit_emits_no_pressed`
    stays, with a doc comment stating its input is unreachable and pointing at
@@ -144,15 +142,15 @@ None of the fixes were "delete the test":
    silent `false`. `property_ids_tests.rs` asserts it implies
    `is_value_bearing()` across the whole enum, not only `WALK_SET`.
 6. **Extract one pure function and let both sides drive the same copy.**
-   `pre_probe_decision` (`crates/windows/src/tree/hit_test_classify.rs:59-78`)
+   `pre_probe_decision` (`crates/windows/src/tree/hit_test/hit_test_classify.rs:59-78`)
    is now the only place the guard ladder is expressed. Production calls it
-   from `pre_probe_guard` (`hit_test.rs:195-207`); `hit_test_guard_tests.rs`
+   from `pre_probe_guard` (`crates/windows/src/tree/hit_test/mod.rs`); `hit_test_guard_tests.rs`
    calls it directly. Production and test read the identical logic instead of
    two independently maintained copies of it.
 
 ## Prevention
 
-The one check that catches all six cheaply is **invert the thing under test
+The one check that catches every one of these cheaply is **invert the thing under test
 and confirm the test goes red**: revert the delegation to two independent
 implementations, feed the producer an input the role mapper would never
 produce, revert a `text_presence` call site to `slot()`, drop an enum variant
@@ -193,9 +191,7 @@ absorbed by a sibling now produces the wrong variant instead of the same
 - Before trusting a "these two agree" test, check whether one side is defined
   in terms of the other.
 - Before trusting a states/role test, check the role mapper can actually
-  produce the combination under test — see
-  [Use explicit arms for string-keyed policy mirrors](exhaustiveness-guards-over-catch-alls-in-policy-mirrors.md)
-  for the same discipline on the mapping side.
+  produce the combination under test.
 - A test that cannot reach the production call site is the same defect as one
   the runner never executes — check both the CI lane's flags and whether the
   test drives the function under review, not a neighbor of it.

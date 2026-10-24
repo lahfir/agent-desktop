@@ -3,7 +3,7 @@ use agent_desktop_core::{
     ActionRequest, ActionResult, AdapterError, Deadline, ElementState, ErrorCode,
     IdentifierEvidence, InteractionLease, LiveElement, LiveIdentity, LocatorField, NativeHandle,
     Rect, RefCapabilities, RefEntry, RefEntryIdentity, RefGeometry, RefProcess, RefScope,
-    RefSource, SnapshotSurface, capability,
+    RefSource, SnapshotSurface, actions::capability,
 };
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -176,6 +176,7 @@ fn entry(bounds: Rect) -> RefEntry {
             native_id: None,
         },
         geometry: RefGeometry {
+            bounds_space: None,
             bounds: Some(bounds),
             bounds_hash: bounds.bounds_hash(),
         },
@@ -202,16 +203,31 @@ fn entry(bounds: Rect) -> RefEntry {
 fn platform_adapter_exposes_all_capability_methods() {
     fn exercise(adapter: &dyn PlatformAdapter) {
         let deadline = Deadline::standard().unwrap();
-        let _ = adapter.list_windows(
-            &agent_desktop_core::WindowFilter {
-                focused_only: false,
-                app: None,
-            },
-            deadline,
-        );
-        let _ = adapter.list_apps(deadline);
-        let _ = adapter.permission_report(deadline);
-        let _ = adapter.get_clipboard_content(agent_desktop_core::ClipboardFormat::Text, deadline);
+        let windows = adapter
+            .list_windows(
+                &agent_desktop_core::WindowFilter {
+                    focused_only: false,
+                    app: None,
+                },
+                deadline,
+            )
+            .expect_err("an adapter without window listing reports it unsupported");
+        assert_eq!(windows.code, ErrorCode::PlatformNotSupported);
+        let apps = adapter
+            .list_apps(deadline)
+            .expect_err("an adapter without app listing reports it unsupported");
+        assert_eq!(apps.code, ErrorCode::PlatformNotSupported);
+        let permissions = adapter
+            .permission_report(deadline)
+            .expect("the default permission report is readable through the dyn surface");
+        assert!(matches!(
+            permissions.accessibility,
+            agent_desktop_core::PermissionState::Unknown
+        ));
+        let clipboard = adapter
+            .get_clipboard_content(agent_desktop_core::ClipboardFormat::Text, deadline)
+            .expect_err("an adapter without a clipboard reports it unsupported");
+        assert_eq!(clipboard.code, ErrorCode::PlatformNotSupported);
         let handle = adapter
             .resolve_element_strict(&entry(Rect {
                 x: 0.0,
@@ -221,13 +237,16 @@ fn platform_adapter_exposes_all_capability_methods() {
             }), deadline)
             .expect("ObservationOps::resolve_element_strict must be reachable through &dyn PlatformAdapter");
         let lease = adapter.acquire_interaction_lease(deadline).unwrap();
-        let _ = adapter.execute_action(
-            &handle,
-            ActionRequest::headless(agent_desktop_core::Action::Click),
-            &lease,
-        );
+        let result = adapter
+            .execute_action(
+                &handle,
+                ActionRequest::headless(agent_desktop_core::Action::Click),
+                &lease,
+            )
+            .expect("ActionOps::execute_action must be reachable through &dyn PlatformAdapter");
+        assert_eq!(result.action, "click");
     }
-    exercise(&ContractAdapter::new(
+    let adapter = ContractAdapter::new(
         ResolveMode::Ok,
         Some(Rect {
             x: 0.0,
@@ -235,7 +254,9 @@ fn platform_adapter_exposes_all_capability_methods() {
             width: 1.0,
             height: 1.0,
         }),
-    ));
+    );
+    exercise(&adapter);
+    assert_eq!(adapter.dispatches.load(Ordering::SeqCst), 1);
 }
 
 #[test]

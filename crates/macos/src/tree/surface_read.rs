@@ -74,7 +74,7 @@ pub(crate) fn element(
 ) -> Result<Option<super::AXElement>, AdapterError> {
     prepare(source, deadline)?;
     finish(
-        super::attributes::copy_element_attr_result(source, attribute, deadline),
+        super::properties::attributes::copy_element_attr_result(source, attribute, deadline),
         attribute,
         deadline,
     )
@@ -87,7 +87,7 @@ pub(crate) fn string(
 ) -> Result<Option<String>, AdapterError> {
     prepare(element, deadline)?;
     finish(
-        super::attributes::copy_string_attr_result(element, attribute, deadline),
+        super::properties::attributes::copy_string_attr_result(element, attribute, deadline),
         attribute,
         deadline,
     )
@@ -100,7 +100,7 @@ pub(crate) fn boolean(
 ) -> Result<Option<bool>, AdapterError> {
     prepare(element, deadline)?;
     finish(
-        super::attributes::copy_bool_attr_result(element, attribute, deadline),
+        super::properties::attributes::copy_bool_attr_result(element, attribute, deadline),
         attribute,
         deadline,
     )
@@ -117,7 +117,7 @@ fn prepare(element: &super::AXElement, deadline: Instant) -> Result<(), AdapterE
     if deadline.saturating_duration_since(Instant::now()).is_zero() {
         return Err(deadline_error());
     }
-    super::attributes::set_messaging_timeout(element, deadline)?;
+    super::properties::attributes::set_messaging_timeout(element, deadline)?;
     Ok(())
 }
 

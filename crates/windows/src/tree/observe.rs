@@ -8,8 +8,8 @@ use serde_json::json;
 
 use super::chromium;
 use super::surfaces::surface_root;
-use super::walker::{DEFAULT_MAX_RAW_DEPTH, WalkBudget, WalkOutcome};
-use super::walker_source::walk_uia_subtree;
+use super::walk::walker::{DEFAULT_MAX_RAW_DEPTH, WalkBudget, WalkOutcome};
+use super::walk::walker_source::walk_uia_subtree;
 
 /// Runs one observation: resolve the root, walk it, detect a Chromium shell,
 /// and report completeness honestly.
@@ -26,9 +26,8 @@ use super::walker_source::walk_uia_subtree;
 ///
 /// 1. **Enumeration-failure surfacing**: a walk with real faults returns a
 ///    structured error, never a silently-truncated success.
-/// 2. **Liveness-checked completeness**: a walk that would report `complete`
-///    is only trusted after the root re-verifies live; failure is
-///    `WINDOW_NOT_FOUND`, never a complete-looking tree.
+/// 2. **Liveness-checked observation**: complete and partial trees are only
+///    returned after the root's stored identity re-verifies live.
 /// 3. **Chromium shell detection**: a full-depth walk of a detected Chromium
 ///    root that lands on the pre-activation shell returns the
 ///    activation-required error, which core's loop settles and retries. The
@@ -50,6 +49,7 @@ pub(crate) fn observe_tree(
     adapter: &crate::adapter::WindowsAdapter,
 ) -> Result<ObservedTree, AdapterError> {
     let request = (*request).validate()?;
+    re_verify_root(root)?;
     let element = surface_root(root, request.surface, request.deadline)?;
     let chromium_root = chromium::is_chromium_root(&element);
     let budget = WalkBudget::new(request.max_logical_depth, request.deadline)
@@ -97,13 +97,13 @@ fn finish_observation(
     if !walk.outcome.failures.is_empty() {
         return Err(walk_fault_error(&walk.outcome.failures));
     }
+    verify_root(root)?;
     let shell_shaped = walk.outcome.tree.is_complete()
         && walk.chromium_root
         && chromium::activation_eligible(root, &request)
         && chromium::is_shell_shaped(&walk.outcome.stats, &request);
     if shell_shaped {
         if request.observation_mode.force_renderer_accessibility {
-            verify_root(root)?;
             return Ok(walk.outcome.tree);
         }
         let process = root_process_identity(root);
@@ -113,9 +113,6 @@ fn finish_observation(
             return Err(chromium::activation_required(&walk.outcome.stats));
         }
         return Err(still_thin_after_settle());
-    }
-    if walk.outcome.tree.is_complete() {
-        verify_root(root)?;
     }
     Ok(walk.outcome.tree)
 }
@@ -128,7 +125,7 @@ const MIN_WALK_ESTIMATE: Duration = Duration::from_millis(5);
 /// Whether the remaining deadline can still absorb another walk of the shape
 /// that was just measured.
 ///
-/// Core's loop (`crates/core/src/renderer_accessibility.rs`) retries
+/// Core's loop (`crates/core/src/tree/renderer_accessibility.rs`) retries
 /// `observe_tree` on every activation-required error with a 25-400ms
 /// backoff, so returning the marker here for as long as there is room turns
 /// the settle from a single guess into a real wait for the async Chromium
@@ -166,24 +163,18 @@ fn still_thin_after_settle() -> AdapterError {
     .with_platform_detail(chromium::still_thin_detail())
 }
 
-/// The liveness check: a walk that would claim `complete` only does so after
-/// the root re-verifies live - `IsWindow` plus the process-generation token.
-/// A dead provider's sibling terminator is indistinguishable from end-of-list
-/// (A14-4), so the terminator alone never proves completeness; this independent
-/// read is what makes the claim honest. Fail-closed for the
-/// elevated/split-integrity population: a window whose process token could not
-/// be read (A16-12) can never be identity-corroborated, so `IsWindow` alone is
-/// not accepted against a potentially recycled HWND. An `Element` root has no
-/// HWND of its own to probe, so it is corroborated by process identity alone -
-/// still fail-closed, mirroring the `Window` arm's shape.
+/// Rechecks stored ownership and generation evidence after the UIA read.
 fn re_verify_root(root: ObservationRoot<'_>) -> Result<(), AdapterError> {
     match root {
         ObservationRoot::Window(window) => {
             let handle = hwnd_of(&window.id)?;
-            if !crate::tree::automation::window_exists(handle) {
-                return Err(window_gone());
-            }
-            verify_process_identity(window.pid, window.process_instance.as_deref())
+            let evidence =
+                crate::system::window::window_identity::WindowIdentityEvidence::from_info(
+                    handle as crate::system::window::window_enum::WindowHandle,
+                    window,
+                )
+                .ok_or_else(window_identity_changed)?;
+            evidence.verify_stored()
         }
         ObservationRoot::Element { entry, .. } => {
             verify_process_identity(entry.process.pid, entry.process.process_instance.as_deref())
@@ -213,14 +204,6 @@ fn hwnd_of(id: &str) -> Result<isize, AdapterError> {
         .and_then(|number| number.parse::<isize>().ok())
         .filter(|handle| *handle > 0)
         .ok_or_else(|| AdapterError::new(ErrorCode::InvalidArgs, "Malformed window identifier"))
-}
-
-fn window_gone() -> AdapterError {
-    AdapterError::new(
-        ErrorCode::WindowNotFound,
-        "The window was destroyed during observation",
-    )
-    .with_suggestion("Run 'list-windows' to refresh window IDs, then retry.")
 }
 
 fn window_identity_changed() -> AdapterError {

@@ -115,19 +115,6 @@ mod tests {
     }
 
     #[test]
-    fn sole_blocking_check_with_a_terminal_code_is_returned_unchanged() {
-        let report = ActionabilityReport::from_checks(
-            vec![failed("supported_action", Some(ErrorCode::PolicyDenied))],
-            None,
-            None,
-            None,
-            PointerDelivery::NotApplicable,
-        );
-
-        assert_eq!(report.terminal_code(), Some(ErrorCode::PolicyDenied));
-    }
-
-    #[test]
     fn sole_blocking_check_without_a_terminal_code_is_returned_unchanged() {
         let report = ActionabilityReport::from_checks(
             vec![failed("enabled", None)],

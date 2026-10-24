@@ -1,18 +1,20 @@
 use super::*;
+use crate::SignalFilter;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
+use crate::commands::wait_event_filter::process_from_baseline;
 use crate::{AppInfo, WindowInfo};
 
-struct SequenceAdapter {
+pub(super) struct SequenceAdapter {
     snapshots: Vec<SignalBaseline>,
     apps: Vec<AppInfo>,
     app_calls: std::sync::Mutex<usize>,
-    calls: std::sync::Mutex<usize>,
+    pub(super) calls: std::sync::Mutex<usize>,
     delay: std::time::Duration,
     remaining_at_call: std::sync::Mutex<Vec<std::time::Duration>>,
 }
 
 impl SequenceAdapter {
-    fn new(snapshots: Vec<SignalBaseline>) -> Self {
+    pub(super) fn new(snapshots: Vec<SignalBaseline>) -> Self {
         Self {
             snapshots,
             apps: vec![app("TextEdit", "test-instance")],
@@ -35,8 +37,11 @@ impl SequenceAdapter {
 }
 
 impl ObservationOps for SequenceAdapter {
-    fn list_apps(&self, _deadline: crate::Deadline) -> Result<Vec<AppInfo>, AdapterError> {
+    fn list_apps(&self, deadline: crate::Deadline) -> Result<Vec<AppInfo>, AdapterError> {
         *self.app_calls.lock().unwrap() += 1;
+        if deadline.is_expired() {
+            return Err(deadline.timeout_error());
+        }
         Ok(self.apps.clone())
     }
 }
@@ -88,7 +93,7 @@ impl SystemOps for FailingInventoryAdapter {
     }
 }
 
-fn empty_baseline() -> SignalBaseline {
+pub(super) fn empty_baseline() -> SignalBaseline {
     SignalBaseline {
         windows: Vec::new(),
         apps: Vec::new(),
@@ -97,7 +102,7 @@ fn empty_baseline() -> SignalBaseline {
     }
 }
 
-fn app(name: &str, instance: &str) -> AppInfo {
+pub(super) fn app(name: &str, instance: &str) -> AppInfo {
     AppInfo {
         name: name.into(),
         pid: crate::ProcessId::new(42),
@@ -140,7 +145,7 @@ fn window(id: &str, title: &str) -> WindowInfo {
     }
 }
 
-fn input(event: &str, app: Option<&str>) -> EventWaitInput {
+pub(super) fn input(event: &str, app: Option<&str>) -> EventWaitInput {
     EventWaitInput {
         event: event.into(),
         app: app.map(str::to_string),

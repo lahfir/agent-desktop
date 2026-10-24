@@ -13,8 +13,8 @@ fn state_literal_call_sites_use_vocabulary_constants() {
     let src_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let scanned = [
         "actionability/mod.rs",
-        "locator.rs",
-        "ref_action_wait.rs",
+        "locator/mod.rs",
+        "ref_action/ref_action_wait.rs",
         "commands/wait_predicate.rs",
         "commands/is_check.rs",
     ];

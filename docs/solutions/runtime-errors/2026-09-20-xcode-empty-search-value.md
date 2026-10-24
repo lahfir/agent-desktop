@@ -51,14 +51,14 @@ AXNumberOfCharacters: success, 0
 AXPlaceholderValue: success, Filter
 ```
 
-This is not a demonstrated dropped write. Xcode exposes no AXValue for the empty
-search control; Agent Desktop currently lacks a shared rule for using the native
-zero-character evidence. Any repair must preserve unknown versus empty: restrict
-it to nonsecure text roles, require a successful numeric zero character count,
-and never infer empty from timeout, unsupported count, positive count or secure
-content. Snapshot, get and post-action readback must share the rule. Trace both
-node_attribute_fetch's batch-value path and text_attributes' direct-value path
-before implementing; changing only verification would leave contradictory reads.
+This is not a dropped write. Xcode exposes no AXValue for the empty search
+control, and Agent Desktop had no shared rule for using the native
+zero-character evidence. The rule must preserve unknown versus empty: it is
+restricted to nonsecure text roles, requires a successful numeric zero character
+count, and never infers empty from timeout, unsupported count, positive count or
+secure content. Snapshot, get and post-action readback share it, through both
+node_attribute_fetch's batch-value path and text_attributes' direct-value path;
+changing only verification would leave contradictory reads.
 
 ## File activation lead ruled out
 
@@ -110,6 +110,8 @@ of equal performance. Artifacts are under
 `/tmp/ad-native-eval/empty-text-final-performance/`.
 
 The exact final binary passed all seven background semantic fixture assertions
-(`/tmp/ad-native-eval/empty-text-final-semantic.log`). No commit or release was
-performed. This closes the diagnosed empty-search-value verification gap; it
-does not qualify file opening or the full repeated application acceptance suite.
+(`/tmp/ad-native-eval/empty-text-final-semantic.log`). This closes the diagnosed
+empty-search-value verification gap; it does not qualify file opening or the
+full repeated application acceptance suite. The reader is
+`crates/macos/src/tree/properties/empty_text.rs`; its unit tests pin the NoValue and
+AttributeUnsupported-only absence rule.

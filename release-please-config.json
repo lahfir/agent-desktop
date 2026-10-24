@@ -28,6 +28,10 @@
         },
         {
           "type": "generic",
+          "path": "skills/agent-desktop-linux/SKILL.md"
+        },
+        {
+          "type": "generic",
           "path": "skills/agent-desktop-macos/SKILL.md"
         },
         {

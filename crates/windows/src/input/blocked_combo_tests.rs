@@ -37,13 +37,25 @@ fn ctrl_alt_delete_is_not_claimed_as_blocked() {
 
 #[test]
 fn modifier_reordering_does_not_evade_the_block() {
-    let reordered = combo("f4", vec![Modifier::Alt]);
-    assert!(is_blocked(&reordered));
-    assert_eq!(
-        canonical_parts(&combo_to_string(&reordered)),
-        canonical_parts("f4+alt"),
-        "modifier position must not change the canonical form"
-    );
+    let orderings = [
+        (
+            combo("esc", vec![Modifier::Ctrl, Modifier::Shift]),
+            combo("esc", vec![Modifier::Shift, Modifier::Ctrl]),
+        ),
+        (
+            combo("tab", vec![Modifier::Alt, Modifier::Shift]),
+            combo("tab", vec![Modifier::Shift, Modifier::Alt]),
+        ),
+    ];
+    for (forward, reversed) in &orderings {
+        assert!(is_blocked(forward), "{}", combo_to_string(forward));
+        assert!(is_blocked(reversed), "{}", combo_to_string(reversed));
+        assert_eq!(
+            canonical_parts(&combo_to_string(forward)),
+            canonical_parts(&combo_to_string(reversed)),
+            "modifier position must not change the canonical form"
+        );
+    }
 }
 
 #[test]

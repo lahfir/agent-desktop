@@ -3,7 +3,7 @@ trace_file="$(mktemp -t agentdesk-e2e-trace.XXXXXX)"
 cleanup_files+=("$trace_file")
 require_target trace_text textfield text-input
 trace_type="$("$bin" --headed --trace "$trace_file" type "$(target_ref "$trace_text")" \
-    "sup3r-secret-trace" 2>&1)"
+    "sup3r-secret-trace" 2>/dev/null)"
 sleep 0.2
 require_value trace_echo text-echo
 assert "headed trace typing reaches the target field" \
@@ -38,9 +38,9 @@ trace_text="$(trace_target textfield text-input)"
 if [ -z "$trace_primary" ] || [ -z "$trace_text" ]; then
     abort_suite "trace session targets are missing"
 fi
-trace_click="$("$bin" --session "$trace_session" click "$(target_ref "$trace_primary")" 2>&1)"
+trace_click="$("$bin" --session "$trace_session" click "$(target_ref "$trace_primary")" 2>/dev/null)"
 trace_session_type="$("$bin" --headed --session "$trace_session" type "$(target_ref "$trace_text")" \
-    trace-e2e 2>&1)"
+    trace-e2e 2>/dev/null)"
 sleep 0.5
 trace_show="$("$bin" --session "$trace_session" trace show --limit 0 2>/dev/null)"
 trace_events="$(printf '%s' "$trace_show" | python3 -c '

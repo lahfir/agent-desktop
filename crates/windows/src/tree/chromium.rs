@@ -2,9 +2,9 @@ use agent_desktop_core::{AdapterError, LocatorStats, ObservationRequest, Observa
 
 use super::element::UIAElement;
 #[cfg(target_os = "windows")]
-use super::properties::read_one;
+use super::properties::property_ids::TreeProperty;
 #[cfg(target_os = "windows")]
-use super::property_ids::TreeProperty;
+use super::properties::read_one;
 
 /// The top-level window class Chromium ships (A4-4 observed it on Obsidian's
 /// top-level and render-host windows). Detection keys on this class alone -
@@ -212,6 +212,7 @@ mod tests {
                     native_id: None,
                 },
                 geometry: agent_desktop_core::RefGeometry {
+                    bounds_space: None,
                     bounds: None,
                     bounds_hash: None,
                 },

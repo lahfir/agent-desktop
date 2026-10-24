@@ -1,8 +1,8 @@
 use super::*;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 use crate::{
-    AdapterError, Rect, adapter::NativeHandle, refs::RefMap, refs_store::RefStore,
-    refs_test_support::HomeGuard, state,
+    AdapterError, Rect, adapter::NativeHandle, refs::RefMap, refs::refs_store::RefStore,
+    refs::refs_test_support::HomeGuard, tree::state,
 };
 use std::sync::Mutex;
 
@@ -99,6 +99,7 @@ fn entry(states: Vec<String>, value: Option<&str>, actions: Vec<&str>) -> RefEnt
             native_id: None,
         },
         geometry: crate::RefGeometry {
+            bounds_space: None,
             bounds: None,
             bounds_hash: None,
         },
@@ -358,3 +359,37 @@ mod vocabulary_tests;
 
 #[path = "get_consistency_tests.rs"]
 mod get_consistency_tests;
+
+fn visible_without_bounds_result(offscreen: Option<bool>) -> Value {
+    let snapshot_id = save_entry(entry(vec![], None, vec![]));
+    let adapter = LiveStateAdapter::with_live(visible_bounds(), vec![]);
+    *adapter.bounds.lock().unwrap() = None;
+    adapter.state.lock().unwrap().as_mut().unwrap().offscreen = offscreen;
+    execute(
+        IsArgs {
+            ref_id: format!("@{}:e1", snapshot_id),
+            property: IsProperty::Visible,
+        },
+        &adapter,
+        &CommandContext::default(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn visible_without_bounds_agrees_with_the_gate_when_offscreen_is_known_false() {
+    let _guard = HomeGuard::new();
+    let result = visible_without_bounds_result(Some(false));
+
+    assert_eq!(result["result"], true);
+    assert_eq!(result["applicable"], true);
+}
+
+#[test]
+fn visible_without_bounds_stays_inapplicable_when_offscreen_is_unknown() {
+    let _guard = HomeGuard::new();
+    let result = visible_without_bounds_result(None);
+
+    assert_eq!(result["result"], false);
+    assert_eq!(result["applicable"], false);
+}

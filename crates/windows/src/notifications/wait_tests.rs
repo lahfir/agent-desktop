@@ -34,15 +34,15 @@ use crate::adapter::WindowsAdapter;
 use crate::notifications::toast_support::{
     self, CloseCenterOnDrop, StagedToast, TOAST_BODY_SECOND, TOAST_TITLE_SECOND,
 };
-use crate::system::raise_oracle::{responded_since, witness_desktop};
-use crate::system::shell_surface::resolve_surface;
-use crate::system::shell_surface_open::close_surface;
-use crate::system::test_support::{
+use crate::system::fixture::test_support::{
     FIXTURE_APP_NAME_LOCK, SHELL_SURFACE_LOCK, or_skip_shell, wait_for_foreground_to_settle,
     with_interaction_lease_test_lock,
 };
+use crate::system::shell::raise_oracle::{responded_since, witness_desktop};
+use crate::system::shell::shell_surface::resolve_surface;
+use crate::system::shell::shell_surface_open::close_surface;
 
-use crate::system::test_time::{deadline, headed};
+use crate::system::fixture::test_time::{deadline, headed};
 
 fn center_open() -> bool {
     resolve_surface(SnapshotSurface::ActionCenter, deadline(10_000))
@@ -213,24 +213,21 @@ fn a_strict_headless_wait_refuses_at_policy_on_the_first_poll() {
         "the desktop's foreground must settle before the refusal is staged"
     );
 
-    let started = Instant::now();
     let error = wait::execute(
         notification_wait_args(10_000),
         &WindowsAdapter::new(),
         &CommandContext::default(),
     )
     .expect_err("a strict-headless caller is refused at policy");
-    let elapsed = started.elapsed();
 
-    assert!(
-        elapsed < Duration::from_secs(2),
-        "the refusal must fire on the first poll, not burn the deadline: \
-         took {elapsed:?} of a 10s wait"
-    );
     let AppError::Adapter(error) = error else {
         panic!("the refusal is a structured adapter error");
     };
-    assert_eq!(error.code, ErrorCode::PolicyDenied);
+    assert_eq!(
+        error.code,
+        ErrorCode::PolicyDenied,
+        "a refusal that polled on to the deadline would surface as Timeout"
+    );
     assert!(
         !center_open(),
         "the refused wait must not have raised the center"

@@ -34,7 +34,7 @@ pub fn execute(args: FocusWindowArgs, adapter: &dyn PlatformAdapter) -> Result<V
             "Provide --window-id, --app, or --title to identify the window",
         ));
     };
-    let window = crate::window_lookup::select_window(
+    let window = crate::system::window_lookup::select_window(
         candidates,
         crate::AdapterError::new(crate::ErrorCode::WindowNotFound, "No matching window found")
             .with_suggestion("Run 'list-windows' to see available windows and their IDs."),
@@ -43,7 +43,7 @@ pub fn execute(args: FocusWindowArgs, adapter: &dyn PlatformAdapter) -> Result<V
 
     let window_id = window.id.clone();
     let lease = adapter.acquire_interaction_lease(deadline)?;
-    let focused = crate::window_focus::focus_and_confirm(adapter, &window, &lease)?;
+    let focused = crate::system::window_focus::focus_and_confirm(adapter, &window, &lease)?;
     debug_assert_eq!(focused.id, window_id);
     Ok(json!({ "focused": focused }))
 }

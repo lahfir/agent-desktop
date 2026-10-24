@@ -86,7 +86,7 @@ fn rejects_duplicate_modifiers() {
 
 #[test]
 fn modifier_aliases_map_to_portable_meta() {
-    for alias in ["meta", "cmd", "command", "META"] {
+    for alias in ["meta", "cmd", "command", "super", "win", "META"] {
         assert_eq!(parse_modifier(alias).unwrap(), Modifier::Meta);
     }
 }

@@ -12,13 +12,13 @@
 
 use super::imp::{corroborate_verified_process, read_live_element_core};
 use super::tests::{live_label, verified_handle};
-use crate::system::hresult::UIA_E_ELEMENTNOTAVAILABLE;
+use crate::system::runtime::hresult::UIA_E_ELEMENTNOTAVAILABLE;
 use crate::tree::automation::{UiaFailure, uia_failure_error};
 use crate::tree::element::UIAElement;
 use crate::tree::fixture::{HostedFixture, ensure_test_apartment};
+use crate::tree::properties::property_ids::TreeProperty;
 use crate::tree::properties::{ElementProperties, read_live};
-use crate::tree::property_ids::TreeProperty;
-use crate::tree::walker_fake::deadline;
+use crate::tree::walk::walker_fake::deadline;
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode};
 use std::cell::Cell;
 use std::time::Duration;
@@ -155,7 +155,7 @@ fn a_vanished_target_wrapped_through_the_real_property_read_error_still_settles_
         );
         let wrapped = crate::tree::properties::property_read_error(
             base,
-            crate::tree::property_ids::TreeProperty::Value,
+            crate::tree::properties::property_ids::TreeProperty::Value,
         );
         (ElementProperties::from_reads(Vec::new()), vec![wrapped])
     };

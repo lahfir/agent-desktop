@@ -26,28 +26,13 @@ function Invoke-HeadedInteractionLegs {
                id resolve loop leaves the AutoScroll viewport scrolled deep
                into the scroll-row list, so a stale off-screen bounds reading
                can never be clicked. scroll-to is a no-op when visible. #>
-            $diagProc = Get-Process -Name 'AgentDeskFixture' -ErrorAction SilentlyContinue | Select-Object -First 1
-            Write-Host "DIAG headed-legs-entry: fixtureHwnd=$($diagProc.MainWindowHandle) foregroundHwnd=$(Get-NativeForegroundWindowHandle)"
             try {
                 $target = Require-Target -Target (Find-Target -App $App -NativeId 'double-target' -TimeoutSeconds 10) -Description 'double-target'
                 Invoke-Target -Target $target -Action 'scroll-to' -RequireOk -Description 'double-target (scroll into view)' | Out-Null
                 $status = Require-Target -Target (Find-Target -App $App -NativeId 'double-status' -TimeoutSeconds 10) -Description 'double-status'
-                $diagEnvelope = Invoke-Target -Target $target -Action 'double-click' -Headed
-                Write-Host "DIAG double-click-envelope: $($diagEnvelope | ConvertTo-Json -Depth 12 -Compress)"
-                if ($diagEnvelope['error'] -and $diagEnvelope['error']['details']) {
-                    Write-Host "DIAG double-click-details: $($diagEnvelope['error']['details'] | ConvertTo-Json -Depth 12 -Compress)"
-                }
-                Start-Sleep -Milliseconds 500
-                Write-Host "DIAG double-click-status-after-sleep: $(Get-Target -Target $status -Property 'value')"
-                if ($diagEnvelope['ok'] -eq $true -and (Get-Target -Target $status -Property 'value') -like 'double-clicked*') {
-                    Add-Pass -Leg 'headed-double-click'
-                } else {
-                    throw "DIAG single-attempt did not reach double-clicked (ok=$($diagEnvelope['ok']))"
-                }
-            } catch {
-                Write-Host "DIAG double-click-fail: foregroundHwnd=$(Get-NativeForegroundWindowHandle) fixtureHwnd=$($diagProc.MainWindowHandle)"
-                Add-Fail -Leg 'headed-double-click' -Reason $_.Exception.Message
-            }
+                Assert-Effect -Target $target -StatusTarget $status -Property 'value' -Expected 'double-clicked' -ExpectedIsPrefix -Action 'double-click' -Headed | Out-Null
+                Add-Pass -Leg 'headed-double-click'
+            } catch { Add-Fail -Leg 'headed-double-click' -Reason $_.Exception.Message }
 
             try {
                 $target = Require-Target -Target (Find-Target -App $App -NativeId 'triple-target' -TimeoutSeconds 10) -Description 'triple-target'

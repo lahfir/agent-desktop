@@ -1,4 +1,4 @@
-use agent_desktop_core::roles::INTERACTIVE_ROLES;
+use agent_desktop_core::tree::roles::INTERACTIVE_ROLES;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -107,14 +107,12 @@ mod tests {
     }
 
     #[test]
-    fn json_error_collapses_to_internal_with_non_empty_message() {
+    fn json_error_collapses_to_internal_forwarding_the_parse_message() {
         let json_err = serde_json::from_str::<serde_json::Value>("not json").unwrap_err();
+        let parse_message = json_err.to_string();
         let result = app_error_to_adapter(AppError::Json(json_err));
         assert_eq!(result.code, ErrorCode::Internal);
-        assert!(
-            !result.message.is_empty(),
-            "JSON parse error message must be forwarded"
-        );
+        assert_eq!(result.message, parse_message);
     }
 
     #[test]

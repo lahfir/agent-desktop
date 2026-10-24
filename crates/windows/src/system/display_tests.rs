@@ -237,7 +237,7 @@ fn verify_display_identity_requires_id_with_geometry() {
     assert_eq!(error.code, ErrorCode::InvalidArgs);
 }
 
-use crate::system::test_time::deadline;
+use crate::system::fixture::test_time::deadline;
 
 fn display(id: &str, is_primary: bool, scale: f64, bounds: Rect) -> DisplayInfo {
     DisplayInfo {

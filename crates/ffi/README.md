@@ -30,7 +30,7 @@ returns `PLATFORM_NOT_SUPPORTED` for every adapter call.
 |-------|-------------|
 | ABI handshake | `ad_abi_version()`, `ad_init(expected_major)` |
 | Adapter lifecycle | `ad_adapter_create()`, `ad_adapter_create_with_session(id)`, `ad_adapter_destroy()` |
-| Command-backed JSON entrypoints | `ad_snapshot`, `ad_execute_by_ref`, `ad_wait`, `ad_version`, `ad_status` |
+| Command-backed JSON entrypoints | `ad_snapshot`, `ad_execute_by_ref`, `ad_execute_by_ref_timeout`, `ad_wait`, `ad_version`, `ad_status`, `ad_trace_show`, `ad_trace_export` |
 | Log callback | `ad_set_log_callback(fn(level, msg))` — unstructured tracing to a callback |
 | Structured file trace | Same JSONL contract as CLI, gated by a `trace: on` session manifest (no ABI change); use `session start` before creating a session adapter |
 | Errno last-error | `ad_last_error_code()`, `ad_last_error_message()`, `ad_last_error_suggestion()`, `ad_last_error_platform_detail()` |
@@ -44,6 +44,9 @@ loaded dylib matches the header the consumer was built against.
 Direct window, surface and ref targeting takes the versioned
 `AdExactRefEntry`, `AdExactWindowInfo`, and `AdExactSurfaceInfo` structs, which
 carry the process generation and surface ID of the observed identity.
+ABI 6 and `AD_EXACT_REF_ENTRY_VERSION` 2 add `bounds_space` to `AdRefGeometry`,
+inside `AdExactRefEntry`: an `AD_BOUNDS_SPACE_*` constant naming the frame of
+`bounds`, screen-relative on macOS and Windows and window-relative on Linux.
 `ad_execute_by_ref` and `ad_wait` accept only snapshot-qualified refs
 (`@<snapshot_id>:eN`).
 

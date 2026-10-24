@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     ActionResult, AdapterError, Deadline, ErrorCode, InteractionPolicy, NotificationFilter,
-    NotificationIdentity, NotificationInfo,
+    NotificationIdentity, NotificationInfo, verify_notification_identity,
 };
 
 use super::nc_session::{NcSession, close_session};
@@ -62,7 +62,7 @@ fn dismiss_impl(
         .iter()
         .find(|e| e.info.index == index)
         .ok_or_else(|| AdapterError::notification_not_found(index))?;
-    verify_identity(index, identity, &entry.info)?;
+    verify_notification_identity(index, identity, &entry.info)?;
 
     let info = entry.info.clone();
     let matching_before = super::dismiss_verify::matching_count(&entries, entry);
@@ -217,7 +217,7 @@ fn action_impl(
         .find(|e| e.info.index == index)
         .ok_or_else(|| AdapterError::notification_not_found(index))?;
 
-    verify_identity(index, identity, &entry.info)?;
+    verify_notification_identity(index, identity, &entry.info)?;
 
     let children = crate::notifications::read::children(&entry.element, deadline)?;
     let action_lower = action_name.to_lowercase();
@@ -288,21 +288,6 @@ fn require_foreground_policy(policy: InteractionPolicy) -> Result<(), AdapterErr
             policy,
         ))
     }
-}
-
-fn verify_identity(
-    index: usize,
-    identity: Option<&NotificationIdentity>,
-    info: &NotificationInfo,
-) -> Result<(), AdapterError> {
-    if identity.is_none_or(|value| value.is_empty() || value.matches(info)) {
-        return Ok(());
-    }
-    Err(AdapterError::new(
-        ErrorCode::NotificationNotFound,
-        format!("Notification at index {index} no longer matches its expected identity"),
-    )
-    .with_suggestion("Run list-notifications again and retry with the freshly-observed index"))
 }
 
 fn build_filter(app_filter: Option<&str>) -> NotificationFilter {

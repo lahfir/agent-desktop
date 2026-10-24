@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use super::*;
 use super::{directory, identity};
-use crate::system::test_support::with_interaction_lease_test_lock;
+use crate::system::fixture::test_support::with_interaction_lease_test_lock;
 
 /// Canonicalized before returning: `validate_final_path` compares a lease
 /// directory's resolved final path against the literal root it was joined

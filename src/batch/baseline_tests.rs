@@ -32,9 +32,12 @@ impl agent_desktop_core::InputOps for AtomicEventAdapter {
     fn clear_clipboard(
         &self,
         _lease: &agent_desktop_core::InteractionLease,
-    ) -> Result<(), agent_desktop_core::AdapterError> {
+    ) -> Result<agent_desktop_core::OperationReport, agent_desktop_core::AdapterError> {
         self.opened.store(true, Ordering::SeqCst);
-        Ok(())
+        Ok(agent_desktop_core::OperationReport::delivered_unverified(
+            "test",
+            agent_desktop_core::OperationTarget::Clipboard,
+        ))
     }
 }
 

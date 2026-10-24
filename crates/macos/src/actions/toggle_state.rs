@@ -6,8 +6,8 @@ use agent_desktop_core::{
 use crate::{
     actions::{
         ax_helpers,
+        chain::chain_defs,
         chain::{ChainContext, execute_chain},
-        chain_defs,
     },
     tree::{AXElement, state_reader::parse_checked_value},
 };
@@ -307,8 +307,8 @@ fn read_value(el: &AXElement, deadline: Deadline) -> Result<Option<String>, Adap
         kAXErrorAPIDisabled, kAXErrorCannotComplete, kAXErrorInvalidUIElement,
     };
 
-    crate::tree::attributes::set_messaging_timeout(el, deadline)?;
-    let result = crate::tree::attributes::copy_value_typed_result(el, deadline);
+    crate::tree::properties::attributes::set_messaging_timeout(el, deadline)?;
+    let result = crate::tree::properties::attributes::copy_value_typed_result(el, deadline);
     if deadline.is_expired() {
         return Err(deadline.timeout_error());
     }
@@ -332,12 +332,12 @@ fn read_role(el: &AXElement, deadline: Deadline) -> Result<Option<String>, Adapt
 }
 
 fn prepare(el: &AXElement, deadline: Deadline) -> Result<(), AdapterError> {
-    crate::tree::attributes::set_messaging_timeout(el, deadline)
+    crate::tree::properties::attributes::set_messaging_timeout(el, deadline)
 }
 
 #[cfg(test)]
 mod tests {
-    use agent_desktop_core::action_step::ActionStep;
+    use agent_desktop_core::actions::action_step::ActionStep;
 
     use super::{already_in_state_step, mark_last_verified, parse_checked_value};
 
@@ -377,7 +377,7 @@ mod tests {
         let step = already_in_state_step();
         assert!(matches!(
             step.outcome,
-            agent_desktop_core::action_step_outcome::ActionStepOutcome::Skipped
+            agent_desktop_core::actions::action_step_outcome::ActionStepOutcome::Skipped
         ));
         assert!(step.mechanism().is_none());
         assert_eq!(step.verified(), Some(true));

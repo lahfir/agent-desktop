@@ -28,7 +28,7 @@ pub unsafe extern "C" fn ad_drag(
             return error::last_error_code();
         }
         match adapter.inner.drag(core_params, &lease) {
-            Ok(()) => AdResult::Ok,
+            Ok(_) => AdResult::Ok,
             Err(e) => {
                 error::set_last_error(&e);
                 error::last_error_code()

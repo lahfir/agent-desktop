@@ -2,6 +2,7 @@ const { existsSync } = require('fs');
 const { join } = require('path');
 
 const MACOS_HELPER_NAME = 'agent-desktop-macos-helper';
+const LINUX_HELPER_NAME = 'agent-desktop-linux-clipboard-owner';
 
 const PLATFORMS = {
   'darwin-arm64': {
@@ -19,14 +20,14 @@ const PLATFORMS = {
   'linux-arm64': {
     target: 'aarch64-unknown-linux-gnu',
     binaryName: 'agent-desktop-linux-arm64',
-    entries: ['agent-desktop'],
-    released: false,
+    entries: ['agent-desktop', LINUX_HELPER_NAME],
+    released: true,
   },
   'linux-x64': {
     target: 'x86_64-unknown-linux-gnu',
     binaryName: 'agent-desktop-linux-x64',
-    entries: ['agent-desktop'],
-    released: false,
+    entries: ['agent-desktop', LINUX_HELPER_NAME],
+    released: true,
   },
   'win32-arm64': {
     target: 'aarch64-pc-windows-msvc',
@@ -44,6 +45,12 @@ const PLATFORMS = {
 
 function resolve(osPlatform, osArch) {
   return PLATFORMS[`${osPlatform}-${osArch}`];
+}
+
+// The first entry is always the CLI executable. Every other entry is a helper
+// that is installed beside it under its own name.
+function helperNames(entry) {
+  return entry.entries.slice(1);
 }
 
 function releasedKeys() {
@@ -71,8 +78,10 @@ function tarCommand(osPlatform, environment) {
 }
 
 module.exports = {
+  LINUX_HELPER_NAME,
   MACOS_HELPER_NAME,
   PLATFORMS,
+  helperNames,
   releasedKeys,
   resolve,
   tarCommand,

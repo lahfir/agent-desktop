@@ -33,9 +33,7 @@ pub(crate) fn dispatch(
                 ));
             }
             let value = session::execute(session::SessionAction::End { id: id.clone() })?;
-            adapter
-                .update_cursor_overlay(&CursorOverlayControl::disable(id))
-                .map_err(super::cursor_overlay::teardown_error)?;
+            super::cursor_overlay::tear_down(adapter, &CursorOverlayControl::disable(id))?;
             Ok(value)
         }
         SessionAction::List => session::execute(session::SessionAction::List),
@@ -74,11 +72,16 @@ fn show_default_cursor(
         map.insert("cursor_overlay".into(), overlay);
     }
     if multi_agent {
+        value["rendered"] = Value::Bool(false);
         return Ok(());
     }
-    if let Err(error) = adapter.update_cursor_overlay(&control) {
-        tracing::warn!(code = %error.code.as_str(), "cursor overlay lifecycle update was skipped");
-    }
+    value["rendered"] = Value::Bool(match adapter.update_cursor_overlay(&control) {
+        Ok(()) => true,
+        Err(error) => {
+            super::overlay_skipped::log(&error);
+            false
+        }
+    });
     Ok(())
 }
 

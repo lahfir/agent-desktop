@@ -128,6 +128,7 @@ _Static_assert(sizeof(AdStringSlice) == AD_STRING_SLICE_SIZE, "AdStringSlice ABI
 _Static_assert(sizeof(AdRefCapabilities) == AD_REF_CAPABILITIES_SIZE, "AdRefCapabilities ABI size changed");
 _Static_assert(sizeof(AdRefGeometry) == AD_REF_GEOMETRY_SIZE, "AdRefGeometry ABI size changed");
 _Static_assert(offsetof(AdRefGeometry, bounds_hash) == 32, "AdRefGeometry.bounds_hash offset changed");
+_Static_assert(offsetof(AdRefGeometry, bounds_space) == 44, "AdRefGeometry.bounds_space offset changed");
 _Static_assert(sizeof(AdRefSource) == AD_REF_SOURCE_SIZE, "AdRefSource ABI size changed");
 _Static_assert(offsetof(AdRefSource, window_bounds_hash) == 24, "AdRefSource.window_bounds_hash offset changed");
 _Static_assert(sizeof(AdRefScope) == AD_REF_SCOPE_SIZE, "AdRefScope ABI size changed");

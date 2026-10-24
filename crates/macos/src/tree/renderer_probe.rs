@@ -10,7 +10,7 @@ pub(crate) fn activation_required(
     absence_proven: bool,
     deadline: std::time::Instant,
 ) -> Result<bool, AdapterError> {
-    if !crate::system::process_identity::matches_instance(pid, process_instance)? {
+    if !crate::system::process::process_identity::matches_instance(pid, process_instance)? {
         return Err(AdapterError::new(
             ErrorCode::StaleRef,
             "Renderer process instance changed before activation probing",
@@ -70,7 +70,11 @@ fn attribute_supported(
     deadline: std::time::Instant,
 ) -> Result<bool, AdapterError> {
     super::locator_deadline::prepare(application, deadline)?;
-    let read = super::capabilities::is_attr_settable_with_status(application, attribute, deadline);
+    let read = super::properties::capabilities::is_attr_settable_with_status(
+        application,
+        attribute,
+        deadline,
+    );
     super::locator_deadline::remaining(deadline)?;
     match (read.value, read.error) {
         (Some(value), None) => Ok(value),

@@ -72,9 +72,8 @@ mod imp {
         find_named_selection_item, name_matches, scroll_to_realize, selection_item_available,
     };
     use crate::actions::value_write::gated_pattern_value_equals;
-    use crate::system::permissions::ensure_budget;
+    use crate::tree::properties::property_ids::TreeProperty;
     use crate::tree::properties::read_one;
-    use crate::tree::property_ids::TreeProperty;
     use agent_desktop_core::DeliverySemantics;
     use uiautomation::patterns::{UIExpandCollapsePattern, UISelectionItemPattern};
 
@@ -87,7 +86,7 @@ mod imp {
         let needs_expand = is_collapsed_container(element);
         let expanded = Cell::new(false);
         let mut expand = || {
-            ensure_budget(deadline)?;
+            deadline.ensure_remaining()?;
             expand_container(element)?;
             expanded.set(true);
             Ok(())
@@ -109,7 +108,7 @@ mod imp {
             }
         };
         let mut realize = || {
-            ensure_budget(deadline)?;
+            deadline.ensure_remaining()?;
             scroll_to_realize(element, deadline, || {
                 let prior = found_holder.borrow().clone();
                 if let Some(found) =
@@ -149,7 +148,7 @@ mod imp {
         plan: SelectPlan,
         ops: SelectOps<'_>,
     ) -> Result<Vec<ActionStep>, AdapterError> {
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         if plan.self_match {
             return match (ops.select_item)() {
                 Ok(outcome) => Ok(vec![build_step(SELECT_LABEL, outcome)]),
@@ -207,7 +206,7 @@ mod imp {
         value: &str,
         deadline: Deadline,
     ) -> Result<Option<bool>, AdapterError> {
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         let end = capped_verification_end(deadline, VERIFY_TIMEOUT)?;
         let container_value_available = value_available(container);
         loop {

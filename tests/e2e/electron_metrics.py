@@ -277,11 +277,21 @@ def measure(args):
 
 def write_report(path, report):
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    temporary = f"{path}.tmp-{os.getpid()}"
-    with open(temporary, "w", encoding="utf-8") as output:
-        json.dump(report, output, indent=2, sort_keys=True)
-        output.write("\n")
-    os.replace(temporary, path)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=os.path.dirname(os.path.abspath(path)),
+            prefix=f".{os.path.basename(path)}.", delete=False,
+        ) as output:
+            temporary = output.name
+            json.dump(report, output, indent=2, sort_keys=True)
+            output.write("\n")
+        os.replace(temporary, path)
+        temporary = None
+    finally:
+        if temporary is not None and os.path.exists(temporary):
+            os.unlink(temporary)
+
 
 
 def main():

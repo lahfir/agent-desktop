@@ -69,9 +69,8 @@ mod imp {
         scroll_amounts, scroll_effect_verified,
     };
     use crate::actions::mutation::{classify_success, classify_write};
-    use crate::system::permissions::ensure_budget;
+    use crate::tree::properties::property_ids::TreeProperty;
     use crate::tree::properties::read_one;
-    use crate::tree::property_ids::TreeProperty;
     use agent_desktop_core::{DeliverySemantics, LocatorField, Rect};
     use uiautomation::patterns::UIScrollPattern;
 
@@ -139,7 +138,7 @@ mod imp {
         scroll_once: &mut dyn FnMut() -> Result<(), AdapterError>,
         observe_effect: &mut dyn FnMut() -> bool,
     ) -> Result<Vec<ActionStep>, AdapterError> {
-        ensure_budget(deadline)?;
+        deadline.ensure_remaining()?;
         validate_amount(plan.amount)?;
         if !plan.scroll_available {
             return Err(scroll_unavailable());
@@ -148,7 +147,7 @@ mod imp {
             return Err(axis_not_scrollable(plan.axis_name));
         }
         for completed in 0..plan.amount {
-            ensure_budget(deadline).map_err(|error| {
+            deadline.ensure_remaining().map_err(|error| {
                 if completed == 0 {
                     error
                 } else {

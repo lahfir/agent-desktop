@@ -29,8 +29,8 @@
 
     Payload discipline: typed text and clipboard content never reach a capture. Only
     UTF-16 unit counts, codepoint counts, surrogate-pair counts and a SHA-256 of the
-    UTF-16 bytes are recorded, and clipboard shape is compared against the hash of the
-    string the probe itself typed - never against the observed clipboard value.
+    UTF-16 bytes are recorded. Clipboard text is compared in memory with the exact
+    synthetic payload; its shape is recorded only when it matches.
 
     Captures under captures/06-input-synthesis/:
         keyboard.json     unicode typing round trips, chord probe, modifier state
@@ -492,9 +492,10 @@ try {
         if ([System.Windows.Forms.Clipboard]::ContainsText()) { $clipObserved = [System.Windows.Forms.Clipboard]::GetText(); $clipReadOk = $true }
     } catch { Write-ProbeLog -Message ('clipboard read failed: ' + $_.Exception.Message) -Level 'warn' }
     $clipObservedShape = Get-TextShape -Text $clipObserved
-    $chordVerified = ($clipReadOk `
-            -and ($chordExpectedShape.sha256Utf16 -eq $chordSourceShape.sha256Utf16) `
-            -and ($chordSourceShape.sha256Utf16 -eq $clipObservedShape.sha256Utf16))
+    $clipboardMatchesExpected = ($clipReadOk -and [string]::Equals(
+            $clipObserved, $chordPayload, [System.StringComparison]::Ordinal))
+    $chordVerified = ($clipboardMatchesExpected `
+            -and ($chordExpectedShape.sha256Utf16 -eq $chordSourceShape.sha256Utf16))
 
     $modifierAfterChord = Get-ModifierState
 
@@ -516,9 +517,10 @@ try {
             sourceObservedShape  = $chordSourceShape
             sourceRoundTrip      = ($chordExpectedShape.sha256Utf16 -eq $chordSourceShape.sha256Utf16)
             clipboardReadOk      = $clipReadOk
-            clipboardObservedShape = $clipObservedShape
+            clipboardObservedShape = $(if ($clipboardMatchesExpected) { $clipObservedShape } else { $null })
             verifiedByShape      = $chordVerified
-            verificationRule     = 'the clipboard is verified by SHAPE against the hash of the string the probe itself typed into the control, never against the observed clipboard value. The operator clipboard could hold a secret; comparing hashes means a non-probe value simply fails to match and nothing about it is recorded beyond its length and hash. The typed hash is the anchor of the whole chain: the control read-back must equal it and the clipboard must equal that, and the clipboard must have actually been read, so an unregistered chord over an empty control and an empty clipboard - three hashes of the empty string - cannot satisfy it.'
+            clipboardMatchesExpected = $clipboardMatchesExpected
+            verificationRule     = 'the control read-back must match the typed payload shape, and the clipboard text must exactly match the typed payload in memory. The observed clipboard shape is written only after that exact match; mismatching clipboard content is represented only by clipboardMatchesExpected.'
             verdict              = $(if ($chordVerified) { 'ok - Ctrl+A then Ctrl+C put exactly the typed string on the clipboard' } else { 'chord-not-registered-or-clipboard-differs' })
         }
         modifierStateAfterChord = @($modifierAfterChord)

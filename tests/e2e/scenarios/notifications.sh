@@ -46,7 +46,7 @@ if [ -n "$nc_posted" ]; then
             "$([ "$nc_listed_title" = "$nc_title_a" ] && echo 1 || echo 0)" \
             "expected title='$nc_title_a' got title='$nc_listed_title' app_name='$nc_listed_app'"
 
-        nc_dismiss="$("$bin" --headed dismiss-notification "$nc_index" --expected-title "$nc_listed_title" 2>&1)"
+        nc_dismiss="$("$bin" --headed dismiss-notification "$nc_index" --expected-title "$nc_listed_title" 2>/dev/null)"
         nc_dismiss_ok="$(json_field "$nc_dismiss" ok)"
         nc_gone=""
         nc_after=""
@@ -73,7 +73,7 @@ if [ -n "$nc_posted" ]; then
         done
         nc_app_b="$(json_field "$nc_list_b" data.notifications.0.app_name)"
         if [ -n "$nc_app_b" ]; then
-            nc_sweep="$("$bin" --headed dismiss-all-notifications --app "$nc_app_b" 2>&1)"
+            nc_sweep="$("$bin" --headed dismiss-all-notifications --app "$nc_app_b" 2>/dev/null)"
             nc_cleared=""
             nc_left=""
             for _ in $(seq 1 12); do

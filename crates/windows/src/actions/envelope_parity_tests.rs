@@ -1,6 +1,6 @@
 use crate::actions::chain::{DeliveryOutcome, build_step};
 use crate::actions::mutation::classify_mutation;
-use crate::system::hresult::{
+use crate::system::runtime::hresult::{
     E_ACCESSDENIED, E_INVALIDARG, RPC_E_SERVERFAULT, UIA_E_ELEMENTNOTAVAILABLE,
     UIA_E_ELEMENTNOTENABLED, UIA_E_INVALIDOPERATION, UIA_E_TIMEOUT,
 };
@@ -32,14 +32,6 @@ fn assert_disposition_matches_projection(json: &Value, semantics: DeliverySemant
     assert_eq!(
         json["disposition"], projected,
         "wire disposition must equal DeliverySemantics projection"
-    );
-    assert_eq!(
-        json["disposition"]["delivery"], projected["delivery"],
-        "delivery wire string"
-    );
-    assert_eq!(
-        json["disposition"]["retry"], projected["retry"],
-        "retry wire string"
     );
 }
 
@@ -84,6 +76,8 @@ fn skipped_step_wire_uses_semantic_api_and_skipped() {
     assert_eq!(json["steps"][1]["outcome"], "succeeded");
     assert_eq!(json["steps"][1]["mechanism"], "semantic_api");
     assert_disposition_matches_projection(&json, result.disposition());
+    assert_eq!(json["disposition"]["delivery"], "delivered_unverified");
+    assert_eq!(json["disposition"]["retry"], "unsafe");
 }
 
 #[test]
