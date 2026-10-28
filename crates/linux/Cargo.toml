@@ -13,7 +13,7 @@ libc.workspace               = true
 async-io                     = "=2.6.0"
 futures-lite                 = "=2.6.1"
 zbus                         = "=5.19.0"
-futures-util                 = { version = "=0.3.33", default-features = false, features = ["alloc"] }
+futures-util                 = { version = "=0.3.34", default-features = false, features = ["alloc"] }
 png                          = { version = "=0.18.1", default-features = false }
 rustix                       = { version = "=1.1.5", default-features = false, features = ["std", "process", "fs"] }
 x11rb                        = { version = "=0.14.0", default-features = false, features = ["composite", "damage", "randr", "res", "shape", "xkb", "xtest"] }
