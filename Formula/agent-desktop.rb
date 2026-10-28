@@ -1,32 +1,32 @@
 class AgentDesktop < Formula
   desc "Native accessibility-based desktop automation for agents"
   homepage "https://github.com/lahfir/agent-desktop"
-  version "0.11.1"
+  version "1.0.0"
   license "Apache-2.0"
 
   on_macos do
     depends_on macos: :ventura
 
     on_arm do
-      url "https://github.com/lahfir/agent-desktop/releases/download/v0.11.1/agent-desktop-v0.11.1-aarch64-apple-darwin.tar.gz"
-      sha256 "666671bd944fb88bf5b5668589f2bd653cd3a01942035260b454736879ff8779"
+      url "https://github.com/lahfir/agent-desktop/releases/download/v1.0.0/agent-desktop-v1.0.0-aarch64-apple-darwin.tar.gz"
+      sha256 "8e8e8e4d3bbe0f769f23742f113dd428427d022d709fee1ee25a726bb5c45317"
     end
 
     on_intel do
-      url "https://github.com/lahfir/agent-desktop/releases/download/v0.11.1/agent-desktop-v0.11.1-x86_64-apple-darwin.tar.gz"
-      sha256 "32aedc30a787e8ec71ddec758128b30762a31a6ae9833099a5bc1288be302cf9"
+      url "https://github.com/lahfir/agent-desktop/releases/download/v1.0.0/agent-desktop-v1.0.0-x86_64-apple-darwin.tar.gz"
+      sha256 "ed861e0fca413b604a7895190b339e5289fdbc9e8e7e42bdee9aba1ef6bc5014"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/lahfir/agent-desktop/releases/download/v0.11.1/agent-desktop-v0.11.1-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "cdf02e3b3b08f812af28ea477fee9bd72f78fe87a9888768a0750d60bb4dd509"
+      url "https://github.com/lahfir/agent-desktop/releases/download/v1.0.0/agent-desktop-v1.0.0-aarch64-unknown-linux-gnu.tar.gz"
+      sha256 "d7dfeebc63905c1de678291b5ac695d8e85ea17adf801245738a569a3182cf64"
     end
 
     on_intel do
-      url "https://github.com/lahfir/agent-desktop/releases/download/v0.11.1/agent-desktop-v0.11.1-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "89674d626b3e15536e8084ac883d2507ca2f67d187f7e0b138305f371fb25138"
+      url "https://github.com/lahfir/agent-desktop/releases/download/v1.0.0/agent-desktop-v1.0.0-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "5398a1c12f88b0d19a14f37be11cdb69370ab0a1aea839a69c8a074c6388de43"
     end
   end
 

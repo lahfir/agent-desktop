@@ -1,16 +1,16 @@
 {
-    "version": "0.11.1",
+    "version": "1.0.0",
     "description": "Native accessibility-based desktop automation for agents",
     "homepage": "https://github.com/lahfir/agent-desktop",
     "license": "Apache-2.0",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/lahfir/agent-desktop/releases/download/v0.11.1/agent-desktop-v0.11.1-x86_64-pc-windows-msvc.tar.gz",
-            "hash": "524c378e1afc7762f6e49b61cf58d45cbf0d54fecec618b2a1fd0d6fb282afe2"
+            "url": "https://github.com/lahfir/agent-desktop/releases/download/v1.0.0/agent-desktop-v1.0.0-x86_64-pc-windows-msvc.tar.gz",
+            "hash": "290aa4edf13fffb7fc104b64666ee80cb178357b681d15f8e6b2b0154b825065"
         },
         "arm64": {
-            "url": "https://github.com/lahfir/agent-desktop/releases/download/v0.11.1/agent-desktop-v0.11.1-aarch64-pc-windows-msvc.tar.gz",
-            "hash": "d879c4130015d5d8a6d0c2c3935ca0d04c58624dc65259788785e6dd07f0fd8e"
+            "url": "https://github.com/lahfir/agent-desktop/releases/download/v1.0.0/agent-desktop-v1.0.0-aarch64-pc-windows-msvc.tar.gz",
+            "hash": "573c0471412b100ec7ab65440148fb4f2abc9493a88f12d451e6592644beabac"
         }
     },
     "env_add_path": "."
