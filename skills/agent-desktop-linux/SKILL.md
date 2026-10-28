@@ -1,6 +1,5 @@
 ---
 name: agent-desktop-linux
-version: 0.11.1
 tags: linux-automation, accessibility, at-spi, x11, wayland, ai-agent, gui-automation, cli
 requirements:
   - agent-desktop
