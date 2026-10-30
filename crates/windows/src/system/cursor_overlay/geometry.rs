@@ -104,7 +104,7 @@ pub(crate) fn follower_rect(
     union
 }
 
-fn union_of(left: &Rect, right: &Rect) -> Rect {
+pub(crate) fn union_of(left: &Rect, right: &Rect) -> Rect {
     let x = left.x.min(right.x);
     let y = left.y.min(right.y);
     let right_edge = (left.x + left.width).max(right.x + right.width);

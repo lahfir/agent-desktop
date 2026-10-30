@@ -107,6 +107,7 @@ name = "agent-desktop-windows"
 version = "1.0.2"
 dependencies = [
  "agent-desktop-core",
+ "png",
  "serde_json",
  "thiserror",
  "tracing",

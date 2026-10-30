@@ -23,7 +23,7 @@ use crate::system::cursor_overlay::{
 #[cfg(target_os = "windows")]
 use agent_desktop_core::{
     CURSOR_HIGHLIGHT_HOLD_MS, CURSOR_IDLE_REST_MS, CURSOR_REST_FADE_MS, CursorMotion,
-    CursorOverlayControl, CursorOverlayStyle, CursorPhase, Point, Rect,
+    CursorOverlayControl, CursorPhase, Point, Rect,
 };
 #[cfg(target_os = "windows")]
 use std::time::{Duration, Instant};
@@ -51,12 +51,7 @@ impl SurfaceHost {
         Ok(Self {
             window: OverlayWindow::create()?,
             session_id,
-            presentation: Presentation {
-                style: CursorOverlayStyle::default(),
-                pose,
-                label: None,
-                reveal: Reveal::Settled,
-            },
+            presentation: Presentation::resting_at(pose),
             rest: RestState {
                 resting: false,
                 quiet_since: Instant::now(),
@@ -90,10 +85,13 @@ impl SurfaceHost {
                 self.clear();
             }
             CursorOverlayControl::Present { instruction, .. } => match instruction.phase() {
-                CursorPhase::Travel => self.travel(
-                    instruction.destination().clone(),
-                    instruction.target().cloned(),
-                ),
+                CursorPhase::Travel => {
+                    self.presentation.depart(instruction.is_pointer());
+                    self.travel(
+                        instruction.destination().clone(),
+                        instruction.target().cloned(),
+                    );
+                }
                 CursorPhase::Drag => self.take_drag_origin(
                     instruction
                         .drag_from()
@@ -148,6 +146,7 @@ impl SurfaceHost {
     /// shown before the acknowledgement because a drag is a pre-dispatch
     /// control that its caller blocks on.
     fn take_drag_origin(&mut self, origin: Point, target: Option<Rect>) {
+        self.presentation.depart(false);
         self.travel(origin, target);
     }
 
@@ -170,6 +169,7 @@ impl SurfaceHost {
             frames.wait();
         }
         self.presentation.pose = destination;
+        self.presentation.arrive();
         self.draw(0.0, target.as_ref(), 0.0);
         self.begin_reveal();
     }
@@ -241,9 +241,10 @@ impl SurfaceHost {
                 width: 1920.0,
                 height: 1080.0,
             });
+        let shown = self.presentation.shown_style();
         let frame = render::Frame {
             tip: self.presentation.pose.clone(),
-            style: &self.presentation.style,
+            style: &shown,
             ripple_phase,
             target: target.cloned(),
             highlight_opacity,
@@ -343,7 +344,7 @@ impl SurfaceHost {
         ) {
             return;
         }
-        let next = control.label().and_then(label::clamp);
+        let next = self.presentation.label_from(control).and_then(label::clamp);
         if next != self.presentation.label {
             self.presentation.reveal = Reveal::for_label(next.as_deref());
         }

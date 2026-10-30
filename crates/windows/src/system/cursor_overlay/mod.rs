@@ -13,6 +13,7 @@
 
 pub(crate) mod animation;
 pub(crate) mod child;
+pub(crate) mod cursor_image;
 #[cfg(target_os = "windows")]
 pub(crate) mod dib;
 #[cfg(target_os = "windows")]
