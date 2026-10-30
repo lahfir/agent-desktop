@@ -12,6 +12,8 @@
 //! a test.
 
 pub(crate) mod animation;
+#[cfg(target_os = "windows")]
+pub(crate) mod caret_mark;
 pub(crate) mod child;
 pub(crate) mod cursor_image;
 #[cfg(target_os = "windows")]

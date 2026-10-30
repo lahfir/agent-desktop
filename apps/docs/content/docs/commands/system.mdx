@@ -115,7 +115,7 @@ agent-desktop session gc [--older-than SECONDS] [--ended]
 
 ## cursor-overlay
 
-Configures the presentation-only cursor overlay for a session. The overlay draws an agent cursor, a click ripple, and an element highlight, and never changes what an action does. On macOS, after `type` or `set-value` lands, it also draws a caret at the field's insertion point. It needs an active session, and it cannot run inside a [batch](/desktop/commands/batch).
+Configures the presentation-only cursor overlay for a session. The overlay draws an agent cursor, a click ripple, and an element highlight, and never changes what an action does. On macOS and Windows, after `type` or `set-value` lands, it also draws a caret at the field's insertion point. It needs an active session, and it cannot run inside a [batch](/desktop/commands/batch).
 
 ```bash
 agent-desktop --session "$AGENT_DESKTOP_SESSION" cursor-overlay enable [STYLE FLAGS]

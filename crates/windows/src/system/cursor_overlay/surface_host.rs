@@ -17,8 +17,8 @@
 use super::presentation::{Presentation, RestState};
 #[cfg(target_os = "windows")]
 use crate::system::cursor_overlay::{
-    animation, fade, geometry, label, monitors, render, reveal::Reveal, schedule, session_state,
-    text, topology::DisplayTopology, window::OverlayWindow,
+    animation, caret_mark::CaretMark, fade, geometry, label, monitors, render, reveal::Reveal,
+    schedule, session_state, text, topology::DisplayTopology, window::OverlayWindow,
 };
 #[cfg(target_os = "windows")]
 use agent_desktop_core::{
@@ -36,6 +36,7 @@ const REST_FADE_STEPS: u32 = 13;
 #[cfg(target_os = "windows")]
 pub(crate) struct SurfaceHost {
     window: OverlayWindow,
+    caret: CaretMark,
     session_id: String,
     presentation: Presentation,
     rest: RestState,
@@ -50,6 +51,7 @@ impl SurfaceHost {
         let pose = monitors::resting_point(topology.monitors()).unwrap_or(Point { x: 0.0, y: 0.0 });
         Ok(Self {
             window: OverlayWindow::create()?,
+            caret: CaretMark::create()?,
             session_id,
             presentation: Presentation::resting_at(pose),
             rest: RestState {
@@ -99,7 +101,12 @@ impl SurfaceHost {
                         .clone(),
                     instruction.target().cloned(),
                 ),
-                CursorPhase::Caret => {}
+                CursorPhase::Caret => {
+                    if let Some(at) = instruction.target() {
+                        let accent = self.presentation.style.accent_rgb();
+                        self.caret.show(at, accent);
+                    }
+                }
                 CursorPhase::Effect => {}
             },
         }
@@ -283,6 +290,7 @@ impl SurfaceHost {
     fn clear(&self) {
         let _ = self.window.present(0, 0, 1, 1, &[0u32]);
         self.window.pump();
+        self.caret.hide();
     }
 
     /// One quiet tick: pump the window, re-read the display topology, and
