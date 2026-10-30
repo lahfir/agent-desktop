@@ -20,6 +20,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "query",
     "find_live_test_support",
     "surface_scope",
+    "type_text_interval",
     "stale_retry_test_support",
     "wait_element",
     "wait_latest_ref_cache",

@@ -155,7 +155,7 @@ Platform limits: Windows always needs `--headed`. See [Windows](/desktop/platfor
 Inserts text into a text target at its insertion point, then reads the field back.
 
 ```bash
-agent-desktop type <REF> <TEXT> [--timeout-ms MS]
+agent-desktop type <REF> <TEXT> [--timeout-ms MS] [--interval-ms MS]
 ```
 
 <table>
@@ -164,7 +164,8 @@ agent-desktop type <REF> <TEXT> [--timeout-ms MS]
   </thead>
   <tbody>
     <tr><td><code>TEXT</code></td><td>required</td><td>The text, up to 10,000 bytes. A value that starts with a hyphen is accepted.</td></tr>
-    <tr><td><code>--timeout-ms MS</code></td><td><code>5000</code> plus <code>30</code> per character</td><td>Covers resolution, actionability, and delivery. An explicit value wins.</td></tr>
+    <tr><td><code>--timeout-ms MS</code></td><td><code>5000</code> plus <code>30</code> per character</td><td>Covers resolution, actionability, and delivery. An explicit value wins. With <code>--interval-ms</code>, it applies to each keystroke, and <code>0</code> makes each keystroke try once.</td></tr>
+    <tr><td><code>--interval-ms MS</code></td><td>off</td><td>Types one keystroke every <code>MS</code> milliseconds, 1 to 2000, instead of inserting the text at once.</td></tr>
   </tbody>
 </table>
 
@@ -178,6 +179,12 @@ agent-desktop type <REF> <TEXT> [--timeout-ms MS]
   "post_state": { "enabled": true, "role": "textfield", "value": " worldhello" },
   "steps": [{ "label": "EditableText.InsertText", "mechanism": "semantic_api", "outcome": "succeeded", "verified": true }]
 }
+```
+
+`--interval-ms` types at a steady pace inside one command. A keystroke is one character together with the combining marks, emoji modifiers, and joined characters drawn with it, and CR LF counts as one. The first keystroke runs as a full ref action, and a headed one also focuses the target's window. The rest go to the same element, each taking the interaction lease only while it is delivered, so other agents can act between keystrokes. A headed keystroke is posted only while the target's process and focused element are unchanged, so a burst that loses focus stops with an error. The result adds `keystrokes` and `interval_ms`, and its `post_state` reads the field after the last keystroke. A failure after the first keystroke carries `details.typed_keystrokes` and `details.keystrokes` with a `delivered_unverified` disposition, because part of the text landed.
+
+```bash
+agent-desktop type @s8f3k2p9:e2 "hello world" --interval-ms 60
 ```
 
 To set a field's whole content, use [`set-value`](#set-value). Keystroke delivery that settles on other text returns `delivered_unverified` with `verification_reason: "postcondition_mismatch"`; read the field with `get` before you write again.

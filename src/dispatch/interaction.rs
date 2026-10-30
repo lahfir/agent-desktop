@@ -56,12 +56,16 @@ pub(super) fn type_text(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    let timeout_ms = helpers::normalize_action_timeout_ms(args.effective_timeout_ms());
+    let timeout_ms = match args.interval_ms {
+        Some(_) => args.timeout_ms,
+        None => helpers::normalize_action_timeout_ms(args.effective_timeout_ms()),
+    };
     type_text_command::execute(
         type_text_command::TypeArgs {
             ref_id: args.ref_id,
             text: args.text,
             timeout_ms,
+            interval_ms: args.interval_ms,
         },
         adapter,
         context,

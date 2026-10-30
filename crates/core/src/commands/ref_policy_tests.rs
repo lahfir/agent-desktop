@@ -36,6 +36,7 @@ const POLICY_TESTED_COMMANDS: &[&str] = &[
     "toggle",
     "triple_click",
     "type_text",
+    "type_text_interval",
     "uncheck",
 ];
 
@@ -243,6 +244,7 @@ fn default_ref_commands_use_least_permissive_supported_policy() {
             ref_id: format!("@{}:e1", snapshot_id.clone()),
             text: "text".into(),
             timeout_ms: None,
+            interval_ms: None,
         },
         &adapter,
         &context,
@@ -330,6 +332,7 @@ fn headed_context_reaches_every_ref_action_without_policy_downgrade() {
             ref_id: format!("@{}:e1", snapshot_id.clone()),
             text: "text".into(),
             timeout_ms: None,
+            interval_ms: None,
         },
         &adapter,
         &context,
