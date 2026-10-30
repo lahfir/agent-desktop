@@ -17,4 +17,4 @@ Do **not** open a public issue for suspected security issues. Report privately v
 
 ## Response
 
-This project is maintained by [@lahfir](https://github.com/lahfir) on a best-effort basis. There is no guaranteed response time or SLA.
+This project is maintained on a best-effort basis. There is no guaranteed response time or SLA.

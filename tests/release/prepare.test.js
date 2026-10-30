@@ -16,7 +16,7 @@ function fixture() {
   writeFileSync(join(root, 'tools/gh'), '#!/bin/sh\nif [ "$1" = release ]; then exit "$TEST_GITHUB_STATUS"; fi\nprintf "%s\\n" "$*" >> "$TEST_GH_LOG"\n', { mode: 0o755 });
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
   git('init', '-q');
-  git('config', 'user.name', 'Lahfir');
+  git('config', 'user.name', 'Release Fixture');
   git('config', 'user.email', 'fixture@example.invalid');
   git('add', '.');
   git('commit', '-qm', 'test: create release fixture');
