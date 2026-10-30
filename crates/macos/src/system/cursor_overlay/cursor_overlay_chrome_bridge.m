@@ -3,6 +3,9 @@
 const CGFloat ADRippleSize = 108.0;
 static const NSWindowLevel ADEffectLevel = 24;
 static const NSUInteger ADRippleRings = 2;
+// Room around the highlight for its glow and the pop it starts with, both of
+// which draw outside the outline and would be clipped at the window's edge.
+static const CGFloat ADHighlightBleed = 24.0;
 
 static AgentDesktopCursorStyle ADCurrentStyle = {
     .fill = {1.0, 1.0, 1.0},
@@ -198,8 +201,10 @@ void ADHighlightShow(NSRect frame, double seconds) {
     ADHighlightBorder.shadowOpacity = 0.5;
     ADHighlightBorder.shadowRadius = 10.0;
     ADHighlightBorder.shadowOffset = CGSizeZero;
-    [ADHighlightWindow setFrame:frame display:NO];
-    ADHighlightBorder.frame = CGRectMake(0.0, 0.0, frame.size.width, frame.size.height);
+    [ADHighlightWindow setFrame:NSInsetRect(frame, -ADHighlightBleed, -ADHighlightBleed)
+                        display:NO];
+    ADHighlightBorder.frame =
+        CGRectMake(ADHighlightBleed, ADHighlightBleed, frame.size.width, frame.size.height);
     [ADHighlightBorder removeAllAnimations];
     [ADHighlightBorder addAnimation:ADHold(@"opacity",
                                            @[ @0.0, @1.0, @1.0, @0.0 ],
