@@ -88,6 +88,7 @@ fn execute_with_deadline(
         context.entry,
         deadline,
     );
+    crate::ref_action::presentation::before_lease(context, &request, deadline);
     let lease = context
         .adapter
         .acquire_interaction_lease(deadline)
