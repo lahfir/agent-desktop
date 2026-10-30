@@ -169,6 +169,17 @@ impl ObservationOps for MacOSAdapter {
         Err(AdapterError::not_supported("get_live_actions"))
     }
 
+    fn get_insertion_caret(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<Option<agent_desktop_core::Rect>, AdapterError> {
+        Ok(crate::tree::properties::text_insertion::insertion_caret(
+            ax_element(handle)?,
+            deadline,
+        ))
+    }
+
     fn get_live_element(
         &self,
         handle: &NativeHandle,

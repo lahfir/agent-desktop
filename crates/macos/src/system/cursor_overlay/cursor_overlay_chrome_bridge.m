@@ -214,6 +214,31 @@ void ADHighlightShow(NSRect frame, double seconds) {
     [ADHighlightWindow orderFrontRegardless];
 }
 
+static __strong NSWindow *ADCaretWindow = nil;
+static __strong CALayer *ADCaretBar = nil;
+
+void ADCaretShow(NSRect frame) {
+    if (ADCaretWindow == nil) {
+        ADCaretWindow = ADWindow(frame);
+        ADCaretWindow.level = ADEffectLevel;
+        ADCaretBar = [CALayer layer];
+        ADCaretBar.cornerRadius = 1.0;
+        ADFreezeLayer(ADCaretBar);
+        [ADCaretWindow.contentView.layer addSublayer:ADCaretBar];
+    }
+    ADCaretBar.backgroundColor = ADColor(ADCurrentStyle.accent, 1.0);
+    [ADCaretWindow setFrame:frame display:NO];
+    ADCaretBar.frame = CGRectMake(0.0, 0.0, frame.size.width, frame.size.height);
+    [ADCaretWindow orderFrontRegardless];
+    [CATransaction flush];
+}
+
+void ADCaretStop(void) {
+    [ADCaretWindow orderOut:nil];
+    ADCaretWindow = nil;
+    ADCaretBar = nil;
+}
+
 void ADHighlightStop(void) {
     [ADHighlightBorder removeAllAnimations];
     [ADHighlightWindow orderOut:nil];

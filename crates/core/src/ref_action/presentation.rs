@@ -89,6 +89,15 @@ fn target_center(
     })
 }
 
+pub(crate) fn enters_text(action: &Action) -> bool {
+    matches!(action, Action::TypeText(_) | Action::SetValue(_))
+}
+
+/// Typing clicks into its field first, so its effect plays the click ripple.
+fn clicks_in_to_type(action: &Action) -> bool {
+    matches!(action, Action::TypeText(_))
+}
+
 fn center_of(bounds: &crate::Rect) -> Option<crate::Point> {
     bounds.validate().ok()?;
     (bounds.width > 0.0 && bounds.height > 0.0).then(|| crate::Point {
@@ -130,9 +139,54 @@ pub(super) fn after_dispatch(
         context,
         destination,
         preflight.presentation_bounds,
-        is_click(action),
+        is_click(action) || clicks_in_to_type(action),
         CursorPhase::Effect,
     );
+}
+
+/// After text entry lands, draws the agent's caret where the element is now
+/// inserting text, when the element reports an insertion point. Returns
+/// whether it did: the caret then marks the field, so the element outline is
+/// left off rather than flashing on every keystroke.
+pub(super) fn after_text_entry(
+    target: &ResolvedRefAction<'_>,
+    action: &Action,
+    result: &Result<crate::ActionResult, crate::AdapterError>,
+) -> bool {
+    let delivered = match result {
+        Ok(result) => crate::cursor_overlay::confirms_delivery(result.disposition()),
+        Err(error) => crate::cursor_overlay::confirms_delivery(error.disposition),
+    };
+    delivered && enters_text(action) && place_caret(target.adapter, target.context, target.handle)
+}
+
+fn place_caret(
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+    handle: &crate::NativeHandle,
+) -> bool {
+    if !context.cursor_overlay().is_enabled() {
+        return false;
+    }
+    let Ok(deadline) = crate::Deadline::after(crate::CURSOR_ARRIVAL_TIMEOUT_MS) else {
+        return false;
+    };
+    let Ok(Some(caret)) = adapter.get_insertion_caret(handle, deadline) else {
+        return false;
+    };
+    crate::cursor_overlay::submit_caret(adapter, context, caret);
+    true
+}
+
+/// Moves the agent's caret to the element's insertion point during a typing
+/// burst. The cursor stays where it clicked into the field, the way a person's
+/// pointer stays put while they type.
+pub(crate) fn move_caret(
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+    handle: &crate::NativeHandle,
+) {
+    place_caret(adapter, context, handle);
 }
 
 fn destination(preflight: &ActionabilityPreflight) -> Option<crate::Point> {

@@ -57,10 +57,15 @@ unsafe extern "C" {
         hotspot_y: f64,
     ) -> bool;
     fn agent_desktop_cursor_overlay_idle();
+    fn agent_desktop_cursor_overlay_caret(x: f64, y: f64, width: f64, height: f64);
     fn agent_desktop_cursor_overlay_hide();
     fn agent_desktop_cursor_overlay_rest();
     fn agent_desktop_cursor_overlay_show();
     fn agent_desktop_cursor_overlay_stop();
+}
+
+pub(super) fn caret(at: &Rect) {
+    unsafe { agent_desktop_cursor_overlay_caret(at.x, at.y, at.width, at.height) }
 }
 
 pub(super) fn begin_drag(from: &Point, trail: bool) {
@@ -178,6 +183,7 @@ pub(super) fn apply_style(style: &CursorOverlayStyle, image_changed: bool) {
 fn pointer_flags(instruction: &CursorOverlayInstruction) -> u8 {
     match instruction.phase() {
         CursorPhase::Effect => ARROW_AFTER_EFFECT,
+        CursorPhase::Caret => 0,
         CursorPhase::Drag => ARROW_ON_DEPARTURE,
         CursorPhase::Travel if instruction.is_pointer() => ARROW_ON_DEPARTURE | POINT_ON_ARRIVAL,
         CursorPhase::Travel => ARROW_ON_DEPARTURE,

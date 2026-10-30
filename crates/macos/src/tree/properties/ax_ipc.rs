@@ -5,10 +5,10 @@ use std::time::{Duration, Instant};
 use accessibility_sys::{
     AXUIElementCopyActionNames, AXUIElementCopyAttributeValue, AXUIElementCopyAttributeValues,
     AXUIElementCopyElementAtPosition, AXUIElementCopyMultipleAttributeValues,
-    AXUIElementGetAttributeValueCount, AXUIElementGetPid, AXUIElementIsAttributeSettable,
-    AXUIElementPerformAction, AXUIElementSetAttributeValue, AXUIElementSetMessagingTimeout,
-    kAXErrorAPIDisabled, kAXErrorCannotComplete, kAXErrorFailure, kAXErrorInvalidUIElement,
-    kAXErrorSuccess,
+    AXUIElementCopyParameterizedAttributeValue, AXUIElementGetAttributeValueCount,
+    AXUIElementGetPid, AXUIElementIsAttributeSettable, AXUIElementPerformAction,
+    AXUIElementSetAttributeValue, AXUIElementSetMessagingTimeout, kAXErrorAPIDisabled,
+    kAXErrorCannotComplete, kAXErrorFailure, kAXErrorInvalidUIElement, kAXErrorSuccess,
 };
 #[cfg(target_os = "macos")]
 use core_foundation_sys::{
@@ -111,6 +111,23 @@ pub(crate) fn copy_attribute_value(
     let mut value: CFTypeRef = std::ptr::null();
     let error = match prepare(element, deadline) {
         Ok(_) => unsafe { AXUIElementCopyAttributeValue(element.0, attribute, &mut value) },
+        Err(error) => adapter_error_to_ax(&error),
+    };
+    (error, value)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn copy_parameterized_attribute_value(
+    element: &crate::tree::AXElement,
+    attribute: CFStringRef,
+    parameter: CFTypeRef,
+    deadline: impl AxDeadline,
+) -> (i32, CFTypeRef) {
+    let mut value: CFTypeRef = std::ptr::null();
+    let error = match prepare(element, deadline) {
+        Ok(_) => unsafe {
+            AXUIElementCopyParameterizedAttributeValue(element.0, attribute, parameter, &mut value)
+        },
         Err(error) => adapter_error_to_ax(&error),
     };
     (error, value)

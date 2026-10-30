@@ -22,6 +22,8 @@ NSWindow *ADRippleWindow(void);
 void ADRipplePlay(NSWindow *window);
 void ADHighlightShow(NSRect frame, double seconds);
 void ADHighlightStop(void);
+void ADCaretShow(NSRect frame);
+void ADCaretStop(void);
 void ADTrailBegin(NSPoint point);
 void ADTrailAppend(NSPoint point);
 void ADTrailFinish(double seconds);

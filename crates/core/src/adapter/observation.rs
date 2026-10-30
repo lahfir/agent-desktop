@@ -215,6 +215,17 @@ pub trait ObservationOps: Send + Sync {
         Err(AdapterError::not_supported("get_element_bounds"))
     }
 
+    /// Screen bounds of a text element's insertion point: a caret-wide rect as
+    /// tall as the line it sits on. `None` when the element reports no
+    /// insertion point.
+    fn get_insertion_caret(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
+        Err(AdapterError::not_supported("get_insertion_caret"))
+    }
+
     /// Fresh pointer geometry and visibility from one observation when supported.
     /// The default preserves bounds-first reads and optional state evidence.
     fn observe_pointer(
