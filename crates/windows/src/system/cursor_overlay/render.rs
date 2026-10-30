@@ -7,7 +7,7 @@
 use agent_desktop_core::{CursorOverlayStyle, Point, Rect, place_label};
 
 use super::raster::{self, Surface, SurfaceMapping};
-use super::{geometry, rounded};
+use super::{cursor_image, geometry, rounded};
 
 /// Everything a frame needs, resolved from the control and the clock before
 /// any pixel is touched.
@@ -37,6 +37,11 @@ pub(crate) struct Composed {
 
 pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
     let scale = frame.style.size();
+    let image = frame.style.image().and_then(|image| {
+        let decoded = cursor_image::decoded(image)?;
+        let rect = cursor_image::image_rect(&frame.tip, image, &decoded, scale);
+        Some((decoded, rect))
+    });
     let label_rect = frame
         .label
         .map(|_| place_label(&frame.tip, geometry::bubble_size(scale), &frame.screen));
@@ -46,12 +51,15 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
         .filter(|_| frame.style.highlight() && frame.highlight_opacity > 0.0);
     let highlight_rect = highlighted.map(|target| geometry::highlight_rect(target, scale));
 
-    let bounds = geometry::follower_rect(
+    let mut bounds = geometry::follower_rect(
         &frame.tip,
         scale,
         label_rect.as_ref(),
         highlight_rect.as_ref(),
     );
+    if let Some((_, rect)) = &image {
+        bounds = geometry::union_of(&bounds, rect);
+    }
     let mapping = SurfaceMapping {
         origin: Point {
             x: bounds.x.floor(),
@@ -108,13 +116,16 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
         }
     });
 
-    raster::draw_glyph(
-        &mut surface,
-        &mapping,
-        &frame.tip,
-        frame.style.fill_rgb(),
-        frame.style.rim_rgb(),
-    );
+    match &image {
+        Some((decoded, rect)) => cursor_image::draw_image(&mut surface, &mapping, rect, decoded),
+        None => raster::draw_glyph(
+            &mut surface,
+            &mapping,
+            &frame.tip,
+            frame.style.fill_rgb(),
+            frame.style.rim_rgb(),
+        ),
+    }
 
     Composed {
         origin: mapping.origin,

@@ -114,8 +114,9 @@ agent-desktop cursor-overlay disable
 - **`--fill` and `--rim` also colour the label card** (its body and its text).
   A fill that matches the window behind it leaves the card nearly invisible.
 - **The card shows only when there is something to say.** `enable` without
-  `--label` greets once. After that, only an action that carries a description
-  draws the card. Each `enable` and each action replaces the card text.
+  `--label` greets once, and with `--image` it does not greet. After that,
+  only an action that carries a description draws the card. Each `enable` and
+  each action replaces the card text.
 - **It fades out after 6 s with no instruction** and comes straight back on the
   next command.
 - **It draws in physical pixels**, the space element bounds are reported in,

@@ -190,10 +190,13 @@ On macOS:
 
 - `--travel-ms MIN,MAX` needs `30 ≤ MIN ≤ MAX`. Travel max plus `--dwell-ms` must be at most 700 ms, or the command returns `INVALID_ARGS`.
 - Reduce Motion skips travel and dwell. Physical headed drags keep their own motion.
-- `--image` and `--pointer-image` take a PNG of at most 2 MiB and 1024 pixels per side. Relative paths resolve at `enable`. `--fill` and `--rim` conflict with `--image`. A missing or invalid image falls back to the arrow.
+
+On macOS and Windows:
+
+- `--image` and `--pointer-image` take a PNG of at most 2 MiB and 1024 pixels per side, drawn at `--size` with the hotspot on the point the cursor targets. Relative paths resolve at `enable`. `--fill` and `--rim` conflict with `--image`. A missing or invalid image falls back to the arrow.
 - The pointer image shows on arrival at a pressable control. Text fields keep the arrow.
 
-Windows accepts the motion and image settings but keeps its built-in motion and arrow.
+Windows accepts the motion settings but keeps its built-in motion.
 
 Multi-agent cursors (macOS and Windows): start with `session start --cursor --multi-agent`, then pass the returned session id to every subagent.
 
