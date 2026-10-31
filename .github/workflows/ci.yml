@@ -792,3 +792,37 @@ jobs:
       - name: Prove the shipped cdylib catches an exported-boundary panic
         shell: bash
         run: bash crates/ffi/tests/run_cdylib_panic_probe.sh ${{ matrix.target }}
+
+  packages-eve:
+    name: eve extension package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: packages/@agent-desktop/eve
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Install
+        run: npm ci
+      - name: Typecheck, build and unit tests
+        run: |
+          npm run typecheck
+          npm test
+      - name: Resolve the agent-desktop version the tools are written against
+        id: agent-desktop-version
+        working-directory: ${{ github.workspace }}
+        run: |
+          version=$(sed -n 's/^export const AGENT_DESKTOP_VERSION = "\(.*\)";$/\1/p' packages/@agent-desktop/eve/extension/lib/sandbox.ts)
+          test -n "$version" || { echo "FAIL: could not read AGENT_DESKTOP_VERSION"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Agent-desktop argv conformance
+        env:
+          AGENT_DESKTOP_BIN: ${{ runner.temp }}/agent-desktop-cli/node_modules/.bin/agent-desktop
+        run: |
+          npm install --prefix "${{ runner.temp }}/agent-desktop-cli" --no-save "agent-desktop@${{ steps.agent-desktop-version.outputs.version }}"
+          node --test test/conformance.test.mjs
