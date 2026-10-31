@@ -46,6 +46,13 @@ fn exact_window_record_until_with(
     Ok(record)
 }
 
+/// CoreGraphics layer of one window, or `None` when the window no longer exists.
+pub(crate) fn window_layer(window_number: i64) -> Result<Option<i64>, AdapterError> {
+    Ok(exact_window_dictionaries(window_number)?
+        .first()
+        .and_then(|dictionary| super::cg_window::int_field(dictionary, "kCGWindowLayer")))
+}
+
 fn exact_window_dictionaries(window_number: i64) -> Result<Vec<WindowDictionary>, AdapterError> {
     let window_id = u32::try_from(window_number).map_err(|_| {
         exact_window_source_error("Window ID is outside the CoreGraphics range", window_number)
