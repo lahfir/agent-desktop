@@ -70,3 +70,37 @@ fn osascript_denial_output_maps_to_permission_denied() {
     assert_eq!(error.code, agent_desktop_core::ErrorCode::PermDenied);
     assert_eq!(error.details.unwrap()["os_status"], -1743);
 }
+
+#[test]
+fn automation_prompt_gets_a_bounded_budget_and_reports_pending() {
+    use crate::system::permissions::permission_operation::PermissionOperation;
+    let mut automation_budget = None;
+    let error = request_report_with(
+        Deadline::after(60_000).unwrap(),
+        |operation, deadline| {
+            if operation == PermissionOperation::Automation {
+                automation_budget = Some(deadline.remaining());
+                return Err(AdapterError::timeout("helper did not answer"));
+            }
+            Ok(true)
+        },
+        |_| panic!("report must not run after a pending automation prompt"),
+    )
+    .unwrap_err();
+
+    assert!(automation_budget.unwrap() <= AUTOMATION_PROMPT_BUDGET);
+    assert_eq!(error.code, agent_desktop_core::ErrorCode::PermDenied);
+    let details = error.details.unwrap();
+    assert_eq!(details["kind"], "automation_permission_pending");
+    assert_eq!(details["reason"], "AUTOMATION_PERMISSION_PENDING");
+}
+
+#[test]
+fn expired_outer_deadline_keeps_the_timeout_error() {
+    let error = automation_prompt_error(
+        AdapterError::timeout("expired"),
+        Deadline::after(0).unwrap(),
+    );
+
+    assert_eq!(error.code, agent_desktop_core::ErrorCode::Timeout);
+}

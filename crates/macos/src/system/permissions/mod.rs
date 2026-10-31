@@ -8,6 +8,7 @@ const NO_ERR: i32 = 0;
 const PROC_NOT_FOUND: i32 = -600;
 const ERR_AE_EVENT_NOT_PERMITTED: i32 = -1743;
 const ERR_AE_EVENT_WOULD_REQUIRE_USER_CONSENT: i32 = -1744;
+const AUTOMATION_PROMPT_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
 
 #[cfg(target_os = "macos")]
 mod imp {
@@ -167,12 +168,31 @@ fn request_report_with(
         deadline,
     )?;
     deadline.ensure_remaining()?;
-    let _ = request(
+    request(
         crate::system::permissions::permission_operation::PermissionOperation::Automation,
-        deadline,
-    )?;
+        deadline.capped(AUTOMATION_PROMPT_BUDGET),
+    )
+    .map_err(|error| automation_prompt_error(error, deadline))?;
     deadline.ensure_remaining()?;
     report(deadline)
+}
+
+fn automation_prompt_error(error: AdapterError, deadline: Deadline) -> AdapterError {
+    if error.code != agent_desktop_core::ErrorCode::Timeout || deadline.is_expired() {
+        return error;
+    }
+    AdapterError::new(
+        agent_desktop_core::ErrorCode::PermDenied,
+        "The Automation permission prompt for System Events did not finish in time",
+    )
+    .with_suggestion(AUTOMATION_SUGGESTION)
+    .with_details(serde_json::json!({
+        "kind": "automation_permission_pending",
+        "reason": "AUTOMATION_PERMISSION_PENDING",
+        "target": "System Events",
+        "prompt_budget_ms": AUTOMATION_PROMPT_BUDGET.as_millis() as u64,
+        "prompted": true,
+    }))
 }
 
 pub(crate) fn prompt_accessibility() -> bool {
