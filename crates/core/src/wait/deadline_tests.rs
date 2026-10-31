@@ -163,3 +163,21 @@ fn dropping_the_clock_restores_real_time() {
     assert!(resumed >= before);
     assert!(resumed.saturating_duration_since(before) < Duration::from_secs(1800));
 }
+
+#[test]
+fn a_slice_never_outlives_its_parent_deadline() {
+    let parent = Deadline::detached_after(50).unwrap();
+    let slice = parent.slice(3_000).unwrap();
+    let parent_remaining = parent.remaining();
+
+    assert!(slice.remaining() <= parent_remaining);
+}
+
+#[test]
+fn a_slice_ends_before_a_longer_parent_deadline() {
+    let parent = Deadline::detached_after(60_000).unwrap();
+    let slice = parent.slice(100).unwrap();
+
+    assert!(slice.remaining() <= std::time::Duration::from_millis(100));
+    assert!(!parent.is_expired());
+}

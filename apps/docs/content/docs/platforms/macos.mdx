@@ -11,7 +11,7 @@ agent-desktop reads macOS apps through the Accessibility (AX) API. The loop, ref
 - macOS 13 or later, Intel or Apple Silicon.
 - Accessibility permission for the app that launches agent-desktop, such as Terminal, iTerm2, VS Code, or your agent's host app. If System Settings lists the `agent-desktop` binary separately, grant it too.
 - Screen Recording permission, only for `screenshot` and for `session start --screenshots`.
-- Automation permission for System Events, only where a command reports it missing, such as opening Notification Center.
+- Automation permission for System Events, only where a command reports it missing, such as opening Notification Center before macOS 27. On macOS 27 the center opens from a click on the menu bar clock.
 
 ## Grant and check permissions
 

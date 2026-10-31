@@ -173,6 +173,13 @@ impl Deadline {
         }))
     }
 
+    /// A part of this deadline that ends `timeout_ms` from now, or at this
+    /// deadline if that comes first. A polling loop gives each observation one
+    /// slice so a single slow observation cannot spend the whole wait.
+    pub fn slice(self, timeout_ms: u64) -> Result<Self, AdapterError> {
+        Ok(Self::detached_after(timeout_ms)?.min_expiry(self))
+    }
+
     fn min_expiry(self, other: Self) -> Self {
         Self {
             capped: self.capped || other.expires_at < self.expires_at,

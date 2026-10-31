@@ -195,6 +195,12 @@ struct TextWaitInput {
     timeout_ms: u64,
 }
 
+/// Polls snapshots until the text appears. The first observation gets at most
+/// the default snapshot budget, so text near the top of a large tree is found
+/// without walking all of it. After an observation runs out of that budget or
+/// comes back incomplete without a match, each later observation gets the rest
+/// of the wait, so text deep in a slow tree and `--count`, which needs a
+/// complete tree, can still be satisfied.
 fn wait_for_text(
     input: TextWaitInput,
     adapter: &dyn PlatformAdapter,
@@ -219,18 +225,27 @@ fn wait_for_text(
         deadline,
     );
     let mut last_error = None;
+    let mut whole_wait_per_poll = false;
 
     loop {
-        match snapshot::build(adapter, &opts, app.as_deref(), None, deadline) {
+        let poll_deadline = if whole_wait_per_poll {
+            deadline
+        } else {
+            deadline.slice(snapshot::DEFAULT_SNAPSHOT_TIMEOUT_MS)?
+        };
+        match snapshot::build(adapter, &opts, app.as_deref(), None, poll_deadline) {
             Ok(mut result) => {
                 let matches = wait_text_match::find(&result.tree, &normalized_text, expected_count);
                 let matched = match expected_count {
                     Some(expected) => result.complete && matches.len() == expected,
                     None => !matches.is_empty(),
                 };
+                if !matched && !result.complete {
+                    whole_wait_per_poll = true;
+                }
                 if matched {
                     let store = RefStore::for_session(context.session_id())?;
-                    let snapshot_id = store.save_new_snapshot(&result.refmap)?;
+                    let snapshot_id = store.save_new_snapshot_detached(&result.refmap)?;
                     trace_artifacts::copy_refmap_if_full(
                         context,
                         &store,
@@ -257,8 +272,18 @@ fn wait_for_text(
                     return Ok(body);
                 }
             }
-            Err(AppError::Adapter(err)) if wait_timeout::is_deadline_expired(&err) => {
+            Err(AppError::Adapter(err))
+                if wait_timeout::is_deadline_expired(&err)
+                    && (deadline.is_expired() || !poll_deadline.is_expired()) =>
+            {
                 return wait_timeout::text(&text, timeout_ms, expected_count, last_error);
+            }
+            Err(AppError::Adapter(err)) if wait_timeout::is_deadline_expired(&err) => {
+                whole_wait_per_poll = true;
+                last_error = Some(json!({
+                    "code": err.code.as_str(),
+                    "message": err.message
+                }));
             }
             Err(err) if is_retryable_wait_app_error(&err) => {
                 last_error = Some(json!({

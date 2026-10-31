@@ -63,7 +63,6 @@ impl NcSession {
             return Err(closed_center_policy_error(policy));
         }
         let previous_app = frontmost_app(deadline)?;
-        crate::system::permissions::require_automation_permission()?;
         Self::open_with(
             previous_app,
             deadline,
@@ -226,15 +225,29 @@ fn merge_cleanup_results(
 }
 
 #[cfg(target_os = "macos")]
-fn nc_pid(deadline: Deadline) -> Result<Option<i32>, AdapterError> {
+pub(super) fn nc_pid(deadline: Deadline) -> Result<Option<i32>, AdapterError> {
+    pid_of("NotificationCenter", deadline)
+}
+
+/// Returns the pid of the current user's process whose executable name is
+/// exactly `name`. Another user's session can run the same agents under fast
+/// user switching, so the lookup is scoped to the effective user.
+#[cfg(target_os = "macos")]
+pub(super) fn pid_of(name: &str, deadline: Deadline) -> Result<Option<i32>, AdapterError> {
+    let uid = unsafe { libc::geteuid() };
     let mut command = std::process::Command::new("/usr/bin/pgrep");
-    command.arg("-x").arg("NotificationCenter");
+    command.arg("-x").arg("-U").arg(uid.to_string()).arg(name);
     let output = crate::system::process::run_with_deadline(
         &mut command,
-        "pgrep NotificationCenter",
+        &format!("pgrep {name}"),
         operation_deadline(deadline, std::time::Duration::from_secs(1))?,
     );
     nc_pid_from_output(output)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(super) fn pid_of(_name: &str, _deadline: Deadline) -> Result<Option<i32>, AdapterError> {
+    Ok(None)
 }
 
 #[cfg(target_os = "macos")]
@@ -253,7 +266,7 @@ fn nc_pid_from_output(
 }
 
 #[cfg(target_os = "macos")]
-fn is_nc_open(pid: i32, deadline: Deadline) -> bool {
+pub(super) fn is_nc_open(pid: i32, deadline: Deadline) -> bool {
     use crate::tree::element_for_pid;
 
     let app = element_for_pid(pid);
@@ -272,8 +285,19 @@ fn is_nc_open(_pid: i32, _deadline: Deadline) -> bool {
     false
 }
 
+/// Opens Notification Center from the menu bar clock, falling back to the
+/// System Events script used by earlier releases when no host exposes it.
 #[cfg(target_os = "macos")]
 fn open_nc(deadline: Deadline) -> Result<(), AdapterError> {
+    if super::clock_extra::open_from_clock(deadline)? {
+        return Ok(());
+    }
+    open_nc_with_system_events(deadline)
+}
+
+#[cfg(target_os = "macos")]
+fn open_nc_with_system_events(deadline: Deadline) -> Result<(), AdapterError> {
+    crate::system::permissions::require_automation_permission()?;
     let script = r#"tell application "System Events" to tell its application process "ControlCenter"
         click (first menu bar item of menu bar 1 whose description is "Clock")
     end tell"#;

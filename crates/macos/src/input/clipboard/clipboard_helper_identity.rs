@@ -117,17 +117,21 @@ impl HelperIdentity {
             let owner = metadata.uid();
             let mode = metadata.mode();
             let sticky = mode & 0o1000 != 0;
-            if !metadata.file_type().is_dir()
-                || (owner != 0 && owner != unsafe { libc::geteuid() })
-                || (mode & 0o022 != 0 && !sticky)
-                || acl_has_mutating_allow(directory).map_err(|error| {
-                    invalid(format!("Could not verify helper directory ACL: {error}"))
-                })?
-            {
-                return Err(invalid(format!(
-                    "Helper path crosses a directory writable by an untrusted principal: {}",
-                    directory.display()
-                )));
+            let risk = if !metadata.file_type().is_dir() {
+                Some(DirectoryRisk::NotADirectory)
+            } else if owner != 0 && owner != unsafe { libc::geteuid() } {
+                Some(DirectoryRisk::OtherOwner)
+            } else if mode & 0o022 != 0 && !sticky {
+                Some(DirectoryRisk::WritableByOthers)
+            } else if acl_has_mutating_allow(directory).map_err(|error| {
+                invalid(format!("Could not verify helper directory ACL: {error}"))
+            })? {
+                Some(DirectoryRisk::AclGrantsWrite)
+            } else {
+                None
+            };
+            if let Some(risk) = risk {
+                return Err(untrusted_directory(directory, risk));
             }
             ancestors.push(DirectoryIdentity {
                 path: directory.to_path_buf(),
@@ -254,6 +258,50 @@ fn acl_has_mutating_allow(path: &std::path::Path) -> std::io::Result<bool> {
     };
     unsafe { acl_free(acl) };
     result
+}
+
+/// Why a directory above the helper lets another account replace it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum DirectoryRisk {
+    NotADirectory,
+    OtherOwner,
+    WritableByOthers,
+    AclGrantsWrite,
+}
+
+impl DirectoryRisk {
+    fn suggestion(self, shown: &str) -> String {
+        const RELOCATE: &str =
+            "install the release archive into a directory only you can write, such as ~/.local/bin";
+        match self {
+            Self::WritableByOthers => {
+                format!(
+                    "Remove group and world write access from {shown} with chmod go-w, or {RELOCATE}"
+                )
+            }
+            Self::AclGrantsWrite => format!(
+                "Remove the access control entry that lets another account write to {shown}, or {RELOCATE}"
+            ),
+            Self::NotADirectory | Self::OtherOwner => format!("Reinstall: {RELOCATE}"),
+        }
+    }
+}
+
+/// Reports a helper that another account could replace. Homebrew leaves
+/// `/opt/homebrew/lib` group-writable, and `npm install -g` places the helper
+/// below it when Node comes from Homebrew, so the error names the directory
+/// and the change that makes it trusted.
+fn untrusted_directory(directory: &std::path::Path, risk: DirectoryRisk) -> AdapterError {
+    let shown = directory.display().to_string();
+    let mut error = invalid_with_kind(
+        format!("Helper path crosses a directory writable by an untrusted principal: {shown}"),
+        "clipboard_helper_untrusted_directory",
+    )
+    .with_suggestion(risk.suggestion(&shown));
+    if let Some(details) = error.details.as_mut() {
+        details["directory"] = serde_json::json!(shown);
+    }
+    error
 }
 
 fn invalid(detail: impl Into<String>) -> AdapterError {

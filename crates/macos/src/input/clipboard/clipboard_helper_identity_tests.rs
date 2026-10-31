@@ -131,3 +131,42 @@ fn helper_identity_accepts_current_user_acl_on_helper_and_ancestor() {
     std::fs::remove_file(helper).unwrap();
     std::fs::remove_dir(root).unwrap();
 }
+
+#[test]
+fn group_writable_ancestor_names_the_directory_and_the_fix() {
+    let root = fixture_root();
+    let lib = root.join("lib");
+    let bin = lib.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::set_permissions(&lib, std::fs::Permissions::from_mode(0o775)).unwrap();
+    let helper = bin.join(protocol::HELPER_BASENAME);
+    create_helper(&helper);
+
+    let error = HelperIdentity::read(helper).expect_err("a group-writable ancestor is untrusted");
+    let details = error.details.expect("details");
+    let shown = lib.canonicalize().unwrap().display().to_string();
+
+    assert_eq!(details["kind"], "clipboard_helper_untrusted_directory");
+    assert_eq!(details["directory"], shown);
+    let suggestion = error.suggestion.expect("suggestion");
+    assert!(suggestion.contains("chmod go-w"));
+    assert!(suggestion.contains(&shown));
+    std::fs::set_permissions(&lib, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn only_a_mode_problem_suggests_chmod() {
+    for (risk, expects_chmod) in [
+        (DirectoryRisk::WritableByOthers, true),
+        (DirectoryRisk::AclGrantsWrite, false),
+        (DirectoryRisk::OtherOwner, false),
+        (DirectoryRisk::NotADirectory, false),
+    ] {
+        let error = untrusted_directory(std::path::Path::new("/opt/homebrew/lib"), risk);
+        let suggestion = error.suggestion.expect("suggestion");
+
+        assert_eq!(suggestion.contains("chmod"), expects_chmod, "{risk:?}");
+        assert!(suggestion.contains("~/.local/bin"), "{risk:?}");
+    }
+}

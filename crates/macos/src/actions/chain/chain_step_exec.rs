@@ -80,6 +80,13 @@ mod imp {
                 if !policy.is_headed() {
                     return Ok(DeliveryOutcome::NotDelivered);
                 }
+                if matches!(button, agent_desktop_core::MouseButton::Right) {
+                    return crate::actions::chain::chain_menu_steps::verify_menu_opened_by(
+                        el,
+                        ctx.deadline,
+                        || physical_click(el, button.clone(), *count, ctx, policy),
+                    );
+                }
                 physical_click(el, button.clone(), *count, ctx, policy)?;
                 Ok(DeliveryOutcome::DeliveredUnverified)
             }
