@@ -60,8 +60,9 @@ On Linux, also run `cargo build --release -p agent-desktop-linux --bins` and kee
 
 ## Permissions
 
-**macOS** needs Accessibility permission. Screenshots also need Screen Recording, and opening Notification Center
-needs Automation permission for System Events. `agent-desktop permissions` reports the state without prompting,
+**macOS** needs Accessibility permission. Screenshots also need Screen Recording. On macOS 27, opening Notification
+Center clicks the menu bar clock; earlier versions open it through System Events, which needs Automation permission.
+`agent-desktop permissions` reports the state without prompting,
 `--request` asks for what is missing, and `--guide` opens System Settings at the missing permission with an on-screen
 guide.
 
