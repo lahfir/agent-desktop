@@ -27,7 +27,7 @@ A fixed sleep either wastes time or races the app. agent-desktop gives you two w
 
 ## Wait inside the action
 
-`--wait-for` polls the ref's original process and source surface until the selector matches, then returns a fresh snapshot with the action's own report under `after_action`, so you can act on the new refs at once:
+`--wait-for` polls the ref's original process until the selector matches, then returns a fresh snapshot with the action's own report under `after_action`, so you can act on the new refs at once. Application-owned refs keep their source surface. Window-owned refs stay pinned to their original window, including refs captured from a sheet, alert, popover, focused view, or window-owned Linux menu:
 
 ```bash
 agent-desktop click @s8f3k2p9:e5 --wait-for "button:Done" --wait-timeout 10000

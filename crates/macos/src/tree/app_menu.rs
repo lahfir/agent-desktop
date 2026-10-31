@@ -10,29 +10,15 @@ pub(crate) fn observe<T>(
     mut operation: impl FnMut() -> Result<T, AdapterError>,
 ) -> Result<T, AdapterError> {
     surface_read::ensure_before_deadline(deadline)?;
+    let mut reacquired = false;
     super::resolve::retry_incomplete_until(deadline, || {
-        reacquire_once(deadline, || {
+        reacquire_once(deadline, &mut reacquired, || {
             require_generation(identity)?;
             let result = operation();
             require_generation(identity)?;
-            result.map_err(retryable_incomplete)
+            result
         })
     })
-}
-
-fn retryable_incomplete(mut error: AdapterError) -> AdapterError {
-    if matches!(error.code, ErrorCode::Timeout | ErrorCode::AppUnresponsive)
-        && let Some(details) = error
-            .details
-            .as_mut()
-            .and_then(serde_json::Value::as_object_mut)
-        && details.get("complete") == Some(&serde_json::Value::Bool(false))
-    {
-        details.entry("retryable").or_insert(true.into());
-        let details = error.details.take().unwrap_or_default();
-        error = error.with_details(details);
-    }
-    error
 }
 
 fn require_generation(
@@ -49,30 +35,32 @@ fn require_generation(
 
 fn reacquire_once<T>(
     deadline: Instant,
+    reacquired: &mut bool,
     mut operation: impl FnMut() -> Result<T, AdapterError>,
 ) -> Result<T, AdapterError> {
-    surface_read::ensure_before_deadline(deadline)?;
-    let first = operation();
-    if !first.as_ref().is_err_and(invalidated) {
-        return first;
-    }
-    surface_read::ensure_before_deadline(deadline)?;
-    operation().map_err(|mut error| {
-        if invalidated(&error) {
-            error.code = ErrorCode::AppUnresponsive;
-            let mut details = error
-                .details
-                .take()
-                .unwrap_or_else(|| serde_json::json!({}));
-            if let Some(fields) = details.as_object_mut() {
-                fields.insert("complete".into(), false.into());
-                fields.insert("retryable".into(), true.into());
-                fields.insert("menu_root_reacquired".into(), true.into());
+    loop {
+        surface_read::ensure_before_deadline(deadline)?;
+        match operation() {
+            Err(mut error) if invalidated(&error) => {
+                if !*reacquired {
+                    *reacquired = true;
+                    continue;
+                }
+                error.code = ErrorCode::AppUnresponsive;
+                let mut details = error
+                    .details
+                    .take()
+                    .unwrap_or_else(|| serde_json::json!({}));
+                if let Some(fields) = details.as_object_mut() {
+                    fields.insert("complete".into(), false.into());
+                    fields.insert("retryable".into(), false.into());
+                    fields.insert("menu_root_reacquired".into(), true.into());
+                }
+                return Err(error.with_details(details));
             }
-            error = error.with_details(details);
+            result => return result,
         }
-        error
-    })
+    }
 }
 
 fn invalidated(error: &AdapterError) -> bool {
@@ -100,13 +88,7 @@ pub(super) fn require_root<T>(
     surface: SnapshotSurface,
     message: &str,
 ) -> Result<T, AdapterError> {
-    read?.ok_or_else(|| {
-        AdapterError::element_not_found(message).with_details(serde_json::json!({
-            "kind": "surface_absent",
-            "complete": true,
-            "surface": surface.as_str(),
-        }))
-    })
+    read?.ok_or_else(|| AdapterError::surface_absent(surface, message))
 }
 
 #[cfg(target_os = "macos")]
@@ -116,8 +98,7 @@ fn menubar_for_pid(pid: i32, deadline: Instant) -> Result<Option<AXElement>, Ada
         return Ok(None);
     };
     if !has_role(&menubar, "AXMenuBar", deadline)? {
-        return Err(AdapterError::new(ErrorCode::AppUnresponsive, "Application returned an invalid menu bar root")
-            .with_details(serde_json::json!({ "kind": "surface_root_invalid", "surface": "menubar", "complete": false })));
+        return Err(invalid_root_error());
     }
     Ok(Some(menubar))
 }
@@ -282,6 +263,17 @@ fn has_role(element: &AXElement, expected: &str, deadline: Instant) -> Result<bo
     Ok(surface_read::string(element, "AXRole", deadline)?.as_deref() == Some(expected))
 }
 
+fn invalid_root_error() -> AdapterError {
+    AdapterError::new(
+        ErrorCode::AppUnresponsive,
+        "Application returned an invalid menu bar root",
+    )
+    .with_details(serde_json::json!({
+        "kind": "surface_root_invalid", "surface": "menubar", "complete": false,
+        "retryable": false,
+    }))
+}
+
 fn surface_limit_error() -> AdapterError {
     AdapterError::new(
         ErrorCode::AppUnresponsive,
@@ -291,6 +283,7 @@ fn surface_limit_error() -> AdapterError {
         "kind": "surface_search_limit",
         "limit": MAX_SURFACE_NODES,
         "complete": false,
+        "retryable": false,
     }))
     .with_suggestion("Retry with the target application in a more stable UI state")
 }

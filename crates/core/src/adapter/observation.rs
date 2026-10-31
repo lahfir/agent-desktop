@@ -36,12 +36,13 @@ pub trait ObservationOps: Send + Sync {
         Err(AdapterError::not_supported("focused_app"))
     }
 
-    /// Reports proven nonspatial semantic targets, including protocol objects and verified native menus.
-    /// Semantic delivery still requires fresh identity, complete live state and action capability.
+    /// Reports protocol targets that have no screen position without requiring a native read.
     fn is_nonspatial_target(&self, _handle: &NativeHandle) -> bool {
         false
     }
 
+    /// Reports proven nonspatial targets, including native menus, within the observation deadline.
+    /// Semantic delivery still requires fresh identity, complete live state and action capability.
     fn is_nonspatial_target_with_deadline(
         &self,
         handle: &NativeHandle,

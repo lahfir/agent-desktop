@@ -36,19 +36,13 @@ pub(crate) fn resolve_ref_owner(
     entry: &crate::RefEntry,
     deadline: Deadline,
 ) -> Result<RefOwnerObservation, AppError> {
-    let instance = entry
-        .process
-        .process_instance
-        .as_deref()
-        .filter(|instance| !instance.is_empty())
-        .ok_or_else(|| {
-            AdapterError::new(
-                crate::ErrorCode::ActionNotSupported,
-                "Ref has no process-instance identity for post-action observation",
-            )
-        })?;
+    let process = entry.process.identity().ok_or_else(|| {
+        AdapterError::new(
+            crate::ErrorCode::ActionNotSupported,
+            "Ref has no process-instance identity for post-action observation",
+        )
+    })?;
     if adapter.is_application_surface(entry.source.source_surface) {
-        let process = crate::ProcessIdentity::new(entry.process.pid, instance);
         return Ok(match adapter.process_state(process, deadline)? {
             ProcessState::Running => RefOwnerObservation::Present(SnapshotOwner::Application(
                 application_from_ref(entry)?,
@@ -71,7 +65,7 @@ pub(crate) fn resolve_ref_owner(
         title: entry.source.source_window_title.clone().unwrap_or_default(),
         app: entry.source.source_app.clone().unwrap_or_default(),
         pid: entry.process.pid,
-        process_instance: Some(instance.to_owned()),
+        process_instance: Some(process.instance.clone()),
         bounds: None,
         state: Default::default(),
     };
@@ -89,10 +83,7 @@ pub(crate) fn resolve_ref_owner(
             Ok(RefOwnerObservation::Present(SnapshotOwner::Window(window)))
         }
         Err(error) if error.code == crate::ErrorCode::WindowNotFound => {
-            let state = match adapter.process_state(
-                crate::ProcessIdentity::new(entry.process.pid, instance),
-                deadline,
-            ) {
+            let state = match adapter.process_state(process, deadline) {
                 Ok(state) => state,
                 Err(error) if error.is_default_not_supported("process_state") => {
                     return Ok(RefOwnerObservation::Absent(None));
@@ -120,12 +111,17 @@ pub(crate) fn application_from_ref(entry: &crate::RefEntry) -> Result<crate::App
     })
 }
 
+pub(crate) fn ref_observation_surface(
+    adapter: &dyn PlatformAdapter,
+    entry: &crate::RefEntry,
+) -> SnapshotSurface {
+    if adapter.is_application_surface(entry.source.source_surface) {
+        entry.source.source_surface
+    } else {
+        SnapshotSurface::Window
+    }
+}
+
 pub(crate) fn is_confirmed_surface_absence(error: &AppError, surface: SnapshotSurface) -> bool {
-    matches!(error, AppError::Adapter(error)
-    if error.code == crate::ErrorCode::ElementNotFound
-        && error.details.as_ref().is_some_and(|details| {
-            details["kind"] == "surface_absent"
-                && details["complete"] == true
-                && details["surface"] == surface.as_str()
-        }))
+    matches!(error, AppError::Adapter(error) if error.is_confirmed_surface_absence(surface))
 }

@@ -1,13 +1,12 @@
 use crate::{
     AppError, ErrorCode,
     adapter::{PlatformAdapter, TreeOptions},
+    commands::selector_observation::SelectorObservation,
     commands::{query, snapshot as snapshot_cmd, wait_timeout},
     context::CommandContext,
-    locator::live_locator::{
-        LocatorMaterialization, LocatorResolveRequest, LocatorSelection, resolve_query,
-    },
     refs::refs_store::RefStore,
     snapshot::{self, emit_snapshot_saved},
+    system::process_state::ProcessState,
     trace::trace_artifacts,
 };
 use serde_json::{Value, json};
@@ -33,12 +32,15 @@ pub fn execute(
 }
 
 pub(crate) fn execute_with_ref(
-    input: WaitSelectorInput,
+    mut input: WaitSelectorInput,
     entry: Option<&crate::RefEntry>,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     let query = query::validate_selector(&input.query_raw)?;
+    if let Some(entry) = entry {
+        input.opts.surface = snapshot::surface_target::ref_observation_surface(adapter, entry);
+    }
 
     let start = Instant::now();
     let deadline = crate::Deadline::at(start, input.timeout_ms)?;
@@ -48,13 +50,7 @@ pub(crate) fn execute_with_ref(
         adapter,
         crate::SignalFilter {
             app: input.app.clone(),
-            process: entry.and_then(|entry| {
-                entry
-                    .process
-                    .process_instance
-                    .as_deref()
-                    .map(|instance| crate::ProcessIdentity::new(entry.process.pid, instance))
-            }),
+            process: entry.and_then(|entry| entry.process.identity()),
         },
         deadline,
         |poll_deadline| {
@@ -167,6 +163,9 @@ pub(crate) fn poll_selector<T>(
             return Ok(None);
         }
         scheduler.wait(deadline);
+        if deadline.is_expired() {
+            return Ok(None);
+        }
     }
 }
 
@@ -217,41 +216,24 @@ fn observe_selector(
     query: &crate::LocatorQuery,
     deadline: crate::Deadline,
 ) -> Result<Option<bool>, AppError> {
-    let owners = resolve_owners(adapter, input, entry, deadline)?;
-    if owners.is_empty() {
-        return Ok(Some(false));
-    }
-    let request = LocatorResolveRequest {
-        selection: LocatorSelection::First,
-        deadline,
-        max_raw_depth: 50,
-        surface: (input.opts.surface != crate::SnapshotSurface::Window)
-            .then_some(input.opts.surface),
-        materialization: LocatorMaterialization::None,
-    };
-    let observed = snapshot::first_surface_owner(owners, |owner| {
-        resolve_query(
+    let observation = if let Some(entry) = entry {
+        SelectorObservation::observe_ref(adapter, entry, query, deadline)?
+    } else {
+        SelectorObservation::observe_owners(
             adapter,
+            resolve_owners(adapter, input, None, deadline)?,
+            input.opts.surface,
             query,
-            owner.observation_root(input.opts.surface),
-            &request,
-        )
-    });
-    let (_, resolution) = match observed {
-        Err(error)
-            if snapshot::surface_target::is_confirmed_surface_absence(
-                &error,
-                input.opts.surface,
-            ) =>
-        {
-            return Ok(Some(false));
-        }
-        result => result?,
+            deadline,
+        )?
     };
-    if !resolution.meta.selection_complete {
-        return Ok(None);
+    match observation {
+        SelectorObservation::Selector { matches, complete } => Ok(complete.then_some(matches)),
+        SelectorObservation::OwnerUnavailable(
+            ProcessState::Exited { .. } | ProcessState::Crashed { .. },
+        ) => Ok(Some(false)),
+        SelectorObservation::OwnerUnavailable(state) => Err(owner_unavailable(state)),
     }
-    Ok(Some(resolution.meta.total_matches > 0))
 }
 
 fn build_materialization(
@@ -277,15 +259,7 @@ fn resolve_owners(
         return match snapshot::surface_target::resolve_ref_owner(adapter, entry, deadline)? {
             RefOwnerObservation::Present(owner) => Ok(vec![owner]),
             RefOwnerObservation::Absent(_) => Ok(Vec::new()),
-            RefOwnerObservation::Unavailable(state) => {
-                Err(crate::AdapterError::app_unresponsive("Ref owner")
-                    .with_details(json!({
-                        "kind": "ref_owner_unavailable",
-                        "retryable": true,
-                        "process_state": state.label(),
-                    }))
-                    .into())
-            }
+            RefOwnerObservation::Unavailable(state) => Err(owner_unavailable(state)),
         };
     }
     snapshot::surface_target::resolve_owners(
@@ -295,6 +269,16 @@ fn resolve_owners(
         input.opts.surface,
         deadline,
     )
+}
+
+fn owner_unavailable(state: ProcessState) -> AppError {
+    crate::AdapterError::app_unresponsive("Ref owner")
+        .with_details(json!({
+            "kind": "ref_owner_unavailable",
+            "retryable": true,
+            "process_state": state.label(),
+        }))
+        .into()
 }
 
 fn build_snapshot(

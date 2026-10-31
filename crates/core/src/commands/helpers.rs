@@ -154,7 +154,7 @@ pub(crate) fn apply_post_action_wait(
         app: entry.source.source_app.clone(),
         window_id: entry.source.source_window_id.clone(),
         opts: TreeOptions {
-            surface: entry.source.source_surface,
+            surface: crate::snapshot::surface_target::ref_observation_surface(adapter, entry),
             ..Default::default()
         },
         timeout_ms: wait.timeout_ms,

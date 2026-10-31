@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    AccessibilityNode, DeliverySemantics, ErrorCode, WindowInfo,
+    AccessibilityNode, DeliverySemantics, ErrorCode, ProcessIdentity, WindowInfo,
     adapter::{ActionOps, InputOps, ObservationOps, SystemOps},
     locator::live_locator::{ObservationRequest, ObservationRoot, ObservedTree},
 };
@@ -58,7 +58,15 @@ impl ObservationOps for ProbeAdapter {
                 assert_eq!(app.process_instance.as_deref(), Some("test-instance"));
                 app.pid
             }
-            ObservationRoot::Window(window) => window.pid,
+            ObservationRoot::Window(window) => {
+                if request.surface != crate::SnapshotSurface::Window {
+                    return Err(AdapterError::new(
+                        ErrorCode::ElementNotFound,
+                        "No open child surface",
+                    ));
+                }
+                window.pid
+            }
             ObservationRoot::Element { .. } => {
                 return Err(AdapterError::internal("unexpected element root"));
             }
@@ -348,3 +356,38 @@ mod lifecycle_tests;
 
 #[path = "post_action_observation_surface_tests.rs"]
 mod surface_tests;
+
+#[test]
+fn sheet_ref_waits_observe_window_presence_and_confirm_absence() {
+    let _home = crate::refs::refs_test_support::HomeGuard::new();
+    let mut source = entry();
+    source.source.source_surface = crate::SnapshotSurface::Sheet;
+    let mut adapter = windowless_adapter();
+    adapter.windows = vec![window(1, "test-instance")];
+    assert!(
+        delivered_wait(&adapter, &source, false)
+            .unwrap()
+            .get("snapshot_id")
+            .is_some()
+    );
+    assert_eq!(
+        delivered_wait(&adapter, &source, true).unwrap_err().code(),
+        "TIMEOUT"
+    );
+    adapter.matching_pid = None;
+    assert_eq!(
+        delivered_wait(&adapter, &source, true).unwrap()["target_absent"],
+        true
+    );
+    let result = observe(&wait_for_ready(true), &source, &adapter);
+    assert_eq!(result["outcome"], "expected_state_observed");
+    assert_eq!(result["surface"], "window");
+    assert!(
+        adapter
+            .observed
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(_, surface)| *surface == crate::SnapshotSurface::Window)
+    );
+}

@@ -27,19 +27,10 @@ pub(crate) fn execute_single_shot(
             crate::HeadedRequirement::FocusedApplication
                 | crate::HeadedRequirement::FocusedApplicationAndCursor
         ) {
-            let instance = context
-                .entry
-                .process
-                .process_instance
-                .as_deref()
-                .filter(|instance| !instance.is_empty())
-                .ok_or_else(|| {
-                    AdapterError::stale_ref_because("Target process identity is unavailable")
-                })?;
-            context.adapter.focus_app(
-                crate::ProcessIdentity::new(context.entry.process.pid, instance),
-                lease,
-            )?;
+            let process = context.entry.process.identity().ok_or_else(|| {
+                AdapterError::stale_ref_because("Target process identity is unavailable")
+            })?;
+            context.adapter.focus_app(process, lease)?;
         } else if requirement.requires_focus() {
             crate::actions::headed_focus::focus_entry_window(
                 context.entry,

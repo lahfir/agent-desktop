@@ -42,7 +42,7 @@ Exit codes: `0` success, `1` structured error, `2` argument error. The `error` o
 | Code | Meaning | Recovery |
 |------|---------|----------|
 | `PERM_DENIED` | A required OS permission is missing | Read the platform skill |
-| `ELEMENT_NOT_FOUND` | Ref cannot be resolved in the live UI | Snapshot again |
+| `ELEMENT_NOT_FOUND` | Ref is absent, or the requested surface is closed | Read `details.kind`; open the requested surface or refresh only after checking the UI |
 | `STALE_REF` | Ref no longer matches the live UI | Snapshot again, use the new ref |
 | `AMBIGUOUS_TARGET` | Several live elements match the old identity | Narrow with `find`, then use the new ref |
 | `SNAPSHOT_NOT_FOUND` | Snapshot id missing or expired | Snapshot again |
@@ -57,6 +57,8 @@ Exit codes: `0` success, `1` structured error, `2` argument error. The `error` o
 | `PLATFORM_NOT_SUPPORTED` | The adapter lacks this method or surface | Use another approach |
 | `NOTIFICATION_NOT_FOUND` | Notification index or fingerprint no longer matches | List again |
 | `INTERNAL` | Unexpected OS failure | Read `message`. Retry once only if `disposition.retry` is `safe` |
+
+`ELEMENT_NOT_FOUND` with `details.kind: "surface_absent"` and `details.complete: true` is a completed closed-surface answer. Missing `complete`, `complete: false`, a timeout or an incomplete read is unknown, not absent. For a macOS menu, snapshot `menubar`, click its item without `--headed`, then snapshot `--surface menu`. If the earlier action has `delivery_uncertain` and `retry: unsafe`, inspect the current UI before any action; do not repeat it.
 
 `TIMEOUT` `details.kind` values: `actionability_timeout` (the target never became actionable), `wait_timeout` (a `wait` condition; carries `predicate`, `timeout_ms`, `last_observed` or `last_error`), `chain_deadline` (an activation chain ran out of time; carries `value_before`, `value_at_timeout`, `target`, `mutated`). With `chain_deadline`, `mutated: true` or an unknown expanded state means re-read before you retry. `mutated: false` means a direct retry is safe.
 
@@ -160,8 +162,8 @@ agent-desktop click @s8f3k2p9:e5 --wait-for-gone "progressindicator" --wait-time
 - The selector is `role:text`, split on the first `:`. `"button"` is role only. `":Saved!"` is text only. Text searches name, value and description.
 - They work on `snapshot`, `press` and every ref action. Other commands (`find`, `launch`, ...) return `INVALID_ARGS`. `--root` cannot combine with them. Batch entries never inherit an outer `-w`.
 - `--wait-timeout` defaults to 30000. On expiry: exit `1`, `TIMEOUT`, `details.kind: "wait_timeout"`, `details.snapshot_id` of the last tree. A post-action timeout also embeds `details.after_action`.
-- A ref action polls its original process, source surface, and source window when present. A macOS menu ref polls the application menu without requiring a window. To observe a different surface after an action, use a separate `snapshot` with the desired `--surface` and wait selector. The action result is kept under `after_action`.
-- After `delivery_uncertain`, `error.details.post_action_observation` reports read-only evidence with `outcome`, `selector`, `expected`, `surface`, `process_identity`, and `elapsed_ms`; optional fields are `source_window_id`, `selector_matches`, `process_state`, and `last_observation_error`. Outcomes are `expected_state_observed`, `process_exited`, `process_crashed`, `owner_unavailable`, `observation_failed`, `timed_out`, and `identity_unavailable`. The original error and unsafe retry disposition remain unchanged, even when the expected state is observed. The wait has its own `--wait-timeout` budget.
+- A ref action polls its original process. Application-owned refs keep their source surface, including macOS `menu` and `menubar` without a window. Window-owned refs observe their original pinned window, even when captured from `sheet`, `alert`, `popover`, `focused`, or a window-owned `menu` such as a Linux menu. To observe a different surface after an action, use a separate `snapshot` with the desired `--surface` and wait selector. The action result is kept under `after_action`.
+- After `delivery_uncertain`, `error.details.post_action_observation` reports read-only evidence with `outcome`, `selector`, `expected`, `surface`, `process_identity`, and `elapsed_ms`; optional fields are `source_window_id`, `selector_matches`, `process_state`, and `last_observation_error`. `surface` names the observed scope. `process_state` is `unresponsive`, `exited` or `crashed`; `running` is never emitted. Outcomes are `expected_state_observed`, `process_exited`, `process_crashed`, `owner_unavailable`, `observation_failed`, `timed_out`, and `identity_unavailable`. Transient read errors that persist to the deadline end as `timed_out` with the last error; `observation_failed` means a terminal error stopped observation. The original error and unsafe retry disposition remain unchanged, even when the expected state is observed. The wait has its own `--wait-timeout` budget.
 - `--wait-for-gone` succeeds with `{ "gone": true, "target_absent": true }` when the app or window itself closed.
 - For `drag`, `--wait-for-scope to|from` picks which endpoint window to poll (default `to`).
 

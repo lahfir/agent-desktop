@@ -50,45 +50,68 @@ fn current_identity() -> crate::system::process::process_identity::ProcessIdenti
 }
 
 #[test]
-fn menu_observation_retries_incomplete_reads_before_the_original_deadline() {
-    for code in [ErrorCode::AppUnresponsive, ErrorCode::Timeout] {
-        let mut reads = 0;
-        let deadline = Instant::now() + Duration::from_secs(1);
-        let result = observe(current_identity(), deadline, || {
+fn menu_observation_retries_native_transience_but_not_deterministic_incompleteness() {
+    let mut reads = 0;
+    let result = observe(
+        current_identity(),
+        Instant::now() + Duration::from_secs(1),
+        || {
             reads += 1;
             if reads == 1 {
-                Err(AdapterError::new(code.clone(), "incomplete menu")
-                    .with_details(serde_json::json!({ "complete": false })))
+                Err(surface_read::map_error(
+                    "AXRole",
+                    accessibility_sys::kAXErrorCannotComplete,
+                ))
             } else {
                 Ok("fresh menu")
             }
-        });
-        assert_eq!(result.unwrap(), "fresh menu");
-        assert_eq!(reads, 2);
-    }
-}
-
-#[test]
-fn incomplete_menu_observation_keeps_its_deadline_and_diagnosis() {
-    let identity = current_identity();
-    let expired = observe::<()>(identity, Instant::now(), || {
-        panic!("expired observation must not read a menu")
-    });
-    assert_eq!(expired.unwrap_err().code, ErrorCode::Timeout);
-    let deadline = Instant::now() + Duration::from_millis(25);
+        },
+    );
+    assert_eq!(result.unwrap(), "fresh menu");
+    assert_eq!(reads, 2);
     let mut reads = 0;
-    let error = observe::<()>(identity, deadline, || {
-        reads += 1;
-        std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
-        Err(surface_limit_error())
+    let error = observe(
+        current_identity(),
+        Instant::now() + Duration::from_secs(1),
+        || {
+            reads += 1;
+            match reads {
+                1 | 3 => Err(surface_read::map_error(
+                    "AXRole",
+                    accessibility_sys::kAXErrorInvalidUIElement,
+                )),
+                2 => Err(surface_read::map_error(
+                    "AXRole",
+                    accessibility_sys::kAXErrorCannotComplete,
+                )),
+                _ => Ok("must not reacquire again"),
+            }
+        },
+    )
+    .unwrap_err();
+    assert_eq!(reads, 3);
+    assert!(!error.permits_retry_by_default());
+    assert_eq!(error.details.unwrap()["menu_root_reacquired"], true);
+    for expected in [surface_limit_error(), invalid_root_error()] {
+        let mut attempts = 0;
+        let error = observe::<()>(
+            current_identity(),
+            Instant::now() + Duration::from_secs(1),
+            || {
+                attempts += 1;
+                assert_eq!(attempts, 1);
+                Err(expected.clone())
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.details, expected.details);
+        assert!(!error.permits_retry_by_default());
+    }
+    let error = observe::<()>(current_identity(), Instant::now(), || {
+        panic!("expired observation must not read a menu")
     })
     .unwrap_err();
-    assert_eq!(reads, 1);
-    assert_eq!(error.code, ErrorCode::AppUnresponsive);
-    let details = error.details.unwrap();
-    assert_eq!(details["complete"], false);
-    assert_eq!(details["kind"], "surface_search_limit");
-    assert_eq!(details["deadline_elapsed"], true);
+    assert_eq!(error.code, ErrorCode::Timeout);
 }
 
 #[test]
@@ -312,15 +335,19 @@ fn invalidated_menu_roots_are_reacquired_once_and_permission_errors_are_terminal
         (kAXErrorAPIDisabled, 1),
     ] {
         let mut reads = 0;
-        let result = reacquire_once(Instant::now() + std::time::Duration::from_secs(1), || {
-            reads += 1;
-            if reads <= failures {
-                Err(AdapterError::new(ErrorCode::PermDenied, "read failed")
-                    .with_details(serde_json::json!({ "ax_error": ax_error })))
-            } else {
-                Ok("fresh root")
-            }
-        });
+        let result = reacquire_once(
+            Instant::now() + std::time::Duration::from_secs(1),
+            &mut false,
+            || {
+                reads += 1;
+                if reads <= failures {
+                    Err(AdapterError::new(ErrorCode::PermDenied, "read failed")
+                        .with_details(serde_json::json!({ "ax_error": ax_error })))
+                } else {
+                    Ok("fresh root")
+                }
+            },
+        );
         if ax_error == kAXErrorAPIDisabled {
             assert_eq!(reads, 1);
             assert_eq!(result.unwrap_err().code, ErrorCode::PermDenied);
@@ -334,6 +361,7 @@ fn invalidated_menu_roots_are_reacquired_once_and_permission_errors_are_terminal
                 let details = error.details.unwrap();
                 assert_eq!(details["complete"], false);
                 assert_eq!(details["menu_root_reacquired"], true);
+                assert_eq!(details["retryable"], false);
                 assert_eq!(details["ax_error"], kAXErrorInvalidUIElement);
             }
         }

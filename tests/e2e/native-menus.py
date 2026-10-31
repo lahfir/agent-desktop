@@ -148,19 +148,20 @@ def ok(result, label):
     return value
 
 
+def walk(node):
+    yield node
+    for child in node.get("children", []):
+        yield from walk(child)
+
+
 def refs_from(snapshot):
     data = snapshot.get("data", {})
     need(data.get("app") == "TextEdit" and "window" not in data, "menubar snapshot was not app-owned")
     need(data.get("complete") is True, "menubar snapshot was incomplete")
     found = {name: [] for name in ("File", "Edit", "Help")}
-
-    def walk(node):
+    for node in walk(data.get("tree", {})):
         if node.get("role") == "menuitem" and node.get("name") in found:
             found[node["name"]].append(node.get("ref_id"))
-        for child in node.get("children", []):
-            walk(child)
-
-    walk(data.get("tree", {}))
     refs = {}
     for name, matches in found.items():
         need(len(matches) == 1 and isinstance(matches[0], str)
@@ -254,8 +255,12 @@ def run(binary):
             snapshot = ok(cli(binary, env, "snapshot", "--app", "TextEdit", "--surface", "menubar"), "menubar snapshot")
             refs = refs_from(snapshot)
             require_windowless(pid)
-            help_result = ok(cli(binary, env, "--wait-for", "menuitem:Help", "--wait-timeout", "2000", "click", refs["Help"]), "headless Help click")
-            need("window" not in help_result.get("data", {}), "Help click returned data.window")
+            help_result = ok(cli(binary, env, "--wait-for", "menuitem:TextEdit Help", "--wait-timeout", "2000", "click", refs["Help"]), "headless Help click")
+            help_data = help_result.get("data", {})
+            need("window" not in help_data, "Help click returned data.window")
+            need(any(node.get("role") == "menuitem" and node.get("name") == "TextEdit Help" for node in walk(help_data.get("tree", {}))), "Help wait returned without the open submenu item")
+            names, selected = menu_state(pid)
+            need("Help" in names and selected == ["Help"], f"native AX did not show Help selected: {names}, {selected}")
             foreground_unchanged(previous, "Help click")
 
             require_windowless(pid)

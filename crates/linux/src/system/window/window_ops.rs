@@ -47,17 +47,19 @@ pub(crate) fn require_answered(
     outcomes: &[AppOutcome],
     named: bool,
 ) -> Result<Vec<ListedWindow>, AdapterError> {
-    if named && windows.is_empty() {
-        require_complete_frames(outcomes)?;
+    if named
+        && windows.is_empty()
+        && outcomes
+            .iter()
+            .any(|outcome| outcome.read == RootRead::TimedOut)
+    {
+        require_complete_frames(RootRead::TimedOut)?;
     }
     Ok(windows)
 }
 
-fn require_complete_frames(outcomes: &[AppOutcome]) -> Result<(), AdapterError> {
-    let unanswered = outcomes
-        .iter()
-        .any(|outcome| outcome.read == RootRead::TimedOut);
-    if unanswered {
+pub(crate) fn require_complete_frames(read: RootRead) -> Result<(), AdapterError> {
+    if read == RootRead::TimedOut {
         return Err(AdapterError::timeout(
             "The application did not answer in time, so its windows could not be listed",
         )
@@ -119,7 +121,7 @@ pub(crate) fn windows_of_process(
     bus: &SharedBus,
     pid: u32,
     deadline: Deadline,
-) -> Result<Vec<WindowInfo>, AdapterError> {
+) -> Result<(Vec<WindowInfo>, RootRead), AdapterError> {
     let pending = x11::start(|| DisplayReader.read());
     let desktops = x11::start(desktops::read);
     let registry = read_registry_for(bus, Some(pid), deadline)?;
@@ -130,13 +132,24 @@ pub(crate) fn windows_of_process(
         pass.windows,
         stopped_target(&registry, select, proc_stat::is_stopped),
     )?;
-    require_complete_frames(&pass.outcomes)?;
+    let read = if pass
+        .outcomes
+        .iter()
+        .any(|outcome| outcome.read == RootRead::TimedOut)
+    {
+        RootRead::TimedOut
+    } else {
+        RootRead::Read
+    };
     finish_listing(
         &mut pass,
         &state,
         desktops.finish(deadline).flatten().as_ref(),
     );
-    Ok(pass.windows.into_iter().map(|window| window.info).collect())
+    Ok((
+        pass.windows.into_iter().map(|window| window.info).collect(),
+        read,
+    ))
 }
 
 /// The focused window, or none when the available sources do not agree.

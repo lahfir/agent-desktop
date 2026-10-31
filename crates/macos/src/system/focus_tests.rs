@@ -79,3 +79,37 @@ fn failed_verification_preserves_delivery_and_original_error() {
         );
     }
 }
+
+#[test]
+fn frontmost_verification_timeout_preserves_activation_delivery() {
+    for delivered in [false, true] {
+        let deadline = Deadline::after(100).unwrap();
+        let reads = Cell::new(0);
+        let error = focus_until(
+            deadline,
+            || {
+                reads.set(reads.get() + 1);
+                Ok(false)
+            },
+            || {
+                std::thread::sleep(deadline.remaining());
+                Ok(delivered)
+            },
+        )
+        .unwrap_err();
+        assert_eq!(reads.get(), 2);
+        assert_eq!(error.code, ErrorCode::Timeout);
+        assert_eq!(
+            error.details.as_ref().unwrap()["kind"],
+            "focus_verification"
+        );
+        assert_eq!(
+            error.disposition,
+            if delivered {
+                DeliverySemantics::delivered_unverified()
+            } else {
+                AdapterError::timeout("").disposition
+            }
+        );
+    }
+}
