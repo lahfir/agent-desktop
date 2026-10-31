@@ -230,16 +230,16 @@ fn validate_record_generations<S: OwnerSnapshotView>(
             .generation(pid)
             .ok_or_else(|| owner_churn_error(Some(pid), "owner_not_eligible"))?;
         let matches = match generation {
-            OwnerGeneration::LaunchTime(launch_time) => {
-                crate::system::process::process_identity::instance_matches_launch_time(
+            OwnerGeneration::LaunchTime(launch_time)
+                if crate::system::process::process_identity::instance_matches_launch_time(
                     pid,
                     instance,
                     launch_time,
-                )?
+                )? =>
+            {
+                true
             }
-            OwnerGeneration::LiveProcess => {
-                crate::system::process::process_identity::matches_instance(pid, instance)?
-            }
+            _ => crate::system::process::process_identity::matches_instance(pid, instance)?,
         };
         if !matches {
             return Err(owner_churn_error(Some(pid), "process_generation_changed"));

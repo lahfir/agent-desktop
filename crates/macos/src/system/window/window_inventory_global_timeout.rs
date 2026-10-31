@@ -13,6 +13,8 @@ pub(super) fn global_timeout(attempts: u64, last_error: Option<&AdapterError>) -
             "last_failure_field": last("failure_field"),
             "last_failure_index": last("failure_index"),
             "last_failure_pid": last("failure_pid"),
+            "last_pid": last("pid"),
+            "last_phase": last("phase"),
             "complete": false,
             "retryable": true,
     });

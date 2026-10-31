@@ -47,6 +47,24 @@ fn persistent_appkit_bridge_failure_preserves_operation_and_status() {
 }
 
 #[test]
+fn persistent_owner_churn_reports_the_last_owner_and_phase() {
+    let mut attempts = 0_u64;
+    let error = stabilize_global_with(Instant::now() + UNCONSUMED_BUDGET, || {
+        fail_until_the_third_attempt(&mut attempts, || {
+            owner_churn_error(Some(4242), "process_generation_changed")
+        })
+    })
+    .unwrap_err();
+
+    assert_eq!(error.code, ErrorCode::Timeout);
+    let details = error.details.unwrap();
+    assert_eq!(details["attempts"], 3);
+    assert_eq!(details["last_kind"], "global_window_owner_churn");
+    assert_eq!(details["last_pid"], 4242);
+    assert_eq!(details["last_phase"], "process_generation_changed");
+}
+
+#[test]
 fn a_failure_without_context_leaves_the_last_failure_fields_out() {
     let mut attempts = 0_u64;
     let error = stabilize_global_with(Instant::now() + UNCONSUMED_BUDGET, || {
