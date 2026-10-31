@@ -1,12 +1,12 @@
 /**
  * Run one command in the eve sandbox with a stop that is witnessed.
  *
- * When a call's budget runs out, or the caller cancels it, the running process
- * is killed and its exit is observed *before* the call reports failure. A tool
- * that rejected earlier than that could leave a click, a keystroke or an apt
- * run landing after the model was told the action failed, and a retry would
- * overlap it — the double delivery agent-desktop's retry rules exist to
- * prevent.
+ * When a call's budget runs out, or the caller cancels it, the process is
+ * killed and the kill awaited *before* the call reports failure. Eve binds the
+ * call's abort signal to the streams and the exit it hands back, so a
+ * cancelled call rejects at once, with no exit to observe; the report says so
+ * rather than implying the action did or did not land, and the model is told
+ * to read the live state instead of retrying blind.
  */
 
 /** Budget for one desktop tool call, covering sandbox acquisition, install, desktop start and the command. */
@@ -45,7 +45,8 @@ export interface SandboxCommandResult {
   readonly stdout?: string;
 }
 
-type TerminationOutcome = "stopped" | "unknown";
+/** How far the stop got: the exit was seen, the kill was accepted, or the kill itself failed. */
+type TerminationOutcome = "stopped" | "killed" | "unknown";
 
 /**
  * Resolves with `work`, or rejects with the call's abort reason once the signal
@@ -79,8 +80,8 @@ export async function untilSettled<T>(work: PromiseLike<T>, signal: AbortSignal 
 
 /**
  * Run `command` and collect its streams and exit code. Rejects with the
- * caller's abort reason once the process is gone, or with a budget error when
- * the call's deadline fired first.
+ * caller's abort reason once the kill it issued has been accepted, or with a
+ * budget error when the call's deadline fired first.
  */
 export async function runCommand(
   sandbox: CommandSandbox,
@@ -91,12 +92,12 @@ export async function runCommand(
   const process = await sandbox.spawn({ command });
   let terminating: Promise<TerminationOutcome> | undefined;
   const stop = (): Promise<TerminationOutcome> => (terminating ??= stopProcess(process));
-  let rejectAborted: (error: Error) => void = () => {};
-  const aborted = new Promise<never>((_resolve, reject) => {
-    rejectAborted = reject;
+  let reportAbort: (error: Error) => void = () => {};
+  const aborted = new Promise<Error>((resolve) => {
+    reportAbort = resolve;
   });
   const onAbort = (): void => {
-    void stop().then((outcome) => rejectAborted(stoppedError(signal, outcome)));
+    void stop().then((outcome) => reportAbort(stoppedError(signal, outcome)));
   };
   if (signal !== undefined) {
     signal.addEventListener("abort", onAbort, { once: true });
@@ -105,17 +106,26 @@ export async function runCommand(
   const collected = collectOutput(process);
   void collected.catch(() => undefined);
   try {
-    const result = await Promise.race([collected, aborted]);
-    // The process may exit from the kill before the abort report is built; the
-    // call was still cancelled, so the reason it reports is the abort.
-    if (signal?.aborted === true) throw stoppedError(signal, await stop());
-    return result;
+    const result = await Promise.race([
+      collected,
+      aborted.then((error) => {
+        throw error;
+      }),
+    ]);
+    if (signal?.aborted !== true) return result;
+    throw stoppedError(signal, await stop());
+  } catch (error) {
+    // A cancelled call rejects collection at once, before the kill it triggered
+    // has run. The abort is reported from the termination path either way, so a
+    // raw stream or wait rejection never stands in for the stop's outcome.
+    if (signal?.aborted !== true) throw error;
+    throw await aborted;
   } finally {
     if (signal !== undefined) signal.removeEventListener("abort", onAbort);
   }
 }
 
-/** Kill the process, then wait for its exit. `unknown` means the stop could not be witnessed. */
+/** Kill the process, then try to observe its exit. */
 async function stopProcess(process: SandboxProcess): Promise<TerminationOutcome> {
   try {
     await withTimeout(Promise.resolve().then(() => process.kill()), TERMINATION_TIMEOUT_MS);
@@ -124,10 +134,12 @@ async function stopProcess(process: SandboxProcess): Promise<TerminationOutcome>
   }
   try {
     await withTimeout(process.wait(), TERMINATION_TIMEOUT_MS);
+    return "stopped";
   } catch {
-    return "unknown";
+    // Eve binds the call's signal to the exit it hands back, so a cancelled
+    // call usually lands here: the kill was accepted, the exit was not seen.
+    return "killed";
   }
-  return "stopped";
 }
 
 async function collectOutput(process: SandboxProcess): Promise<SandboxCommandResult> {
@@ -187,11 +199,10 @@ export function abortReason(signal: AbortSignal | undefined): Error {
 }
 
 function stoppedError(signal: AbortSignal | undefined, termination: TerminationOutcome): Error {
-  const reason = abortReason(signal);
-  if (termination === "stopped" && !(signal?.reason instanceof DOMException)) return reason;
-  const outcome =
-    termination === "stopped"
-      ? " The running command was stopped, so nothing it started will land."
-      : " The running command could not be confirmed stopped, so treat what it was doing as possibly delivered.";
-  return new Error(`${reason.message}${outcome}`);
+  const outcome = {
+    stopped: " Its command exited; anything it completed may already have landed.",
+    killed: " Its command was killed, but its exit could not be observed, so treat the action as possibly delivered.",
+    unknown: " Its command could not be stopped, so treat the action as possibly delivered.",
+  }[termination];
+  return new Error(`${abortReason(signal).message}${outcome} Read the live state before acting again.`);
 }

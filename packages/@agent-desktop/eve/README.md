@@ -50,7 +50,7 @@ export default defineSandbox(async () => {
 });
 ```
 
-Both helpers, and the tools, reach the sandbox through `spawn` (every eve sandbox session provides it) so that a command they start can also be killed and watched when a call is cancelled or runs out of time.
+Both helpers, and the tools, reach the sandbox through `spawn` (every eve sandbox session provides it), so a command they start can also be killed on demand when a call is cancelled or runs out of time.
 
 A prepared template keeps files, not processes. The tools check the desktop before each command and start it again when a resumed sandbox lost it.
 
@@ -106,7 +106,7 @@ export default defineTool({ ...close_app, approval: always() });
 
 ## How it works
 
-Each tool runs one `agent-desktop <command>` inside the sandbox from `ctx.getSandbox()`, in the managed desktop session (`DISPLAY`, the session bus, and accessibility variables), and returns the `data` of its JSON envelope. An error envelope becomes a tool error that keeps agent-desktop's `code`, `suggestion`, and `disposition.retry`, so the model only retries when the CLI says it is safe. Each call has one five-minute budget covering sandbox acquisition, install, desktop start, the command and reading a capture back. When the budget runs out, or the caller cancels the call, the running process is killed and its exit awaited before the tool reports failure, so a click or keystroke cannot land after the model was told the action failed. A stop that cannot be witnessed is reported as such, and the model is told to read the live state before acting again. If the sandbox runs a different agent-desktop minor than this package targets, tools reinstall it or fail with an install hint. A failed install is reported again for a few minutes instead of rerunning apt and npm on every call.
+Each tool runs one `agent-desktop <command>` inside the sandbox from `ctx.getSandbox()`, in the managed desktop session (`DISPLAY`, the session bus, and accessibility variables), and returns the `data` of its JSON envelope. An error envelope becomes a tool error that keeps agent-desktop's `code`, `suggestion`, and `disposition.retry`, so the model only retries when the CLI says it is safe. Each call has one five-minute budget covering sandbox acquisition, install, desktop start, the command and reading a capture back, shared with the caller's cancellation signal. When the budget runs out, or the caller cancels the call, the command is killed and the kill awaited before the tool reports failure. Eve binds the call's signal to the process it hands back, so a cancelled call cannot observe the exit; the error says which of the three things happened — the command exited, it was killed with no exit seen, or it could not be stopped — and tells the model to read the live state before acting again rather than repeating a click or a keystroke that may already have landed. If the sandbox runs a different agent-desktop minor than this package targets, tools reinstall it or fail with an install hint. A failed install is reported again for a few minutes in the same session instead of rerunning apt and npm on every call.
 
 Every tool's argv is checked against a real CLI by `test/conformance.test.mjs`.
 

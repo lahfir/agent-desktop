@@ -187,7 +187,7 @@ test("an unsafe failure warns against repeating the action", async () => {
   await assert.rejects(() => tools.click.execute({ ref: "@s1:e7" }, ctx(sandbox)), /Do not repeat this action blindly/);
 });
 
-test("a cancelled call kills its command and waits for the exit before it rejects", async () => {
+test("a cancelled call kills its command and waits for its exit before it rejects", async () => {
   resetConfig();
   const events = [];
   let exit;
@@ -213,11 +213,11 @@ test("a cancelled call kills its command and waits for the exit before it reject
   const controller = new AbortController();
   const call = tools.click.execute({ ref: "@s1:e2" }, { getSandbox: async () => sandbox, abortSignal: controller.signal });
   setTimeout(() => controller.abort(new Error("stopped")), 10);
-  await assert.rejects(call, /stopped/);
+  await assert.rejects(call, /stopped Its command exited; anything it completed may already have landed/);
   assert.deepEqual(events, ["kill-started", "kill-finished"]);
 });
 
-test("a command that will not die is reported as possibly delivered", async () => {
+test("a kill that fails is reported as an unstoppable command", async () => {
   resetConfig();
   const sandbox = fakeSandbox({
     intercept: (command) =>
@@ -235,7 +235,7 @@ test("a command that will not die is reported as possibly delivered", async () =
   const controller = new AbortController();
   const call = tools.click.execute({ ref: "@s1:e2" }, { getSandbox: async () => sandbox, abortSignal: controller.signal });
   setTimeout(() => controller.abort(new Error("stopped")), 10);
-  await assert.rejects(call, /could not be confirmed stopped.*possibly delivered/);
+  await assert.rejects(call, /could not be stopped, so treat the action as possibly delivered/);
 });
 
 test("screenshot readback shares the call signal and its cleanup is inside the deadline", async () => {
@@ -321,6 +321,21 @@ test("does not reinstall a custom installSpec on a version mismatch", async () =
   const sandbox = fakeSandbox({ version: "0.9.0" });
   await assert.rejects(() => tools.list_apps.execute({}, ctx(sandbox)), /agent-desktop 0\.9\.0 in the sandbox does not match/);
   assert.ok(!sandbox.commands.some((command) => command.includes("npm install -g")));
+  resetConfig();
+});
+
+test("a failed install in one session does not block the install in another", async () => {
+  resetConfig({ installSpec: "agent-desktop@1.0.99" });
+  const failing = versionSandbox([undefined, undefined], {
+    respond: (command) => (command.includes("npm install -g") ? { exitCode: 1, stdout: "", stderr: "E404" } : undefined),
+  });
+  const other = versionSandbox([undefined, AGENT_DESKTOP_VERSION]);
+  const session = (id, sandbox) => ({ session: { id }, getSandbox: async () => sandbox });
+  await assert.rejects(() => tools.list_apps.execute({}, session("session-a", failing)), /E404/);
+  await tools.list_apps.execute({}, session("session-b", other));
+  const installs = (sandbox) => sandbox.commands.filter((command) => command.includes("npm install -g")).length;
+  assert.equal(installs(other), 1, "the second session must try its own install");
+  assert.equal(installs(failing), 1);
   resetConfig();
 });
 

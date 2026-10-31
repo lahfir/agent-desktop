@@ -15,6 +15,8 @@ import extension from "../extension";
 /** Structural subset of eve's tool context; every eve `ctx` satisfies it. */
 export interface DesktopToolContext {
   readonly abortSignal?: AbortSignal;
+  /** The session's metadata; its id names the sandbox the tools are talking to. */
+  readonly session?: { readonly id?: string };
   getSandbox(): PromiseLike<DesktopSandbox | null | undefined>;
 }
 
@@ -42,9 +44,11 @@ export interface DesktopCall {
 }
 
 /**
- * Install specs that recently failed in this process. Retrying on every call
- * would repeat a slow apt and npm run, so a failure is reported again until it
- * is a few minutes old.
+ * Install specs that recently failed, keyed by the sandbox that failed. In a
+ * process serving many sessions, one sandbox's failure must not stop another
+ * from installing the same spec. Retrying on every call would repeat a slow
+ * apt and npm run, so a failure is reported again until it is a few minutes
+ * old.
  */
 const failedInstalls = new Map<string, { readonly error: Error; readonly at: number }>();
 const INSTALL_RETRY_AFTER_MS = 300_000;
@@ -63,7 +67,7 @@ export async function withDesktopCall<T>(
   const config = extension.config;
 
   const sandbox = await awaitSandbox(ctx, signal);
-  if (config.autoInstall) await ensureInstalled(sandbox, signal);
+  if (config.autoInstall) await ensureInstalled(sandbox, signal, ctx.session?.id);
   if (config.manageDesktop) await ensureDesktop(sandbox, signal);
 
   const call: DesktopCall = {
@@ -124,7 +128,7 @@ async function awaitSandbox(ctx: DesktopToolContext, signal: AbortSignal): Promi
   return sandbox;
 }
 
-async function ensureInstalled(sandbox: DesktopSandbox, signal: AbortSignal): Promise<void> {
+async function ensureInstalled(sandbox: DesktopSandbox, signal: AbortSignal, sessionId: string | undefined): Promise<void> {
   const config = extension.config;
   const installed = await probeVersion(sandbox, signal);
   if (installed !== undefined && matchesPackageMinor(installed)) return;
@@ -139,7 +143,8 @@ async function ensureInstalled(sandbox: DesktopSandbox, signal: AbortSignal): Pr
   if (installed !== undefined && config.installSpec !== undefined) throw versionMismatchError(installed);
 
   const spec = config.installSpec ?? DEFAULT_AGENT_DESKTOP_INSTALL_SPEC;
-  const failed = failedInstalls.get(spec);
+  const key = `${sessionId ?? "unknown session"}\u0000${spec}`;
+  const failed = failedInstalls.get(key);
   if (failed !== undefined && Date.now() - failed.at < INSTALL_RETRY_AFTER_MS) throw failed.error;
   try {
     await installAgentDesktop(sandbox, {
@@ -150,11 +155,19 @@ async function ensureInstalled(sandbox: DesktopSandbox, signal: AbortSignal): Pr
     });
     const reinstalled = await probeVersion(sandbox, signal);
     if (reinstalled === undefined || !matchesPackageMinor(reinstalled)) throw versionMismatchError(reinstalled ?? "missing");
-    failedInstalls.delete(spec);
+    failedInstalls.delete(key);
   } catch (error) {
-    if (!signal.aborted) failedInstalls.set(spec, { error: error as Error, at: Date.now() });
+    if (!signal.aborted) rememberFailedInstall(key, error as Error);
     throw error;
   }
+}
+
+function rememberFailedInstall(key: string, error: Error): void {
+  const now = Date.now();
+  for (const [remembered, failure] of failedInstalls) {
+    if (now - failure.at >= INSTALL_RETRY_AFTER_MS) failedInstalls.delete(remembered);
+  }
+  failedInstalls.set(key, { error, at: now });
 }
 
 async function ensureDesktop(sandbox: DesktopSandbox, signal: AbortSignal): Promise<void> {
