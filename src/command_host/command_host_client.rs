@@ -141,6 +141,7 @@ fn connect_or_start(
         .env_remove("AGENT_DESKTOP_AGENT_ID")
         .env_remove("AGENT_DESKTOP_SESSION")
         .process_group(0)
+        .current_dir(super::request::IDLE_DIRECTORY)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
