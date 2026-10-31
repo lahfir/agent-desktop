@@ -24,8 +24,13 @@ mod imp {
         expanded: bool,
         deadline: Deadline,
     ) -> Result<DeliveryOutcome, AdapterError> {
-        let (satisfied, allow_toggle) =
-            disclosure_plan(disclosed_state(element, deadline)?, expanded);
+        let initial = disclosed_state(element, deadline)?;
+        let instant = crate::tree::locator_deadline::from_operation(deadline)?;
+        let role = crate::tree::surface_read::string(element, "AXRole", instant)?;
+        if opens_a_menu(role.as_deref()) {
+            return set_menu_open(element, expanded, initial, deadline);
+        }
+        let (satisfied, allow_toggle) = disclosure_plan(initial, expanded);
         if satisfied {
             return Ok(DeliveryOutcome::SatisfiedNoDelivery);
         }
@@ -63,7 +68,92 @@ mod imp {
                 }
             }
         }
+        open_combo_box(element, expanded, deadline)
+    }
+
+    fn open_combo_box(
+        element: &AXElement,
+        expanded: bool,
+        deadline: Deadline,
+    ) -> Result<DeliveryOutcome, AdapterError> {
+        let instant = crate::tree::locator_deadline::from_operation(deadline)?;
+        let role = crate::tree::surface_read::string(element, "AXRole", instant)?;
+        let state = disclosed_state(element, deadline)?;
+        if !combo_box_fallback_applies(role.as_deref(), expanded, state) {
+            return Ok(DeliveryOutcome::NotDelivered);
+        }
+        for action in COMBO_BOX_OPEN_ACTIONS {
+            prepare(element, deadline)?;
+            if crate::actions::ax_helpers::try_ax_action_or_err(element, action, deadline)? {
+                let outcome =
+                    verify_disclosure(element, expanded, deadline).map_err(after_delivery)?;
+                if let Some(delivered) = stop_if_delivered(outcome) {
+                    return Ok(delivered);
+                }
+            }
+        }
         Ok(DeliveryOutcome::NotDelivered)
+    }
+
+    const COMBO_BOX_OPEN_ACTIONS: [&str; 2] = ["AXShowMenu", "AXPress"];
+
+    /// AppKit pop-up and menu buttons (TextEdit's read-only "Stil" and
+    /// "Zeilenabstand" controls report as `combobox`) expose no `AXExpanded`
+    /// and only `AXShowMenu`/`AXPress`. Their open state is the `AXMenu` child
+    /// that exists only while the menu is shown; the menu closes with `AXCancel`.
+    fn opens_a_menu(role: Option<&str>) -> bool {
+        matches!(role, Some("AXPopUpButton" | "AXMenuButton"))
+    }
+
+    fn set_menu_open(
+        element: &AXElement,
+        expanded: bool,
+        current: Option<bool>,
+        deadline: Deadline,
+    ) -> Result<DeliveryOutcome, AdapterError> {
+        if current == Some(expanded) {
+            return Ok(DeliveryOutcome::SatisfiedNoDelivery);
+        }
+        if expanded {
+            for action in COMBO_BOX_OPEN_ACTIONS {
+                prepare(element, deadline)?;
+                if crate::actions::ax_helpers::try_ax_action_or_err(element, action, deadline)? {
+                    let outcome =
+                        verify_disclosure(element, expanded, deadline).map_err(after_delivery)?;
+                    if let Some(delivered) = stop_if_delivered(outcome) {
+                        return Ok(delivered);
+                    }
+                }
+            }
+            return Ok(DeliveryOutcome::NotDelivered);
+        }
+        let Some(menu) = open_menu(element, deadline)? else {
+            return Ok(DeliveryOutcome::NotDelivered);
+        };
+        prepare(&menu, deadline)?;
+        if crate::actions::ax_helpers::try_ax_action_or_err(&menu, "AXCancel", deadline)? {
+            return verify_disclosure(element, expanded, deadline).map_err(after_delivery);
+        }
+        Ok(DeliveryOutcome::NotDelivered)
+    }
+
+    fn open_menu(
+        element: &AXElement,
+        deadline: Deadline,
+    ) -> Result<Option<AXElement>, AdapterError> {
+        let instant = crate::tree::locator_deadline::from_operation(deadline)?;
+        for child in crate::tree::surface_read::elements(element, "AXChildren", instant)? {
+            if crate::tree::surface_read::string(&child, "AXRole", instant)?.as_deref()
+                == Some("AXMenu")
+            {
+                return Ok(Some(child));
+            }
+        }
+        Ok(None)
+    }
+
+    fn combo_box_fallback_applies(role: Option<&str>, expanded: bool, state: Option<bool>) -> bool {
+        expanded && role == Some("AXComboBox") && state != Some(true)
     }
 
     fn stop_if_delivered(outcome: DeliveryOutcome) -> Option<DeliveryOutcome> {
@@ -129,6 +219,9 @@ mod imp {
             return Ok(Some(value));
         }
         let role = crate::tree::surface_read::string(element, "AXRole", instant)?;
+        if opens_a_menu(role.as_deref()) {
+            return Ok(Some(open_menu(element, deadline)?.is_some()));
+        }
         if role.as_deref() != Some("AXDisclosureTriangle") {
             return Ok(None);
         }
@@ -155,7 +248,45 @@ mod imp {
 
     #[cfg(test)]
     mod tests {
-        use super::{DeliveryOutcome, disclosure_plan, stop_if_delivered, unobserved_delivery};
+        use super::{
+            DeliveryOutcome, combo_box_fallback_applies, disclosure_plan, opens_a_menu,
+            stop_if_delivered, unobserved_delivery,
+        };
+
+        #[test]
+        fn pop_up_and_menu_buttons_use_the_menu_child_as_disclosure_state() {
+            assert!(opens_a_menu(Some("AXPopUpButton")));
+            assert!(opens_a_menu(Some("AXMenuButton")));
+            assert!(!opens_a_menu(Some("AXComboBox")));
+            assert!(!opens_a_menu(Some("AXDisclosureTriangle")));
+            assert!(!opens_a_menu(None));
+        }
+
+        #[test]
+        fn combo_box_fallback_only_opens_a_closed_or_unknown_combo_box() {
+            assert!(combo_box_fallback_applies(
+                Some("AXComboBox"),
+                true,
+                Some(false)
+            ));
+            assert!(combo_box_fallback_applies(Some("AXComboBox"), true, None));
+            assert!(!combo_box_fallback_applies(
+                Some("AXComboBox"),
+                true,
+                Some(true)
+            ));
+            assert!(!combo_box_fallback_applies(
+                Some("AXComboBox"),
+                false,
+                Some(true)
+            ));
+            assert!(!combo_box_fallback_applies(
+                Some("AXPopUpButton"),
+                true,
+                Some(false)
+            ));
+            assert!(!combo_box_fallback_applies(None, true, None));
+        }
 
         #[test]
         fn disclosure_plan_never_blindly_toggles_unknown_state() {

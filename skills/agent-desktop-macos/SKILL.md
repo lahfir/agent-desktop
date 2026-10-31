@@ -35,7 +35,7 @@ Read the core skill first (`agent-desktop skills get desktop`) for the observe, 
 
 ## What differs on macOS
 
-**Headed is physical first** for `click`, `right-click`, `type`, `clear` and `scroll`. Core focuses the exact window of the ref. The adapter then sends a real click, key or wheel event to the verified point. `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus` and `scroll-to` stay semantic under `--headed`. Double-click, triple-click, `hover` and `drag` need `--headed`. Raw `--xy` input never changes focus.
+**Headed is physical first** for `click`, `right-click`, `type`, `clear` and `scroll`. Core focuses the exact window of the ref. The adapter then sends a real click, key or wheel event to the verified point. `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus` and `scroll-to` stay semantic under `--headed`. Double-click, triple-click, `hover` and `drag` need `--headed`. Raw `--xy` input never changes focus. `expand` on an `AXComboBox` that offers neither `AXExpand` nor a settable `AXExpanded` falls back to `AXShowMenu`, then `AXPress`.
 
 **Judge delivery by observation.** AX return codes do not prove an effect. Finder returns success from an `AXConfirm` that does nothing. Snapshot again or use `get` and `is` to check the result.
 
