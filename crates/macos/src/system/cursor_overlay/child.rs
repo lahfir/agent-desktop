@@ -218,7 +218,7 @@ fn apply_landing_memory(
     let Some(instruction) = instruction else {
         return;
     };
-    if instruction.phase() == CursorPhase::Caret {
+    if bridge::is_caret(instruction) {
         return;
     }
     state.at = Some(if instruction.phase() == CursorPhase::Drag {
@@ -235,10 +235,8 @@ fn render(
     instruction: &CursorOverlayInstruction,
     state: &OverlayState,
 ) -> Result<(), AdapterError> {
-    if instruction.phase() == CursorPhase::Caret {
-        if let Some(caret) = instruction.target() {
-            bridge::caret(caret);
-        }
+    if bridge::is_caret(instruction) {
+        bridge::caret(instruction);
         return Ok(());
     }
     if instruction.phase() == CursorPhase::Drag {

@@ -180,6 +180,23 @@ impl ObservationOps for MacOSAdapter {
         ))
     }
 
+    fn get_focused_insertion_caret(
+        &self,
+        process: Option<agent_desktop_core::ProcessId>,
+        deadline: Deadline,
+    ) -> Result<Option<agent_desktop_core::Rect>, AdapterError> {
+        let pid = process
+            .map(|process| i32::try_from(process.get()))
+            .transpose()
+            .map_err(|_| {
+                AdapterError::new(
+                    agent_desktop_core::ErrorCode::InvalidArgs,
+                    "Process id is out of range",
+                )
+            })?;
+        crate::tree::properties::text_insertion::focused_insertion_caret(pid, deadline)
+    }
+
     fn get_live_element(
         &self,
         handle: &NativeHandle,

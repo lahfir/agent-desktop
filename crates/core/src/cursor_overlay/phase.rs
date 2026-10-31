@@ -10,6 +10,10 @@ use serde::{Deserialize, Serialize};
 /// the app is inserting text; the cursor stays where it is. It is
 /// acknowledged like `Effect`, so the renderer reads it before the sender
 /// closes the connection.
+/// `CaretFollow` moves a caret that is already showing to the instruction's
+/// target, or hides it when the instruction has none, after a key press may
+/// have moved the insertion point. It never shows a caret that is not showing,
+/// and it is acknowledged like `Caret`.
 #[derive(Debug, Clone, Copy, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CursorPhase {
@@ -18,4 +22,5 @@ pub enum CursorPhase {
     Drag,
     Effect,
     Caret,
+    CaretFollow,
 }

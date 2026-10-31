@@ -198,7 +198,7 @@ On macOS and Windows:
 
 Windows accepts the motion settings but keeps its built-in motion.
 
-On macOS and Windows, after `type` or `set-value` lands, the overlay draws the agent's caret, a thin bar in the accent color, at the field's insertion point and leaves the element outline off. `type --interval-ms` moves the caret with each keystroke while the cursor stays put. A field that reports no insertion point keeps the outline and gets no caret.
+On macOS and Windows, after `type` or `set-value` lands, the overlay draws the agent's caret, a thin bar in the accent color, at the field's insertion point and leaves the element outline off. `type --interval-ms` moves the caret with each keystroke while the cursor stays put. A field that reports no insertion point keeps the outline and gets no caret. After `press` delivers, a caret that is showing moves to the focused field's new insertion point, or disappears when the focused element has none. `type` plays the click ripple only when its field does not already have keyboard focus.
 
 Multi-agent cursors (macOS and Windows): start with `session start --cursor --multi-agent`, then pass the returned session id to every subagent.
 

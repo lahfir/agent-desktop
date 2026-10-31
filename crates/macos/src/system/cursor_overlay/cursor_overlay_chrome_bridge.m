@@ -238,6 +238,10 @@ void ADCaretShow(NSRect frame) {
     [CATransaction flush];
 }
 
+bool ADCaretShowing(void) {
+    return ADCaretWindow != nil && ADCaretWindow.isVisible;
+}
+
 void ADCaretStop(void) {
     [ADCaretWindow orderOut:nil];
     ADCaretWindow = nil;

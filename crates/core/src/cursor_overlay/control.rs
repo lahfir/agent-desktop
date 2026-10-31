@@ -203,7 +203,7 @@ impl CursorOverlayControl {
             || self.instruction().is_some_and(|instruction| {
                 matches!(
                     instruction.phase(),
-                    CursorPhase::Effect | CursorPhase::Caret
+                    CursorPhase::Effect | CursorPhase::Caret | CursorPhase::CaretFollow
                 )
             })
     }

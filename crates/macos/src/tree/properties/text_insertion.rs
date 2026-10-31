@@ -6,10 +6,35 @@
 #[cfg(target_os = "macos")]
 mod imp {
     use crate::tree::AXElement;
-    use agent_desktop_core::{Deadline, Rect};
+    use agent_desktop_core::{AdapterError, Deadline, ErrorCode, Rect};
 
     const CARET_WIDTH: f64 = 2.0;
     const MIN_CARET_HEIGHT: f64 = 10.0;
+
+    /// The insertion caret of the element with keyboard focus in `pid`, or in
+    /// the focused app when `pid` is `None`.
+    pub(crate) fn focused_insertion_caret(
+        pid: Option<i32>,
+        deadline: Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
+        let owner = match pid {
+            Some(pid) => crate::tree::element_for_pid(pid),
+            None => AXElement(unsafe { accessibility_sys::AXUIElementCreateSystemWide() }),
+        };
+        let focused = super::super::attributes::copy_element_attr_result(
+            &owner,
+            "AXFocusedUIElement",
+            deadline,
+        )
+        .map_err(|error| {
+            AdapterError::new(
+                ErrorCode::ActionFailed,
+                "Could not read the focused element",
+            )
+            .with_details(serde_json::json!({ "ax_error": error }))
+        })?;
+        Ok(focused.and_then(|focused| insertion_caret(&focused, deadline)))
+    }
 
     pub(crate) fn insertion_caret(element: &AXElement, deadline: Deadline) -> Option<Rect> {
         let selection = super::super::attributes::selected_text_range(element, deadline)?;
@@ -123,11 +148,18 @@ mod imp {
 #[cfg(not(target_os = "macos"))]
 mod imp {
     use crate::tree::AXElement;
-    use agent_desktop_core::{Deadline, Rect};
+    use agent_desktop_core::{AdapterError, Deadline, Rect};
 
     pub(crate) fn insertion_caret(_element: &AXElement, _deadline: Deadline) -> Option<Rect> {
         None
     }
+
+    pub(crate) fn focused_insertion_caret(
+        _pid: Option<i32>,
+        _deadline: Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
+        Err(AdapterError::not_supported("get_focused_insertion_caret"))
+    }
 }
 
-pub(crate) use imp::insertion_caret;
+pub(crate) use imp::{focused_insertion_caret, insertion_caret};

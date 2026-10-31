@@ -205,6 +205,21 @@ void agent_desktop_cursor_overlay_caret(double x, double y, double width, double
     }
 }
 
+void agent_desktop_cursor_overlay_caret_follow(bool present, double x, double y, double width,
+                                               double height) {
+    if (!ADCaretShowing()) {
+        return;
+    }
+    if (present) {
+        agent_desktop_cursor_overlay_caret(x, y, width, height);
+        return;
+    }
+    @autoreleasepool {
+        ADCaretStop();
+        ADPump(NSApplication.sharedApplication);
+    }
+}
+
 void agent_desktop_cursor_overlay_rest(void) {
     @autoreleasepool {
         NSApplication *app = NSApplication.sharedApplication;

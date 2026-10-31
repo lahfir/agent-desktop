@@ -39,7 +39,7 @@ fn count_line_breaks(text: &str) -> u32 {
 mod imp {
     use super::{caret_at, count_line_breaks, is_line_break};
     use crate::tree::element::uia_element;
-    use agent_desktop_core::{AdapterError, Deadline, NativeHandle, Rect};
+    use agent_desktop_core::{AdapterError, Deadline, NativeHandle, ProcessId, Rect};
     use uiautomation::patterns::{UITextPattern, UITextRange};
     use uiautomation::types::{TextPatternRangeEndpoint, TextUnit};
     use uiautomation::variants::SafeArray;
@@ -52,6 +52,28 @@ mod imp {
         deadline.ensure_remaining()?;
         let element = uia_element(handle)?;
         let Ok(pattern) = element.0.get_pattern::<UITextPattern>() else {
+            return Ok(None);
+        };
+        Ok(caret(&pattern))
+    }
+
+    /// The insertion caret of the element with keyboard focus, when it belongs
+    /// to `process` (or to any process, when `process` is `None`).
+    pub(crate) fn get_focused_insertion_caret(
+        process: Option<ProcessId>,
+        deadline: Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
+        deadline.ensure_remaining()?;
+        let client = crate::tree::automation::automation_client()?;
+        let Ok(focused) = client.get_focused_element() else {
+            return Ok(None);
+        };
+        if process.is_some_and(|process| {
+            focused.get_process_id().ok().map(ProcessId::new) != Some(process)
+        }) {
+            return Ok(None);
+        }
+        let Ok(pattern) = focused.get_pattern::<UITextPattern>() else {
             return Ok(None);
         };
         Ok(caret(&pattern))
@@ -167,9 +189,16 @@ mod imp {
     ) -> Result<Option<Rect>, AdapterError> {
         Ok(None)
     }
+
+    pub(crate) fn get_focused_insertion_caret(
+        _process: Option<agent_desktop_core::ProcessId>,
+        _deadline: Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
+        Err(AdapterError::not_supported("get_focused_insertion_caret"))
+    }
 }
 
-pub(crate) use imp::get_insertion_caret;
+pub(crate) use imp::{get_focused_insertion_caret, get_insertion_caret};
 
 #[cfg(test)]
 #[path = "text_insertion_tests.rs"]
