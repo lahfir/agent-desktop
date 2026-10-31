@@ -169,13 +169,17 @@ agent-desktop type <REF> --stdin [--timeout-ms MS]
   </tbody>
 </table>
 
-`type` and `set-value` accept `--stdin` instead of positional text; supplying both is rejected. Stdin reads UTF-8 through EOF, preserves empty input and trailing newlines, and rejects invalid UTF-8 and NUL bytes. It accepts up to 128 KiB; `type` retains its 10,000-byte limit. The action timeout starts after EOF. Batch uses the JSON `text` or `value` field.
+Use `--stdin` with `type` or `set-value` to read text from a pipe or file. Replace the example ref with one from your snapshot:
 
 ```bash
-printf '%s' 'hello' | agent-desktop set-value @s8f3k2p9:e2 --stdin
+printf '%s' 'hello' | agent-desktop type @s8f3k2p9:e2 --stdin
 ```
 
-Stdin keeps text out of process arguments. Normal field verification may still return the value in `post_state`. For either command, to pass literal `--stdin`, use `type @s8f3k2p9:e2 -- --stdin`.
+The command waits until the input ends before starting its action timeout. It keeps empty input and line breaks unchanged. Input must be valid UTF-8 without NUL bytes (`\0`). The limits are 10,000 bytes for `type` and 128 KiB for `set-value`.
+
+Provide either `--stdin` or a command-line value. To enter the text `--stdin`, put it after `--`: `agent-desktop type @s8f3k2p9:e2 -- --stdin`. In batch commands, use the JSON `text` field for `type` or `value` field for `set-value`.
+
+`--stdin` keeps text out of process arguments. The response may still include the field's value in `post_state`.
 
 `type` inserts; it does not replace. After `set-value hello`, `type ' world'` into the same entry produced this, because the insertion point was at the start:
 
@@ -201,6 +205,8 @@ Writes a value directly through the accessibility value path: text fields, text 
 agent-desktop set-value <REF> <VALUE> [--timeout-ms MS]
 agent-desktop set-value <REF> --stdin [--timeout-ms MS]
 ```
+
+For piped text, use `--stdin` with the [input rules above](#type).
 
 ```json
 {

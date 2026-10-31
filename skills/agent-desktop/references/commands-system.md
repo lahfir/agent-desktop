@@ -110,7 +110,9 @@ agent-desktop clipboard-clear
 - Formats: `text` (default), `auto` (file references, then image, then text), `image`, `file-urls`. Output is `{ "type": "text", "text": ... }`, `{ "type": "file_urls", ... }`, or `{ "type": "image", "path", "width", "height" }`. When the clipboard has nothing in that form: `{ "type": "<format>", "found": false }`.
 - Image bytes go to `--out`, or to a private file under the active session directory (or `~/.agent-desktop/tmp`).
 - `clipboard-set` writes one representation per call. `--file-url` and `--image` win over the positional text. Every `--file-url` path must exist, or `INVALID_ARGS`.
-- `clipboard-set --stdin` reads UTF-8 through EOF, preserving empty input and trailing newlines, up to 128 KiB. Invalid UTF-8 and NUL bytes are rejected. It conflicts with positional text, `--image`, and `--file-url`. Batch keeps its JSON `text` field. Use `clipboard-set -- --stdin` to write the literal option name.
+- Use `clipboard-set --stdin` to read up to 128 KiB of text from a pipe or file without putting it in process arguments. It cannot be combined with a command-line value, `--image`, or `--file-url`.
+- The command waits until the input ends and keeps empty input and line breaks unchanged. Input must be valid UTF-8 without NUL bytes (`\0`).
+- In batch commands, use the JSON `text` field instead. To copy the text `--stdin`, use `agent-desktop clipboard-set -- --stdin`.
 - A write that loses clipboard ownership mid-way reports `delivered_unverified`, not a false success.
 
 ## wait

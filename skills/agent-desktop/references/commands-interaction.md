@@ -104,9 +104,11 @@ agent-desktop focus @s8f3k2p9:e2
 - `type` inserts text and checks the result when value and selection are readable. A readable mismatch returns `ACTION_FAILED`, and an unreadable result succeeds as `delivered_unverified`. Text sent as keystrokes reaches the field through the app's event queue, so the check re-reads the field while it changes, inside the `--timeout-ms` budget. If it settles on other text, or never settles, the result is `delivered_unverified` with `verification_reason: postcondition_mismatch`. Headed typing that focuses an inactive field can change the selection, and the result then stays unverified. Read the field with `get` before you write again.
 - The default `--timeout-ms` of `type` is 5000 plus 30 ms per character of the text. An explicit `--timeout-ms` wins.
 - `set-value` writes the value directly through the semantic value path. It is faster than `type`, but it may not fire every UI callback. Use it for text fields, text areas and sliders.
-- `type` and `set-value` accept CLI-only `--stdin` instead of positional text; supplying both is rejected. It reads UTF-8 through EOF, preserves empty input and trailing newlines, and rejects invalid UTF-8 and NUL bytes. The input limit is 128 KiB; `type` retains its 10,000-byte limit.
-- The action timeout starts after EOF. Batch keeps its JSON `text` or `value` field. For either command, to pass literal `--stdin`, put it after `--`, as in `type @s8f3k2p9:e2 -- --stdin`.
-- Stdin keeps text out of process arguments. Normal field verification may still return the value in `post_state`.
+- Use `--stdin` with `type` or `set-value` to read text from a pipe or file. Provide either `--stdin` or a command-line value.
+- The command waits until the input ends before starting its action timeout. Empty input and line breaks stay unchanged. Input must be valid UTF-8 without NUL bytes (`\0`). The limits are 10,000 bytes for `type` and 128 KiB for `set-value`.
+- In batch commands, use the JSON `text` field for `type` or `value` field for `set-value`.
+- To enter the text `--stdin`, put it after `--`, as in `agent-desktop type @s8f3k2p9:e2 -- --stdin`.
+- `--stdin` keeps text out of process arguments. The response may still include the field's value in `post_state`.
 - A cell that exposes no value write is not directly editable. Activate it, take a fresh snapshot, and target the editor that appears. Some apps expose no editor and accept only keyboard input.
 - `clear` empties the element. `focus` sets keyboard focus without clicking.
 
