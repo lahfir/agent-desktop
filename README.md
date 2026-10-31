@@ -80,6 +80,8 @@ agent-desktop snapshot --app Finder -i      # observe again to verify
   `snapshot --root @s8f3k2p9:e3 -i --compact`.
 - **Headless by default.** Ref actions go through the accessibility API without moving the pointer or taking focus.
   The global `--headed` flag allows physical input.
+- **Piped text.** `type`, `set-value`, and `clipboard-set` accept `--stdin` to keep text out of process arguments.
+  For example: `printf '%s' 'hello' | agent-desktop set-value @s8f3k2p9:e2 --stdin`.
 - **PowerShell.** Quote every ref (`'@s8f3k2p9:e8'`), because a bare `@token` is the splatting operator.
 
 ## For AI agents

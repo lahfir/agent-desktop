@@ -12,8 +12,22 @@ use clap::CommandFactory;
 #[test]
 fn type_args_cli_omitted_timeout_scales_with_the_text() {
     let args = TypeArgs::try_parse_from(["type", "@e1", "hello"]).unwrap();
+    assert_eq!(args.text.as_deref(), Some("hello"));
     assert_eq!(args.timeout_ms, None);
     assert_eq!(args.effective_timeout_ms(), 5150);
+}
+
+#[test]
+fn type_stdin_replaces_the_required_positional_text() {
+    for args in [["type", "--stdin", "@e1"], ["type", "@e1", "--stdin"]] {
+        let args = TypeArgs::try_parse_from(args).unwrap();
+        assert!(args.stdin);
+        assert_eq!(args.text, None);
+    }
+    assert!(TypeArgs::try_parse_from(["type", "@e1"]).is_err());
+    assert!(TypeArgs::try_parse_from(["type", "@e1", "text", "--stdin"]).is_err());
+    let args = TypeArgs::try_parse_from(["type", "@e1", "--", "--stdin"]).unwrap();
+    assert_eq!(args.text.as_deref(), Some("--stdin"));
 }
 
 #[test]
@@ -32,7 +46,24 @@ fn type_args_batch_json_omitted_timeout_scales_with_the_text() {
 #[test]
 fn set_value_args_cli_omitted_timeout_defaults_to_5000() {
     let args = SetValueArgs::try_parse_from(["set-value", "@e1", "value"]).unwrap();
+    assert_eq!(args.value.as_deref(), Some("value"));
     assert_eq!(args.timeout_ms, 5000);
+}
+
+#[test]
+fn set_value_stdin_replaces_the_required_positional_value() {
+    for args in [
+        ["set-value", "--stdin", "@e1"],
+        ["set-value", "@e1", "--stdin"],
+    ] {
+        let args = SetValueArgs::try_parse_from(args).unwrap();
+        assert!(args.stdin);
+        assert_eq!(args.value, None);
+    }
+    assert!(SetValueArgs::try_parse_from(["set-value", "@e1"]).is_err());
+    assert!(SetValueArgs::try_parse_from(["set-value", "@e1", "value", "--stdin"]).is_err());
+    let args = SetValueArgs::try_parse_from(["set-value", "@e1", "--", "--stdin"]).unwrap();
+    assert_eq!(args.value.as_deref(), Some("--stdin"));
 }
 
 #[test]

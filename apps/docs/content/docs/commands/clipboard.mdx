@@ -42,6 +42,7 @@ Writes text, a PNG image, or a list of file paths.
 
 ```bash
 agent-desktop clipboard-set TEXT
+printf '%s' 'Hello' | agent-desktop clipboard-set --stdin
 agent-desktop clipboard-set --image /tmp/a.png
 agent-desktop clipboard-set --file-url /tmp/a.txt --file-url /tmp/b.txt
 ```
@@ -52,12 +53,15 @@ agent-desktop clipboard-set --file-url /tmp/a.txt --file-url /tmp/b.txt
   </thead>
   <tbody>
     <tr><td><code>TEXT</code></td><td>empty text</td><td>Text to write.</td></tr>
+    <tr><td><code>--stdin</code></td><td>none</td><td>Read UTF-8 through EOF, up to 128 KiB. Preserves empty input and trailing newlines; rejects invalid UTF-8 and NUL bytes. Conflicts with <code>TEXT</code>, <code>--image</code>, and <code>--file-url</code>.</td></tr>
     <tr><td><code>--image PATH</code></td><td>none</td><td>A regular PNG file of at most 64 MiB.</td></tr>
     <tr><td><code>--file-url PATH</code></td><td>none</td><td>A file path to write as a file reference. Repeatable. Every path must exist.</td></tr>
   </tbody>
 </table>
 
-One call writes one representation: `--file-url` wins over `--image`, which wins over `TEXT`. The result is an [OperationReport](/desktop/json-output#operationreport) plus the written `type`:
+`--stdin` keeps text out of process arguments and is CLI-only; batch uses its JSON `text` field. Use `clipboard-set -- --stdin` to write the literal option name.
+
+Without `--stdin`, one call writes one representation: `--file-url` wins over `--image`, which wins over `TEXT`. The result is an [OperationReport](/desktop/json-output#operationreport) plus the written `type`:
 
 ```json
 {

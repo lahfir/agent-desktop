@@ -17,7 +17,7 @@ pub(super) fn forward(
                 .map_err(|_| AppError::invalid_input("Host arguments must be UTF-8"))
         })
         .collect::<Result<_, _>>()?;
-    forward_args(cli, command, args, None)
+    forward_args(cli, command, args, None, command_stdin_text(command)?)
 }
 
 pub(super) fn forward_args(
@@ -25,6 +25,7 @@ pub(super) fn forward_args(
     command: &crate::Commands,
     args: Vec<String>,
     baseline: Option<agent_desktop_core::SignalBaseline>,
+    stdin_text: Option<String>,
 ) -> Result<serde_json::Value, AppError> {
     let expires_ns = super::budget::expires_at(cli, command).map_err(crate::pre_dispatch_error)?;
     agent_desktop_core::validate_state_root_env()?;
@@ -38,6 +39,7 @@ pub(super) fn forward_args(
         expires_ns,
         identity,
         args,
+        stdin_text,
         baseline,
         directory: std::env::current_dir()?,
         agent_id: cli
@@ -63,6 +65,21 @@ pub(super) fn forward_args(
             .with_disposition(DeliverySemantics::uncertain())
             .into()
     })
+}
+
+pub(super) fn command_stdin_text(command: &crate::Commands) -> Result<Option<String>, AppError> {
+    let (requested, text) = match command {
+        crate::Commands::Type(args) => (args.stdin, args.text.as_ref()),
+        crate::Commands::SetValue(args) => (args.stdin, args.value.as_ref()),
+        crate::Commands::ClipboardSet(args) => (args.stdin, args.text.as_ref()),
+        _ => (false, None),
+    };
+    if requested {
+        return text.cloned().map(Some).ok_or_else(|| {
+            AppError::invalid_input("stdin text was not resolved by the calling process")
+        });
+    }
+    Ok(None)
 }
 
 fn exchange(

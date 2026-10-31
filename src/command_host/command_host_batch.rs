@@ -48,7 +48,7 @@ pub(crate) fn forward_batch_item(
         .take()
         .ok_or_else(|| AppError::Internal("Constructed batch command is missing".into()))?;
     let baseline = context.event_baseline().cloned().transpose()?;
-    let response = super::client::forward_args(&cli, &command, args, baseline)?;
+    let response = super::client::forward_args(&cli, &command, args, baseline, None)?;
     if response["ok"] == true {
         response["data"]["results"]
             .as_array()

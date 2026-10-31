@@ -99,6 +99,21 @@ fn wait_args_batch_json_rejects_unknown_field_across_three_flattened_groups() {
 }
 
 #[test]
+fn clipboard_set_stdin_conflicts_with_other_input_sources() {
+    let args = ClipboardSetArgs::try_parse_from(["clipboard-set", "--stdin"]).unwrap();
+    assert!(args.stdin);
+    assert_eq!(args.text, None);
+    assert!(ClipboardSetArgs::try_parse_from(["clipboard-set", "text", "--stdin"]).is_err());
+    assert!(
+        ClipboardSetArgs::try_parse_from(["clipboard-set", "--stdin", "--image", "a.png"]).is_err()
+    );
+    assert!(
+        ClipboardSetArgs::try_parse_from(["clipboard-set", "--stdin", "--file-url", "a.txt"])
+            .is_err()
+    );
+}
+
+#[test]
 fn window_mutation_args_accept_window_ids() {
     let resize = ResizeWindowCliArgs::try_parse_from([
         "resize-window",

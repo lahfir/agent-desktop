@@ -29,20 +29,34 @@ pub(crate) struct TypeArgs {
         help = "Qualified ref from snapshot (@<snapshot_id>:eN)"
     )]
     pub ref_id: String,
-    #[arg(value_name = "TEXT", allow_hyphen_values = true, help = "Text to type")]
-    pub text: String,
+    #[arg(
+        value_name = "TEXT",
+        allow_hyphen_values = true,
+        help = "Text to type",
+        required_unless_present = "stdin",
+        conflicts_with = "stdin"
+    )]
+    pub text: Option<String>,
     #[arg(
         long = "timeout-ms",
         help = "Maximum wait in milliseconds, covering ref resolution, actionability and delivery of the text; default 5000 plus 30 per character of TEXT; 0 disables the wait"
     )]
     #[serde(default)]
     pub timeout_ms: Option<u64>,
+    #[arg(
+        long,
+        help = "Read up to 10,000 bytes of UTF-8 text from stdin until EOF"
+    )]
+    #[serde(skip)]
+    pub stdin: bool,
 }
 
 impl TypeArgs {
     pub(crate) fn effective_timeout_ms(&self) -> u64 {
         self.timeout_ms.unwrap_or_else(|| {
-            agent_desktop_core::commands::type_text::default_timeout_ms(&self.text)
+            agent_desktop_core::commands::type_text::default_timeout_ms(
+                self.text.as_deref().unwrap_or_default(),
+            )
         })
     }
 }
@@ -58,9 +72,11 @@ pub(crate) struct SetValueArgs {
     #[arg(
         value_name = "VALUE",
         allow_hyphen_values = true,
-        help = "Value to set"
+        help = "Value to set",
+        required_unless_present = "stdin",
+        conflicts_with = "stdin"
     )]
-    pub value: String,
+    pub value: Option<String>,
     #[arg(
         long = "timeout-ms",
         default_value_t = 5000,
@@ -68,6 +84,9 @@ pub(crate) struct SetValueArgs {
     )]
     #[serde(default = "default_ref_timeout_ms")]
     pub timeout_ms: u64,
+    #[arg(long, help = "Read up to 128 KiB of UTF-8 text from stdin until EOF")]
+    #[serde(skip)]
+    pub stdin: bool,
 }
 
 #[derive(Parser, Debug, Deserialize)]

@@ -1,8 +1,10 @@
 #![cfg(target_os = "macos")]
 
-use std::io::{Read, Write};
+use std::io::{BufRead, Read, Write};
 use std::os::fd::{AsRawFd, OwnedFd};
-use std::os::unix::net::UnixStream;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -20,6 +22,17 @@ fn host_identity(directory: &std::path::Path) -> String {
         "helper": std::env::var_os("AGENT_DESKTOP_MACOS_HELPER_PATH"),
     })
     .to_string()
+}
+
+fn host_socket_path(temp: &Path, identity: &str) -> PathBuf {
+    use std::hash::{Hash, Hasher};
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    identity.hash(&mut hash);
+    temp.join(format!(
+        "agent-desktop-host-{}/{:016x}.sock",
+        unsafe { libc::geteuid() },
+        hash.finish(),
+    ))
 }
 
 fn future_deadline() -> u64 {
@@ -175,17 +188,76 @@ fn socket_host_survives_a_bad_client_and_serves_separate_invocations() {
 }
 
 #[test]
+fn cli_forwards_stdin_outside_the_host_arguments() {
+    let scratch = TestDir::new();
+    let identity = host_identity(&scratch.0);
+    let socket = host_socket_path(&scratch.0, &identity);
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(socket.parent().unwrap())
+        .unwrap();
+    let listener = UnixListener::bind(&socket).unwrap();
+    std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+    let text = "private\r\n--stdin";
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agent-desktop"))
+        .args(["type", "@s8f3k2p9:e1", "--stdin"])
+        .env("AGENT_DESKTOP_HOME", &scratch.0)
+        .env("TMPDIR", &scratch.0)
+        .env_remove("AGENT_DESKTOP_SESSION")
+        .env_remove("AGENT_DESKTOP_INTERNAL_COMMAND_HOST")
+        .env_remove("AGENT_DESKTOP_INTERNAL_HOST_CLIENT")
+        .env_remove("AGENT_DESKTOP_INTERNAL_HOST_SOCKET")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(text.as_bytes())
+        .unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let (mut stream, _) = loop {
+        if let Ok(pair) = listener.accept() {
+            break pair;
+        }
+        assert!(Instant::now() < deadline, "stdin client did not connect");
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    let mut frame = String::new();
+    std::io::BufReader::new(stream.try_clone().unwrap())
+        .read_line(&mut frame)
+        .unwrap();
+    let request: serde_json::Value = serde_json::from_str(&frame).unwrap();
+    writeln!(
+        stream,
+        r#"{{"version":"2.5","ok":false,"command":"type","error":{{"code":"STALE_REF","message":"test request rejected"}}}}"#
+    )
+    .unwrap();
+    let output = child.wait_with_output().unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(response["error"]["code"], "STALE_REF");
+    assert_eq!(request["stdin_text"], text);
+    assert_eq!(
+        request["args"],
+        serde_json::json!(["type", "@s8f3k2p9:e1", "--stdin"])
+    );
+}
+
+#[test]
 fn default_cli_starts_and_reuses_its_host() {
-    use std::hash::{Hash, Hasher};
-    use std::os::unix::{fs::PermissionsExt, process::CommandExt};
+    use std::os::unix::process::CommandExt;
     let directory = std::env::temp_dir().join(format!("ad-host-client-{}", std::process::id()));
-    let mut hash = std::collections::hash_map::DefaultHasher::new();
-    host_identity(&directory).hash(&mut hash);
-    let socket = std::env::temp_dir().join(format!(
-        "agent-desktop-host-{}/{:016x}.sock",
-        unsafe { libc::geteuid() },
-        hash.finish(),
-    ));
+    let socket = host_socket_path(&std::env::temp_dir(), &host_identity(&directory));
     let invoke = || {
         let mut command = Command::new(env!("CARGO_BIN_EXE_agent-desktop"));
         unsafe {

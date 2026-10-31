@@ -320,6 +320,46 @@ fn session_batch_end_parses_id() {
 }
 
 #[test]
+fn text_batch_requires_json_values_and_rejects_cli_stdin() {
+    let reference = "@s8f3k2p9:e1";
+    for (command, field) in [("type", "text"), ("set-value", "value")] {
+        for text in ["", "legacy"] {
+            for args in [
+                serde_json::json!({ "ref_id": reference, (field): text }),
+                serde_json::json!([reference, text]),
+            ] {
+                let value = match parse_command(item(command, args)).unwrap() {
+                    Commands::Type(args) => args.text,
+                    Commands::SetValue(args) => args.value,
+                    _ => panic!("unexpected text command"),
+                };
+                assert_eq!(value.as_deref(), Some(text));
+            }
+        }
+        for args in [
+            serde_json::json!({ "ref_id": reference }),
+            serde_json::json!({ "ref_id": reference, (field): null }),
+            serde_json::json!([reference]),
+            serde_json::json!([reference, null]),
+            serde_json::json!([reference, 42]),
+        ] {
+            assert!(parse_command(item(command, args)).is_err());
+        }
+    }
+    for command in ["type", "set-value", "clipboard-set"] {
+        for value in [serde_json::json!(true), serde_json::json!(false)] {
+            assert!(parse_command(item(command, serde_json::json!({ "stdin": value }))).is_err());
+        }
+    }
+    assert!(parse_command(item("clipboard-set", serde_json::json!({}))).is_ok());
+    let clipboard =
+        parse_command(item("clipboard-set", serde_json::json!(["legacy", null]))).unwrap();
+    assert!(
+        matches!(clipboard, Commands::ClipboardSet(args) if args.text.as_deref() == Some("legacy"))
+    );
+}
+
+#[test]
 fn every_cli_subcommand_is_known_to_batch_parser() {
     for subcommand in crate::cli::Cli::command().get_subcommands() {
         let name = subcommand.get_name();

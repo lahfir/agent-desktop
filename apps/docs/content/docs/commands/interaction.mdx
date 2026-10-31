@@ -156,6 +156,7 @@ Inserts text into a text target at its insertion point, then reads the field bac
 
 ```bash
 agent-desktop type <REF> <TEXT> [--timeout-ms MS]
+agent-desktop type <REF> --stdin [--timeout-ms MS]
 ```
 
 <table>
@@ -163,10 +164,18 @@ agent-desktop type <REF> <TEXT> [--timeout-ms MS]
     <tr><th>Flag or argument</th><th>Default</th><th>Meaning</th></tr>
   </thead>
   <tbody>
-    <tr><td><code>TEXT</code></td><td>required</td><td>The text, up to 10,000 bytes. A value that starts with a hyphen is accepted.</td></tr>
+    <tr><td><code>TEXT</code></td><td>required unless <code>--stdin</code></td><td>The text, up to 10,000 bytes. A value that starts with a hyphen is accepted.</td></tr>
     <tr><td><code>--timeout-ms MS</code></td><td><code>5000</code> plus <code>30</code> per character</td><td>Covers resolution, actionability, and delivery. An explicit value wins.</td></tr>
   </tbody>
 </table>
+
+`type` and `set-value` accept `--stdin` instead of positional text; supplying both is rejected. Stdin reads UTF-8 through EOF, preserves empty input and trailing newlines, and rejects invalid UTF-8 and NUL bytes. It accepts up to 128 KiB; `type` retains its 10,000-byte limit. The action timeout starts after EOF. Batch uses the JSON `text` or `value` field.
+
+```bash
+printf '%s' 'hello' | agent-desktop set-value @s8f3k2p9:e2 --stdin
+```
+
+Stdin keeps text out of process arguments. Normal field verification may still return the value in `post_state`. For either command, to pass literal `--stdin`, use `type @s8f3k2p9:e2 -- --stdin`.
 
 `type` inserts; it does not replace. After `set-value hello`, `type ' world'` into the same entry produced this, because the insertion point was at the start:
 
@@ -190,6 +199,7 @@ Writes a value directly through the accessibility value path: text fields, text 
 
 ```bash
 agent-desktop set-value <REF> <VALUE> [--timeout-ms MS]
+agent-desktop set-value <REF> --stdin [--timeout-ms MS]
 ```
 
 ```json
