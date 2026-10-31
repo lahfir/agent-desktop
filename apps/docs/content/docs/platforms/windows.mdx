@@ -71,7 +71,7 @@ Use `$env:NAME = 'value'` instead of `export`, and `| ConvertFrom-Json` instead 
 
 - `cmd` and `meta` are the Windows key, so `meta+c` is a shell shortcut. Write `ctrl+c` to copy.
 - `alt+f4`, `win+l`, `win+d`, `alt+tab`, `win+r`, `win+x`, `win+e`, `ctrl+shift+esc`, and their supersets are refused without `--force`. `ctrl+alt+delete` cannot be synthesized at all.
-- `type` is keystroke synthesis and needs `--headed`; use `set-value` headless.
+- `type` into a Chromium or Electron window works headless while the window stays behind other windows, as long as it isn't minimized. Elsewhere `type` is keystroke synthesis and needs `--headed`; use `set-value` headless.
 - `press --app` writes to the foreground input queue and cannot target one background process.
 
 ## Chromium and Electron

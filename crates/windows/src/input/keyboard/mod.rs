@@ -55,6 +55,8 @@ pub(crate) fn reject_standalone_key_state(
 
 pub(super) mod keyboard_event;
 pub(super) mod keyboard_map;
+pub(crate) mod keyboard_message;
+pub(crate) mod keyboard_message_send;
 pub(super) mod keyboard_send;
 pub(super) mod keyboard_text;
 #[cfg(test)]

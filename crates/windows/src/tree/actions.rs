@@ -2,7 +2,16 @@ use agent_desktop_core::{LocatorField, actions::capability};
 
 use super::properties::ElementProperties;
 use super::properties::property_ids::TreeProperty;
-use super::properties::property_outcome::PropertyOutcome;
+use super::properties::property_outcome::{PropertyOutcome, PropertyValue};
+
+const EDIT_CONTROL_TYPE: i32 = 50004;
+const DOCUMENT_CONTROL_TYPE: i32 = 50030;
+
+#[cfg(target_os = "windows")]
+const _: () = {
+    assert!(EDIT_CONTROL_TYPE == uiautomation::types::ControlType::Edit as i32);
+    assert!(DOCUMENT_CONTROL_TYPE == uiautomation::types::ControlType::Document as i32);
+};
 
 /// The pattern-availability properties this module reads to decide whether
 /// the read set as a whole succeeded.
@@ -35,6 +44,10 @@ const AFFORDANCE_AVAILABILITY: [TreeProperty; 8] = [
 /// action, `Click`, and only when `LegacyDefaultAction` itself reads as a
 /// non-empty string - the gate measured working: button, checkbox and list
 /// item non-empty; edit, text and container roles empty.
+/// A writable `Value` on an `Edit` or `Document` also emits `TypeText`, the
+/// text-insertion affordance macOS and Linux advertise for editable text.
+/// Whether the current policy can deliver it is the adapter's answer at
+/// execution, as it is for every other action.
 /// `SetFocus` is emitted truthfully from `IsKeyboardFocusable`, but core
 /// already declines to treat a bare `SetFocus` as a primary action, so it can
 /// never be the sole reason an element becomes ref-able.
@@ -72,6 +85,9 @@ pub fn resolve_actions(properties: &ElementProperties) -> LocatorField<Vec<Strin
         && properties.gated_flag(TreeProperty::ValueIsReadOnly) == Some(false)
     {
         push_unique(&mut actions, capability::SET_VALUE);
+        if is_text_control(properties) {
+            push_unique(&mut actions, capability::TYPE_TEXT);
+        }
     }
     if properties.is_true(TreeProperty::RangeValueAvailable)
         && properties.gated_flag(TreeProperty::RangeValueIsReadOnly) == Some(false)
@@ -106,6 +122,14 @@ fn read_set_is_unknown(properties: &ElementProperties) -> bool {
             properties.get(TreeProperty::IsKeyboardFocusable),
             PropertyOutcome::Unknown
         )
+}
+
+fn is_text_control(properties: &ElementProperties) -> bool {
+    matches!(
+        properties.get(TreeProperty::ControlType),
+        PropertyOutcome::Known(PropertyValue::Number(id))
+            if id == EDIT_CONTROL_TYPE || id == DOCUMENT_CONTROL_TYPE
+    )
 }
 
 fn has_legacy_default_action(properties: &ElementProperties) -> bool {
