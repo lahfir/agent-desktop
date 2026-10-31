@@ -147,7 +147,24 @@ fn focused_identity(
         Err(error) if crate::system::window::window_bridge::is_unavailable(&error) => None,
         Err(error) => return Err(error),
     };
+    if let Some(number) = number
+        && outside_window_inventory(super::cg_window_exact::window_layer(number)?)
+    {
+        tracing::debug!(
+            pid,
+            number,
+            "focused window is a system panel outside the inventory"
+        );
+        return Ok(None);
+    }
     Ok(Some((title, number)))
+}
+
+/// The global inventory lists only layer-0 windows. A focused window on another layer, such as
+/// the panel of a privacy prompt shown by UserNotificationCenter, can never join to an inventory
+/// record, so it is reported as "no focused window" instead of failing the join.
+fn outside_window_inventory(layer: Option<i64>) -> bool {
+    layer.is_some_and(|layer| layer != 0)
 }
 
 fn is_transient_surface_role(role: &str) -> bool {
@@ -176,6 +193,13 @@ mod tests {
     };
     use agent_desktop_core::{ProcessId, WindowInfo, WindowState};
     use rustc_hash::FxHashSet;
+
+    #[test]
+    fn focused_windows_off_the_normal_layer_are_outside_the_inventory() {
+        assert!(super::outside_window_inventory(Some(8)));
+        assert!(!super::outside_window_inventory(Some(0)));
+        assert!(!super::outside_window_inventory(None));
+    }
 
     #[test]
     fn modal_surfaces_can_temporarily_own_focused_window() {
