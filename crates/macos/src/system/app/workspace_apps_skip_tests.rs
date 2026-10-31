@@ -217,3 +217,26 @@ fn conflicting_workspace_records_remain_incomplete() {
         assert!(require_complete(&inventory.skipped).is_err(), "{field}");
     }
 }
+
+#[test]
+fn a_terminated_workspace_entry_is_left_out_of_the_inventory() {
+    let bytes = serde_json::to_vec(&json!({
+        "applications":[
+            {"name":"Finder", "pid":10, "launch_time":100.0, "activation_policy":"regular"},
+            {"name":"Preview", "pid":12, "launch_time":90.0, "activation_policy":"regular"},
+        ],
+        "frontmost_pid":0, "frontmost_launch_time":null, "skipped":[],
+    }))
+    .unwrap();
+    let apps = apps_from_json_with(
+        &bytes,
+        deadline(),
+        |_| true,
+        true,
+        |pid| Ok((pid == 10).then(|| "instance-10".to_string())),
+    )
+    .unwrap();
+
+    assert_eq!(apps.len(), 1);
+    assert_eq!(apps[0].name, "Finder");
+}
