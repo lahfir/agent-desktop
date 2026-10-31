@@ -50,8 +50,6 @@ export default defineSandbox(async () => {
 });
 ```
 
-Both helpers, and the tools, reach the sandbox through `spawn` (every eve sandbox session provides it), so a command they start can also be killed on demand when a call is cancelled or runs out of time.
-
 A prepared template keeps files, not processes. The tools check the desktop before each command and start it again when a resumed sandbox lost it.
 
 ## Configuration
@@ -81,7 +79,7 @@ export default desktop({
 
 Headless is the default, matching agent-desktop: ref actions use semantic accessibility calls and never move the pointer. Turn on `headed` only when the agent may use physical input; the pointer tools refuse without it.
 
-With `inlineScreenshots` on, a capture's file is deleted once its pixels are in the tool output. A capture that is too large to inline (over 3 MiB) or that cannot be read keeps its file and its path, and the model is told the pixels were not inlined, so it can read the window's text instead of guessing why it saw nothing.
+With `inlineScreenshots` on, a capture's file is deleted once its pixels are in the tool output. A capture that cannot be inlined — over 3 MiB, or unreadable — keeps its file and its path, and the model is told why it has no pixels.
 
 ## Tools
 
@@ -106,21 +104,21 @@ export default defineTool({ ...close_app, approval: always() });
 
 ## How it works
 
-Each tool runs one `agent-desktop <command>` inside the sandbox from `ctx.getSandbox()`, in the managed desktop session (`DISPLAY`, the session bus, and accessibility variables), and returns the `data` of its JSON envelope. An error envelope becomes a tool error that keeps agent-desktop's `code`, `suggestion`, and `disposition.retry`, so the model only retries when the CLI says it is safe. Each call has one five-minute budget covering sandbox acquisition, install, desktop start, the command and reading a capture back, shared with the caller's cancellation signal. When the budget runs out, or the caller cancels the call, the command is killed and the kill awaited before the tool reports failure. Eve binds the call's signal to the process it hands back, so a cancelled call cannot observe the exit; the error says which of the three things happened — the command exited, it was killed with no exit seen, or it could not be stopped — and tells the model to read the live state before acting again rather than repeating a click or a keystroke that may already have landed. If the sandbox runs a different agent-desktop minor than this package targets, tools reinstall it or fail with an install hint. A failed install is reported again for a few minutes in the same session instead of rerunning apt and npm on every call.
+Each tool runs one `agent-desktop <command>` in the sandbox from `ctx.getSandbox()`, inside the managed desktop session (`DISPLAY`, the session bus, and the accessibility variables), and returns the `data` of its JSON envelope. An error envelope becomes a tool error that keeps agent-desktop's `code`, `suggestion`, and `disposition.retry`, so the model only retries when the CLI says retrying is safe. Each call has one five-minute budget — covering install, desktop start, the command and reading a capture back — shared with the caller's cancellation; when it runs out, the command is killed before the tool reports failure, and the error says what was observed and tells the model to read the live state before acting again.
 
-Every tool's argv is checked against a real CLI by `test/conformance.test.mjs`.
+A sandbox running a different agent-desktop minor is reinstalled, or reported with an install hint. A failed install is not retried for five minutes in that session.
 
 ## Develop
 
 ```bash
 npm install
-npm test                         # build, then unit tests against a fake sandbox
+npm test                         # build, then the tests; skips what needs a real CLI or desktop
 npm run typecheck                # types only
-AGENT_DESKTOP_BIN=/path/to/agent-desktop npm test   # also check every tool's argv against that CLI
-AGENT_DESKTOP_LIVE=1 npm test    # also drive gnome-calculator on this machine (Ubuntu, sudo; installs packages)
+AGENT_DESKTOP_BIN=/path/to/agent-desktop npm test   # check every tool's argv against that CLI
+AGENT_DESKTOP_LIVE=1 npm test    # drive gnome-calculator here (Ubuntu, sudo; installs packages)
 ```
 
-`npm test` skips the checks that need a real CLI. With one on `PATH` — or with `AGENT_DESKTOP_BIN` set — it runs every tool's argv through the shipped code and hands it to that CLI, failing when a flag has drifted; and it runs one command end to end through a real sandbox process. CI does both against the agent-desktop version the tools are written against.
+The last two are opt-in. The argv check hands each tool's argv, built by the shipped code, to a real `agent-desktop`; CI runs it against the version this package targets. The live run installs the packages and drives a real desktop end to end.
 
 ## License
 
