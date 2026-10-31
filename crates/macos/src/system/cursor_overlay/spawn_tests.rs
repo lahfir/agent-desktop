@@ -2,6 +2,22 @@ use super::*;
 use std::os::unix::net::UnixListener;
 
 #[test]
+fn a_non_cli_host_cannot_claim_renderer_startup() {
+    let control = CursorOverlayControl::enable(
+        "run-spawn-guard".into(),
+        agent_desktop_core::CursorOverlayStyle::default(),
+    );
+    let error = spawn(
+        Path::new("/tmp/unused-agent-desktop-overlay.sock"),
+        &control,
+        Instant::now() + Duration::from_secs(1),
+    )
+    .expect_err("a test or FFI host must not report an unstarted renderer");
+
+    assert_eq!(error.code, ErrorCode::PlatformNotSupported);
+}
+
+#[test]
 fn travel_acknowledgement_obeys_remaining_budget() {
     let error = unacknowledged_failure(agent_desktop_core::CursorPhase::Travel);
 

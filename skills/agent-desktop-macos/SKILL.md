@@ -51,7 +51,7 @@ Read the core skill first (`agent-desktop skills get desktop`) for the observe, 
 
 **Keys.** The primary modifier is `cmd`: `press cmd+c`, `press cmd+s`. Quit shortcuts such as `cmd+q`, `cmd+shift+q`, `cmd+alt+esc`, `ctrl+cmd+q` and `cmd+shift+delete` return `POLICY_DENIED` unless you pass `--force`. To quit an app, use `close-app`. Punctuation keys work in combos, as the symbol (`,` `.` `/` `;` `'` `[` `]` `\` `-` `=` `` ` ``) or by name (`comma`, `period`, `slash`, `semicolon`, `quote`, `leftbracket`, `rightbracket`, `backslash`, `minus`, `equal`, `grave`). Each one is sent with the key that types it in the active keyboard layout, so `press cmd+,` opens Settings on ANSI and JIS keyboards alike.
 
-**Cursor overlay.** `cursor-overlay enable` draws the agent cursor in a click-through window. It never moves the OS pointer or activates an app. The macOS motion and image limits are in the core `commands-system` reference.
+**Cursor overlay.** `cursor-overlay enable` draws the agent cursor in a click-through window. Check `data.rendered`: `false` means the setting was saved but renderer startup was not confirmed. It never moves the OS pointer or activates an app. The macOS motion and image limits are in the core `commands-system` reference.
 
 ## Next step
 
