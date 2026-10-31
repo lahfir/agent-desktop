@@ -119,6 +119,10 @@ agent-desktop cursor-overlay disable
   each action replaces the card text.
 - **It fades out after 6 s with no instruction** and comes straight back on the
   next command.
+- **The caret comes from the Text pattern.** After text entry, the agent's caret
+  sits where the field's Text pattern places the insertion point, in a window
+  of its own, and goes when the cursor sets off for somewhere else. A field
+  without the Text pattern keeps the element outline.
 - **It draws in physical pixels**, the space element bounds are reported in,
   so it is not scaled again for the monitor's DPI. Multi-monitor placement is
   unit-tested only and not verified on a live multi-monitor desktop.
