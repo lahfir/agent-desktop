@@ -102,10 +102,7 @@ fn parse_apps(text: &str) -> Result<Vec<AppInfo>, AdapterError> {
             return Err(malformed_output());
         }
         let Some(name) = app_name_from_command(command) else {
-            if command.contains(".app/Contents/MacOS")
-                && !command.contains("/Contents/Frameworks/")
-                && !command.contains("/Contents/PlugIns/")
-            {
+            if command.contains(".app/Contents/MacOS") && !is_bundle_internal_command(command) {
                 return Err(malformed_output());
             }
             continue;
@@ -142,12 +139,15 @@ fn inventory_error(message: String, detail: String) -> AdapterError {
         }))
 }
 
-fn app_name_from_command(command: &str) -> Option<String> {
-    if command.contains("/Contents/Frameworks/")
+fn is_bundle_internal_command(command: &str) -> bool {
+    command.contains("/Contents/Frameworks/")
         || command.contains("/Contents/PlugIns/")
         || command.contains("/XPCServices/")
         || command.contains(".appex/")
-    {
+}
+
+fn app_name_from_command(command: &str) -> Option<String> {
+    if is_bundle_internal_command(command) {
         return None;
     }
 
