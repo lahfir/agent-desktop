@@ -1,4 +1,5 @@
 use super::*;
+use std::thread;
 
 #[test]
 fn accepted_stream_waits_for_a_delayed_control() {

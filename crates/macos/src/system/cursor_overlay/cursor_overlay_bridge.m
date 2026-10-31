@@ -319,6 +319,9 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
             NSString *nextLabel = showsBubble ? @(config->label) : @"";
             bool changedLabel = ![ADBubbleText.stringValue isEqualToString:nextLabel];
             ADBubbleText.stringValue = nextLabel;
+            if (!showsBubble) {
+                [ADBubbleWindow orderOut:nil];
+            }
             NSRect bubbleFrame = NSMakeRect(config->bubbleX,
                                             mainHeight - config->bubbleY - ADBubbleHeight,
                                             ADBubbleWidth,

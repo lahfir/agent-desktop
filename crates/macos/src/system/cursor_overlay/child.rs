@@ -7,7 +7,6 @@ use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::thread;
 use std::time::Duration;
 
 use super::bridge;
@@ -111,7 +110,7 @@ fn run() -> Result<(), AdapterError> {
                     bridge::rest();
                     state.resting = true;
                 }
-                thread::sleep(Duration::from_millis(8));
+                wait_for_connection(&listener, Duration::from_millis(8));
             }
             Err(error) => {
                 let _ = cleanup(socket);
@@ -122,6 +121,20 @@ fn run() -> Result<(), AdapterError> {
             }
         }
     }
+}
+
+/// Waits up to `timeout` for the next control, waking as soon as one
+/// connects, so a control is drawn within the frame it was sent in rather
+/// than after a fixed sleep.
+fn wait_for_connection(listener: &std::os::unix::net::UnixListener, timeout: Duration) {
+    use std::os::fd::AsRawFd;
+    let mut ready = libc::pollfd {
+        fd: listener.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    let millis = libc::c_int::try_from(timeout.as_millis()).unwrap_or(libc::c_int::MAX);
+    unsafe { libc::poll(&mut ready, 1, millis) };
 }
 
 fn prepare_stream(stream: &UnixStream) -> std::io::Result<()> {
@@ -152,7 +165,9 @@ fn handle(control: &CursorOverlayControl, state: &mut OverlayState) -> Result<bo
     let instruction = if let Some(instruction) = control.instruction() {
         instruction
     } else {
-        let config = CursorOverlayConfig::enabled(control.label().map(str::to_owned), 12)?;
+        let greeting_over_image = control.is_enable() && state.style.image().is_some();
+        let label = control.label().filter(|_| !greeting_over_image);
+        let config = CursorOverlayConfig::enabled(label.map(str::to_owned), 12)?;
         owned = CursorOverlayInstruction::new(bridge::initial_point()?, &config, false)?;
         &owned
     };
