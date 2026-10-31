@@ -114,13 +114,40 @@ Each of these commands now returns the adapter's own report inside `data`:
 
 Application-owned snapshots omit `data.window`. On macOS, `menu` and `menubar` snapshots are owned by the application, so `data.app` identifies the owner and `data.window` is absent. This also applies to a `--root` drill into a ref from one of these surfaces. Window-owned snapshots keep the existing `data.window` object. When `--window-id` is supplied for an application-owned surface, it selects the owning application; the observed surface remains application-owned.
 
-When a ref action returns `delivery_uncertain` and a post-action wait selector was requested, agent-desktop may attach a bounded, read-only observation of the original process. The original error and disposition remain unchanged. The observation does not establish that the action caused the state change.
+A complete macOS menu lookup with no surface returns `ELEMENT_NOT_FOUND` with `details.kind: "surface_absent"`, `details.surface: "menu"` or `"menubar"`, and `details.complete: true`. Waits can use that evidence to confirm absence; incomplete AX reads never carry it.
+
+### Post-action observation
+
+When a ref action returns `delivery_uncertain` with a post-action wait selector, `error.details.post_action_observation` records a read-only observation of the original process and source surface. The action is never repeated, and its original error and unsafe retry disposition stay unchanged. Even `expected_state_observed` does not prove that the action caused the state. Observation uses `--wait-timeout` separately from the action timeout.
+
+| Field | Meaning |
+| --- | --- |
+| `kind` | Always `post_action_observation`. |
+| `selector, expected` | Requested selector and `present` or `absent`. |
+| `surface` | The acted-on ref's source surface. |
+| `process_identity` | Original `pid` and `process_instance`; the instance can be null for `identity_unavailable`. |
+| `elapsed_ms` | Time spent observing after the action returned. |
+| `source_window_id` | Original window ID, when the ref has one. |
+| `selector_matches` | Observed selector result, when available; absence requires a complete read. |
+| `process_state` | Last observed `running`, `unresponsive`, `exited`, or `crashed` state, when available. |
+| `last_observation_error` | Last observation error's `code` and `message`, when available. |
+| `outcome` | One of the outcomes below. |
+
+| Outcome | Meaning |
+| --- | --- |
+| `expected_state_observed` | The expected selector state was observed, or the original window or surface was confirmed absent for an absence wait. |
+| `process_exited` | The original process exited; this does not establish the action's effect. |
+| `process_crashed` | The platform reported that the original process crashed. |
+| `owner_unavailable` | The original surface owner remained unavailable without confirmed process exit. |
+| `observation_failed` | A terminal read error prevented observation; inspect `last_observation_error`. |
+| `timed_out` | The wait budget expired without observing the expected state. |
+| `identity_unavailable` | The ref has no usable process generation, so observation was skipped. |
 
 ## Headed action verification
 
-- Physical pointer input for a headed ref action focuses the exact source window and verifies the target with a fresh hit test before delivery. Readiness polling can wait on a background target, but it does not replace these checks.
+- Physical pointer input for a headed ref action focuses the exact owning window, or the owning application for an item in its native menu bar hierarchy, and verifies the target with a fresh hit test before delivery. Readiness polling can wait on a background target, but it does not replace these checks.
 - Focus and preparatory scrolling can change coordinates. Stability is verified against fresh live observations, not by requiring coordinates to remain equal to the original snapshot.
-- On macOS, a headed click on an `AXMenuBarItem` or `AXMenuItem` activates the owning app, then calls `AXPress` without moving the cursor. A headless click calls `AXPress` without agent-desktop activating the app.
+- On macOS, a headed click on an item in the application's native menu bar hierarchy activates the owning app, then calls `AXPress` without moving the cursor. A headless click calls `AXPress` without agent-desktop activating the app.
 - Post-activation focus confirmation reads `AXFrontmost` from the target app's accessibility object and checks process identity before and after the read.
 - Focusing an inactive text field can change its selection. A pre-focus range cannot establish the expected insertion into a nonempty field; such a result is explicitly unverified rather than falsely contradicted.
 - A settle-loop pacing budget does not replace the caller's deadline for native reads. Tests assert deadline identity rather than arbitrary remaining-time thresholds.

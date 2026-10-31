@@ -7,6 +7,37 @@ use crate::tree::resolve::resolve_classify::{
 use crate::tree::resolve::resolve_search::{match_native_or_text_identity, should_stop_collecting};
 
 #[test]
+fn application_owned_resolution_retries_incomplete_reads_without_a_window() {
+    let pid = i32::try_from(std::process::id()).unwrap();
+    let identity = crate::system::process::process_identity::ProcessIdentity::capture(pid)
+        .unwrap()
+        .unwrap();
+    for surface in [SnapshotSurface::Menu, SnapshotSurface::Menubar] {
+        let mut stored = entry(None, None, None, None);
+        stored.process.pid = agent_desktop_core::ProcessId::try_from(pid).unwrap();
+        stored.process.process_instance = Some(identity.token());
+        stored.source.source_surface = surface;
+        let mut reads = 0;
+        let result =
+            resolve_with_recovery(&stored, Instant::now() + Duration::from_secs(1), || {
+                reads += 1;
+                if reads == 1 {
+                    Err(
+                        AdapterError::new(ErrorCode::AppUnresponsive, "incomplete menu")
+                            .with_details(
+                                serde_json::json!({ "complete": false, "retryable": true }),
+                            ),
+                    )
+                } else {
+                    Ok("resolved menu")
+                }
+            });
+        assert_eq!(result.unwrap(), "resolved menu");
+        assert_eq!(reads, 2);
+    }
+}
+
+#[test]
 fn identifier_kind_mismatch_is_not_an_exact_match() {
     use agent_desktop_core::{
         ElementIdentifier, IdentifierEvidence, IdentifierKind, LocatorEvidence, LocatorField,

@@ -13,22 +13,33 @@ pub(crate) fn list_surfaces_for_process(
 
 fn list_surfaces_once(pid: i32, deadline: Instant) -> Result<Vec<SurfaceInfo>, AdapterError> {
     let app = element_for_pid(pid);
-    let mut surfaces = Vec::new();
-    for (index, (kind, menu)) in super::app_menu::open_menus_for_pid(pid, deadline)?
-        .into_iter()
-        .enumerate()
-    {
-        push_menu_surface(
-            &menu,
-            kind,
-            format!("app/{kind}/{index}"),
-            deadline,
-            &mut surfaces,
-        )?;
-    }
-    if let Some(window) = read_element(&app, "AXFocusedWindow", deadline)? {
-        collect_window_surfaces(&window, "focused-window", deadline, &mut surfaces)?;
-    }
+    list_surfaces_with(
+        deadline,
+        || {
+            let mut surfaces = Vec::new();
+            if let Some(window) = read_element(&app, "AXFocusedWindow", deadline)? {
+                collect_window_surfaces(&window, "focused-window", deadline, &mut surfaces)?;
+            }
+            Ok(surfaces)
+        },
+        || {
+            let mut surfaces = Vec::new();
+            for (kind, id, menu) in super::app_menu::open_menus_for_pid(pid, deadline)? {
+                push_menu_surface(&menu, kind, id, deadline, &mut surfaces)?;
+            }
+            Ok(surfaces)
+        },
+    )
+}
+
+fn list_surfaces_with(
+    deadline: Instant,
+    window_surfaces: impl FnOnce() -> Result<Vec<SurfaceInfo>, AdapterError>,
+    menu_surfaces: impl FnOnce() -> Result<Vec<SurfaceInfo>, AdapterError>,
+) -> Result<Vec<SurfaceInfo>, AdapterError> {
+    ensure_before_deadline(deadline)?;
+    let mut surfaces = menu_surfaces()?;
+    surfaces.extend(window_surfaces()?);
     ensure_before_deadline(deadline)?;
     Ok(surfaces)
 }

@@ -84,6 +84,14 @@ impl SystemOps for MacOSAdapter {
         crate::system::focus::focus_window_impl(win, lease.deadline())
     }
 
+    fn resolve_ref_focus_window(
+        &self,
+        entry: &agent_desktop_core::RefEntry,
+        deadline: Deadline,
+    ) -> Result<WindowInfo, AdapterError> {
+        crate::system::ref_focus_window::resolve(self, entry, deadline)
+    }
+
     fn focus_app(
         &self,
         process: ProcessIdentity,

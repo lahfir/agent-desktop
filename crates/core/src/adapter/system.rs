@@ -76,6 +76,14 @@ pub trait SystemOps: Send + Sync {
         Err(AdapterError::not_supported("focus_window"))
     }
 
+    fn resolve_ref_focus_window(
+        &self,
+        entry: &crate::RefEntry,
+        _deadline: Deadline,
+    ) -> Result<WindowInfo, AdapterError> {
+        crate::saved_ref_focus_window(entry)
+    }
+
     fn focus_app(
         &self,
         _process: ProcessIdentity,

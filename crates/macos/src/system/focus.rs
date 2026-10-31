@@ -99,15 +99,31 @@ fn focus_identity(
     identity: crate::system::process::process_identity::ProcessIdentity,
     deadline: Deadline,
 ) -> Result<bool, AdapterError> {
-    if is_frontmost(identity, deadline).map_err(before_activation)? {
+    focus_until(
+        deadline,
+        || is_frontmost(identity, deadline),
+        || {
+            crate::system::cocoa_runtime::ensure_cocoa_multithreaded()
+                .map_err(before_activation)?;
+            deadline.ensure_remaining().map_err(before_activation)?;
+            crate::system::focus_bridge::activate(identity)
+        },
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn focus_until(
+    deadline: Deadline,
+    mut is_frontmost: impl FnMut() -> Result<bool, AdapterError>,
+    activate: impl FnOnce() -> Result<bool, AdapterError>,
+) -> Result<bool, AdapterError> {
+    if is_frontmost().map_err(before_activation)? {
         return Ok(false);
     }
-    crate::system::cocoa_runtime::ensure_cocoa_multithreaded().map_err(before_activation)?;
-    deadline.ensure_remaining().map_err(before_activation)?;
-    let delivered = crate::system::focus_bridge::activate(identity)?;
+    let delivered = activate()?;
     let local_deadline = Instant::now() + VERIFY_LIMIT;
     loop {
-        match is_frontmost(identity, deadline) {
+        match is_frontmost() {
             Ok(true) => return Ok(delivered),
             Ok(false) => {}
             Err(error) => {
@@ -334,3 +350,7 @@ pub(crate) fn focus_window_impl(
 ) -> Result<(), AdapterError> {
     Err(AdapterError::not_supported("focus_window"))
 }
+
+#[cfg(test)]
+#[path = "focus_tests.rs"]
+mod tests;

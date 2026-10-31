@@ -130,14 +130,16 @@ fn resolve_root(
         ObservationRoot::Application { app, .. } => {
             let pid = crate::system::process::process_identity::to_pid_t(app.pid)?;
             let element = match request.surface {
-                SnapshotSurface::Menu => {
-                    crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menu, deadline)?
-                        .ok_or_else(|| AdapterError::element_not_found("No open menu"))?
-                }
-                SnapshotSurface::Menubar => {
-                    crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menubar, deadline)?
-                        .ok_or_else(|| AdapterError::element_not_found("No menu bar found"))?
-                }
+                SnapshotSurface::Menu => crate::tree::app_menu::require_root(
+                    crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menu, deadline),
+                    SnapshotSurface::Menu,
+                    "No open menu",
+                )?,
+                SnapshotSurface::Menubar => crate::tree::app_menu::require_root(
+                    crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menubar, deadline),
+                    SnapshotSurface::Menubar,
+                    "No menu bar found",
+                )?,
                 _ => return Err(AdapterError::not_supported("application snapshot surface")),
             };
             let context =
@@ -247,14 +249,16 @@ fn resolve_window_surface(
         }
         SnapshotSurface::Focused => crate::tree::surfaces::focused_surface_for_pid(pid, deadline)?
             .ok_or_else(|| AdapterError::element_not_found("No focused surface found"))?,
-        SnapshotSurface::Menu => {
-            crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menu, deadline)?
-                .ok_or_else(|| AdapterError::element_not_found("No open context menu"))?
-        }
-        SnapshotSurface::Menubar => {
-            crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menubar, deadline)?
-                .ok_or_else(|| AdapterError::element_not_found("No menu bar found"))?
-        }
+        SnapshotSurface::Menu => crate::tree::app_menu::require_root(
+            crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menu, deadline),
+            SnapshotSurface::Menu,
+            "No open context menu",
+        )?,
+        SnapshotSurface::Menubar => crate::tree::app_menu::require_root(
+            crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menubar, deadline),
+            SnapshotSurface::Menubar,
+            "No menu bar found",
+        )?,
         _ => return Err(AdapterError::not_supported("snapshot surface")),
     };
     crate::tree::locator_deadline::remaining(deadline)?;

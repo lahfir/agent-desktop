@@ -39,7 +39,7 @@ The grant belongs to the app that launched agent-desktop, not to the shell. A di
 
 ## What works headless
 
-Ref actions are headless by default. Under `--headed`, `click`, `right-click`, `type`, `clear`, and `scroll` use physical paths first, except a click on a native `AXMenuBarItem` or `AXMenuItem`: agent-desktop activates the owning app and calls `AXPress` without moving the cursor. A headless click on these menu items calls `AXPress` without activating the app. When a ref-target pointer action uses physical input, core focuses the exact source window and verifies the hit target before delivery. `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus`, and `scroll-to` stay semantic. See [Headed mode](/desktop/guides/headed-mode).
+Ref actions are headless by default. Under `--headed`, `click`, `right-click`, `type`, `clear`, and `scroll` use physical paths first, except a click on an item in the application's native menu bar hierarchy: agent-desktop activates the owning app and calls `AXPress` without moving the cursor. A headless click on these menu items calls `AXPress` without activating the app. When a ref-target pointer action uses physical input, core focuses the exact owning window, or the owning application for an item in its native menu bar hierarchy, and verifies the hit target before delivery. A window-backed popup uses its live owning window even when its snapshot is application-owned. `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus`, and `scroll-to` stay semantic. See [Headed mode](/desktop/guides/headed-mode).
 
 <table>
   <thead>
@@ -69,7 +69,7 @@ Judge delivery by observation. AX return codes do not prove an effect: an app ca
 
 ## Surfaces
 
-`supported_surfaces` lists `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, and `alert`. Use `--surface menubar` for the File, Edit, and View menus and for menu bar status items. `menu` and `menubar` are application-owned, so snapshots need no document window and omit `data.window`. macOS has no shell surfaces; Notification Center is reached through the notification commands. See [Surfaces](/desktop/surfaces).
+`supported_surfaces` lists `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, and `alert`. Use `--surface menubar` for the application's File, Edit, and View menus. Status items exposed only through `AXExtrasMenuBar` are not included. `menu` and `menubar` are application-owned, so snapshots need no document window and omit `data.window`. macOS has no shell surfaces; Notification Center is reached through the notification commands. See [Surfaces](/desktop/surfaces).
 
 ## Keys and notifications
 

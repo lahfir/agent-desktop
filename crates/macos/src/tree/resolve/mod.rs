@@ -234,7 +234,7 @@ fn finish_resolution<T>(
 }
 
 #[cfg(target_os = "macos")]
-fn retry_incomplete_until<T>(
+pub(super) fn retry_incomplete_until<T>(
     deadline: Instant,
     mut operation: impl FnMut() -> Result<T, AdapterError>,
 ) -> Result<T, AdapterError> {

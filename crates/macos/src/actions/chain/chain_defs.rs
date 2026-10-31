@@ -40,8 +40,8 @@ mod imp {
         continue_after_unverified_delivery: false,
     };
 
-    pub(crate) fn click_chain(native_role: Option<&str>) -> &'static ChainDef {
-        if matches!(native_role, Some("AXMenuBarItem" | "AXMenuItem")) {
+    pub(crate) fn click_chain(native_menu: bool) -> &'static ChainDef {
+        if native_menu {
             &MENU_CLICK_CHAIN
         } else {
             &CLICK_CHAIN

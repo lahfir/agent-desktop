@@ -47,17 +47,24 @@ pub(crate) fn require_answered(
     outcomes: &[AppOutcome],
     named: bool,
 ) -> Result<Vec<ListedWindow>, AdapterError> {
+    if named && windows.is_empty() {
+        require_complete_frames(outcomes)?;
+    }
+    Ok(windows)
+}
+
+fn require_complete_frames(outcomes: &[AppOutcome]) -> Result<(), AdapterError> {
     let unanswered = outcomes
         .iter()
         .any(|outcome| outcome.read == RootRead::TimedOut);
-    if named && windows.is_empty() && unanswered {
+    if unanswered {
         return Err(AdapterError::timeout(
             "The application did not answer in time, so its windows could not be listed",
         )
         .with_details(json!({ "kind": "frames_unanswered" }))
         .with_disposition(DeliverySemantics::not_delivered()));
     }
-    Ok(windows)
+    Ok(())
 }
 
 /// Lists top-level windows, marking the one the sources agree is focused.
@@ -119,6 +126,11 @@ pub(crate) fn windows_of_process(
     let select = |app: &RegistryApp| app.root.pid() == pid;
     let finish = |deadline| pending.finish(deadline).unwrap_or(X11State::Unavailable);
     let (mut pass, state) = run_pass_with(bus, &registry, select, finish, deadline)?;
+    pass.windows = settle_scoped(
+        pass.windows,
+        stopped_target(&registry, select, proc_stat::is_stopped),
+    )?;
+    require_complete_frames(&pass.outcomes)?;
     finish_listing(
         &mut pass,
         &state,

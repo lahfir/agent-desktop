@@ -26,6 +26,7 @@ pub use actions::action_result::ActionResult;
 pub use actions::action_step::ActionStep;
 pub use actions::action_step_outcome::ActionStepOutcome;
 pub use actions::delivery_semantics::DeliverySemantics;
+pub use actions::headed_focus::saved_ref_focus_window;
 pub use actions::headed_requirement::HeadedRequirement;
 pub use actions::interaction_policy::InteractionPolicy;
 pub use actions::post_action::execute_verified_action;

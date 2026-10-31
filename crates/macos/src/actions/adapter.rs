@@ -12,11 +12,10 @@ impl ActionOps for MacOSAdapter {
         request: &ActionRequest,
         deadline: agent_desktop_core::Deadline,
     ) -> Result<agent_desktop_core::HeadedRequirement, AdapterError> {
-        if request.policy.is_headed() && matches!(request.action, Action::Click) {
+        crate::actions::native_menu::headed_requirement(request, || {
             let handle = self.resolve_element_strict(entry, deadline)?;
-            return self.headed_requirement(&handle, request, deadline);
-        }
-        Ok(request.headed_requirement())
+            crate::tree::native_menu::is_native_menu(ax_element(&handle)?, deadline)
+        })
     }
 
     fn headed_requirement(
@@ -25,21 +24,9 @@ impl ActionOps for MacOSAdapter {
         request: &ActionRequest,
         deadline: agent_desktop_core::Deadline,
     ) -> Result<agent_desktop_core::HeadedRequirement, AdapterError> {
-        if request.policy.is_headed() && matches!(request.action, Action::Click) {
-            let role = crate::tree::surface_read::string(
-                ax_element(handle)?,
-                "AXRole",
-                crate::tree::locator_deadline::from_operation(deadline)?,
-            )?
-            .filter(|role| !role.is_empty())
-            .ok_or_else(|| {
-                AdapterError::stale_ref_because("Click target has no native accessibility role")
-            })?;
-            if matches!(role.as_str(), "AXMenuBarItem" | "AXMenuItem") {
-                return Ok(agent_desktop_core::HeadedRequirement::FocusedApplication);
-            }
-        }
-        Ok(request.headed_requirement())
+        crate::actions::native_menu::headed_requirement(request, || {
+            crate::tree::native_menu::is_native_menu(ax_element(handle)?, deadline)
+        })
     }
 
     fn execute_action(

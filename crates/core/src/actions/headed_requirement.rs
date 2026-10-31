@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum HeadedRequirement {
     None,
     FocusedApplication,
+    FocusedApplicationAndCursor,
     FocusedWindow,
     FocusedWindowAndCursor,
 }
@@ -15,6 +16,9 @@ impl HeadedRequirement {
     }
 
     pub fn requires_cursor(self) -> bool {
-        matches!(self, Self::FocusedWindowAndCursor)
+        matches!(
+            self,
+            Self::FocusedApplicationAndCursor | Self::FocusedWindowAndCursor
+        )
     }
 }

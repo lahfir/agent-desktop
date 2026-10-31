@@ -1,6 +1,5 @@
 use crate::{
-    AdapterError, AppError, Deadline, ProcessIdentity, RefEntry, SignalFilter, SnapshotOwner,
-    SnapshotSurface,
+    AdapterError, AppError, Deadline, ProcessIdentity, RefEntry, SignalFilter,
     adapter::PlatformAdapter,
     context::WaitSelector,
     locator::live_locator::{
@@ -47,7 +46,7 @@ pub(crate) fn observe(
         Ok(deadline) => deadline,
         Err(error) => return failed_evidence(wait, entry, error.into(), started),
     };
-    let mut latest = Probe::new("observation_incomplete");
+    let mut latest = Probe::new("timed_out");
     let result = crate::commands::wait_selector::poll_selector(
         adapter,
         SignalFilter {
@@ -56,51 +55,49 @@ pub(crate) fn observe(
         },
         deadline,
         |poll_deadline| {
-            Ok(
-                match observe_once(adapter, entry, &process, &query, poll_deadline) {
-                    Ok(ProbeResult::Selector(matches)) => {
-                        latest.selector_matches = Some(matches);
-                        latest.process_state = None;
-                        latest.last_error = None;
-                        latest.outcome = "selector_observed";
-                        if matches != wait.gone {
-                            latest.outcome = "expected_state_observed";
-                            Some(latest.clone())
-                        } else {
-                            None
-                        }
+            Ok(match observe_once(adapter, entry, &query, poll_deadline) {
+                Ok(ProbeResult::Selector(matches)) => {
+                    latest.selector_matches = Some(matches);
+                    latest.process_state = None;
+                    latest.last_error = None;
+                    latest.outcome = "timed_out";
+                    if matches != wait.gone {
+                        latest.outcome = "expected_state_observed";
+                        Some(latest.clone())
+                    } else {
+                        None
                     }
-                    Ok(ProbeResult::OwnerUnavailable(state)) => {
-                        latest.selector_matches = None;
-                        latest.process_state = Some(state);
-                        latest.outcome = match state {
-                            ProcessState::Exited { .. } => "process_exited",
-                            ProcessState::Crashed { .. } => "process_crashed",
-                            _ => "window_unavailable",
-                        };
-                        matches!(
-                            state,
-                            ProcessState::Exited { .. } | ProcessState::Crashed { .. }
-                        )
-                        .then(|| latest.clone())
-                    }
-                    Err(error) => {
-                        latest.outcome = "observation_failed";
-                        latest.selector_matches = None;
-                        latest.last_error = Some(error_value(&error));
-                        (deadline.is_expired()
-                            || !is_transient(&error, entry.source.source_window_id.as_deref()))
-                        .then(|| latest.clone())
-                    }
-                },
-            )
+                }
+                Ok(ProbeResult::OwnerUnavailable(state)) => {
+                    latest.selector_matches = None;
+                    latest.process_state = Some(state);
+                    latest.outcome = match state {
+                        ProcessState::Exited { .. } => "process_exited",
+                        ProcessState::Crashed { .. } => "process_crashed",
+                        _ => "owner_unavailable",
+                    };
+                    matches!(
+                        state,
+                        ProcessState::Exited { .. } | ProcessState::Crashed { .. }
+                    )
+                    .then(|| latest.clone())
+                }
+                Err(error) => {
+                    latest.outcome = "observation_failed";
+                    latest.selector_matches = None;
+                    latest.last_error = Some(error_value(&error));
+                    (deadline.is_expired()
+                        || !is_transient(&error, entry.source.source_window_id.as_deref()))
+                    .then(|| latest.clone())
+                }
+            })
         },
     );
 
     match result {
         Ok(Some(probe)) => evidence(wait, entry, &probe, started),
         Ok(None) => {
-            if latest.outcome != "window_unavailable" {
+            if latest.outcome != "owner_unavailable" {
                 latest.outcome = "timed_out";
             }
             evidence(wait, entry, &latest, started)
@@ -123,37 +120,46 @@ impl Probe {
 fn observe_once(
     adapter: &dyn PlatformAdapter,
     entry: &RefEntry,
-    process: &ProcessIdentity,
     query: &crate::LocatorQuery,
     deadline: Deadline,
 ) -> Result<ProbeResult, AppError> {
-    let owners = pinned_owners(adapter, entry, process, deadline)?;
-    if owners.is_empty() {
-        return Ok(ProbeResult::OwnerUnavailable(
-            adapter.process_state(process.clone(), deadline)?,
-        ));
-    }
+    use crate::snapshot::ref_owner_observation::RefOwnerObservation;
+    let owner = match crate::snapshot::surface_target::resolve_ref_owner(adapter, entry, deadline)?
+    {
+        RefOwnerObservation::Present(owner) => owner,
+        RefOwnerObservation::Absent(None) => return Ok(ProbeResult::Selector(false)),
+        RefOwnerObservation::Absent(Some(state)) | RefOwnerObservation::Unavailable(state) => {
+            return Ok(ProbeResult::OwnerUnavailable(state));
+        }
+    };
     let request = LocatorResolveRequest {
         selection: LocatorSelection::First,
         deadline,
         max_raw_depth: 50,
-        surface: Some(SnapshotSurface::Window),
+        surface: Some(entry.source.source_surface),
         materialization: LocatorMaterialization::None,
     };
-    let mut complete = true;
-    for owner in owners {
-        let resolution = resolve_query(
-            adapter,
-            query,
-            owner.observation_root(SnapshotSurface::Window),
-            &request,
-        )?;
-        if resolution.meta.total_matches > 0 {
-            return Ok(ProbeResult::Selector(true));
+    let observed = resolve_query(
+        adapter,
+        query,
+        owner.observation_root(entry.source.source_surface),
+        &request,
+    );
+    let resolution = match observed {
+        Err(error)
+            if crate::snapshot::surface_target::is_confirmed_surface_absence(
+                &error,
+                entry.source.source_surface,
+            ) =>
+        {
+            return Ok(ProbeResult::Selector(false));
         }
-        complete &= resolution.meta.selection_complete;
+        result => result?,
+    };
+    if resolution.meta.total_matches > 0 {
+        return Ok(ProbeResult::Selector(true));
     }
-    if complete {
+    if resolution.meta.selection_complete {
         Ok(ProbeResult::Selector(false))
     } else {
         Err(AdapterError::new(
@@ -162,51 +168,6 @@ fn observe_once(
         )
         .into())
     }
-}
-
-fn pinned_owners(
-    adapter: &dyn PlatformAdapter,
-    entry: &RefEntry,
-    process: &ProcessIdentity,
-    deadline: Deadline,
-) -> Result<Vec<SnapshotOwner>, AppError> {
-    let app = entry.source.source_app.as_deref().ok_or_else(|| {
-        AdapterError::new(
-            crate::ErrorCode::ActionNotSupported,
-            "Ref has no source application for post-action observation",
-        )
-    })?;
-    let owners = match crate::snapshot::surface_target::resolve_owners(
-        adapter,
-        Some(app),
-        entry.source.source_window_id.as_deref(),
-        SnapshotSurface::Window,
-        deadline,
-    ) {
-        Ok(owners) => owners,
-        Err(AppError::Adapter(error))
-            if matches!(
-                error.code,
-                crate::ErrorCode::AppNotFound | crate::ErrorCode::WindowNotFound
-            ) =>
-        {
-            return Ok(Vec::new());
-        }
-        Err(error) => return Err(error),
-    };
-    Ok(owners
-        .into_iter()
-        .filter(|owner| match owner {
-            SnapshotOwner::Application(app) => {
-                app.pid == process.pid
-                    && app.process_instance.as_deref() == Some(process.instance.as_str())
-            }
-            SnapshotOwner::Window(window) => {
-                window.pid == process.pid
-                    && window.process_instance.as_deref() == Some(process.instance.as_str())
-            }
-        })
-        .collect())
 }
 
 fn is_transient(error: &AppError, window_id: Option<&str>) -> bool {
@@ -235,7 +196,7 @@ fn evidence(wait: &WaitSelector, entry: &RefEntry, probe: &Probe, started: Insta
         "selector": wait.query_raw,
         "expected": if wait.gone { "absent" } else { "present" },
         "outcome": probe.outcome,
-        "surface": SnapshotSurface::Window.as_str(),
+        "surface": entry.source.source_surface.as_str(),
         "process_identity": {
             "pid": entry.process.pid,
             "process_instance": entry.process.process_instance,

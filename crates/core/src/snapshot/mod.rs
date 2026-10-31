@@ -38,6 +38,15 @@ pub fn build(
 ) -> Result<SnapshotResult, AppError> {
     let owners =
         surface_target::resolve_owners(adapter, app_name, window_id, opts.surface, deadline)?;
+    build_for_owners(adapter, opts, owners, deadline)
+}
+
+pub(crate) fn build_for_owners(
+    adapter: &dyn PlatformAdapter,
+    opts: &TreeOptions,
+    owners: Vec<SnapshotOwner>,
+    deadline: crate::Deadline,
+) -> Result<SnapshotResult, AppError> {
     let observation_options = opts.with_ref_identity_bounds();
     let request = ObservationRequest::snapshot(&observation_options, deadline).validate()?;
     let (owner, observed) = first_surface_owner(owners, |owner| {
@@ -329,6 +338,7 @@ pub(crate) fn emit_snapshot_saved(
 }
 
 pub mod hints;
+pub(crate) mod ref_owner_observation;
 pub(crate) mod snapshot_owner;
 pub mod snapshot_ref;
 pub mod snapshot_surface;

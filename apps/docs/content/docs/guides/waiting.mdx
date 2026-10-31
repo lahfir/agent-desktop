@@ -27,7 +27,7 @@ A fixed sleep either wastes time or races the app. agent-desktop gives you two w
 
 ## Wait inside the action
 
-`--wait-for` polls the acted-on window until the selector matches, then returns a fresh snapshot with the action's own report under `after_action`, so you can act on the new refs at once:
+`--wait-for` polls the ref's original process and source surface until the selector matches, then returns a fresh snapshot with the action's own report under `after_action`, so you can act on the new refs at once:
 
 ```bash
 agent-desktop click @s8f3k2p9:e5 --wait-for "button:Done" --wait-timeout 10000

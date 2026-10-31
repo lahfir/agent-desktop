@@ -160,7 +160,8 @@ agent-desktop click @s8f3k2p9:e5 --wait-for-gone "progressindicator" --wait-time
 - The selector is `role:text`, split on the first `:`. `"button"` is role only. `":Saved!"` is text only. Text searches name, value and description.
 - They work on `snapshot`, `press` and every ref action. Other commands (`find`, `launch`, ...) return `INVALID_ARGS`. `--root` cannot combine with them. Batch entries never inherit an outer `-w`.
 - `--wait-timeout` defaults to 30000. On expiry: exit `1`, `TIMEOUT`, `details.kind: "wait_timeout"`, `details.snapshot_id` of the last tree. A post-action timeout also embeds `details.after_action`.
-- A ref action polls the acted-on ref's window. The action result is kept under `after_action`.
+- A ref action polls its original process, source surface, and source window when present. A macOS menu ref polls the application menu without requiring a window. To observe a different surface after an action, use a separate `snapshot` with the desired `--surface` and wait selector. The action result is kept under `after_action`.
+- After `delivery_uncertain`, `error.details.post_action_observation` reports read-only evidence with `outcome`, `selector`, `expected`, `surface`, `process_identity`, and `elapsed_ms`; optional fields are `source_window_id`, `selector_matches`, `process_state`, and `last_observation_error`. Outcomes are `expected_state_observed`, `process_exited`, `process_crashed`, `owner_unavailable`, `observation_failed`, `timed_out`, and `identity_unavailable`. The original error and unsafe retry disposition remain unchanged, even when the expected state is observed. The wait has its own `--wait-timeout` budget.
 - `--wait-for-gone` succeeds with `{ "gone": true, "target_absent": true }` when the app or window itself closed.
 - For `drag`, `--wait-for-scope to|from` picks which endpoint window to poll (default `to`).
 

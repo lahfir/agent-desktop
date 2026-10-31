@@ -27,6 +27,7 @@ struct ScopedWaitAdapter {
     lease_free_polls: AtomicU32,
     dispatches: AtomicU32,
     uncertain: bool,
+    closes_window: bool,
 }
 
 impl ScopedWaitAdapter {
@@ -38,16 +39,28 @@ impl ScopedWaitAdapter {
             lease_free_polls: AtomicU32::new(0),
             dispatches: AtomicU32::new(0),
             uncertain: false,
+            closes_window: false,
         }
     }
 }
 
 impl ObservationOps for ScopedWaitAdapter {
+    fn is_application_surface(&self, surface: crate::SnapshotSurface) -> bool {
+        surface == crate::SnapshotSurface::Menubar
+    }
+
     fn observe_tree(
         &self,
         root: crate::locator::live_locator::ObservationRoot<'_>,
-        _request: &crate::locator::live_locator::ObservationRequest,
+        request: &crate::locator::live_locator::ObservationRequest,
     ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
+        if request.surface == crate::SnapshotSurface::Menubar {
+            let crate::locator::live_locator::ObservationRoot::Application { app, .. } = root
+            else {
+                return Err(AdapterError::internal("expected application root"));
+            };
+            *self.polled_app.lock().unwrap() = Some(app.name.clone());
+        }
         if self.lease_held.load(Ordering::SeqCst) {
             return Err(AdapterError::internal(
                 "post-action wait must poll with the interaction lease released",
@@ -86,6 +99,9 @@ impl ObservationOps for ScopedWaitAdapter {
         _deadline: crate::Deadline,
     ) -> Result<Vec<WindowInfo>, AdapterError> {
         *self.polled_app.lock().unwrap() = filter.app.clone();
+        if self.closes_window && self.dispatches.load(Ordering::SeqCst) > 0 {
+            return Ok(Vec::new());
+        }
         Ok(vec![WindowInfo {
             id: "w-1".into(),
             title: "Doc".into(),
@@ -98,27 +114,6 @@ impl ObservationOps for ScopedWaitAdapter {
                 ..Default::default()
             },
         }])
-    }
-
-    fn get_tree(
-        &self,
-        _win: &WindowInfo,
-        _opts: &crate::adapter::TreeOptions,
-        _deadline: crate::Deadline,
-    ) -> Result<AccessibilityNode, AdapterError> {
-        Ok(AccessibilityNode {
-            ref_id: None,
-            role: "window".into(),
-            identity: crate::NodeIdentity {
-                retained_object: None,
-                name: Some("Saved!".into()),
-                ..Default::default()
-            },
-            presentation: Default::default(),
-            children_count: None,
-            subtree_truncated: false,
-            children: vec![],
-        })
     }
 
     crate::adapter::complete_live_observation!("button", "OK", [crate::actions::capability::CLICK]);
@@ -146,6 +141,35 @@ impl ActionOps for ScopedWaitAdapter {
 impl InputOps for ScopedWaitAdapter {}
 
 impl SystemOps for ScopedWaitAdapter {
+    fn resolve_window_strict(
+        &self,
+        expected: &WindowInfo,
+        _deadline: crate::Deadline,
+    ) -> Result<WindowInfo, AdapterError> {
+        assert_eq!(expected.id, "w-1");
+        assert_eq!(expected.pid, crate::ProcessId::new(1));
+        assert_eq!(expected.process_instance.as_deref(), Some("test-instance"));
+        if self.closes_window && self.dispatches.load(Ordering::SeqCst) > 0 {
+            return Err(AdapterError::new(
+                crate::ErrorCode::WindowNotFound,
+                "Original window closed",
+            ));
+        }
+        Ok(expected.clone())
+    }
+
+    fn process_state(
+        &self,
+        process: crate::ProcessIdentity,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::system::process_state::ProcessState, AdapterError> {
+        assert_eq!(
+            process,
+            crate::ProcessIdentity::new(crate::ProcessId::new(1), "test-instance")
+        );
+        Ok(crate::system::process_state::ProcessState::Running)
+    }
+
     fn acquire_interaction_lease(
         &self,
         deadline: crate::Deadline,
@@ -164,6 +188,8 @@ fn post_action_wait_scopes_and_reconciles_without_redispatch_or_held_lease() {
         let mut refmap = RefMap::new();
         let mut entry = entry();
         entry.source.source_app = Some("TargetApp".into());
+        entry.source.source_surface = crate::SnapshotSurface::Menubar;
+        assert!(entry.source.source_window_id.is_none());
         refmap.allocate(entry);
         let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
         let mut adapter = ScopedWaitAdapter::new();
@@ -295,44 +321,6 @@ impl ObservationOps for MultiWindowAdapter {
         ])
     }
 
-    fn get_tree(
-        &self,
-        win: &WindowInfo,
-        _opts: &crate::adapter::TreeOptions,
-        _deadline: crate::Deadline,
-    ) -> Result<AccessibilityNode, AdapterError> {
-        let children = if win.id == "w-target" {
-            vec![AccessibilityNode {
-                ref_id: None,
-                role: "button".into(),
-                identity: crate::NodeIdentity {
-                    retained_object: None,
-                    name: Some("Saved!".into()),
-                    ..Default::default()
-                },
-                presentation: Default::default(),
-                children_count: None,
-                subtree_truncated: false,
-                children: vec![],
-            }]
-        } else {
-            vec![]
-        };
-        Ok(AccessibilityNode {
-            ref_id: None,
-            role: "window".into(),
-            identity: crate::NodeIdentity {
-                retained_object: None,
-                name: Some(win.title.clone()),
-                ..Default::default()
-            },
-            presentation: Default::default(),
-            children_count: None,
-            subtree_truncated: false,
-            children,
-        })
-    }
-
     crate::adapter::complete_live_observation!("button", "OK", [crate::actions::capability::CLICK]);
 }
 
@@ -350,6 +338,17 @@ impl ActionOps for MultiWindowAdapter {
 impl InputOps for MultiWindowAdapter {}
 
 impl SystemOps for MultiWindowAdapter {
+    fn resolve_window_strict(
+        &self,
+        expected: &WindowInfo,
+        _deadline: crate::Deadline,
+    ) -> Result<WindowInfo, AdapterError> {
+        assert_eq!(expected.id, "w-target");
+        assert_eq!(expected.pid, crate::ProcessId::new(1));
+        assert_eq!(expected.process_instance.as_deref(), Some("test-instance"));
+        Ok(expected.clone())
+    }
+
     crate::adapter::guarded_interaction_lease!();
 }
 

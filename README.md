@@ -80,6 +80,8 @@ agent-desktop snapshot --app Finder -i      # observe again to verify
   `snapshot --root @s8f3k2p9:e3 -i --compact`.
 - **Headless by default.** Ref actions go through the accessibility API without moving the pointer or taking focus.
   The global `--headed` flag allows physical input.
+- **Post-action waits** observe the ref's original process and source surface. macOS application menus can be
+  observed without a document window. [Wait scope and results](https://agent-browser.dev/desktop/configuration#post-action-wait-flags) describe the contract.
 - **PowerShell.** Quote every ref (`'@s8f3k2p9:e8'`), because a bare `@token` is the splatting operator.
 
 ## For AI agents

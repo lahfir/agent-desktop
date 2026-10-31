@@ -102,7 +102,38 @@ A snapshot that runs out of budget still returns `ok: true`, with `"complete": f
 
 A ref action such as `click`, `type`, or `toggle` returns `data.action` and `data.disposition`, and can add `steps` (each mechanism tried), `post_state`, `surfaces` (surfaces open once the action settled), and `details`. `disposition` has two fields, `delivery` and `retry`; on success, `delivery` is `delivered_verified`, `delivered_unverified`, or `not_delivered` (already satisfied). What each value proves, and when a retry is safe, is in [Errors and recovery](/desktop/errors-and-recovery#disposition).
 
-When a ref action returns `delivery_uncertain` and a post-action wait selector was requested, agent-desktop may attach a bounded, read-only observation of the original process. The action's error and disposition stay unchanged; the observation does not prove that the action caused the state.
+### Post-action observation
+
+When a ref action returns `delivery_uncertain` with a post-action wait selector, `error.details.post_action_observation` records a read-only observation of the original process and source surface. The action is never repeated, and its original error and unsafe retry disposition stay unchanged. Even `expected_state_observed` does not prove that the action caused the state. Observation uses `--wait-timeout` separately from the action timeout.
+
+<table>
+  <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>kind</code></td><td>Always <code>post_action_observation</code>.</td></tr>
+    <tr><td><code>selector, expected</code></td><td>Requested selector and <code>present</code> or <code>absent</code>.</td></tr>
+    <tr><td><code>surface</code></td><td>The acted-on ref's source surface.</td></tr>
+    <tr><td><code>process_identity</code></td><td>Original <code>pid</code> and <code>process_instance</code>; the instance can be null for <code>identity_unavailable</code>.</td></tr>
+    <tr><td><code>elapsed_ms</code></td><td>Time spent observing after the action returned.</td></tr>
+    <tr><td><code>source_window_id</code></td><td>Original window ID, when the ref has one.</td></tr>
+    <tr><td><code>selector_matches</code></td><td>Observed selector result, when available; absence requires a complete read.</td></tr>
+    <tr><td><code>process_state</code></td><td>Last observed <code>running</code>, <code>unresponsive</code>, <code>exited</code>, or <code>crashed</code> state, when available.</td></tr>
+    <tr><td><code>last_observation_error</code></td><td>Last observation error's <code>code</code> and <code>message</code>, when available.</td></tr>
+    <tr><td><code>outcome</code></td><td>One of the outcomes below.</td></tr>
+  </tbody>
+</table>
+
+<table>
+  <thead><tr><th>Outcome</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>expected_state_observed</code></td><td>The expected selector state was observed, or the original window or surface was confirmed absent for an absence wait.</td></tr>
+    <tr><td><code>process_exited</code></td><td>The original process exited; this does not establish the action's effect.</td></tr>
+    <tr><td><code>process_crashed</code></td><td>The platform reported that the original process crashed.</td></tr>
+    <tr><td><code>owner_unavailable</code></td><td>The original surface owner remained unavailable without confirmed process exit.</td></tr>
+    <tr><td><code>observation_failed</code></td><td>A terminal read error prevented observation; inspect <code>last_observation_error</code>.</td></tr>
+    <tr><td><code>timed_out</code></td><td>The wait budget expired without observing the expected state.</td></tr>
+    <tr><td><code>identity_unavailable</code></td><td>The ref has no usable process generation, so observation was skipped.</td></tr>
+  </tbody>
+</table>
 
 ## OperationReport
 

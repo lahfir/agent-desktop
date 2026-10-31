@@ -18,15 +18,15 @@ pub(crate) fn execute_single_shot(
     let keyboard_is_aimed_at_the_element = request.action.delivered_by_keyboard()
         && !context.adapter.keyboard_needs_window_activation();
     if request.headed_requirement().requires_focus() && !keyboard_is_aimed_at_the_element {
-        let requirement = if matches!(request.action, crate::Action::Click) {
-            context
-                .adapter
-                .headed_requirement_for_ref(context.entry, &request, deadline)
-                .map_err(crate::ref_action::mark_pre_dispatch_resolution_failure)?
-        } else {
-            request.headed_requirement()
-        };
-        if requirement == crate::HeadedRequirement::FocusedApplication {
+        let requirement = context
+            .adapter
+            .headed_requirement_for_ref(context.entry, &request, deadline)
+            .map_err(crate::ref_action::mark_pre_dispatch_resolution_failure)?;
+        if matches!(
+            requirement,
+            crate::HeadedRequirement::FocusedApplication
+                | crate::HeadedRequirement::FocusedApplicationAndCursor
+        ) {
             let instance = context
                 .entry
                 .process

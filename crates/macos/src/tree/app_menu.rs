@@ -10,11 +10,29 @@ pub(crate) fn observe<T>(
     mut operation: impl FnMut() -> Result<T, AdapterError>,
 ) -> Result<T, AdapterError> {
     surface_read::ensure_before_deadline(deadline)?;
-    reacquire_once(deadline, || {
-        let result = operation();
-        require_generation(identity)?;
-        result
+    super::resolve::retry_incomplete_until(deadline, || {
+        reacquire_once(deadline, || {
+            require_generation(identity)?;
+            let result = operation();
+            require_generation(identity)?;
+            result.map_err(retryable_incomplete)
+        })
     })
+}
+
+fn retryable_incomplete(mut error: AdapterError) -> AdapterError {
+    if matches!(error.code, ErrorCode::Timeout | ErrorCode::AppUnresponsive)
+        && let Some(details) = error
+            .details
+            .as_mut()
+            .and_then(serde_json::Value::as_object_mut)
+        && details.get("complete") == Some(&serde_json::Value::Bool(false))
+    {
+        details.entry("retryable").or_insert(true.into());
+        let details = error.details.take().unwrap_or_default();
+        error = error.with_details(details);
+    }
+    error
 }
 
 fn require_generation(
@@ -77,6 +95,20 @@ pub(crate) fn root_for_pid(
     }
 }
 
+pub(super) fn require_root<T>(
+    read: Result<Option<T>, AdapterError>,
+    surface: SnapshotSurface,
+    message: &str,
+) -> Result<T, AdapterError> {
+    read?.ok_or_else(|| {
+        AdapterError::element_not_found(message).with_details(serde_json::json!({
+            "kind": "surface_absent",
+            "complete": true,
+            "surface": surface.as_str(),
+        }))
+    })
+}
+
 #[cfg(target_os = "macos")]
 fn menubar_for_pid(pid: i32, deadline: Instant) -> Result<Option<AXElement>, AdapterError> {
     let app = element_for_pid(pid);
@@ -95,51 +127,85 @@ fn menu_element_for_pid(pid: i32, deadline: Instant) -> Result<Option<AXElement>
     Ok(open_menus_for_pid(pid, deadline)?
         .into_iter()
         .next()
-        .map(|(_, menu)| menu))
+        .map(|(_, _, menu)| menu))
 }
 
 pub(crate) fn open_menus_for_pid(
     pid: i32,
     deadline: Instant,
-) -> Result<Vec<(&'static str, AXElement)>, AdapterError> {
+) -> Result<Vec<(&'static str, String, AXElement)>, AdapterError> {
     let mut menus = Vec::new();
     if let Some(menubar) = menubar_for_pid(pid, deadline)? {
-        for item in surface_read::elements(&menubar, "AXChildren", deadline)? {
-            if !has_role(&item, "AXMenuBarItem", deadline)?
-                || surface_read::boolean(&item, "AXSelected", deadline)? != Some(true)
-            {
-                continue;
-            }
-            for child in surface_read::elements(&item, "AXChildren", deadline)? {
-                if has_role(&child, "AXMenu", deadline)? {
-                    menus.push(("menu", child));
-                }
-            }
-        }
+        menus.extend(
+            open_menubar_menus_with(
+                &menubar,
+                |element| surface_read::elements(element, "AXChildren", deadline),
+                |element| {
+                    Ok(has_role(element, "AXMenuBarItem", deadline)?
+                        && surface_read::boolean(element, "AXSelected", deadline)? == Some(true))
+                },
+                |element| has_role(element, "AXMenu", deadline),
+            )?
+            .into_iter()
+            .map(|(id, menu)| ("menu", id, menu)),
+        );
     }
     if menus.is_empty()
-        && let Some(menu) = context_menu_from_app(pid, deadline)?
+        && let Some((id, menu)) = context_menu_from_app(pid, deadline)?
     {
-        menus.push(("context_menu", menu));
+        menus.push(("context_menu", id, menu));
+    }
+    Ok(menus)
+}
+
+fn open_menubar_menus_with<T>(
+    menubar: &T,
+    mut children: impl FnMut(&T) -> Result<Vec<T>, AdapterError>,
+    mut selected: impl FnMut(&T) -> Result<bool, AdapterError>,
+    mut is_menu: impl FnMut(&T) -> Result<bool, AdapterError>,
+) -> Result<Vec<(String, T)>, AdapterError> {
+    let mut menus = Vec::new();
+    for (item_index, item) in children(menubar)?.into_iter().enumerate() {
+        if !selected(&item)? {
+            continue;
+        }
+        for (child_index, child) in children(&item)?.into_iter().enumerate() {
+            if is_menu(&child)? {
+                menus.push((
+                    format!("app/menubar/children/{item_index}/children/{child_index}"),
+                    child,
+                ));
+            }
+        }
     }
     Ok(menus)
 }
 
 #[cfg(target_os = "macos")]
-fn context_menu_from_app(pid: i32, deadline: Instant) -> Result<Option<AXElement>, AdapterError> {
+fn context_menu_from_app(
+    pid: i32,
+    deadline: Instant,
+) -> Result<Option<(String, AXElement)>, AdapterError> {
     let app = element_for_pid(pid);
-    for menu in surface_read::elements(&app, "AXMenus", deadline)? {
+    for (index, menu) in surface_read::elements(&app, "AXMenus", deadline)?
+        .into_iter()
+        .enumerate()
+    {
         if displayed_menu(&menu, deadline)? {
-            return Ok(Some(menu));
+            return Ok(Some((format!("app/menus/{index}"), menu)));
         }
     }
     if let Some(focused) = surface_read::element(&app, "AXFocusedUIElement", deadline)?
-        && let Some(menu) = find_menu_descendant(focused, deadline)?
+        && let Some(menu) = find_menu_descendant(focused, "app/focused-element".into(), deadline)?
     {
         return Ok(Some(menu));
     }
-    for child in surface_read::elements(&app, "AXChildren", deadline)? {
-        if let Some(menu) = find_menu_descendant(child, deadline)? {
+    for (index, child) in surface_read::elements(&app, "AXChildren", deadline)?
+        .into_iter()
+        .enumerate()
+    {
+        if let Some(menu) = find_menu_descendant(child, format!("app/children/{index}"), deadline)?
+        {
             return Ok(Some(menu));
         }
     }
@@ -149,9 +215,10 @@ fn context_menu_from_app(pid: i32, deadline: Instant) -> Result<Option<AXElement
 #[cfg(target_os = "macos")]
 fn find_menu_descendant(
     root: AXElement,
+    source: String,
     deadline: Instant,
-) -> Result<Option<AXElement>, AdapterError> {
-    find_menu_descendant_with(root, deadline, |element| {
+) -> Result<Option<(String, AXElement)>, AdapterError> {
+    find_menu_descendant_with(root, source, deadline, |element| {
         let role = surface_read::string(element, "AXRole", deadline)?;
         if role.as_deref() == Some("AXMenuBar") {
             return Ok((false, Vec::new()));
@@ -170,13 +237,14 @@ fn find_menu_descendant(
 
 fn find_menu_descendant_with<T>(
     root: T,
+    source: String,
     deadline: Instant,
     mut inspect: impl FnMut(&T) -> Result<(bool, Vec<T>), AdapterError>,
-) -> Result<Option<T>, AdapterError> {
-    let mut pending = std::collections::VecDeque::from([root]);
+) -> Result<Option<(String, T)>, AdapterError> {
+    let mut pending = std::collections::VecDeque::from([(source, root)]);
     let mut incomplete = None;
     let mut visited = 0_usize;
-    while let Some(element) = pending.pop_front() {
+    while let Some((path, element)) = pending.pop_front() {
         surface_read::ensure_before_deadline(deadline)?;
         visited += 1;
         if visited > MAX_SURFACE_NODES {
@@ -191,9 +259,14 @@ fn find_menu_descendant_with<T>(
             Err(error) => return Err(error),
         };
         if is_menu {
-            return Ok(Some(element));
+            return Ok(Some((path, element)));
         }
-        pending.extend(children);
+        pending.extend(
+            children
+                .into_iter()
+                .enumerate()
+                .map(|(index, child)| (format!("{path}/children/{index}"), child)),
+        );
     }
     incomplete.map_or(Ok(None), Err)
 }

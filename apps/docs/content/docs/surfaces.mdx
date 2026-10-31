@@ -114,6 +114,8 @@ How agent-desktop selects an owner depends on the kind and platform:
 - A shell kind needs no `--app`, because no application owns it.
 - For window-owned surfaces, `--window-id` pins the read to that window.
 
+On macOS, a complete lookup that finds no menu or menu bar returns `ELEMENT_NOT_FOUND` with `details.kind: "surface_absent"`, `details.surface`, and `details.complete: true`. A post-action absence wait can use that evidence. An incomplete accessibility read does not establish absence.
+
 A surface that is not open returns an error. On Linux, a closed menu returns `ELEMENT_NOT_FOUND`:
 
 ```json

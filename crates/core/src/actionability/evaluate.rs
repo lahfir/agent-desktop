@@ -85,15 +85,8 @@ pub(super) fn check_with_stability(
     finish(evidence, request, report)
 }
 
-/// Like [`check_with_stability`], but a report whose only unmet requirement
-/// is `stable` is returned as `Ok` instead of converted to a terminal `Err`.
-///
-/// `stable_preflight` (`ref_action.rs`) samples live bounds to let a target
-/// settle before deciding stability is truly unreachable; it can only make
-/// that call by seeing the report, and `finish` below has already discarded
-/// it into an error by the time a normal caller sees anything. Every other
-/// gap - disabled, hidden, policy-denied, unsupported - still converts here,
-/// unchanged, because no amount of sampling resolves those.
+/// Preserves stability gaps and positive-timeout application-pointer geometry gaps for sampling.
+/// Other unmet requirements remain errors.
 pub(super) fn check_with_stability_or_gap(
     stability: StabilityExpectation,
     evidence: &ActionabilityEvidence,
@@ -101,8 +94,27 @@ pub(super) fn check_with_stability_or_gap(
     hit_test: Option<(&NativeHandle, &dyn PlatformAdapter)>,
     deadline: crate::Deadline,
 ) -> Result<ActionabilityReport, AdapterError> {
-    let report = build_report(stability, evidence, request, hit_test, deadline)?;
+    let (report, requirement) =
+        build_report_with_requirement(stability, evidence, request, hit_test, deadline)?;
     if !report.actionable && report.only_blocking_check_is_stability() {
+        return Ok(report);
+    }
+    if evidence.can_wait_for_geometry(request, &report, requirement) {
+        return Ok(report);
+    }
+    finish(evidence, request, report)
+}
+
+pub(super) fn check_before_focus(
+    stability: StabilityExpectation,
+    evidence: &ActionabilityEvidence,
+    request: &ActionRequest,
+    hit_test: Option<(&NativeHandle, &dyn PlatformAdapter)>,
+    deadline: crate::Deadline,
+) -> Result<ActionabilityReport, AdapterError> {
+    let (report, requirement) =
+        build_report_with_requirement(stability, evidence, request, hit_test, deadline)?;
+    if evidence.can_wait_for_geometry(request, &report, requirement) {
         return Ok(report);
     }
     finish(evidence, request, report)
@@ -115,12 +127,26 @@ pub(super) fn build_report(
     hit_test: Option<(&NativeHandle, &dyn PlatformAdapter)>,
     deadline: crate::Deadline,
 ) -> Result<ActionabilityReport, AdapterError> {
+    build_report_with_requirement(stability, evidence, request, hit_test, deadline)
+        .map(|(report, _)| report)
+}
+
+fn build_report_with_requirement(
+    stability: StabilityExpectation,
+    evidence: &ActionabilityEvidence,
+    request: &ActionRequest,
+    hit_test: Option<(&NativeHandle, &dyn PlatformAdapter)>,
+    deadline: crate::Deadline,
+) -> Result<(ActionabilityReport, Option<crate::HeadedRequirement>), AdapterError> {
+    let requirement = if request.policy.is_headed() {
+        hit_test
+            .map(|(handle, adapter)| adapter.headed_requirement(handle, request, deadline))
+            .transpose()?
+    } else {
+        None
+    };
     let mut semantic_request;
-    let request = if request.policy.is_headed()
-        && let Some((handle, adapter)) = hit_test
-        && adapter.headed_requirement(handle, request, deadline)?
-            == crate::HeadedRequirement::FocusedApplication
-    {
+    let request = if requirement == Some(crate::HeadedRequirement::FocusedApplication) {
         semantic_request = request.clone();
         semantic_request.policy = crate::InteractionPolicy::headless();
         &semantic_request
@@ -174,12 +200,15 @@ pub(super) fn build_report(
         .iter()
         .any(|check| !matches!(check.status, super::status::ActionabilityStatus::Pass))
     {
-        return Ok(ActionabilityReport::from_checks(
-            checks,
-            verified_point,
-            presentation_point,
-            evidence.bounds,
-            pointer_delivery,
+        return Ok((
+            ActionabilityReport::from_checks(
+                checks,
+                verified_point,
+                presentation_point,
+                evidence.bounds,
+                pointer_delivery,
+            ),
+            requirement,
         ));
     }
     if matches!(pointer_delivery, super::PointerDelivery::Physical) {
@@ -196,12 +225,15 @@ pub(super) fn build_report(
             )),
         }
     }
-    Ok(ActionabilityReport::from_checks(
-        checks,
-        verified_point,
-        presentation_point,
-        evidence.bounds,
-        pointer_delivery,
+    Ok((
+        ActionabilityReport::from_checks(
+            checks,
+            verified_point,
+            presentation_point,
+            evidence.bounds,
+            pointer_delivery,
+        ),
+        requirement,
     ))
 }
 
@@ -354,3 +386,7 @@ mod tests {
         assert!(suggestion.contains("available_actions"));
     }
 }
+
+#[cfg(test)]
+#[path = "evaluate_geometry_tests.rs"]
+mod geometry_tests;

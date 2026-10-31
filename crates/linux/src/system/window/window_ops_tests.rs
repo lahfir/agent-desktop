@@ -1,6 +1,6 @@
 use agent_desktop_core::{ErrorCode, WindowInfo, WindowState};
 
-use super::require_answered;
+use super::{require_answered, require_complete_frames};
 use crate::system::registry::app_outcome::AppOutcome;
 use crate::system::registry::listed_window::ListedWindow;
 use crate::system::registry::registry_frames::RootRead;
@@ -109,6 +109,33 @@ fn an_inactive_dialog_needs_positive_input_focus_evidence() {
 
 fn outcome(read: RootRead) -> Vec<AppOutcome> {
     vec![AppOutcome { app: 0, read }]
+}
+
+#[test]
+fn exact_window_absence_requires_complete_process_frames_even_when_a_sibling_answered() {
+    use crate::system::process::liveness::Liveness;
+    use crate::system::window::window_resolve::verify;
+
+    let expected = window("missing", false, false).info;
+    for siblings in [Vec::new(), vec![window("sibling", false, false).info]] {
+        let incomplete = require_complete_frames(&outcome(RootRead::TimedOut))
+            .and_then(|()| verify(&expected, siblings.clone(), Liveness::Alive))
+            .expect_err("an unread frame cannot prove window absence");
+        assert_eq!(incomplete.code, ErrorCode::Timeout);
+        assert_eq!(
+            incomplete.details.expect("timeout details")["kind"],
+            "frames_unanswered"
+        );
+        assert_eq!(
+            incomplete.disposition,
+            agent_desktop_core::DeliverySemantics::not_delivered()
+        );
+
+        let absent = require_complete_frames(&outcome(RootRead::Read))
+            .and_then(|()| verify(&expected, siblings, Liveness::Alive))
+            .expect_err("a complete inventory proves the window is missing");
+        assert_eq!(absent.code, ErrorCode::WindowNotFound);
+    }
 }
 
 #[test]

@@ -47,7 +47,14 @@ pub(crate) fn activate(identity: ProcessIdentity) -> Result<bool, AdapterError> 
             (&mut context as *mut ActivationContext).cast(),
         )
     };
-    if let Some(error) = context.failure {
+    finish_activation(result, context.failure)
+}
+
+fn finish_activation(
+    result: ActivationResult,
+    failure: Option<AdapterError>,
+) -> Result<bool, AdapterError> {
+    if let Some(error) = failure {
         return Err(error.with_disposition(DeliverySemantics::not_delivered()));
     }
     let disposition = if result.delivery_started != 0 {
@@ -85,3 +92,7 @@ unsafe extern "C" {
         context: *mut std::ffi::c_void,
     ) -> ActivationResult;
 }
+
+#[cfg(test)]
+#[path = "focus_bridge_tests.rs"]
+mod tests;

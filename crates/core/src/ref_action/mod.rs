@@ -54,7 +54,13 @@ pub(crate) fn preflight_resolved(
     request: &ActionRequest,
     stability: actionability::StabilityExpectation,
 ) -> Result<ActionabilityPreflight, AppError> {
-    check_actionability_with_trace(target, request, stability)
+    let report = ref_action_actionability::check_report_with_trace(
+        target,
+        request,
+        stability,
+        actionability::check_live_before_focus,
+    )?;
+    Ok(ref_action_actionability::preflight_from_report(&report))
 }
 
 pub(crate) fn dispatch_resolved(
@@ -248,13 +254,8 @@ fn pre_trace_capture_deadline(parent: crate::Deadline) -> Option<crate::Deadline
     Some(parent.capped(capture_budget))
 }
 
-/// The permissive check compares live bounds against the ref's
-/// snapshot-time evidence, which a caller's own preceding `scroll-to` on
-/// this same ref legitimately moved - so a report whose only gap is
-/// `stable` is not yet a verdict, it is the reason to sample. Anything else
-/// unmet (disabled, hidden, policy) is terminal immediately: no amount of
-/// waiting changes it, and `check_live_with_stability_or_gap` already
-/// converts those to `Err` for us.
+/// Samples stability and eligible application-pointer geometry gaps within the action deadline.
+/// Dispatch still requires a complete live actionability check after sampling.
 fn stable_preflight(
     target: &ResolvedRefAction<'_>,
     request: &ActionRequest,
@@ -270,6 +271,7 @@ fn stable_preflight(
     if report.actionable {
         return Ok(ref_action_actionability::preflight_from_report(&report));
     }
+    let geometry_pending = !report.only_blocking_check_is_stability();
     let started = crate::wait::deadline::now();
     let mut sampler = actionability::stability_sampler::StabilitySampler::new();
     loop {
@@ -277,6 +279,10 @@ fn stable_preflight(
             .adapter
             .get_element_bounds(target.handle, target.deadline)?;
         let elapsed = crate::wait::deadline::now().saturating_duration_since(started);
+        let bounds = bounds.filter(|bounds| {
+            !geometry_pending
+                || (bounds.validate().is_ok() && bounds.width > 0.0 && bounds.height > 0.0)
+        });
         if sampler.observe(bounds, elapsed) {
             let stability = actionability::StabilityExpectation::strict(
                 sampler.bounds(),

@@ -127,15 +127,7 @@ fn resolve_result_owner(
     deadline: crate::Deadline,
 ) -> Result<SnapshotOwner, AppError> {
     if adapter.is_application_surface(entry.source.source_surface) {
-        let app = crate::AppInfo {
-            name: entry.source.source_app.clone().ok_or_else(|| {
-                crate::AdapterError::stale_ref_because("root ref has no application identity")
-            })?,
-            pid: entry.process.pid,
-            process_instance: entry.process.process_instance.clone(),
-            bundle_id: None,
-            presentation: None,
-        };
+        let app = super::surface_target::application_from_ref(entry)?;
         crate::system::app_lookup::process_identity(&app)?;
         return Ok(SnapshotOwner::Application(app));
     }

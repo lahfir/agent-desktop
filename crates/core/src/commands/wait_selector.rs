@@ -29,6 +29,15 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    execute_with_ref(input, None, adapter, context)
+}
+
+pub(crate) fn execute_with_ref(
+    input: WaitSelectorInput,
+    entry: Option<&crate::RefEntry>,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
     let query = query::validate_selector(&input.query_raw)?;
 
     let start = Instant::now();
@@ -39,14 +48,20 @@ pub fn execute(
         adapter,
         crate::SignalFilter {
             app: input.app.clone(),
-            process: None,
+            process: entry.and_then(|entry| {
+                entry
+                    .process
+                    .process_instance
+                    .as_deref()
+                    .map(|instance| crate::ProcessIdentity::new(entry.process.pid, instance))
+            }),
         },
         deadline,
         |poll_deadline| {
-            let completion = match observe_selector(adapter, &input, &query, poll_deadline) {
+            let completion = match observe_selector(adapter, &input, entry, &query, poll_deadline) {
                 Ok(Some(true)) if input.gone => None,
                 Ok(Some(true)) => {
-                    match build_materialization(adapter, &input, &query, poll_deadline) {
+                    match build_materialization(adapter, &input, entry, &query, poll_deadline) {
                         Ok((true, result)) => {
                             Some(Ok(SelectorCompletion::Matched(Box::new(result))))
                         }
@@ -57,7 +72,11 @@ pub fn execute(
                         Err(err)
                             if err.code() == ErrorCode::Timeout.as_str()
                                 || is_transient_poll_error(&err, input.window_id.as_deref())
-                                || is_target_gone_error(&err) =>
+                                || is_target_gone_error(&err)
+                                || snapshot::surface_target::is_confirmed_surface_absence(
+                                    &err,
+                                    input.opts.surface,
+                                ) =>
                         {
                             last_error = Some(poll_error_json(&err));
                             None
@@ -71,7 +90,7 @@ pub fn execute(
                     last_error = Some(json!({ "kind": "locator_incomplete" }));
                     None
                 }
-                Err(err) if is_target_gone_error(&err) && input.gone => {
+                Err(err) if is_target_gone_error(&err) && input.gone && entry.is_none() => {
                     Some(Ok(SelectorCompletion::Absent))
                 }
                 Err(err)
@@ -98,13 +117,7 @@ pub fn execute(
                 && remaining <= super::wait_scheduler::POLL_INTERVAL
                 && last_built.is_none()
             {
-                match snapshot::build(
-                    adapter,
-                    &input.opts,
-                    input.app.as_deref(),
-                    input.window_id.as_deref(),
-                    poll_deadline,
-                ) {
+                match build_snapshot(adapter, &input, entry, poll_deadline) {
                     Ok(result) => last_built = Some(result),
                     Err(error) => last_error = Some(poll_error_json(&error)),
                 }
@@ -120,14 +133,14 @@ pub fn execute(
             &input.query_raw,
             start.elapsed().as_millis(),
         )),
-        Ok(None) => timeout_response(adapter, &input, context, last_built, last_error),
+        Ok(None) => timeout_response(adapter, &input, entry, context, (last_built, last_error)),
         Err(err) if err.code() == ErrorCode::Timeout.as_str() && deadline.is_expired() => {
             timeout_response(
                 adapter,
                 &input,
+                entry,
                 context,
-                last_built,
-                Some(poll_error_json(&err)),
+                (last_built, Some(poll_error_json(&err))),
             )
         }
         Err(err) => Err(err),
@@ -160,20 +173,15 @@ pub(crate) fn poll_selector<T>(
 fn timeout_response(
     adapter: &dyn PlatformAdapter,
     input: &WaitSelectorInput,
+    entry: Option<&crate::RefEntry>,
     context: &CommandContext,
-    mut last_built: Option<snapshot::SnapshotResult>,
-    mut last_error: Option<Value>,
+    previous: (Option<snapshot::SnapshotResult>, Option<Value>),
 ) -> Result<Value, AppError> {
+    let (mut last_built, mut last_error) = previous;
     if last_built.is_none() {
         let diagnostic_deadline =
             crate::Deadline::detached_after(DIAGNOSTIC_SNAPSHOT_BUDGET.as_millis() as u64)?;
-        match snapshot::build(
-            adapter,
-            &input.opts,
-            input.app.as_deref(),
-            input.window_id.as_deref(),
-            diagnostic_deadline,
-        ) {
+        match build_snapshot(adapter, input, entry, diagnostic_deadline) {
             Ok(result) => last_built = Some(result),
             Err(error) if last_error.is_none() => last_error = Some(poll_error_json(&error)),
             Err(_) => {}
@@ -205,16 +213,14 @@ fn persist_last_built(
 fn observe_selector(
     adapter: &dyn PlatformAdapter,
     input: &WaitSelectorInput,
+    entry: Option<&crate::RefEntry>,
     query: &crate::LocatorQuery,
     deadline: crate::Deadline,
 ) -> Result<Option<bool>, AppError> {
-    let owners = snapshot::surface_target::resolve_owners(
-        adapter,
-        input.app.as_deref(),
-        input.window_id.as_deref(),
-        input.opts.surface,
-        deadline,
-    )?;
+    let owners = resolve_owners(adapter, input, entry, deadline)?;
+    if owners.is_empty() {
+        return Ok(Some(false));
+    }
     let request = LocatorResolveRequest {
         selection: LocatorSelection::First,
         deadline,
@@ -223,14 +229,25 @@ fn observe_selector(
             .then_some(input.opts.surface),
         materialization: LocatorMaterialization::None,
     };
-    let (_, resolution) = snapshot::first_surface_owner(owners, |owner| {
+    let observed = snapshot::first_surface_owner(owners, |owner| {
         resolve_query(
             adapter,
             query,
             owner.observation_root(input.opts.surface),
             &request,
         )
-    })?;
+    });
+    let (_, resolution) = match observed {
+        Err(error)
+            if snapshot::surface_target::is_confirmed_surface_absence(
+                &error,
+                input.opts.surface,
+            ) =>
+        {
+            return Ok(Some(false));
+        }
+        result => result?,
+    };
     if !resolution.meta.selection_complete {
         return Ok(None);
     }
@@ -240,18 +257,54 @@ fn observe_selector(
 fn build_materialization(
     adapter: &dyn PlatformAdapter,
     input: &WaitSelectorInput,
+    entry: Option<&crate::RefEntry>,
     query: &crate::LocatorQuery,
     deadline: crate::Deadline,
 ) -> Result<(bool, snapshot::SnapshotResult), AppError> {
-    let result = snapshot::build(
-        adapter,
-        &input.opts,
-        input.app.as_deref(),
-        input.window_id.as_deref(),
-        deadline,
-    )?;
+    let result = build_snapshot(adapter, input, entry, deadline)?;
     let matched = query::tree_has_match(&result.tree, query);
     Ok((matched, result))
+}
+
+fn resolve_owners(
+    adapter: &dyn PlatformAdapter,
+    input: &WaitSelectorInput,
+    entry: Option<&crate::RefEntry>,
+    deadline: crate::Deadline,
+) -> Result<Vec<crate::SnapshotOwner>, AppError> {
+    if let Some(entry) = entry {
+        use snapshot::ref_owner_observation::RefOwnerObservation;
+        return match snapshot::surface_target::resolve_ref_owner(adapter, entry, deadline)? {
+            RefOwnerObservation::Present(owner) => Ok(vec![owner]),
+            RefOwnerObservation::Absent(_) => Ok(Vec::new()),
+            RefOwnerObservation::Unavailable(state) => {
+                Err(crate::AdapterError::app_unresponsive("Ref owner")
+                    .with_details(json!({
+                        "kind": "ref_owner_unavailable",
+                        "retryable": true,
+                        "process_state": state.label(),
+                    }))
+                    .into())
+            }
+        };
+    }
+    snapshot::surface_target::resolve_owners(
+        adapter,
+        input.app.as_deref(),
+        input.window_id.as_deref(),
+        input.opts.surface,
+        deadline,
+    )
+}
+
+fn build_snapshot(
+    adapter: &dyn PlatformAdapter,
+    input: &WaitSelectorInput,
+    entry: Option<&crate::RefEntry>,
+    deadline: crate::Deadline,
+) -> Result<snapshot::SnapshotResult, AppError> {
+    let owners = resolve_owners(adapter, input, entry, deadline)?;
+    snapshot::build_for_owners(adapter, &input.opts, owners, deadline)
 }
 
 fn materialized_response(

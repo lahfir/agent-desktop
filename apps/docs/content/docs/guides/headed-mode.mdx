@@ -16,8 +16,8 @@ A result shows which mechanism ran: in `data.steps`, `semantic_api` is an access
 
 `--headed` authorizes the focus and cursor side effects an action declares:
 
-- For ref targets, physical pointer actions focus the exact source window and require a verified target point before delivery.
-- On macOS, a headed click on a native `AXMenuBarItem` or `AXMenuItem` activates the owning app, then calls `AXPress` without moving the cursor. A headless click calls `AXPress` without agent-desktop activating the app.
+- For ref targets, physical pointer actions focus the exact owning window and require a verified target point before delivery. On macOS, an application-owned popup ref can recover its live owning window through accessibility ownership.
+- On macOS, a headed click on an item in the application's native menu bar hierarchy activates the owning app, then calls `AXPress` without moving the cursor. A headless click calls `AXPress` without agent-desktop activating the app.
 - Raw coordinates (`--xy`) carry no window identity, so they never focus anything.
 - It applies to every entry of a [batch](/desktop/guides/batch).
 - It permits physical input; it does not force it. Each platform decides per action whether to use a physical or a semantic path, and `check`, `set-value`, and `expand` stay semantic under `--headed` everywhere.

@@ -14,6 +14,14 @@ impl ObservationOps for MacOSAdapter {
         )
     }
 
+    fn is_nonspatial_target_with_deadline(
+        &self,
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<bool, AdapterError> {
+        crate::tree::native_menu::is_native_menu(ax_element(handle)?, deadline)
+    }
+
     fn focused_app(&self, deadline: Deadline) -> Result<Option<AppInfo>, AdapterError> {
         crate::system::focus::focused_app(deadline)
     }

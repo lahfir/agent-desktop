@@ -11,6 +11,7 @@ struct FocusAdapter {
     persistent_occlusion: bool,
     enabled: bool,
     application_menu: bool,
+    pointer_menu: Option<AtomicUsize>,
 }
 
 fn bounds() -> crate::Rect {
@@ -24,6 +25,17 @@ fn bounds() -> crate::Rect {
 
 impl FocusAdapter {
     fn live_bounds(&self) -> crate::Rect {
+        if self
+            .pointer_menu
+            .as_ref()
+            .is_some_and(|remaining| remaining.load(Ordering::SeqCst) > 0)
+        {
+            return crate::Rect {
+                width: 0.0,
+                height: 0.0,
+                ..bounds()
+            };
+        }
         crate::Rect {
             x: if self.focused.load(Ordering::SeqCst) {
                 100.0
@@ -62,7 +74,7 @@ impl ObservationOps for FocusAdapter {
                 offscreen: (!self.application_menu).then_some(false),
             },
             states_complete: true,
-            bounds: Some(if self.application_menu {
+            bounds: Some(if self.application_menu && self.pointer_menu.is_none() {
                 crate::Rect {
                     width: 0.0,
                     height: 0.0,
@@ -80,7 +92,13 @@ impl ObservationOps for FocusAdapter {
         _: &NativeHandle,
         _: Deadline,
     ) -> Result<Option<crate::Rect>, AdapterError> {
-        Ok(Some(self.live_bounds()))
+        let bounds = self.live_bounds();
+        if let Some(remaining) = &self.pointer_menu {
+            let _ = remaining.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+                value.checked_sub(1)
+            });
+        }
+        Ok(Some(bounds))
     }
 
     fn hit_test(
@@ -90,7 +108,7 @@ impl ObservationOps for FocusAdapter {
         _: Deadline,
     ) -> Result<crate::HitTestResult, AdapterError> {
         assert!(
-            !self.application_menu,
+            !self.application_menu || self.pointer_menu.is_some(),
             "semantic menus must not hit-test a pointer"
         );
         Ok(
@@ -124,7 +142,11 @@ impl ActionOps for FocusAdapter {
         _: Deadline,
     ) -> Result<crate::HeadedRequirement, AdapterError> {
         Ok(if self.application_menu && request.policy.is_headed() {
-            crate::HeadedRequirement::FocusedApplication
+            if self.pointer_menu.is_some() {
+                crate::HeadedRequirement::FocusedApplicationAndCursor
+            } else {
+                crate::HeadedRequirement::FocusedApplication
+            }
         } else {
             request.headed_requirement()
         })
@@ -140,7 +162,7 @@ impl ActionOps for FocusAdapter {
             assert!(self.focused.load(Ordering::SeqCst));
             assert_eq!(request.verified_point().map(|point| point.x), Some(110.0));
         }
-        if self.application_menu {
+        if self.application_menu && self.pointer_menu.is_none() {
             assert_eq!(request.policy, crate::InteractionPolicy::headless());
             assert!(request.verified_point().is_none());
         }
@@ -189,6 +211,15 @@ fn execute_within(
     headed: bool,
     timeout_ms: u64,
 ) -> Result<ActionResult, AdapterError> {
+    execute_action_within(adapter, headed, timeout_ms, Action::Click)
+}
+
+fn execute_action_within(
+    adapter: &FocusAdapter,
+    headed: bool,
+    timeout_ms: u64,
+    action: Action,
+) -> Result<ActionResult, AdapterError> {
     let _clock = crate::wait::deadline::VirtualClock::freeze();
     let mut entry: RefEntry = serde_json::from_value(serde_json::json!({
         "pid": 1, "process_instance": "test-instance", "role": "button", "name": "Run",
@@ -200,11 +231,12 @@ fn execute_within(
         entry.source.source_window_id = None;
         entry.source.source_surface = crate::SnapshotSurface::Menubar;
         entry.geometry.bounds_hash = None;
+        entry.geometry.bounds = Some(adapter.live_bounds());
     }
     let request = if headed {
-        ActionRequest::headed(Action::Click)
+        ActionRequest::headed(action)
     } else {
-        ActionRequest::headless(Action::Click)
+        ActionRequest::headless(action)
     };
     crate::ref_action::execute_entry(adapter, &entry, request.with_timeout_ms(Some(timeout_ms)))
 }
@@ -217,6 +249,7 @@ fn adapter(persistent_occlusion: bool, enabled: bool) -> FocusAdapter {
         persistent_occlusion,
         enabled,
         application_menu: false,
+        pointer_menu: None,
     }
 }
 
@@ -328,3 +361,6 @@ fn headed_click_does_not_resolve_before_window_focus_and_dispatch() {
     )
     .unwrap();
 }
+
+#[path = "ref_action_menu_pointer_tests.rs"]
+mod menu_pointer_tests;

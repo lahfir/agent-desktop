@@ -36,12 +36,18 @@ pub trait ObservationOps: Send + Sync {
         Err(AdapterError::not_supported("focused_app"))
     }
 
-    /// Whether this resolved handle denotes a protocol object with no screen
-    /// position, rather than a native control whose geometry is unreadable.
-    /// Only headless semantic delivery can use this fact; fresh identity,
-    /// complete state and action capability are still required.
+    /// Reports proven nonspatial semantic targets, including protocol objects and verified native menus.
+    /// Semantic delivery still requires fresh identity, complete live state and action capability.
     fn is_nonspatial_target(&self, _handle: &NativeHandle) -> bool {
         false
+    }
+
+    fn is_nonspatial_target_with_deadline(
+        &self,
+        handle: &NativeHandle,
+        _deadline: Deadline,
+    ) -> Result<bool, AdapterError> {
+        Ok(self.is_nonspatial_target(handle))
     }
 
     fn observe_tree(

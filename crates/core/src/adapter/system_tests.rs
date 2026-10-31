@@ -59,3 +59,43 @@ fn default_open_session_is_explicitly_unsupported() {
     assert_eq!(error.code, crate::ErrorCode::PlatformNotSupported);
     assert!(error.message.contains("open_session"));
 }
+
+#[test]
+fn default_ref_focus_window_preserves_saved_evidence_without_native_reads() {
+    let mut entry = crate::adapter::minimal_ref_entry("menuitem", Some("Choice"));
+    entry.source.source_window_id = Some("opaque-window".into());
+    entry.source.source_window_title = Some("Owner".into());
+    entry.source.source_app = Some("Application".into());
+    let before = entry.clone();
+    let window = DefaultOnly
+        .resolve_ref_focus_window(&entry, Deadline::standard().unwrap())
+        .unwrap();
+    assert_eq!(window.id, "opaque-window");
+    assert_eq!(window.title, "Owner");
+    assert_eq!(window.app, "Application");
+    assert_eq!(window.pid, entry.process.pid);
+    assert_eq!(window.process_instance, entry.process.process_instance);
+    assert_eq!(entry, before);
+}
+
+#[test]
+fn default_ref_focus_window_refuses_missing_window_or_generation() {
+    let mut entry = crate::adapter::minimal_ref_entry("menuitem", None);
+    let deadline = Deadline::standard().unwrap();
+    assert_eq!(
+        DefaultOnly
+            .resolve_ref_focus_window(&entry, deadline)
+            .unwrap_err()
+            .code,
+        crate::ErrorCode::ActionNotSupported
+    );
+    entry.source.source_window_id = Some("exact".into());
+    entry.process.process_instance = None;
+    assert_eq!(
+        DefaultOnly
+            .resolve_ref_focus_window(&entry, deadline)
+            .unwrap_err()
+            .code,
+        crate::ErrorCode::ActionNotSupported
+    );
+}

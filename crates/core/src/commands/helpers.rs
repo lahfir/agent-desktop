@@ -7,7 +7,6 @@ use crate::{
     ref_action::ref_action_wait_context::RefActionWaitContext,
     refs::RefEntry,
     refs::refs_store::RefStore,
-    system::window_lookup,
 };
 use serde_json::{Value, json};
 
@@ -137,34 +136,32 @@ pub(crate) fn execute_ref_action_with_context(
     outcome
 }
 
-pub(crate) fn probe_app_name(adapter: &dyn PlatformAdapter, entry: &RefEntry) -> Option<String> {
-    if entry.source.source_app.is_some() {
-        return entry.source.source_app.clone();
-    }
-    let identity = crate::ProcessIdentity::new(
-        entry.process.pid,
-        entry.process.process_instance.as_deref()?,
-    );
-    window_lookup::find_window_for_process(identity, adapter, crate::Deadline::standard().ok()?)
-        .ok()
-        .map(|window| window.app)
-}
-
 pub(crate) fn apply_post_action_wait(
     result: Value,
     entry: Option<&RefEntry>,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    if context.wait_selector().is_none() {
+    let Some(wait) = context.wait_selector() else {
         return Ok(result);
-    }
-    apply_scoped_post_action_wait(
+    };
+    let Some(entry) = entry else {
+        return apply_scoped_post_action_wait(result, None, None, adapter, context);
+    };
+    let input = WaitSelectorInput {
+        query_raw: wait.query_raw.clone(),
+        gone: wait.gone,
+        app: entry.source.source_app.clone(),
+        window_id: entry.source.source_window_id.clone(),
+        opts: TreeOptions {
+            surface: entry.source.source_surface,
+            ..Default::default()
+        },
+        timeout_ms: wait.timeout_ms,
+    };
+    finish_post_action_wait(
         result,
-        entry.and_then(|entry| probe_app_name(adapter, entry)),
-        entry.and_then(|entry| entry.source.source_window_id.clone()),
-        adapter,
-        context,
+        wait_selector::execute_with_ref(input, Some(entry), adapter, context),
     )
 }
 
@@ -178,7 +175,7 @@ pub(crate) fn apply_scoped_post_action_wait(
     let Some(wait) = context.wait_selector() else {
         return Ok(result);
     };
-    match wait_selector::execute(
+    let outcome = wait_selector::execute(
         WaitSelectorInput {
             query_raw: wait.query_raw.clone(),
             gone: wait.gone,
@@ -189,7 +186,15 @@ pub(crate) fn apply_scoped_post_action_wait(
         },
         adapter,
         context,
-    ) {
+    );
+    finish_post_action_wait(result, outcome)
+}
+
+fn finish_post_action_wait(
+    result: Value,
+    outcome: Result<Value, AppError>,
+) -> Result<Value, AppError> {
+    match outcome {
         Ok(mut snapshot) => {
             if let Some(body) = snapshot.as_object_mut() {
                 body.insert("after_action".into(), result);

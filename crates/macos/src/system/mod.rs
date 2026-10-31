@@ -14,6 +14,7 @@ pub(crate) mod launch_completion;
 pub(crate) mod launch_workspace;
 pub(crate) mod permissions;
 pub(crate) mod process;
+pub(crate) mod ref_focus_window;
 pub(crate) mod renderer_activation;
 pub(crate) mod renderer_kind;
 pub(crate) mod screenshot;

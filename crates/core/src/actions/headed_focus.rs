@@ -8,6 +8,11 @@ pub(crate) fn focus_entry_window(
     context: &crate::CommandContext,
     lease: &crate::InteractionLease,
 ) -> Result<WindowInfo, AppError> {
+    let expected = adapter.resolve_ref_focus_window(entry, lease.deadline())?;
+    focus_exact_window(&expected, adapter, context, lease)
+}
+
+pub fn saved_ref_focus_window(entry: &crate::RefEntry) -> Result<WindowInfo, AdapterError> {
     let process_instance = required_text(
         entry.process.process_instance.as_deref(),
         "Headed input requires target process-instance identity",
@@ -25,7 +30,7 @@ pub(crate) fn focus_entry_window(
         bounds: None,
         state: crate::WindowState::default(),
     };
-    focus_exact_window(&expected, adapter, context, lease)
+    Ok(expected)
 }
 
 pub(crate) fn focus_process_window(
@@ -63,10 +68,13 @@ pub(crate) fn focus_exact_window(
     Ok(live)
 }
 
-fn required_text<'a>(value: Option<&'a str>, message: &str) -> Result<&'a str, AppError> {
+fn required_text<'a>(value: Option<&'a str>, message: &str) -> Result<&'a str, AdapterError> {
     value.filter(|value| !value.is_empty()).ok_or_else(|| {
         AdapterError::new(ErrorCode::ActionNotSupported, message)
             .with_details(json!({ "physical_delivery_started": false }))
-            .into()
     })
 }
+
+#[cfg(test)]
+#[path = "headed_focus_tests.rs"]
+mod tests;
