@@ -4,8 +4,10 @@
  * manager, and build the environment every agent-desktop command needs.
  *
  * This file is also published as `@agent-desktop/eve/sandbox`, so it imports
- * nothing from the rest of the extension.
+ * no part of the extension other than its own sibling `./process`.
  */
+
+import { runCommand, type CommandSandbox } from "./process.js";
 
 /** The agent-desktop CLI version this package's tools are written against. */
 export const AGENT_DESKTOP_VERSION = "1.0.2";
@@ -39,16 +41,10 @@ export const DESKTOP_APT_PACKAGES = [
 const SESSION_BUS_FILE = `${DESKTOP_ROOT}/dbus-session-address`;
 const A11Y_ENV = "export GTK_MODULES=gail:atk-bridge NO_AT_BRIDGE=0 ACCESSIBILITY_ENABLED=1 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1";
 
-export interface SandboxCommandResult {
-  readonly exitCode?: number;
-  readonly stderr?: string;
-  readonly stdout?: string;
-}
+export type { SandboxCommandResult, SandboxProcess } from "./process.js";
 
 /** Structural subset of eve's sandbox session; every `ctx.getSandbox()` result satisfies it. */
-export interface DesktopSandbox {
-  run(options: { readonly command: string; readonly signal?: AbortSignal }): PromiseLike<SandboxCommandResult>;
-}
+export type DesktopSandbox = CommandSandbox;
 
 export interface InstallAgentDesktopOptions {
   readonly signal?: AbortSignal;
@@ -181,7 +177,7 @@ function aptInstallCommand(packages: readonly string[]): string {
 }
 
 async function runOrThrow(sandbox: DesktopSandbox, command: string, label: string, signal?: AbortSignal): Promise<void> {
-  const result = await sandbox.run({ command, signal });
+  const result = await runCommand(sandbox, command, signal);
   if ((result.exitCode ?? 0) !== 0) {
     const detail = [result.stderr, result.stdout]
       .map((stream) => (stream ?? "").trim())

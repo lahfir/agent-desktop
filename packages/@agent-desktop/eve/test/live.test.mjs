@@ -2,9 +2,9 @@
 // tool takes inside an eve sandbox. Opt in with AGENT_DESKTOP_LIVE=1 on an
 // Ubuntu 24.04+ host with passwordless sudo; it installs packages.
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import test from "node:test";
+
+import { createProcessSandbox } from "./support/process-sandbox.mjs";
 
 globalThis[Symbol.for("eve.ext-config-scope")] = "@agent-desktop/eve.live";
 
@@ -15,15 +15,7 @@ test("drives gnome-calculator through the desktop tools", { skip: !live, timeout
   const tools = await import("../dist/tools/index.mjs");
   extension({ extraPackages: ["gnome-calculator"] });
 
-  const sandbox = {
-    async run({ command }) {
-      const result = spawnSync("bash", ["-c", command], { encoding: "utf8" });
-      return { exitCode: result.status ?? 1, stdout: result.stdout, stderr: result.stderr };
-    },
-    async readBinaryFile({ path }) {
-      return readFileSync(path);
-    },
-  };
+  const sandbox = createProcessSandbox();
   const ctx = { getSandbox: async () => sandbox };
 
   const launched = await tools.launch.execute({ app: "gnome-calculator", activate: true }, ctx);

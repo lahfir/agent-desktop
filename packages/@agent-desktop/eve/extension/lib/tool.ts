@@ -1,7 +1,7 @@
 import { defineTool, type ToolModelOutput } from "eve/tools";
 import { z } from "zod";
 
-import { runAgentDesktop, type DesktopToolContext } from "./desktop";
+import { withDesktopCall, type DesktopCall } from "./desktop";
 
 export interface DesktopToolSpec<TSchema extends z.ZodObject, TOutput> {
   readonly description: string;
@@ -10,8 +10,11 @@ export interface DesktopToolSpec<TSchema extends z.ZodObject, TOutput> {
   readonly argv: (input: z.infer<TSchema>) => readonly string[];
   /** Keep the tool out of the model's tool list; the model finds it with `eve__search`. */
   readonly deferred?: boolean;
-  /** Shapes the envelope's `data` into the tool output. */
-  readonly output?: (data: unknown, ctx: DesktopToolContext, input: z.infer<TSchema>) => Promise<TOutput> | TOutput;
+  /**
+   * Shapes the envelope's `data` into the tool output. Runs inside the call's
+   * deadline, so anything it does in the sandbox shares the call's signal.
+   */
+  readonly output?: (data: unknown, call: DesktopCall, input: z.infer<TSchema>) => Promise<TOutput> | TOutput;
   /** What the model sees instead of the full output. */
   readonly toModelOutput?: (output: TOutput) => ToolModelOutput | Promise<ToolModelOutput>;
 }
@@ -22,8 +25,10 @@ export function desktopTool<TSchema extends z.ZodObject, TOutput = unknown>(spec
     description: spec.description,
     inputSchema: spec.inputSchema as never,
     async execute(input, ctx) {
-      const data = await runAgentDesktop(ctx, spec.argv(input));
-      return (spec.output ? await spec.output(data, ctx, input) : data) as TOutput;
+      return await withDesktopCall(ctx, async (call) => {
+        const data = await call.run(spec.argv(input));
+        return (spec.output ? await spec.output(data, call, input) : data) as TOutput;
+      });
     },
     ...(spec.deferred ? { deferred: true } : {}),
     ...(spec.toModelOutput ? { toModelOutput: spec.toModelOutput } : {}),

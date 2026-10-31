@@ -50,6 +50,8 @@ export default defineSandbox(async () => {
 });
 ```
 
+Both helpers, and the tools, reach the sandbox through `spawn` (every eve sandbox session provides it) so that a command they start can also be killed and watched when a call is cancelled or runs out of time.
+
 A prepared template keeps files, not processes. The tools check the desktop before each command and start it again when a resumed sandbox lost it.
 
 ## Configuration
@@ -79,6 +81,8 @@ export default desktop({
 
 Headless is the default, matching agent-desktop: ref actions use semantic accessibility calls and never move the pointer. Turn on `headed` only when the agent may use physical input; the pointer tools refuse without it.
 
+With `inlineScreenshots` on, a capture's file is deleted once its pixels are in the tool output. A capture that is too large to inline (over 3 MiB) or that cannot be read keeps its file and its path, and the model is told the pixels were not inlined, so it can read the window's text instead of guessing why it saw nothing.
+
 ## Tools
 
 Listed every turn: `snapshot`, `find`, `get`, `is`, `screenshot`, `click`, `right_click`, `type`, `set_value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll`, `scroll_to`, `press`, `launch`, `close_app`, `list_apps`, `list_windows`, `focus_window`, `wait`.
@@ -102,15 +106,21 @@ export default defineTool({ ...close_app, approval: always() });
 
 ## How it works
 
-Each tool runs one `agent-desktop <command>` inside the sandbox from `ctx.getSandbox()`, in the managed desktop session (`DISPLAY`, the session bus, and accessibility variables), and returns the `data` of its JSON envelope. An error envelope becomes a tool error that keeps agent-desktop's `code`, `suggestion`, and `disposition.retry`, so the model only retries when the CLI says it is safe. Each call has one five-minute budget that covers install, desktop start, and the command; when it runs out, the running sandbox command is aborted so a late action can't land after the tool failed. If the sandbox runs a different agent-desktop minor than this package targets, tools reinstall it or fail with an install hint. A failed install is reported again for a few minutes instead of rerunning apt and npm on every call.
+Each tool runs one `agent-desktop <command>` inside the sandbox from `ctx.getSandbox()`, in the managed desktop session (`DISPLAY`, the session bus, and accessibility variables), and returns the `data` of its JSON envelope. An error envelope becomes a tool error that keeps agent-desktop's `code`, `suggestion`, and `disposition.retry`, so the model only retries when the CLI says it is safe. Each call has one five-minute budget covering sandbox acquisition, install, desktop start, the command and reading a capture back. When the budget runs out, or the caller cancels the call, the running process is killed and its exit awaited before the tool reports failure, so a click or keystroke cannot land after the model was told the action failed. A stop that cannot be witnessed is reported as such, and the model is told to read the live state before acting again. If the sandbox runs a different agent-desktop minor than this package targets, tools reinstall it or fail with an install hint. A failed install is reported again for a few minutes instead of rerunning apt and npm on every call.
+
+Every tool's argv is checked against a real CLI by `test/conformance.test.mjs`.
 
 ## Develop
 
 ```bash
 npm install
 npm test                         # build, then unit tests against a fake sandbox
+npm run typecheck                # types only
+AGENT_DESKTOP_BIN=/path/to/agent-desktop npm test   # also check every tool's argv against that CLI
 AGENT_DESKTOP_LIVE=1 npm test    # also drive gnome-calculator on this machine (Ubuntu, sudo; installs packages)
 ```
+
+`npm test` skips the checks that need a real CLI. With one on `PATH` — or with `AGENT_DESKTOP_BIN` set — it runs every tool's argv through the shipped code and hands it to that CLI, failing when a flag has drifted; and it runs one command end to end through a real sandbox process. CI does both against the agent-desktop version the tools are written against.
 
 ## License
 

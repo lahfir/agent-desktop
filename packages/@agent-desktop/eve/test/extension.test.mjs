@@ -12,26 +12,54 @@ const { AGENT_DESKTOP_VERSION } = await import("../dist/sandbox/sandbox.js");
 
 const OK = (data, command = "x") => JSON.stringify({ version: "2.5", ok: true, command, data });
 
-/** A sandbox where agent-desktop is installed, the desktop is up, and every command succeeds. */
-function fakeSandbox({ respond, version = AGENT_DESKTOP_VERSION, desktopUp = true } = {}) {
+function streamOf(text) {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(text));
+      controller.close();
+    },
+  });
+}
+
+/** A sandbox process that has already produced `result` and exits immediately. */
+function fakeProcess({ stdout = "", stderr = "", exitCode = 0 } = {}) {
+  return {
+    stdout: streamOf(stdout),
+    stderr: streamOf(stderr),
+    async wait() {
+      return { exitCode };
+    },
+    async kill() {},
+  };
+}
+
+/**
+ * A sandbox where agent-desktop is installed, the desktop is up, and every
+ * command succeeds. `respond` may override the result of a command;
+ * `intercept` may replace the process for one, which the abort tests use.
+ */
+function fakeSandbox({ respond, version = AGENT_DESKTOP_VERSION, desktopUp = true, intercept } = {}) {
   const commands = [];
   return {
     commands,
-    async run({ command }) {
+    async spawn({ command }) {
       commands.push(command);
+      const replaced = intercept?.(command);
+      if (replaced !== undefined) return replaced;
       if (command.endsWith(" --version 2>/dev/null")) {
         return version === undefined
-          ? { exitCode: 127, stdout: "", stderr: "" }
-          : { exitCode: 0, stdout: `agent-desktop ${version}\n`, stderr: "" };
+          ? fakeProcess({ exitCode: 127 })
+          : fakeProcess({ stdout: `agent-desktop ${version}\n` });
       }
-      if (command.startsWith("xdpyinfo")) return { exitCode: desktopUp ? 0 : 1, stdout: "", stderr: "" };
+      if (command.startsWith("xdpyinfo")) return fakeProcess({ exitCode: desktopUp ? 0 : 1 });
       const result = respond?.(command);
-      return { exitCode: 0, stdout: OK({}), stderr: "", ...result };
+      return fakeProcess({ stdout: OK({}), ...result });
     },
   };
 }
 
 const ctx = (sandbox) => ({ getSandbox: async () => sandbox });
+const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The argv after the binary in the last agent-desktop command. */
 function lastArgv(sandbox) {
@@ -159,21 +187,72 @@ test("an unsafe failure warns against repeating the action", async () => {
   await assert.rejects(() => tools.click.execute({ ref: "@s1:e7" }, ctx(sandbox)), /Do not repeat this action blindly/);
 });
 
-test("aborting the call aborts the running sandbox command", async () => {
+test("a cancelled call kills its command and waits for the exit before it rejects", async () => {
   resetConfig();
+  const events = [];
+  let exit;
+  const exited = new Promise((resolve) => {
+    exit = resolve;
+  });
+  const sandbox = fakeSandbox({
+    intercept: (command) =>
+      command.includes("'click'")
+        ? {
+            stdout: streamOf(""),
+            stderr: streamOf(""),
+            wait: () => exited.then(() => ({ exitCode: 137 })),
+            async kill() {
+              events.push("kill-started");
+              await tick(20);
+              events.push("kill-finished");
+              exit();
+            },
+          }
+        : undefined,
+  });
   const controller = new AbortController();
-  let seen;
-  const sandbox = fakeSandbox();
-  const run = sandbox.run;
-  sandbox.run = (options) => {
-    if (!options.command.includes("'click'")) return run(options);
-    seen = options.signal;
-    return new Promise(() => {});
-  };
   const call = tools.click.execute({ ref: "@s1:e2" }, { getSandbox: async () => sandbox, abortSignal: controller.signal });
   setTimeout(() => controller.abort(new Error("stopped")), 10);
   await assert.rejects(call, /stopped/);
-  assert.equal(seen?.aborted, true);
+  assert.deepEqual(events, ["kill-started", "kill-finished"]);
+});
+
+test("a command that will not die is reported as possibly delivered", async () => {
+  resetConfig();
+  const sandbox = fakeSandbox({
+    intercept: (command) =>
+      command.includes("'click'")
+        ? {
+            stdout: streamOf(""),
+            stderr: streamOf(""),
+            wait: () => new Promise(() => {}),
+            async kill() {
+              throw new Error("kill refused");
+            },
+          }
+        : undefined,
+  });
+  const controller = new AbortController();
+  const call = tools.click.execute({ ref: "@s1:e2" }, { getSandbox: async () => sandbox, abortSignal: controller.signal });
+  setTimeout(() => controller.abort(new Error("stopped")), 10);
+  await assert.rejects(call, /could not be confirmed stopped.*possibly delivered/);
+});
+
+test("screenshot readback shares the call signal and its cleanup is inside the deadline", async () => {
+  resetConfig();
+  const sandbox = screenshotSandbox();
+  let readSignal;
+  sandbox.readBinaryFile = ({ signal }) => {
+    readSignal = signal;
+    return new Promise(() => {});
+  };
+  const controller = new AbortController();
+  const call = tools.screenshot.execute({}, { getSandbox: async () => sandbox, abortSignal: controller.signal });
+  await tick(10);
+  assert.equal(readSignal?.aborted, false, "the read should still be running before the abort");
+  controller.abort(new Error("stopped"));
+  await assert.rejects(call, /stopped/);
+  assert.equal(readSignal.aborted, true, "the read should be told the call was cancelled");
 });
 
 test("starts the desktop when it is not running", async () => {
@@ -197,14 +276,12 @@ test("manageDesktop false keeps the image's own session environment", async () =
 /** A sandbox whose version probe answers from `versions` in order (undefined: missing). */
 function versionSandbox(versions, options) {
   const sandbox = fakeSandbox(options);
-  const run = sandbox.run;
-  sandbox.run = async (opts) => {
-    if (!opts.command.endsWith(" --version 2>/dev/null")) return run(opts);
+  const spawn = sandbox.spawn;
+  sandbox.spawn = (opts) => {
+    if (!opts.command.endsWith(" --version 2>/dev/null")) return spawn(opts);
     sandbox.commands.push(opts.command);
     const version = versions.shift();
-    return version === undefined
-      ? { exitCode: 127, stdout: "", stderr: "" }
-      : { exitCode: 0, stdout: `agent-desktop ${version}\n`, stderr: "" };
+    return Promise.resolve(version === undefined ? fakeProcess({ exitCode: 127 }) : fakeProcess({ stdout: `agent-desktop ${version}\n` }));
   };
   return sandbox;
 }
@@ -278,5 +355,32 @@ test("inlineScreenshots false keeps the file and sends no pixels anywhere", asyn
   assert.match(output.path, /^\/tmp\/agent-desktop-eve\/screenshots\/.+\.png$/);
   assert.ok(!sandbox.commands.some((command) => command.startsWith("rm -f")));
   assert.equal((await tools.screenshot.toModelOutput(output)).type, "json");
+  resetConfig();
+});
+
+test("an unreadable capture keeps its path and says why the model has no pixels", async () => {
+  resetConfig();
+  const sandbox = screenshotSandbox();
+  sandbox.readBinaryFile = async () => {
+    throw new Error("read failed");
+  };
+  const output = await tools.screenshot.execute({ app: "gnome-calculator" }, ctx(sandbox));
+  assert.match(output.path, /\.png$/);
+  assert.equal(output.imageOmitted, "unreadable");
+  assert.ok(!sandbox.commands.some((command) => command.startsWith("rm -f")), "a capture we could not read is left in place");
+  const model = await tools.screenshot.toModelOutput(output);
+  assert.match(JSON.stringify(model), /were not inlined/);
+  assert.ok(!JSON.stringify(model).includes("/tmp/agent-desktop-eve"), "the model never sees the sandbox path");
+  resetConfig();
+});
+
+test("a capture too large to inline keeps its path instead of being dropped", async () => {
+  resetConfig();
+  const sandbox = screenshotSandbox();
+  sandbox.readBinaryFile = async () => Buffer.alloc(4 * 1024 * 1024);
+  const output = await tools.screenshot.execute({ app: "gnome-calculator" }, ctx(sandbox));
+  assert.equal(output.imageDataUrl, undefined);
+  assert.equal(output.imageOmitted, "too_large");
+  assert.match(output.path, /\.png$/);
   resetConfig();
 });
