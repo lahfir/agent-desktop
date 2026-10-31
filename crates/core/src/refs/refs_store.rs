@@ -48,11 +48,9 @@ impl RefStore {
     }
 
     /// Recovery-path variant of [`save_new_snapshot`]: the ref-store write
-    /// lock is acquired with a deadline detached from any inherited (and
-    /// possibly already-expired) command deadline. Used by post-timeout
-    /// diagnostic persistence, which runs after the operation's own deadline
-    /// has expired and must not collapse to an immediate `lock_timeout` that
-    /// would replace the intended `wait_timeout` envelope.
+    /// lock is acquired with a deadline detached from any inherited command
+    /// deadline. Use it to persist an already-built partial snapshot or a
+    /// post-timeout wait result after its command deadline expires.
     pub(crate) fn save_new_snapshot_detached(&self, refmap: &RefMap) -> Result<String, AppError> {
         self.with_write_lock_detached(|| self.save_new_snapshot_unlocked_with_id(refmap))
     }

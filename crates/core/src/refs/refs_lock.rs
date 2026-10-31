@@ -14,11 +14,9 @@ impl RefStoreLock {
         Self::acquire_with_deadline(path, deadline)
     }
 
-    /// Recovery-path lock: the budget is detached from the (possibly already
-    /// expired) inherited command deadline. Use ONLY for post-deadline
-    /// diagnostic work — e.g. persisting the last built snapshot after a wait
-    /// timeout — which must run after the operation's own deadline has expired
-    /// and must not collapse to an immediate `lock_timeout`.
+    /// Recovery-path lock: the budget is detached from an inherited command
+    /// deadline so an already-built partial snapshot or wait result can still
+    /// be persisted.
     pub(crate) fn acquire_detached(path: &Path) -> Result<Self, AppError> {
         let deadline = Deadline::detached_after(LOCK_TIMEOUT_MS)?;
         Self::acquire_with_deadline(path, deadline)

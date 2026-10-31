@@ -96,6 +96,10 @@ text_tree_adapter!(
     IncompleteTextTreeAdapter,
     doc_window(vec![ready_button("ready one"), truncated_container(2)])
 );
+text_tree_adapter!(ExpiringIncompleteTextTreeAdapter, {
+    crate::wait::deadline::sleep(std::time::Duration::from_millis(31));
+    doc_window(vec![ready_button("ready one"), truncated_container(2)])
+});
 text_tree_adapter!(
     AllHiddenIncompleteAdapter,
     doc_window(vec![truncated_container(2)])
@@ -201,4 +205,25 @@ fn text_wait_with_count_on_complete_observation_times_out_when_count_differs() {
     let details = adapter_err.details.expect("timeout carries details");
     assert_eq!(details["kind"], "wait_timeout");
     assert_eq!(details["expected_count"], 1);
+}
+
+#[test]
+fn text_wait_persists_a_partial_match_after_the_inherited_deadline() {
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
+    let _clock = crate::wait::deadline::VirtualClock::freeze();
+    let inherited = crate::Deadline::detached_after(30).unwrap();
+    let deadline_scope = crate::wait::deadline::enter_scope(Some(inherited));
+
+    let value = execute(
+        text_wait_args("ready", None, 30_000),
+        &ExpiringIncompleteTextTreeAdapter,
+        &CommandContext::default(),
+    )
+    .expect("a visible text match must survive the expired inherited deadline");
+    assert!(inherited.is_expired());
+    assert_eq!(value["found"], true);
+    let ref_id = value["ref"].as_str().unwrap();
+    drop(deadline_scope);
+    let entry = RefStore::new().unwrap().load_ref(ref_id).unwrap();
+    assert_eq!(entry.identity.name.as_deref(), Some("ready one"));
 }
