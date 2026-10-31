@@ -9,6 +9,7 @@ use super::eis_link::EisLink;
 use super::key_table::KeyTable;
 use super::press_state::PressState;
 use crate::input::keyboard::key_names::KEYSYM_SHIFT_L;
+use crate::input::keyboard::keysym_step::KeysymStep;
 use crate::input::wayland::key_session::KeySession;
 use crate::system::bus::session_bus::SessionBus;
 use crate::system::within;
@@ -16,6 +17,8 @@ use crate::system::within;
 pub(crate) const SERVICE: &str = "org.kde.KWin";
 const PATH: &str = "/org/kde/KWin/EIS/RemoteDesktop";
 const INTERFACE: &str = "org.kde.KWin.EIS.RemoteDesktop";
+const LAYOUTS_PATH: &str = "/Layouts";
+const LAYOUTS_INTERFACE: &str = "org.kde.KeyboardLayouts";
 const KEYBOARD_CAPABILITY: i32 = 1;
 const DISCONNECT_BUDGET_MS: u64 = 1_000;
 
@@ -27,19 +30,19 @@ pub(crate) struct KwinKeyboard {
     cookie: Option<i32>,
     link: Option<EisLink>,
     table: KeyTable,
-    wanted: Vec<u32>,
+    steps: Vec<KeysymStep>,
     state: PressState,
 }
 
 impl KwinKeyboard {
-    /// Opens the session bus for a delivery that will send `wanted` keysyms.
-    pub(crate) fn open(wanted: Vec<u32>, deadline: Deadline) -> Result<Self, AdapterError> {
+    /// Opens the session bus for a delivery that will send `steps`.
+    pub(crate) fn open(steps: Vec<KeysymStep>, deadline: Deadline) -> Result<Self, AdapterError> {
         Ok(Self {
             connection: SessionBus::get(deadline)?,
             cookie: None,
             link: None,
             table: KeyTable::default(),
-            wanted,
+            steps,
             state: PressState::default(),
         })
     }
@@ -48,6 +51,25 @@ impl KwinKeyboard {
         self.link
             .as_mut()
             .ok_or_else(|| AdapterError::internal("The KWin keyboard was not created"))
+    }
+
+    /// The layout KWin has active, which is the keymap group its keys use.
+    fn layout(&self, deadline: Deadline) -> Result<u32, AdapterError> {
+        within(deadline, async {
+            self.connection
+                .call_method(
+                    Some(SERVICE),
+                    LAYOUTS_PATH,
+                    Some(LAYOUTS_INTERFACE),
+                    "getLayout",
+                    &(),
+                )
+                .await
+                .map_err(|error| bus_failure(&error))?
+                .body()
+                .deserialize::<u32>()
+                .map_err(|error| bus_failure(&error))
+        })
     }
 
     fn disconnect(&mut self, deadline: Deadline) -> Result<(), AdapterError> {
@@ -92,12 +114,16 @@ impl KeySession for KwinKeyboard {
         let stream = UnixStream::from(OwnedFd::from(fd));
         let mut link = EisLink::connect(stream, deadline)?;
         let keymap = link.await_keyboard(deadline)?;
-        self.table = KeyTable::from_keymap(&keymap, link.group())?;
+        self.table = KeyTable::from_keymap(&keymap, self.layout(deadline)?)?;
         self.link = Some(link);
-        let missing = std::iter::once(KEYSYM_SHIFT_L)
-            .chain(self.wanted.iter().copied())
-            .any(|keysym| self.table.lookup(keysym).is_none());
-        if missing {
+        let mut rehearsal = PressState::default();
+        let complete = self.table.lookup(KEYSYM_SHIFT_L).is_some()
+            && self.steps.iter().all(|step| {
+                self.table
+                    .plan(step.keysym, step.down, &mut rehearsal)
+                    .is_some()
+            });
+        if !complete {
             return Err(outside_layout());
         }
         Ok(())

@@ -201,11 +201,14 @@ its own. Ending a session releases its held keys.
   was sent.
 - **KWin.** Each delivery asks `org.kde.KWin.EIS.RemoteDesktop` for a libei
   socket, binds its virtual keyboard and closes it afterwards; no session is
-  retained. Keysyms become evdev keys through the XKB keymap KWin sends, read
-  with `libxkbcommon.so.0` at run time; without that library the delivery is
-  `PLATFORM_NOT_SUPPORTED`, `not_delivered`. A keysym on the Shift level gets
-  its own Shift press unless Shift is already held. A keysym the current
-  layout holds only on another level (AltGr) or not at all is
+  retained. Keysyms become evdev keys through the XKB keymap KWin sends, for
+  the layout KWin reports active, read with `libxkbcommon.so.0` at run time;
+  without that library the delivery is `PLATFORM_NOT_SUPPORTED`,
+  `not_delivered`. Text on a non-Latin layout types its own characters. A
+  keysym on the Shift level gets its own Shift press unless Shift is already
+  held. Under a held Control, Alt or Super a key may come from another layout,
+  so `ctrl+a` works while a Russian layout is active. Any other keysym the
+  active layout holds only on another level (AltGr) or not at all is
   `ACTION_NOT_SUPPORTED`, cause `character_outside_layout`, before any key is
   sent. Each key waits for KWin to confirm it read the event.
 - **App pointer.** AT-SPI gives no global window origin on Wayland, so ordinary

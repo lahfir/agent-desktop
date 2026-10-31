@@ -190,10 +190,8 @@ pub(crate) fn send_chunks(
         });
     }
     if kwin::serves(deadline).map_err(|error| with_progress(error, 0))? {
-        let wanted = chunks
-            .iter()
-            .flat_map(|chunk| chunk.iter().map(|key| key.keysym));
-        let mut keyboard = KwinKeyboard::open(wanted.collect(), deadline)
+        let steps = chunks.iter().flat_map(|chunk| chunk.iter().copied());
+        let mut keyboard = KwinKeyboard::open(steps.collect(), deadline)
             .map_err(|error| with_progress(error, 0))?;
         return run_chunks(&mut keyboard, &chunks, gate, deadline);
     }

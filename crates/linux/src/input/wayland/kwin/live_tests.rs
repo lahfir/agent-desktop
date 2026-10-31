@@ -5,6 +5,7 @@ use agent_desktop_core::Deadline;
 use super::kwin_keyboard::KwinKeyboard;
 use super::serves;
 use crate::input::keyboard::key_names::KEYSYM_RETURN;
+use crate::input::keyboard::keysym_step::KeysymStep;
 use crate::input::wayland::key_session::KeySession;
 use crate::tree::live::live_launch::Launched;
 
@@ -37,8 +38,20 @@ fn a_headless_kwin_takes_keys_through_its_eis_service() {
         );
         std::thread::sleep(Duration::from_millis(50));
     }
-    let wanted = vec![KEYSYM_UPPER_A, KEYSYM_RETURN];
-    let mut keyboard = KwinKeyboard::open(wanted, deadline()).expect("the session bus opens");
+    let keys = [
+        (KEYSYM_UPPER_A, true),
+        (KEYSYM_UPPER_A, false),
+        (KEYSYM_RETURN, true),
+        (KEYSYM_RETURN, false),
+    ];
+    let steps = keys
+        .iter()
+        .map(|(keysym, down)| KeysymStep {
+            keysym: *keysym,
+            down: *down,
+        })
+        .collect();
+    let mut keyboard = KwinKeyboard::open(steps, deadline()).expect("the session bus opens");
     let created = (0..100).find_map(|_| match keyboard.create(deadline()) {
         Ok(()) => Some(()),
         Err(_) => {
@@ -48,12 +61,7 @@ fn a_headless_kwin_takes_keys_through_its_eis_service() {
     });
     created.expect("KWin hands out a resumed keyboard");
     keyboard.start(deadline()).expect("emulation starts");
-    for (keysym, down) in [
-        (KEYSYM_UPPER_A, true),
-        (KEYSYM_UPPER_A, false),
-        (KEYSYM_RETURN, true),
-        (KEYSYM_RETURN, false),
-    ] {
+    for (keysym, down) in keys {
         keyboard
             .keysym(keysym, down, deadline())
             .expect("KWin confirms each key");

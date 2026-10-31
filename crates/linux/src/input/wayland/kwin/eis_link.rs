@@ -21,7 +21,6 @@ pub(crate) struct EisLink {
     converter: EiEventConverter,
     keyboard: Option<reis::event::Device>,
     resumed: bool,
-    group: u32,
     sequence: u32,
 }
 
@@ -53,14 +52,8 @@ impl EisLink {
             converter,
             keyboard: None,
             resumed: false,
-            group: 0,
             sequence: 0,
         })
-    }
-
-    /// The layout group KWin last reported for the keyboard.
-    pub(crate) fn group(&self) -> u32 {
-        self.group
     }
 
     /// Binds the seat's keyboard and waits until KWin resumes it, returning
@@ -87,7 +80,6 @@ impl EisLink {
                 EiEvent::DevicePaused(paused) if self.keyboard.as_ref() == Some(&paused.device) => {
                     self.resumed = false;
                 }
-                EiEvent::KeyboardModifiers(modifiers) => self.group = modifiers.group,
                 EiEvent::Disconnected(disconnected) => {
                     return Err(refused(&format!("{:?}", disconnected.reason)));
                 }
