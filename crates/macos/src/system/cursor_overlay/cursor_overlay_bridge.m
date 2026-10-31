@@ -185,12 +185,28 @@ void agent_desktop_cursor_overlay_stop(void) {
     [ADBubbleWindow orderOut:nil];
     [ADRipple orderOut:nil];
     ADHighlightStop();
+    ADCaretStop();
     ADTrailStop();
     ADCursorWindow = nil;
     ADPointer = nil;
     ADRipple = nil;
     ADBubbleWindow = nil;
     ADBubbleText = nil;
+}
+
+void agent_desktop_cursor_overlay_caret(double x, double y, double width, double height) {
+    if (ADCursorWindow == nil) {
+        return;
+    }
+    @autoreleasepool {
+        double mainHeight = CGDisplayBounds(CGMainDisplayID()).size.height;
+        ADCaretShow(NSMakeRect(x, mainHeight - y - height, width, height));
+        ADPump(NSApplication.sharedApplication);
+    }
+}
+
+void agent_desktop_cursor_overlay_caret_clear(void) {
+    ADCaretStop();
 }
 
 void agent_desktop_cursor_overlay_rest(void) {
@@ -204,6 +220,7 @@ void agent_desktop_cursor_overlay_rest(void) {
         }
         [ADCursorWindow orderOut:nil];
         [ADBubbleWindow orderOut:nil];
+        ADCaretStop();
         ADCursorWindow.alphaValue = 1.0;
         ADBubbleWindow.alphaValue = 1.0;
         ADTrailStop();
@@ -212,6 +229,7 @@ void agent_desktop_cursor_overlay_rest(void) {
 
 void agent_desktop_cursor_overlay_hide(void) {
     ADDragCancel();
+    ADCaretStop();
     [ADCursorWindow orderOut:nil];
     [ADBubbleWindow orderOut:nil];
     [ADRipple orderOut:nil];

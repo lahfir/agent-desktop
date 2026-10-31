@@ -50,3 +50,6 @@ fn the_next_keystroke_is_due_an_interval_after_its_slot_or_half_one_after_a_late
 
 #[path = "type_text_interval_clock_tests.rs"]
 mod clock;
+
+#[path = "type_text_interval_caret_tests.rs"]
+mod caret;

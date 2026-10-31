@@ -200,9 +200,12 @@ impl CursorOverlayControl {
             || self.is_show()
             || self.is_disable()
             || self.is_travel()
-            || self
-                .instruction()
-                .is_some_and(|instruction| instruction.phase() == CursorPhase::Effect)
+            || self.instruction().is_some_and(|instruction| {
+                matches!(
+                    instruction.phase(),
+                    CursorPhase::Effect | CursorPhase::Caret
+                )
+            })
     }
 
     pub const fn is_hide(&self) -> bool {

@@ -48,7 +48,9 @@ pub(crate) fn execute(
         let slot = clock.wait();
         let request = context.request_base(Action::TypeText(unit.clone()));
         let delivered = match &burst {
-            Some(burst) => deliver(adapter, burst, request, budget(unit)).map(|_| ()),
+            Some(burst) => deliver(adapter, burst, request, budget(unit)).map(|_| {
+                crate::ref_action::presentation::move_caret(adapter, context, &burst.handle);
+            }),
             None => execute_ref_action_with_context(
                 RefArgs {
                     ref_id: args.ref_id.clone(),

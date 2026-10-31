@@ -50,3 +50,6 @@ mod lease;
 
 #[path = "presentation_shared_cursor_tests.rs"]
 mod shared_cursor;
+
+#[path = "presentation_caret_tests.rs"]
+mod caret;

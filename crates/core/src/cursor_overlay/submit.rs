@@ -73,6 +73,24 @@ fn travel_within(
     send(adapter, context, instruction)
 }
 
+/// Places the agent's text caret at `caret`, where the app is inserting text,
+/// without moving the cursor.
+pub(crate) fn submit_caret(adapter: &dyn PlatformAdapter, context: &CommandContext, caret: Rect) {
+    let destination = Point {
+        x: caret.x,
+        y: caret.y + caret.height / 2.0,
+    };
+    let instruction =
+        super::CursorOverlayInstruction::new(destination, context.cursor_overlay(), false).map(
+            |instruction| {
+                instruction
+                    .with_target(Some(caret))
+                    .with_phase(CursorPhase::Caret)
+            },
+        );
+    let _ = send(adapter, context, instruction);
+}
+
 pub(crate) fn input_was_delivered(result: &Result<OperationReport, AdapterError>) -> bool {
     result.as_ref().map_or_else(
         |error| confirms_delivery(error.disposition),
@@ -226,3 +244,7 @@ pub(crate) fn dispatch_mouse_event_with_cursor(
     }
     result
 }
+
+#[cfg(test)]
+#[path = "submit_tests.rs"]
+mod tests;

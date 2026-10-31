@@ -99,6 +99,7 @@ impl SurfaceHost {
                         .clone(),
                     instruction.target().cloned(),
                 ),
+                CursorPhase::Caret => {}
                 CursorPhase::Effect => {}
             },
         }
@@ -128,6 +129,7 @@ impl SurfaceHost {
                         instruction.is_click(),
                         interrupt,
                     ),
+                    CursorPhase::Caret => {}
                 }
             }
             CursorOverlayControl::Hide { .. } | CursorOverlayControl::Disable { .. } => {}

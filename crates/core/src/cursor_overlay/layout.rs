@@ -1,5 +1,8 @@
 use crate::{Point, Rect};
 
+/// How close, in points, two cursor positions are to count as the same place.
+pub const CURSOR_SAME_POINT: f64 = 1.5;
+
 const DESTINATION_GAP: f64 = 18.0;
 
 pub fn place_label(destination: &Point, size: (f64, f64), screen: &Rect) -> Rect {

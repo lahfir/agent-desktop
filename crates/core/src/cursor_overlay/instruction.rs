@@ -100,4 +100,23 @@ impl CursorOverlayInstruction {
     pub const fn is_click(&self) -> bool {
         self.click
     }
+
+    /// Whether this instruction sets the cursor off from `at` for somewhere
+    /// else: a travel, or a drag from its origin, to a point
+    /// [`CURSOR_SAME_POINT`](super::CURSOR_SAME_POINT) or more away. The agent's
+    /// caret marks the field the cursor was typing in, so renderers clear it
+    /// then and keep it for a travel that stays put, such as typing again into
+    /// the same field.
+    pub fn departs_from(&self, at: Option<&Point>) -> bool {
+        let to = match self.phase {
+            CursorPhase::Travel => &self.destination,
+            CursorPhase::Drag => self.drag_from.as_ref().unwrap_or(&self.destination),
+            _ => return false,
+        };
+        at.is_none_or(|at| (to.x - at.x).hypot(to.y - at.y) >= super::CURSOR_SAME_POINT)
+    }
 }
+
+#[cfg(test)]
+#[path = "instruction_tests.rs"]
+mod instruction_tests;
