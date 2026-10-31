@@ -107,7 +107,7 @@ fn live_a_forwarded_launch_without_matching_argv_reports_the_residents_new_windo
     wait_until("the initial native window", || x_windows_of(pid).len() == 1);
     let before = x_windows_of(pid);
     assert_eq!(before.len(), 1);
-    let known = crate::system::window::window_ops::windows_of_process(
+    let (known, _) = crate::system::window::window_ops::windows_of_process(
         &SharedBus::default(),
         pid,
         deadline(8_000),

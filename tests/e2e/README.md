@@ -56,6 +56,16 @@ exclusivity acknowledgement and calls `run.sh`; it refuses to run unless
 `AGENT_DESKTOP_NATIVE_E2E_RUNNER=1` is set. The `native-e2e.yml` workflow is
 `workflow_dispatch` only.
 
+## Native menu regression
+
+Run this manually on macOS with a built binary. Close TextEdit first. Grant the terminal Accessibility and System Events automation access; if macOS lists `agent-desktop` separately, grant it access too. The script launches TextEdit without activating it, closes its verified blank document, and checks the menubar with zero AX windows. It leaves TextEdit running if another document appears or changes.
+
+This script is not part of `run.sh`.
+
+```bash
+python3 tests/e2e/native-menus.py --bin /absolute/path/to/agent-desktop
+```
+
 ## Exact ref namespaces
 
 Every non-count `find` returns two inseparable values:

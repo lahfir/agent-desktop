@@ -1,16 +1,16 @@
 ---
 title: JSON output
 navTitle: JSON output
-description: The response envelope every agent-desktop command prints, its omission rules, the OperationReport shape, find results, exit codes, and the contract versions from 2.1 to 2.5.
+description: The response envelope every agent-desktop command prints, its omission rules, the OperationReport shape, find results, exit codes, and the contract versions from 2.1 to 2.6.
 ---
 
-Every command prints exactly one JSON envelope on a single line of standard output. Only `--help`, `--version`, and a bare `agent-desktop` print text instead. The contract version is `2.5`. Log output goes to standard error, so a parser can read standard output as one JSON value.
+Every command prints exactly one JSON envelope on a single line of standard output. Only `--help`, `--version`, and a bare `agent-desktop` print text instead. The contract version is `2.6`. Log output goes to standard error, so a parser can read standard output as one JSON value.
 
 ## Envelope
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "click",
   "data": {
@@ -25,7 +25,7 @@ Every command prints exactly one JSON envelope on a single line of standard outp
     <tr><th>Field</th><th>Type</th><th>Meaning</th></tr>
   </thead>
   <tbody>
-    <tr><td><code>version</code></td><td>string</td><td>Contract version. Currently <code>"2.5"</code>.</td></tr>
+    <tr><td><code>version</code></td><td>string</td><td>Contract version. Currently <code>"2.6"</code>.</td></tr>
     <tr><td><code>ok</code></td><td>boolean</td><td><code>true</code> when the command returned a result, <code>false</code> when it returned an error.</td></tr>
     <tr><td><code>command</code></td><td>string</td><td>The command name, such as <code>click</code> or <code>session</code>.</td></tr>
     <tr><td><code>data</code></td><td>object</td><td>The result. Present only when <code>ok</code> is <code>true</code>.</td></tr>
@@ -37,7 +37,7 @@ An error envelope has `error` and no `data`:
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": false,
   "command": "click",
   "error": {
@@ -57,14 +57,19 @@ An error envelope has `error` and no `data`:
 - Snapshot node bounds are omitted unless you pass `--include-bounds`.
 - Some commands build their `data` by hand and write `null` or `[]` for an absent value. `session list` writes `"ended_at": null` for an open session, and `find` matches write `"value": null` and `"states": []`. Treat a missing key, `null`, and an empty array the same way.
 - Ignore keys you do not know. New optional fields can appear without a version change.
+- Snapshot `data.window` appears when a window owns the observation. On macOS, application-owned `menu` and `menubar` snapshots omit it.
+
+## Application-owned snapshots
+
+On macOS, `menu` and `menubar` snapshots belong to the application, so `data.app` identifies the owner and `data.window` is absent. This remains true when a `--window-id` selects which app to observe or when `--root` drills into a ref from that surface. Window-owned snapshots keep `data.window`.
 
 ## Where data lives
 
-`ref_count` and `tree` sit inside `data`, never at the top level. This snapshot of GNOME Calculator is trimmed to one branch:
+`ref_count` and `tree` sit inside `data`, never at the top level. This window-owned snapshot of GNOME Calculator is trimmed to one branch:
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "snapshot",
   "data": {
@@ -72,6 +77,7 @@ An error envelope has `error` and no `data`:
     "complete": true,
     "ref_count": 7,
     "snapshot_id": "s1vylk49fulgx4",
+    "window": { "id": "w-calculator", "title": "Calculator" },
     "tree": {
       "role": "window",
       "name": "Calculator",
@@ -95,6 +101,39 @@ A snapshot that runs out of budget still returns `ok: true`, with `"complete": f
 ## Action results and disposition
 
 A ref action such as `click`, `type`, or `toggle` returns `data.action` and `data.disposition`, and can add `steps` (each mechanism tried), `post_state`, `surfaces` (surfaces open once the action settled), and `details`. `disposition` has two fields, `delivery` and `retry`; on success, `delivery` is `delivered_verified`, `delivered_unverified`, or `not_delivered` (already satisfied). What each value proves, and when a retry is safe, is in [Errors and recovery](/desktop/errors-and-recovery#disposition).
+
+### Post-action observation
+
+When a ref action returns `delivery_uncertain` with a post-action wait selector, `error.details.post_action_observation` records a read-only observation of the original process. Application-owned refs keep their source surface. Window-owned refs observe their original pinned window, including refs captured from `sheet`, `alert`, `popover`, `focused`, or a window-owned `menu` such as a Linux menu. This lets a closed overlay be observed without treating the parent window as absent. The action is never repeated, and its original error and unsafe retry disposition stay unchanged. Even `expected_state_observed` does not prove that the action caused the state. Observation uses `--wait-timeout` separately from the action timeout.
+
+<table>
+  <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>kind</code></td><td>Always <code>post_action_observation</code>.</td></tr>
+    <tr><td><code>selector, expected</code></td><td>Requested selector and <code>present</code> or <code>absent</code>.</td></tr>
+    <tr><td><code>surface</code></td><td>The observed scope: the application-owned source surface, or <code>window</code> for a window-owned ref.</td></tr>
+    <tr><td><code>process_identity</code></td><td>Original <code>pid</code> and <code>process_instance</code>; the instance can be null for <code>identity_unavailable</code>.</td></tr>
+    <tr><td><code>elapsed_ms</code></td><td>Time spent observing after the action returned.</td></tr>
+    <tr><td><code>source_window_id</code></td><td>Original window ID, when the ref has one.</td></tr>
+    <tr><td><code>selector_matches</code></td><td>Observed selector result, when available; absence requires a complete read.</td></tr>
+    <tr><td><code>process_state</code></td><td>Last observed <code>unresponsive</code>, <code>exited</code>, or <code>crashed</code> state. <code>running</code> is never emitted.</td></tr>
+    <tr><td><code>last_observation_error</code></td><td>Last observation error's <code>code</code> and <code>message</code>, when available.</td></tr>
+    <tr><td><code>outcome</code></td><td>One of the outcomes below.</td></tr>
+  </tbody>
+</table>
+
+<table>
+  <thead><tr><th>Outcome</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>expected_state_observed</code></td><td>The expected selector state was observed, or the original window or surface was confirmed absent for an absence wait.</td></tr>
+    <tr><td><code>process_exited</code></td><td>The original process exited; this does not establish the action's effect.</td></tr>
+    <tr><td><code>process_crashed</code></td><td>The platform reported that the original process crashed.</td></tr>
+    <tr><td><code>owner_unavailable</code></td><td>The original surface owner remained unavailable without confirmed process exit.</td></tr>
+    <tr><td><code>observation_failed</code></td><td>A terminal read error stopped observation; inspect <code>last_observation_error</code>.</td></tr>
+    <tr><td><code>timed_out</code></td><td>The wait budget expired without observing the expected state, including when transient read errors persisted through the last poll. <code>last_observation_error</code> may hold the last error.</td></tr>
+    <tr><td><code>identity_unavailable</code></td><td>The ref has no usable process generation, so observation was skipped.</td></tr>
+  </tbody>
+</table>
 
 ## OperationReport
 
@@ -145,7 +184,7 @@ A failed `--wait-for` after a delivered operation keeps the operation's own deli
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "find",
   "data": {
@@ -189,7 +228,7 @@ An argument the parser accepts but the command rejects, such as a bare `@e1`, ex
 
 ## Contract versions
 
-Check `version` before you parse. A consumer written for 2.0 or later can treat a higher minor version as the same shape plus the changes below.
+Check `version` before you parse. Apply the migrations below when your parser supports an older contract version.
 
 <table>
   <thead>
@@ -201,6 +240,7 @@ Check `version` before you parse. A consumer written for 2.0 or later can treat 
     <tr><td>2.3</td><td><code>launch</code> returns <code>app</code>, <code>pid</code>, <code>process_instance</code>, and an optional <code>window</code> instead of a bare window object. An application that shows no window is <code>ok: true</code> with <code>window</code> omitted, not <code>WINDOW_NOT_FOUND</code>.</td></tr>
     <tr><td>2.4</td><td>Stateful ref actions (<code>set-value</code>, <code>type</code>, <code>clear</code>, <code>check</code>, <code>uncheck</code>, <code>toggle</code>, <code>expand</code>, <code>collapse</code>) read the state back after one delivery attempt and reject an observed contradiction. A readback failure keeps the adapter's code and adds <code>details.kind: "post_action_verification"</code>. Missing evidence stays a successful <code>delivered_unverified</code> with <code>details.verification_scope: "unavailable"</code>.</td></tr>
     <tr><td>2.5</td><td>Breaking for the thirteen <a href="#operationreport">OperationReport</a> commands. The success flags <code>clicked</code>, <code>moved</code>, <code>scrolled</code>, <code>hovered</code>, <code>dragged</code>, <code>resized</code>, <code>minimized</code>, <code>maximized</code>, <code>restored</code>, <code>closed</code>, <code>cleared</code>, <code>requested</code> (<code>close-app</code>), and the inner <code>ok</code> of <code>clipboard-set</code> are removed. <code>data</code> is the adapter's report with <code>disposition</code>, <code>steps</code>, and <code>target</code>.</td></tr>
+    <tr><td>2.6</td><td>Breaking snapshot payload change: macOS application-owned <code>menu</code> and <code>menubar</code> snapshots omit <code>data.window</code>. <code>data.app</code> identifies the owner. Window-owned snapshots retain <code>data.window</code>, and <code>--window-id</code> selects the owner app for an application-owned surface.</td></tr>
   </tbody>
 </table>
 

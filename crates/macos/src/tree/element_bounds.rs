@@ -7,19 +7,14 @@ pub(crate) fn rect_from_parts(
     point: core_graphics::geometry::CGPoint,
     size: core_graphics::geometry::CGSize,
 ) -> Option<Rect> {
-    if !point.x.is_finite()
-        || !point.y.is_finite()
-        || !size.width.is_finite()
-        || !size.height.is_finite()
-    {
-        return None;
-    }
-    Some(Rect {
+    Rect {
         x: point.x,
         y: point.y,
         width: size.width,
         height: size.height,
-    })
+    }
+    .validate()
+    .ok()
 }
 
 #[cfg(target_os = "macos")]
@@ -168,6 +163,27 @@ fn read_error(attribute: &str, error: i32) -> AdapterError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_bounds_decoder_rejects_invalid_geometry_before_live_or_snapshot_use() {
+        use core_graphics::geometry::{CGPoint, CGSize};
+        for (point, size) in [
+            (CGPoint::new(0.0, 33.0), CGSize::new(-1.0, 0.0)),
+            (CGPoint::new(0.0, 0.0), CGSize::new(10.0, -0.5)),
+            (CGPoint::new(f64::NAN, 0.0), CGSize::new(10.0, 10.0)),
+            (CGPoint::new(0.0, 0.0), CGSize::new(f64::INFINITY, 10.0)),
+            (CGPoint::new(0.0, 0.0), CGSize::new(f64::MAX, 10.0)),
+        ] {
+            assert_eq!(rect_from_parts(point, size), None);
+        }
+        for size in [CGSize::new(0.0, 0.0), CGSize::new(20.0, 10.0)] {
+            let bounds = rect_from_parts(CGPoint::new(-20.0, 33.0), size).unwrap();
+            assert_eq!(bounds.x, -20.0);
+            assert_eq!(bounds.width, size.width);
+            assert_eq!(bounds.height, size.height);
+        }
+    }
 
     fn rect(x: f64, width: f64) -> Rect {
         Rect {

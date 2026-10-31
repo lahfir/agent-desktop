@@ -22,6 +22,7 @@ impl ObservationOps for HydrationRetryAdapter {
         _request: &ObservationRequest,
     ) -> Result<ObservedTree, AdapterError> {
         match root {
+            ObservationRoot::Application { .. } => panic!("expected a window or element root"),
             ObservationRoot::Window(_) => {
                 self.window_observations.fetch_add(1, Ordering::SeqCst);
                 Ok(lean_button_tree())
@@ -260,6 +261,7 @@ impl ObservationOps for ReadAgainAdapter {
         _request: &ObservationRequest,
     ) -> Result<ObservedTree, AdapterError> {
         Ok(match root {
+            ObservationRoot::Application { .. } => panic!("expected a window or element root"),
             ObservationRoot::Window(_) => framed_label_tree(Some(self.first_screen), true),
             ObservationRoot::Element { .. } => framed_label_tree(self.again_screen, false),
         })

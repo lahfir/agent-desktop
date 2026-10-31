@@ -20,8 +20,9 @@ use crate::system::process::liveness::{Liveness, liveness};
 use crate::system::process::process_facts;
 use crate::system::process::running_app::Running;
 use crate::system::process::web_family::WebFamily;
+use crate::system::registry::registry_frames::RootRead;
 use crate::system::window::native_group::is_unproven;
-use crate::system::window::window_ops::windows_of_process;
+use crate::system::window::window_ops::{require_complete_frames, windows_of_process};
 
 #[path = "launch_baseline.rs"]
 mod baseline;
@@ -46,10 +47,20 @@ fn chromium_renderer(bus: &SharedBus, pid: u32, deadline: Deadline) -> Option<Re
         .then_some(RendererKind::Chromium)
 }
 
-/// The window with `id` among a fresh read of the owner's windows, so a result
-/// keeps the window the launch chose and focused, not the first one listed.
-fn same_window(windows: Vec<WindowInfo>, id: &str) -> Option<WindowInfo> {
-    windows.into_iter().find(|window| window.id == id)
+/// Refreshes the same process-owned window after successful focus when a complete read is available.
+fn same_window(
+    observation: Result<(Vec<WindowInfo>, RootRead), AdapterError>,
+    expected: &WindowInfo,
+) -> Option<WindowInfo> {
+    let (windows, read) = observation.ok()?;
+    if read != RootRead::Read {
+        return None;
+    }
+    windows.into_iter().find(|window| {
+        window.id == expected.id
+            && window.pid == expected.pid
+            && window.process_instance == expected.process_instance
+    })
 }
 
 /// The result for an owner and its window. A window is brought forward once,
@@ -170,39 +181,43 @@ impl Launch<'_> {
         owner: &Running,
         waits: bool,
         known: &HashSet<String>,
-        mut read: impl FnMut() -> Result<Vec<WindowInfo>, AdapterError>,
+        mut read: impl FnMut() -> Result<(Vec<WindowInfo>, RootRead), AdapterError>,
     ) -> Result<Option<WindowInfo>, AdapterError> {
         let limit = self.wait_limit(known);
-        let mut unproven = None;
         loop {
-            match read() {
-                Ok(windows) => {
-                    unproven = None;
-                    let own: Vec<WindowInfo> = windows
-                        .into_iter()
-                        .filter(|window| {
-                            window.pid.get() == owner.pid
-                                && window.process_instance.as_deref()
-                                    == Some(owner.instance.as_str())
-                        })
-                        .collect();
-                    if let Some(window) = choose_window(own, known) {
-                        return Ok(Some(window));
-                    }
+            let observed = read().and_then(|(windows, status)| {
+                let own: Vec<WindowInfo> = windows
+                    .into_iter()
+                    .filter(|window| {
+                        window.pid.get() == owner.pid
+                            && window.process_instance.as_deref() == Some(owner.instance.as_str())
+                    })
+                    .collect();
+                let window = choose_window(own, known);
+                if window.is_none() {
+                    require_complete_frames(status)?;
                 }
-                Err(error) if is_unproven(&error) => unproven = Some(error),
+                Ok(window)
+            });
+            let unproven = match observed {
+                Ok(Some(window)) => return Ok(Some(window)),
+                Ok(None) => None,
                 Err(error)
-                    if matches!(
-                        error.code,
-                        ErrorCode::Timeout
-                            | ErrorCode::AppUnresponsive
-                            | ErrorCode::AppNotFound
-                            | ErrorCode::WindowNotFound
-                    ) => {}
+                    if is_unproven(&error)
+                        || matches!(
+                            error.code,
+                            ErrorCode::Timeout
+                                | ErrorCode::AppUnresponsive
+                                | ErrorCode::AppNotFound
+                                | ErrorCode::WindowNotFound
+                        ) =>
+                {
+                    Some(error)
+                }
                 Err(error) => {
                     return Err(error.with_disposition(DeliverySemantics::delivered_unverified()));
                 }
-            }
+            };
             if waits {
                 exited_early(owner, liveness(owner.pid, &owner.instance))?;
             }
@@ -240,9 +255,10 @@ impl Launch<'_> {
             renderer: chromium_renderer(self.bus, owner.pid, self.deadline),
             ..conclude(owner, window, self.options, created, |window| {
                 focus_window(self.bus, window, self.lease)?;
-                Ok(windows_of_process(self.bus, owner.pid, self.deadline)
-                    .ok()
-                    .and_then(|windows| same_window(windows, &window.id)))
+                Ok(same_window(
+                    windows_of_process(self.bus, owner.pid, self.deadline),
+                    window,
+                ))
             })
         }
     }

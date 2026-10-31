@@ -1,11 +1,34 @@
 use agent_desktop_core::{
     Action, ActionOps, ActionResult, ActionStep, AdapterError, InteractionLease, NativeHandle,
-    StepMechanism, actions::action_request::ActionRequest,
+    ObservationOps, StepMechanism, actions::action_request::ActionRequest,
 };
 
 use crate::adapter::{MacOSAdapter, ax_element};
 
 impl ActionOps for MacOSAdapter {
+    fn headed_requirement_for_ref(
+        &self,
+        entry: &agent_desktop_core::RefEntry,
+        request: &ActionRequest,
+        deadline: agent_desktop_core::Deadline,
+    ) -> Result<agent_desktop_core::HeadedRequirement, AdapterError> {
+        crate::actions::native_menu::headed_requirement(request, || {
+            let handle = self.resolve_element_strict(entry, deadline)?;
+            crate::tree::native_menu::is_native_menu(ax_element(&handle)?, deadline)
+        })
+    }
+
+    fn headed_requirement(
+        &self,
+        handle: &NativeHandle,
+        request: &ActionRequest,
+        deadline: agent_desktop_core::Deadline,
+    ) -> Result<agent_desktop_core::HeadedRequirement, AdapterError> {
+        crate::actions::native_menu::headed_requirement(request, || {
+            crate::tree::native_menu::is_native_menu(ax_element(handle)?, deadline)
+        })
+    }
+
     fn execute_action(
         &self,
         handle: &NativeHandle,

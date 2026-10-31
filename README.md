@@ -52,7 +52,7 @@ agent-desktop snapshot --app Finder -i      # observe again to verify
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "snapshot",
   "data": {
@@ -80,6 +80,11 @@ agent-desktop snapshot --app Finder -i      # observe again to verify
   `snapshot --root @s8f3k2p9:e3 -i --compact`.
 - **Headless by default.** Ref actions go through the accessibility API without moving the pointer or taking focus.
   The global `--headed` flag allows physical input.
+- **Post-action waits** observe the ref's original process. Window-owned refs stay pinned to their original window,
+  even when captured from a sheet, alert, popover, focused view, or Linux menu. macOS application menus keep their
+  application-owned surface and need no document window. The wait reads the whole pinned window, so overlay selectors
+  share its scope. [Wait scope and results](https://agent-browser.dev/desktop/configuration#post-action-wait-flags)
+  describe the selector limits.
 - **PowerShell.** Quote every ref (`'@s8f3k2p9:e8'`), because a bare `@token` is the splatting operator.
 
 ## For AI agents

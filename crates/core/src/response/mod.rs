@@ -6,3 +6,4 @@ pub mod output;
 pub(crate) mod recovery_hint;
 pub(crate) mod retry_disposition;
 pub(crate) mod retryability;
+pub(crate) mod surface_absence;

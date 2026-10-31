@@ -96,7 +96,17 @@ pub(crate) fn ensure_cocoa_multithreaded() -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 pub(crate) fn workspace_snapshot_json() -> Result<Vec<u8>, AdapterError> {
-    let result = unsafe { agent_desktop_copy_workspace_snapshot_json() };
+    copy_workspace_snapshot_json(0)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn focused_snapshot_json() -> Result<Vec<u8>, AdapterError> {
+    copy_workspace_snapshot_json(1)
+}
+
+#[cfg(target_os = "macos")]
+fn copy_workspace_snapshot_json(frontmost_only: u8) -> Result<Vec<u8>, AdapterError> {
+    let result = unsafe { agent_desktop_copy_workspace_snapshot_json(frontmost_only) };
     let bytes = BridgeBytes(result.bytes);
     if result.status != 0 {
         return Err(workspace_snapshot_error(&result));
@@ -204,7 +214,7 @@ unsafe extern "C" {
     ) -> TerminateResult;
     fn agent_desktop_app_finished_launching(pid: i32) -> i32;
     fn agent_desktop_ensure_cocoa_multithreaded() -> u8;
-    fn agent_desktop_copy_workspace_snapshot_json() -> BytesResult;
+    fn agent_desktop_copy_workspace_snapshot_json(frontmost_only: u8) -> BytesResult;
     fn agent_desktop_free_bridge_bytes(bytes: *mut u8);
 }
 

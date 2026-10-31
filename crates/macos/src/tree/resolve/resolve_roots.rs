@@ -108,8 +108,12 @@ fn source_surface_scoped_roots(
             }
         }
         SnapshotSurface::Focused => crate::tree::surfaces::focused_surface_for_pid(pid, deadline)?,
-        SnapshotSurface::Menu => crate::tree::surfaces::menu_element_for_pid(pid, deadline)?,
-        SnapshotSurface::Menubar => crate::tree::surfaces::menubar_for_pid(pid, deadline)?,
+        SnapshotSurface::Menu => {
+            crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menu, deadline)?
+        }
+        SnapshotSurface::Menubar => {
+            crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menubar, deadline)?
+        }
         SnapshotSurface::Sheet => crate::tree::surfaces::sheet_for_pid(pid, deadline)?,
         SnapshotSurface::Popover => crate::tree::surfaces::popover_for_pid(pid, deadline)?,
         SnapshotSurface::Alert => crate::tree::surfaces::alert_for_pid(pid, deadline)?,

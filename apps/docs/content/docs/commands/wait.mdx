@@ -57,7 +57,7 @@ agent-desktop wait --element @s2txcl95uvubmn:e6 --predicate value --value 7 --ti
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "wait",
   "data": {
@@ -92,7 +92,7 @@ agent-desktop wait --text Calculator --app gnome-calculator --timeout 3000
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "wait",
   "data": { "elapsed_ms": 112, "found": true, "ref": null, "role": "window", "snapshot_id": "s2uiek94hz3vms", "text": "Calculator" }
@@ -130,7 +130,7 @@ agent-desktop wait --text Calculator --app gnome-calculator --timeout 3000
   "execution": "completed",
   "index": 1,
   "ok": true,
-  "version": "2.5"
+  "version": "2.6"
 }
 ```
 
@@ -144,7 +144,7 @@ A wait that runs out of time returns `TIMEOUT` with `details.kind: "wait_timeout
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": false,
   "command": "wait",
   "error": {

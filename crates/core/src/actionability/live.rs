@@ -78,6 +78,23 @@ pub(crate) fn check_live_with_stability_or_gap(
     )
 }
 
+pub(crate) fn check_live_before_focus(
+    target: &LiveCheckTarget<'_>,
+    request: &ActionRequest,
+    stability: StabilityExpectation,
+) -> Result<ActionabilityReport, AdapterError> {
+    let evidence =
+        observe(target).map_err(crate::ref_action::mark_pre_dispatch_resolution_failure)?;
+    super::evaluate::check_before_focus(
+        stability,
+        &evidence,
+        request,
+        Some((target.handle, target.adapter)),
+        target.deadline,
+    )
+    .map_err(crate::ref_action::mark_pre_dispatch_resolution_failure)
+}
+
 fn observe(target: &LiveCheckTarget<'_>) -> Result<ActionabilityEvidence, AdapterError> {
     let live = match target
         .adapter
@@ -101,7 +118,10 @@ fn observe(target: &LiveCheckTarget<'_>) -> Result<ActionabilityEvidence, Adapte
     };
     validate_live_identity(target.entry, &live)?;
     Ok(ActionabilityEvidence {
-        nonspatial: target.adapter.is_nonspatial_target(target.handle),
+        nonspatial: live.bounds.is_none()
+            && target
+                .adapter
+                .is_nonspatial_target_with_deadline(target.handle, target.deadline)?,
         state: live.state,
         states_complete: live.states_complete,
         bounds: live.bounds,

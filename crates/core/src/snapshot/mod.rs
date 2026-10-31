@@ -1,13 +1,12 @@
 use crate::{
-    AccessibilityNode, AppError, WindowInfo,
+    AccessibilityNode, AppError, SnapshotOwner, WindowInfo,
     adapter::{PlatformAdapter, TreeOptions, WindowFilter},
     context::CommandContext,
-    locator::live_locator::{ObservationRequest, ObservationRoot},
+    locator::live_locator::ObservationRequest,
     refs::RefMap,
     refs::ref_alloc::{self, RefAllocConfig},
     refs::ref_alloc_options::RefAllocOptions,
     refs::ref_alloc_scope::RefAllocScope,
-    refs::ref_alloc_source::RefAllocSource,
     refs::refs_store::RefStore,
     trace::trace_artifacts,
 };
@@ -17,7 +16,7 @@ use serde_json::json;
 pub struct SnapshotResult {
     pub tree: AccessibilityNode,
     pub refmap: RefMap,
-    pub window: WindowInfo,
+    pub owner: SnapshotOwner,
     pub snapshot_id: Option<String>,
     pub complete: bool,
     pub nodes_observed: usize,
@@ -37,13 +36,23 @@ pub fn build(
     window_id: Option<&str>,
     deadline: crate::Deadline,
 ) -> Result<SnapshotResult, AppError> {
-    let windows = surface_windows(adapter, app_name, window_id, opts.surface, deadline)?;
+    let owners =
+        surface_target::resolve_owners(adapter, app_name, window_id, opts.surface, deadline)?;
+    build_for_owners(adapter, opts, owners, deadline)
+}
+
+pub(crate) fn build_for_owners(
+    adapter: &dyn PlatformAdapter,
+    opts: &TreeOptions,
+    owners: Vec<SnapshotOwner>,
+    deadline: crate::Deadline,
+) -> Result<SnapshotResult, AppError> {
     let observation_options = opts.with_ref_identity_bounds();
     let request = ObservationRequest::snapshot(&observation_options, deadline).validate()?;
-    let (window, observed) = first_surface_owner(windows, |window| {
+    let (owner, observed) = first_surface_owner(owners, |owner| {
         crate::tree::renderer_accessibility::observe_tree(
             adapter,
-            ObservationRoot::Window(window),
+            owner.observation_root(opts.surface),
             &request,
         )
     })?;
@@ -56,15 +65,7 @@ pub fn build(
             interactive_only: opts.interactive_only,
             compact: opts.compact,
         },
-        source: RefAllocSource {
-            pid: window.pid,
-            app: Some(window.app.as_str()),
-            window_id: Some(window.id.as_str()),
-            window_title: Some(window.title.as_str()),
-            window_bounds_hash: window.bounds.as_ref().and_then(crate::Rect::bounds_hash),
-            process_instance: window.process_instance.as_deref(),
-            surface: opts.surface,
-        },
+        source: owner.ref_source(opts.surface),
         scope: RefAllocScope {
             root_ref_id: None,
             path_prefix: &[],
@@ -77,7 +78,7 @@ pub fn build(
     Ok(SnapshotResult {
         tree,
         refmap,
-        window,
+        owner,
         snapshot_id: None,
         complete,
         nodes_observed,
@@ -180,10 +181,10 @@ fn frontmost_process_windows(
     Ok(windows)
 }
 
-pub(crate) fn first_surface_owner<T>(
-    windows: Vec<WindowInfo>,
-    mut observe: impl FnMut(&WindowInfo) -> Result<T, AppError>,
-) -> Result<(WindowInfo, T), AppError> {
+pub(crate) fn first_surface_owner<O, T>(
+    windows: Vec<O>,
+    mut observe: impl FnMut(&O) -> Result<T, AppError>,
+) -> Result<(O, T), AppError> {
     let mut windows = windows.into_iter().peekable();
     while let Some(window) = windows.next() {
         match observe(&window) {
@@ -282,8 +283,7 @@ pub fn run(
     )
 }
 
-/// Which window a full snapshot targets: the focused window when both fields
-/// are `None`, a named app's focused window, or an exact window id.
+/// Selects the application or window whose surface a full snapshot observes.
 pub struct SnapshotTarget<'a> {
     pub app_name: Option<&'a str>,
     pub window_id: Option<&'a str>,
@@ -330,16 +330,19 @@ pub(crate) fn emit_snapshot_saved(
             "snapshot_id": result.snapshot_id,
             "ref_count": result.refmap.len(),
         });
-        if !result.window.app.is_empty() {
-            fields["app"] = json!(result.window.app);
+        if !result.owner.app_name().is_empty() {
+            fields["app"] = json!(result.owner.app_name());
         }
         fields
     })
 }
 
 pub mod hints;
+pub(crate) mod ref_owner_observation;
+pub(crate) mod snapshot_owner;
 pub mod snapshot_ref;
 pub mod snapshot_surface;
+pub(crate) mod surface_target;
 #[cfg(test)]
 #[path = "snapshot_tests.rs"]
 mod tests;
@@ -351,3 +354,7 @@ mod window_tests;
 #[cfg(test)]
 #[path = "snapshot_surface_window_tests.rs"]
 mod surface_window_tests;
+
+#[cfg(test)]
+#[path = "application_surface_tests.rs"]
+mod application_surface_tests;

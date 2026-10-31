@@ -58,9 +58,11 @@ ad_adapter_destroy(adapter)
 `ad_snapshot` returns the CLI envelope `{version, ok, command, data}`.
 `data.tree` carries snapshot-qualified refs for interactive elements. Read
 `data.complete` before trusting a tree: `false` means the observation budget ran
-out and the tree is partial, not an error. `ad_snapshot` always targets the
-focused window of `app`; window targeting, skeleton mode and `--root` drill-down
-are not exposed over the ABI. A bare `@eN` ref returns
+out and the tree is partial, not an error. `ad_snapshot` reads the owner selected
+by `surface`. On macOS, `menu` and `menubar` are application-owned, need no
+document window, and omit `data.window`; window-owned snapshots include it.
+Window targeting, skeleton mode and `--root` drill-down are not exposed over the
+ABI. A bare `@eN` ref returns
 `AD_RESULT_ERR_INVALID_ARGS`.
 
 ## Core constraints

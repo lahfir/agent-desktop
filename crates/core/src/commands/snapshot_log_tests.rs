@@ -54,8 +54,11 @@ fn snapshot_completion_log_omits_private_app_and_window_names() {
         crate::Deadline::standard().unwrap(),
     )
     .unwrap();
-    result.window.app = "PrivateApp-7391".into();
-    result.window.title = "PrivateWindow-1842".into();
+    let crate::SnapshotOwner::Window(window) = &mut result.owner else {
+        panic!("expected a window snapshot");
+    };
+    window.app = "PrivateApp-7391".into();
+    window.title = "PrivateWindow-1842".into();
     let events = Arc::new(Mutex::new(Vec::new()));
     let subscriber = LogCapture(events.clone());
 

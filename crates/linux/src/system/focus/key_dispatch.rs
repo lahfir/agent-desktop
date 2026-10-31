@@ -8,7 +8,7 @@ use crate::input::backend::Backend;
 use crate::input::physical::target_keyboard::press_for_process;
 use crate::input::physical::target_world::{LiveWorld, PhysicalWorld};
 use crate::system::process::process_lookup::Lookup;
-use crate::system::window::window_ops::windows_of_process;
+use crate::system::window::window_ops::{require_complete_frames, windows_of_process};
 use crate::system::x11::stacking::stacking_source::StackingSource;
 use crate::system::x11::{DisplayReader, X11State};
 use crate::system::{
@@ -47,9 +47,12 @@ impl KeyWorld for LiveKeys<'_> {
         pid: u32,
         deadline: Deadline,
     ) -> Result<Option<WindowInfo>, AdapterError> {
-        Ok(windows_of_process(self.bus, pid, deadline)?
-            .into_iter()
-            .find(|window| window.state.is_focused))
+        let (windows, read) = windows_of_process(self.bus, pid, deadline)?;
+        let focused = windows.into_iter().find(|window| window.state.is_focused);
+        if focused.is_none() {
+            require_complete_frames(read)?;
+        }
+        Ok(focused)
     }
 
     fn active_client_pid(&self, deadline: Deadline) -> Option<u32> {

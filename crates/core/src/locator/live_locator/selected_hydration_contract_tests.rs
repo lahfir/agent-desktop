@@ -32,6 +32,7 @@ impl ObservationOps for HydrationContractAdapter {
         request: &ObservationRequest,
     ) -> Result<ObservedTree, AdapterError> {
         match root {
+            ObservationRoot::Application { .. } => panic!("expected a window or element root"),
             ObservationRoot::Window(_) => {
                 self.window_observations.fetch_add(1, Ordering::SeqCst);
                 Ok(initial_tree(self.mode))

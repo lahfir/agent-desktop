@@ -148,8 +148,10 @@ fn launch_window_lookup_never_enriches_an_unrelated_process() {
 fn a_window_read_the_display_could_not_prove_is_read_again_and_the_window_is_reported() {
     let calls = Cell::new(0);
     let found = waiting_for_window(5_000, |launch, owner| {
-        let mut reads =
-            VecDeque::from([Err(unproven(owner.pid)), Ok(vec![window_of_owner(owner)])]);
+        let mut reads = VecDeque::from([
+            Err(unproven(owner.pid)),
+            Ok((vec![window_of_owner(owner)], RootRead::Read)),
+        ]);
         launch
             .wait_for_window(owner, true, &HashSet::new(), || {
                 calls.set(calls.get() + 1);
@@ -159,6 +161,74 @@ fn a_window_read_the_display_could_not_prove_is_read_again_and_the_window_is_rep
     });
     assert_eq!(found.expect("the proven window").id, "w-proven");
     assert_eq!(calls.get(), 2);
+}
+
+#[test]
+fn partial_process_windows_attach_when_present_and_never_report_unknown_absence() {
+    waiting_for_window(1_000, |launch, owner| {
+        let found = launch
+            .wait_for_window(owner, false, &HashSet::new(), || {
+                Ok((vec![window_of_owner(owner)], RootRead::TimedOut))
+            })
+            .expect("a returned target can be attached despite an unread sibling");
+        assert_eq!(found.unwrap().id, "w-proven");
+    });
+    for started in [false, true] {
+        let calls = Cell::new(0);
+        let error = waiting_for_window(100, |launch, owner| {
+            let known = HashSet::from(["w-proven".to_owned()]);
+            launch
+                .wait_for_window(owner, started, &known, || {
+                    calls.set(calls.get() + 1);
+                    Ok((vec![window_of_owner(owner)], RootRead::TimedOut))
+                })
+                .expect_err("an unread new window must not become None and authorize another spawn")
+        });
+        assert_eq!(error.code, ErrorCode::Timeout);
+        assert_eq!(error.details.unwrap()["kind"], "frames_unanswered");
+        assert_eq!(
+            error.disposition,
+            if started {
+                DeliverySemantics::delivered_unverified()
+            } else {
+                DeliverySemantics::not_delivered()
+            }
+        );
+        assert!(calls.get() > 1);
+    }
+    waiting_for_window(1_000, |launch, owner| {
+        assert!(
+            launch
+                .wait_for_window(owner, false, &HashSet::new(), || {
+                    Ok((Vec::new(), RootRead::Read))
+                })
+                .unwrap()
+                .is_none()
+        );
+    });
+}
+
+#[test]
+fn transient_process_read_errors_cannot_authorize_another_launch() {
+    for code in [
+        ErrorCode::Timeout,
+        ErrorCode::AppUnresponsive,
+        ErrorCode::AppNotFound,
+        ErrorCode::WindowNotFound,
+    ] {
+        let error = waiting_for_window(100, |launch, owner| {
+            launch
+                .wait_for_window(owner, false, &HashSet::new(), || {
+                    Err(AdapterError::new(
+                        code.clone(),
+                        "unavailable process windows",
+                    ))
+                })
+                .expect_err("failed reads are not confirmed window absence")
+        });
+        assert_eq!(error.code, code);
+        assert_eq!(error.disposition, DeliverySemantics::not_delivered());
+    }
 }
 
 #[test]

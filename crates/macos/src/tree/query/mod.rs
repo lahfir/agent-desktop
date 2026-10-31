@@ -51,12 +51,42 @@ pub(crate) fn observe_tree(
 ) -> Result<ObservedTree, AdapterError> {
     let request = (*request).validate()?;
     let deadline = crate::tree::locator_deadline::from_operation(request.deadline)?;
-    let resolved = resolve_root(root, &request, deadline)?;
+    if matches!(
+        request.surface,
+        SnapshotSurface::Menu | SnapshotSurface::Menubar
+    ) && !matches!(root, ObservationRoot::Element { .. })
+    {
+        let (pid, instance) = match root {
+            ObservationRoot::Application { app, .. } => (app.pid, app.process_instance.as_deref()),
+            ObservationRoot::Window(window) => (window.pid, window.process_instance.as_deref()),
+            ObservationRoot::Element { .. } => {
+                return Err(AdapterError::internal("Invalid menu observation root"));
+            }
+        };
+        let instance = instance.ok_or_else(|| {
+            AdapterError::stale_ref_because("Menu application has no process instance identity")
+        })?;
+        let identity = crate::system::process::process_identity::require_core(
+            &agent_desktop_core::ProcessIdentity::new(pid, instance),
+        )?;
+        return crate::tree::app_menu::observe(identity, deadline, || {
+            observe_tree_once(root, &request, deadline)
+        });
+    }
+    observe_tree_once(root, &request, deadline)
+}
+
+fn observe_tree_once(
+    root: ObservationRoot<'_>,
+    request: &ObservationRequest,
+    deadline: std::time::Instant,
+) -> Result<ObservedTree, AdapterError> {
+    let resolved = resolve_root(root, request, deadline)?;
     let (tree, renderer_ready, stats) =
-        traversal::LocatorTraversal::new(&request, resolved.context, deadline)
+        traversal::LocatorTraversal::new(request, resolved.context, deadline)
             .build(resolved.element, resolved.source)?;
     tracing::debug!(?stats, "tree: native observation completed");
-    let looked_deep_enough = observation_reached_tree_end(&stats, &request);
+    let looked_deep_enough = observation_reached_tree_end(&stats, request);
     if renderer_ready || (resolved.activation_eligible && tree.is_complete()) {
         if let Some(instance) = resolved.process_instance.as_deref() {
             if crate::tree::renderer_probe::activation_required(
@@ -97,6 +127,32 @@ fn resolve_root(
 ) -> Result<ResolvedRoot, AdapterError> {
     let source = ObservationSource::from_root(&root, request.surface);
     match root {
+        ObservationRoot::Application { app, .. } => {
+            let pid = crate::system::process::process_identity::to_pid_t(app.pid)?;
+            let element = match request.surface {
+                SnapshotSurface::Menu => crate::tree::app_menu::require_root(
+                    crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menu, deadline),
+                    SnapshotSurface::Menu,
+                    "No open menu",
+                )?,
+                SnapshotSurface::Menubar => crate::tree::app_menu::require_root(
+                    crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menubar, deadline),
+                    SnapshotSurface::Menubar,
+                    "No menu bar found",
+                )?,
+                _ => return Err(AdapterError::not_supported("application snapshot surface")),
+            };
+            let context =
+                crate::tree::TreeBuildContext::for_pid_with_deadline(pid, true, deadline)?;
+            Ok(ResolvedRoot {
+                element,
+                source,
+                context,
+                pid,
+                process_instance: app.process_instance.clone(),
+                activation_eligible: false,
+            })
+        }
         ObservationRoot::Window(window) => {
             let pid = crate::system::process::process_identity::to_pid_t(window.pid)?;
             let element = resolve_window_surface(window, request.surface, deadline)?;
@@ -117,7 +173,7 @@ fn resolve_root(
             entry,
             root_ref,
         } => {
-            verify_entry_process(entry)?;
+            verify_process(entry.process.pid, entry.process.process_instance.as_deref())?;
             let pid = crate::system::process::process_identity::to_pid_t(entry.process.pid)?;
             let element = handle.downcast_ref::<AXElement>().cloned().ok_or_else(|| {
                 AdapterError::new(
@@ -148,11 +204,14 @@ fn resolve_root(
     }
 }
 
-fn verify_entry_process(entry: &agent_desktop_core::RefEntry) -> Result<(), AdapterError> {
-    let instance = entry.process.process_instance.as_deref().ok_or_else(|| {
+fn verify_process(
+    process: agent_desktop_core::ProcessId,
+    instance: Option<&str>,
+) -> Result<(), AdapterError> {
+    let instance = instance.ok_or_else(|| {
         AdapterError::stale_ref_because("Live locator root has no process instance identity")
     })?;
-    let pid = crate::system::process::process_identity::to_pid_t(entry.process.pid)?;
+    let pid = crate::system::process::process_identity::to_pid_t(process)?;
     match crate::system::process::process_identity::matches_instance(pid, instance) {
         Ok(true) => Ok(()),
         Ok(false) => Err(AdapterError::stale_ref_because(
@@ -190,10 +249,16 @@ fn resolve_window_surface(
         }
         SnapshotSurface::Focused => crate::tree::surfaces::focused_surface_for_pid(pid, deadline)?
             .ok_or_else(|| AdapterError::element_not_found("No focused surface found"))?,
-        SnapshotSurface::Menu => crate::tree::surfaces::menu_element_for_pid(pid, deadline)?
-            .ok_or_else(|| AdapterError::element_not_found("No open context menu"))?,
-        SnapshotSurface::Menubar => crate::tree::surfaces::menubar_for_pid(pid, deadline)?
-            .ok_or_else(|| AdapterError::element_not_found("No menu bar found"))?,
+        SnapshotSurface::Menu => crate::tree::app_menu::require_root(
+            crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menu, deadline),
+            SnapshotSurface::Menu,
+            "No open context menu",
+        )?,
+        SnapshotSurface::Menubar => crate::tree::app_menu::require_root(
+            crate::tree::app_menu::root_for_pid(pid, SnapshotSurface::Menubar, deadline),
+            SnapshotSurface::Menubar,
+            "No menu bar found",
+        )?,
         _ => return Err(AdapterError::not_supported("snapshot surface")),
     };
     crate::tree::locator_deadline::remaining(deadline)?;

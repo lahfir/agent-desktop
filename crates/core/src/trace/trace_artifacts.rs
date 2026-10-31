@@ -82,12 +82,7 @@ pub(crate) fn capture_action_screenshot(
     else {
         return ArtifactOutcome::Skipped("exact_target_unavailable".into());
     };
-    let Some(process_instance) = entry
-        .process
-        .process_instance
-        .as_deref()
-        .filter(|instance| !instance.is_empty())
-    else {
+    let Some(process) = entry.process.identity() else {
         return ArtifactOutcome::Skipped("exact_target_unavailable".into());
     };
     let Some(trace_dir) = session_trace_dir(context) else {
@@ -102,8 +97,8 @@ pub(crate) fn capture_action_screenshot(
         id: window_id.into(),
         title: entry.source.source_window_title.clone().unwrap_or_default(),
         app: entry.source.source_app.clone().unwrap_or_default(),
-        pid: entry.process.pid,
-        process_instance: Some(process_instance.into()),
+        pid: process.pid,
+        process_instance: Some(process.instance),
         bounds: None,
         state: crate::WindowState {
             is_focused: false,

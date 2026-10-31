@@ -28,12 +28,27 @@ fn is_live_read_unsupported(err: &AdapterError) -> bool {
 }
 
 pub trait ObservationOps: Send + Sync {
-    /// Whether this resolved handle denotes a protocol object with no screen
-    /// position, rather than a native control whose geometry is unreadable.
-    /// Only headless semantic delivery can use this fact; fresh identity,
-    /// complete state and action capability are still required.
+    fn is_application_surface(&self, _surface: SnapshotSurface) -> bool {
+        false
+    }
+
+    fn focused_app(&self, _deadline: Deadline) -> Result<Option<AppInfo>, AdapterError> {
+        Err(AdapterError::not_supported("focused_app"))
+    }
+
+    /// Reports protocol targets that have no screen position without requiring a native read.
     fn is_nonspatial_target(&self, _handle: &NativeHandle) -> bool {
         false
+    }
+
+    /// Reports proven nonspatial targets, including native menus, within the observation deadline.
+    /// Semantic delivery still requires fresh identity, complete live state and action capability.
+    fn is_nonspatial_target_with_deadline(
+        &self,
+        handle: &NativeHandle,
+        _deadline: Deadline,
+    ) -> Result<bool, AdapterError> {
+        Ok(self.is_nonspatial_target(handle))
     }
 
     fn observe_tree(

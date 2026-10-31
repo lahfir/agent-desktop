@@ -140,6 +140,9 @@ fn has_room_for_another_walk(deadline: Deadline, last_walk: Duration) -> bool {
 /// so a recycled pid never inherits another process's settle state.
 fn root_process_identity(root: ObservationRoot<'_>) -> ProcessIdentity {
     match root {
+        ObservationRoot::Application { app, .. } => {
+            ProcessIdentity::new(app.pid, app.process_instance.clone().unwrap_or_default())
+        }
         ObservationRoot::Window(window) => ProcessIdentity::new(
             window.pid,
             window.process_instance.clone().unwrap_or_default(),
@@ -166,6 +169,9 @@ fn still_thin_after_settle() -> AdapterError {
 /// Rechecks stored ownership and generation evidence after the UIA read.
 fn re_verify_root(root: ObservationRoot<'_>) -> Result<(), AdapterError> {
     match root {
+        ObservationRoot::Application { .. } => {
+            Err(AdapterError::not_supported("application observation root"))
+        }
         ObservationRoot::Window(window) => {
             let handle = hwnd_of(&window.id)?;
             let evidence =

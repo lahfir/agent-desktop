@@ -144,6 +144,16 @@ pub(crate) fn list_apps_scoped_until(
     )
 }
 
+pub(crate) fn focused_owner_until(deadline: Instant) -> Result<Option<WindowOwner>, AdapterError> {
+    ensure_before_deadline(deadline)?;
+    crate::system::cocoa_runtime::ensure_cocoa_multithreaded()?;
+    let bytes = crate::system::appkit_bridge::focused_snapshot_json()?;
+    ensure_before_deadline(deadline)?;
+    let snapshot = window_owner_snapshot_from_json(&bytes, deadline)?;
+    require_complete(&snapshot.skipped)?;
+    Ok(snapshot.frontmost().cloned())
+}
+
 pub(crate) fn window_owner_snapshot_until(
     deadline: Instant,
 ) -> Result<WindowOwnerSnapshot, AdapterError> {

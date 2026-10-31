@@ -4,7 +4,7 @@ use crate::tree::AXElement;
 
 pub(crate) struct PreparedPhysicalTarget {
     identity: crate::system::process::process_identity::ProcessIdentity,
-    window: AXElement,
+    window: Option<AXElement>,
 }
 
 impl PreparedPhysicalTarget {
@@ -23,9 +23,17 @@ impl PreparedPhysicalTarget {
                     "Physical input target process exited before input preparation",
                 )
             })?;
-        let window = target_window(element, deadline)?;
+        let window = if crate::tree::native_menu::is_native_menu(element, deadline)? {
+            None
+        } else {
+            Some(crate::system::ref_focus_window::owning_window(
+                element, pid, deadline,
+            )?)
+        };
         crate::system::focus::verify_app_focused(pid, deadline)?;
-        crate::system::focus::verify_window_main(&window, deadline)?;
+        if let Some(window) = &window {
+            crate::system::focus::verify_window_main(window, deadline)?;
+        }
         Ok(Self { identity, window })
     }
 
@@ -36,65 +44,53 @@ impl PreparedPhysicalTarget {
         deadline: Deadline,
     ) -> Result<(), AdapterError> {
         crate::system::focus::verify_app_focused(self.identity.pid(), deadline)?;
-        crate::system::focus::verify_window_main(&self.window, deadline)?;
-        match crate::tree::hit_test::hit_test_ax_element(element, point.clone(), deadline)? {
-            agent_desktop_core::adapter::hit_test::HitTestResult::ReachesTarget => {}
-            agent_desktop_core::adapter::hit_test::HitTestResult::InterceptedBy {
-                role,
-                name,
-                ..
-            } => {
-                return Err(AdapterError::new(
-                    ErrorCode::ActionFailed,
-                    "Physical input point is intercepted by another accessibility element",
-                )
-                .with_details(serde_json::json!({
-                    "physical_delivery_started": false,
-                    "occluder_role": role,
-                    "occluder_name": name,
-                })));
-            }
-            agent_desktop_core::adapter::hit_test::HitTestResult::Unknown => {
-                return Err(AdapterError::new(
-                    ErrorCode::ActionFailed,
-                    "Physical input target could not be proven at the final input point",
-                )
-                .with_details(serde_json::json!({ "physical_delivery_started": false })));
-            }
+        if let Some(window) = &self.window {
+            crate::system::focus::verify_window_main(window, deadline)?;
         }
-        if !self.identity.still_matches()? {
-            return Err(AdapterError::new(
-                ErrorCode::StaleRef,
-                "Physical input target process instance changed at input delivery",
-            )
-            .with_details(serde_json::json!({ "physical_delivery_started": false })));
-        }
-        Ok(())
+        verify_pointer_identity(
+            crate::tree::hit_test::hit_test_ax_element(element, point.clone(), deadline),
+            || self.identity.still_matches(),
+        )
     }
 }
 
-fn target_window(element: &AXElement, deadline: Deadline) -> Result<AXElement, AdapterError> {
-    crate::tree::properties::attributes::set_messaging_timeout(element, deadline)?;
-    let result = crate::tree::properties::attributes::copy_element_attr_result(
-        element, "AXWindow", deadline,
-    );
-    if deadline.is_expired() {
-        return Err(deadline.timeout_error());
+fn verify_pointer_identity(
+    hit: Result<agent_desktop_core::HitTestResult, AdapterError>,
+    same_instance: impl FnOnce() -> Result<bool, AdapterError>,
+) -> Result<(), AdapterError> {
+    match hit? {
+        agent_desktop_core::adapter::hit_test::HitTestResult::ReachesTarget => {}
+        agent_desktop_core::adapter::hit_test::HitTestResult::InterceptedBy {
+            role, name, ..
+        } => {
+            return Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                "Physical input point is intercepted by another accessibility element",
+            )
+            .with_details(serde_json::json!({
+                "physical_delivery_started": false,
+                "occluder_role": role,
+                "occluder_name": name,
+            })));
+        }
+        agent_desktop_core::adapter::hit_test::HitTestResult::Unknown => {
+            return Err(AdapterError::new(
+                ErrorCode::ActionFailed,
+                "Physical input target could not be proven at the final input point",
+            )
+            .with_details(serde_json::json!({ "physical_delivery_started": false })));
+        }
     }
-    match result {
-        Ok(Some(window)) => Ok(window),
-        Ok(None) => Err(AdapterError::new(
-            ErrorCode::ActionFailed,
-            "Physical input target has no verified owning window",
+    if !same_instance()? {
+        return Err(AdapterError::new(
+            ErrorCode::StaleRef,
+            "Physical input target process instance changed at input delivery",
         )
-        .with_details(serde_json::json!({ "physical_delivery_started": false }))),
-        Err(error) => Err(AdapterError::new(
-            ErrorCode::ActionFailed,
-            "Could not verify the physical input target window",
-        )
-        .with_details(serde_json::json!({
-            "ax_error": error,
-            "physical_delivery_started": false,
-        }))),
+        .with_details(serde_json::json!({ "physical_delivery_started": false })));
     }
+    Ok(())
 }
+
+#[cfg(test)]
+#[path = "physical_target_tests.rs"]
+mod tests;

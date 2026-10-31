@@ -1,6 +1,6 @@
 use agent_desktop_core::{ErrorCode, WindowInfo, WindowState};
 
-use super::require_answered;
+use super::{finish_process_listing, require_answered};
 use crate::system::registry::app_outcome::AppOutcome;
 use crate::system::registry::listed_window::ListedWindow;
 use crate::system::registry::registry_frames::RootRead;
@@ -138,4 +138,36 @@ fn the_windows_that_did_answer_are_listed_beside_an_unanswered_frame() {
     let kept = require_answered(listed, &outcome(RootRead::TimedOut), true)
         .expect("the answered windows are kept");
     assert_eq!(kept.len(), 1);
+}
+
+#[test]
+fn process_inventory_keeps_windows_and_reports_any_unanswered_frames() {
+    for reads in [
+        vec![RootRead::Read, RootRead::Read],
+        vec![RootRead::Read, RootRead::TimedOut],
+        vec![RootRead::TimedOut, RootRead::Read],
+    ] {
+        for listed in [Vec::new(), vec![window("main", false, false)]] {
+            let expected_count = listed.len();
+            let outcomes = reads
+                .iter()
+                .enumerate()
+                .map(|(app, read)| AppOutcome { app, read: *read })
+                .collect();
+            let pass = pass_over_with_menu(
+                listed,
+                outcomes,
+                Vec::new(),
+                &X11State::Unavailable,
+                |_| Ok(false),
+                |_| false,
+            );
+            let (windows, read) = finish_process_listing(pass, &X11State::Unavailable, None);
+            assert_eq!(windows.len(), expected_count);
+            assert_eq!(
+                read == RootRead::TimedOut,
+                reads.contains(&RootRead::TimedOut)
+            );
+        }
+    }
 }

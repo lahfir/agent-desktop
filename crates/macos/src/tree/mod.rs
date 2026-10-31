@@ -1,4 +1,5 @@
 mod adapter;
+pub(crate) mod app_menu;
 pub(crate) mod ax_element;
 pub(crate) mod build_context;
 pub(crate) mod child_labels;
@@ -7,6 +8,7 @@ pub(crate) mod element_dedupe;
 pub(crate) mod element_name;
 pub(crate) mod hit_test;
 pub(crate) mod locator_deadline;
+pub(crate) mod native_menu;
 pub(crate) mod observation_usage;
 pub(crate) mod properties;
 pub(crate) mod query;

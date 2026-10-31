@@ -60,6 +60,7 @@ mod screenshot_tests;
 pub mod scroll;
 pub mod scroll_to;
 pub mod select;
+pub(crate) mod selector_observation;
 pub mod session;
 pub mod set_value;
 pub mod skills;

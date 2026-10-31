@@ -8,6 +8,7 @@ pub(crate) mod chain;
 pub(crate) mod delivery_tracker;
 pub(crate) mod dispatch;
 pub(crate) mod extras;
+mod native_menu;
 mod physical_click;
 mod physical_keyboard;
 mod physical_target;

@@ -194,18 +194,24 @@ mod tests {
 
     #[test]
     fn a_reply_without_its_newline_boundary_is_rejected() {
-        let error = replied(br#"{"version":"2.5","ok":true}"#).unwrap_err();
+        let reply = format!(
+            r#"{{"version":"{}","ok":true}}"#,
+            agent_desktop_core::response::output::ENVELOPE_VERSION
+        );
+        let error = replied(reply.as_bytes()).unwrap_err();
         assert!(error.to_string().contains("incomplete or oversized"));
     }
 
     #[test]
     fn a_reply_with_an_invalid_envelope_is_rejected() {
-        for reply in [
-            br#"{"version":"9.9","ok":true}"#.as_slice(),
-            br#"{"version":"2.5","ok":"yes"}"#.as_slice(),
-            br#"{"version":"2.5"}"#.as_slice(),
-        ] {
-            let mut framed = reply.to_vec();
+        let version = agent_desktop_core::response::output::ENVELOPE_VERSION;
+        let replies = [
+            serde_json::json!({"version":"9.9","ok":true}),
+            serde_json::json!({"version":version,"ok":"yes"}),
+            serde_json::json!({"version":version}),
+        ];
+        for reply in replies {
+            let mut framed = serde_json::to_vec(&reply).unwrap();
             framed.push(b'\n');
             let error = replied(&framed).unwrap_err();
             assert!(error.to_string().contains("invalid envelope"));

@@ -115,3 +115,67 @@ fn nonspatial_semantic_targets_need_live_state_but_not_screen_bounds() {
         hover.message
     );
 }
+
+struct ClassifiedTarget(ProtocolTarget, Result<bool, AdapterError>);
+
+impl ObservationOps for ClassifiedTarget {
+    fn is_nonspatial_target_with_deadline(
+        &self,
+        _: &NativeHandle,
+        deadline: crate::Deadline,
+    ) -> Result<bool, AdapterError> {
+        deadline.ensure_remaining()?;
+        self.1.clone()
+    }
+
+    fn get_live_element(
+        &self,
+        handle: &NativeHandle,
+        deadline: crate::Deadline,
+    ) -> Result<LiveElement, AdapterError> {
+        self.0.get_live_element(handle, deadline)
+    }
+}
+impl ActionOps for ClassifiedTarget {}
+impl InputOps for ClassifiedTarget {}
+impl SystemOps for ClassifiedTarget {}
+
+#[test]
+fn semantic_geometry_exemption_requires_successful_native_provenance() {
+    let (entry, adapter) = target("menuitem", &[capability::CLICK]);
+    let mut live = adapter.0;
+    live.bounds = None;
+    live.state.hidden = Some(false);
+    live.state.offscreen = None;
+    for classified in [true, false] {
+        let adapter = ClassifiedTarget(ProtocolTarget(live.clone()), Ok(classified));
+        let result = check_live(
+            &entry,
+            &NativeHandle::null(),
+            &adapter,
+            &ActionRequest::headless(Action::Click),
+        );
+        assert_eq!(result.is_ok(), classified);
+    }
+    for code in [
+        crate::ErrorCode::PermDenied,
+        crate::ErrorCode::Timeout,
+        crate::ErrorCode::StaleRef,
+    ] {
+        let adapter = ClassifiedTarget(
+            ProtocolTarget(live.clone()),
+            Err(AdapterError::new(
+                code.clone(),
+                "Native provenance read failed",
+            )),
+        );
+        let error = check_live(
+            &entry,
+            &NativeHandle::null(),
+            &adapter,
+            &ActionRequest::headless(Action::Click),
+        )
+        .unwrap_err();
+        assert_eq!(error.code, code);
+    }
+}

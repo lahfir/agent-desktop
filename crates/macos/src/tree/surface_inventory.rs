@@ -2,123 +2,46 @@ use crate::tree::{AXElement, properties::element::element_for_pid};
 use agent_desktop_core::{AdapterError, SurfaceInfo};
 use std::time::Instant;
 
-pub(crate) fn list_surfaces_for_pid(
-    pid: i32,
+pub(crate) fn list_surfaces_for_process(
+    identity: crate::system::process::process_identity::ProcessIdentity,
     deadline: Instant,
 ) -> Result<Vec<SurfaceInfo>, AdapterError> {
-    ensure_before_deadline(deadline)?;
+    super::app_menu::observe(identity, deadline, || {
+        list_surfaces_once(identity.pid(), deadline)
+    })
+}
+
+fn list_surfaces_once(pid: i32, deadline: Instant) -> Result<Vec<SurfaceInfo>, AdapterError> {
     let app = element_for_pid(pid);
-    let mut surfaces = Vec::new();
+    list_surfaces_with(
+        deadline,
+        || {
+            let mut surfaces = Vec::new();
+            if let Some(window) = read_element(&app, "AXFocusedWindow", deadline)? {
+                collect_window_surfaces(&window, "focused-window", deadline, &mut surfaces)?;
+            }
+            Ok(surfaces)
+        },
+        || {
+            let mut surfaces = Vec::new();
+            for (kind, id, menu) in super::app_menu::open_menus_for_pid(pid, deadline)? {
+                push_menu_surface(&menu, kind, id, deadline, &mut surfaces)?;
+            }
+            Ok(surfaces)
+        },
+    )
+}
 
-    if let Some(children) = read_array(&app, "AXChildren", deadline)? {
-        collect_app_surfaces(&children, deadline, &mut surfaces)?;
-    }
-    if let Some(focused) = read_element(&app, "AXFocusedUIElement", deadline)? {
-        collect_context_menus(&focused, deadline, &mut surfaces)?;
-    }
-    if let Some(window) = read_element(&app, "AXFocusedWindow", deadline)? {
-        collect_window_surfaces(&window, "focused-window", deadline, &mut surfaces)?;
-    }
-
-    complete_menu_inventory(&mut surfaces, |surfaces| {
-        if let Some(menu) = super::surfaces::menu_element_for_pid(pid, deadline)? {
-            push_menu_surface(
-                &menu,
-                "context_menu",
-                "resolved/menu".into(),
-                deadline,
-                surfaces,
-            )?;
-        }
-        Ok(())
-    })?;
-
+fn list_surfaces_with(
+    deadline: Instant,
+    window_surfaces: impl FnOnce() -> Result<Vec<SurfaceInfo>, AdapterError>,
+    menu_surfaces: impl FnOnce() -> Result<Vec<SurfaceInfo>, AdapterError>,
+) -> Result<Vec<SurfaceInfo>, AdapterError> {
+    ensure_before_deadline(deadline)?;
+    let mut surfaces = menu_surfaces()?;
+    surfaces.extend(window_surfaces()?);
     ensure_before_deadline(deadline)?;
     Ok(surfaces)
-}
-
-fn complete_menu_inventory(
-    surfaces: &mut Vec<SurfaceInfo>,
-    discover: impl FnOnce(&mut Vec<SurfaceInfo>) -> Result<(), AdapterError>,
-) -> Result<(), AdapterError> {
-    if !surfaces
-        .iter()
-        .any(|surface| matches!(surface.kind.as_str(), "menu" | "context_menu"))
-    {
-        discover(surfaces)?;
-    }
-    Ok(())
-}
-
-fn collect_app_surfaces(
-    children: &[AXElement],
-    deadline: Instant,
-    surfaces: &mut Vec<SurfaceInfo>,
-) -> Result<(), AdapterError> {
-    for (index, child) in children.iter().enumerate() {
-        let id = format!("app/children/{index}");
-        match read_string(child, "AXRole", deadline)?.as_deref() {
-            Some("AXMenuBar") => collect_menubar_surfaces(child, &id, deadline, surfaces)?,
-            Some("AXMenu") => push_menu_surface(child, "context_menu", id, deadline, surfaces)?,
-            _ => {}
-        }
-    }
-    Ok(())
-}
-
-fn collect_menubar_surfaces(
-    menubar: &AXElement,
-    menubar_id: &str,
-    deadline: Instant,
-    surfaces: &mut Vec<SurfaceInfo>,
-) -> Result<(), AdapterError> {
-    let Some(items) = read_array(menubar, "AXChildren", deadline)? else {
-        return Ok(());
-    };
-    for (item_index, item) in items.iter().enumerate() {
-        if read_string(item, "AXRole", deadline)?.as_deref() != Some("AXMenuBarItem")
-            || read_bool(item, "AXSelected", deadline)? != Some(true)
-        {
-            continue;
-        }
-        let Some(children) = read_array(item, "AXChildren", deadline)? else {
-            continue;
-        };
-        for (menu_index, menu) in children.iter().enumerate() {
-            if read_string(menu, "AXRole", deadline)?.as_deref() == Some("AXMenu") {
-                push_menu_surface(
-                    menu,
-                    "menu",
-                    format!("{menubar_id}/items/{item_index}/children/{menu_index}"),
-                    deadline,
-                    surfaces,
-                )?;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn collect_context_menus(
-    element: &AXElement,
-    deadline: Instant,
-    surfaces: &mut Vec<SurfaceInfo>,
-) -> Result<(), AdapterError> {
-    let Some(children) = read_array(element, "AXChildren", deadline)? else {
-        return Ok(());
-    };
-    for (index, child) in children.iter().enumerate() {
-        if read_string(child, "AXRole", deadline)?.as_deref() == Some("AXMenu") {
-            push_menu_surface(
-                child,
-                "context_menu",
-                format!("focused/children/{index}"),
-                deadline,
-                surfaces,
-            )?;
-        }
-    }
-    Ok(())
 }
 
 fn push_menu_surface(
@@ -203,14 +126,6 @@ fn read_string(
     deadline: Instant,
 ) -> Result<Option<String>, AdapterError> {
     crate::tree::surface_read::string(element, attribute, deadline)
-}
-
-fn read_bool(
-    element: &AXElement,
-    attribute: &str,
-    deadline: Instant,
-) -> Result<Option<bool>, AdapterError> {
-    crate::tree::surface_read::boolean(element, attribute, deadline)
 }
 
 fn read_array(

@@ -1,8 +1,9 @@
 use agent_desktop_core::{AdapterError, Deadline, ErrorCode, WindowInfo};
 
 use super::window_id;
-use super::window_ops::windows_of_process;
+use super::window_ops::{require_complete_frames, windows_of_process};
 use crate::system::process::liveness::{Liveness, liveness};
+use crate::system::registry::registry_frames::RootRead;
 use crate::system::{SharedBus, shell};
 
 fn not_found(detail: &str) -> AdapterError {
@@ -18,7 +19,7 @@ fn not_found(detail: &str) -> AdapterError {
 /// `APP_UNRESPONSIVE` for its application either way, never a closed window.
 pub(crate) fn verify(
     expected: &WindowInfo,
-    live: Vec<WindowInfo>,
+    (live, read): (Vec<WindowInfo>, RootRead),
     process: Liveness,
 ) -> Result<WindowInfo, AdapterError> {
     if process == Liveness::Stopped {
@@ -35,6 +36,7 @@ pub(crate) fn verify(
         ));
     };
     let Some(found) = live.into_iter().find(|window| window.id == expected.id) else {
+        require_complete_frames(read)?;
         return Err(not_found("The window is no longer open"));
     };
     if found.pid != expected.pid || found.process_instance.as_deref() != Some(instance) {

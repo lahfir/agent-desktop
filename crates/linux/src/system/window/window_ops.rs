@@ -47,17 +47,26 @@ pub(crate) fn require_answered(
     outcomes: &[AppOutcome],
     named: bool,
 ) -> Result<Vec<ListedWindow>, AdapterError> {
-    let unanswered = outcomes
-        .iter()
-        .any(|outcome| outcome.read == RootRead::TimedOut);
-    if named && windows.is_empty() && unanswered {
+    if named
+        && windows.is_empty()
+        && outcomes
+            .iter()
+            .any(|outcome| outcome.read == RootRead::TimedOut)
+    {
+        require_complete_frames(RootRead::TimedOut)?;
+    }
+    Ok(windows)
+}
+
+pub(crate) fn require_complete_frames(read: RootRead) -> Result<(), AdapterError> {
+    if read == RootRead::TimedOut {
         return Err(AdapterError::timeout(
             "The application did not answer in time, so its windows could not be listed",
         )
         .with_details(json!({ "kind": "frames_unanswered" }))
         .with_disposition(DeliverySemantics::not_delivered()));
     }
-    Ok(windows)
+    Ok(())
 }
 
 /// Lists top-level windows, marking the one the sources agree is focused.
@@ -112,19 +121,43 @@ pub(crate) fn windows_of_process(
     bus: &SharedBus,
     pid: u32,
     deadline: Deadline,
-) -> Result<Vec<WindowInfo>, AdapterError> {
+) -> Result<(Vec<WindowInfo>, RootRead), AdapterError> {
     let pending = x11::start(|| DisplayReader.read());
     let desktops = x11::start(desktops::read);
     let registry = read_registry_for(bus, Some(pid), deadline)?;
     let select = |app: &RegistryApp| app.root.pid() == pid;
     let finish = |deadline| pending.finish(deadline).unwrap_or(X11State::Unavailable);
     let (mut pass, state) = run_pass_with(bus, &registry, select, finish, deadline)?;
-    finish_listing(
-        &mut pass,
+    pass.windows = settle_scoped(
+        pass.windows,
+        stopped_target(&registry, select, proc_stat::is_stopped),
+    )?;
+    Ok(finish_process_listing(
+        pass,
         &state,
         desktops.finish(deadline).flatten().as_ref(),
-    );
-    Ok(pass.windows.into_iter().map(|window| window.info).collect())
+    ))
+}
+
+fn finish_process_listing(
+    mut pass: Pass,
+    state: &X11State,
+    desktops: Option<&Desktops>,
+) -> (Vec<WindowInfo>, RootRead) {
+    let read = if pass
+        .outcomes
+        .iter()
+        .any(|outcome| outcome.read == RootRead::TimedOut)
+    {
+        RootRead::TimedOut
+    } else {
+        RootRead::Read
+    };
+    finish_listing(&mut pass, state, desktops);
+    (
+        pass.windows.into_iter().map(|window| window.info).collect(),
+        read,
+    )
 }
 
 /// The focused window, or none when the available sources do not agree.

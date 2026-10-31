@@ -69,7 +69,7 @@ AdResult ad_check_permissions(const struct AdAdapter *adapter);
 Each writes an owned JSON envelope into `*out`; free it with `ad_free_string`, including an `"ok": false` envelope. `*out` is null only on an argument or infrastructure failure.
 
 ```c
-// Snapshots an app's focused window; surface is an AdSnapshotSurface.
+// Snapshots the app surface selected by AdSnapshotSurface.
 AdResult ad_snapshot(const struct AdAdapter *adapter,
                      const char *app,
                      int32_t surface,

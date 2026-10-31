@@ -22,10 +22,10 @@ fn elements_with_reader(
     read_attribute: impl FnMut(&str) -> super::query::child_read::ChildRead,
 ) -> Result<Vec<super::AXElement>, AdapterError> {
     let read = super::query::child_source::read_resilient(&[attribute], deadline, read_attribute);
-    ensure_before_deadline(deadline)?;
     if read.status.api_disabled {
         return Err(map_error(attribute, accessibility_sys::kAXErrorAPIDisabled));
     }
+    ensure_before_deadline(deadline)?;
     if read.status.invalid_element {
         return Err(map_error(
             attribute,
@@ -39,6 +39,9 @@ fn elements_with_reader(
         )
         .with_details(serde_json::json!({
             "kind": "surface_array_incomplete",
+            "retryable": !read.complete
+                && read.total_count <= agent_desktop_core::ObservationBudget::default().max_children_per_node
+                && (read.status.count_changed || read.status.health.cannot_complete > 0),
             "attribute": attribute,
             "complete": false,
             "total_count": read.total_count,
@@ -126,11 +129,17 @@ fn finish<T>(
     attribute: &str,
     deadline: Instant,
 ) -> Result<Option<T>, AdapterError> {
+    if result
+        .as_ref()
+        .is_err_and(|error| *error == accessibility_sys::kAXErrorAPIDisabled)
+    {
+        return Err(map_error(attribute, accessibility_sys::kAXErrorAPIDisabled));
+    }
     ensure_before_deadline(deadline)?;
     result.map_err(|error| map_error(attribute, error))
 }
 
-fn map_error(attribute: &str, error: i32) -> AdapterError {
+pub(super) fn map_error(attribute: &str, error: i32) -> AdapterError {
     use accessibility_sys::{
         kAXErrorAPIDisabled, kAXErrorCannotComplete, kAXErrorInvalidUIElement,
     };
@@ -140,10 +149,11 @@ fn map_error(attribute: &str, error: i32) -> AdapterError {
     } else if error == kAXErrorCannotComplete {
         ErrorCode::Timeout
     } else if error == kAXErrorInvalidUIElement {
-        ErrorCode::ElementNotFound
+        ErrorCode::AppUnresponsive
     } else {
         ErrorCode::ActionFailed
     };
+    let retryable = matches!(code, ErrorCode::Timeout | ErrorCode::AppUnresponsive);
     AdapterError::new(
         code,
         format!("Accessibility surface read failed for {attribute}"),
@@ -152,6 +162,8 @@ fn map_error(attribute: &str, error: i32) -> AdapterError {
         "attribute": attribute,
         "ax_error": error,
         "kind": "surface_read",
+        "complete": false,
+        "retryable": retryable,
     }))
     .with_suggestion("Retry after the application finishes updating its accessibility surfaces")
 }
@@ -168,7 +180,7 @@ mod tests {
     };
 
     #[test]
-    fn classifier_preserves_permission_timeout_and_stale_states() {
+    fn classifier_preserves_permission_timeout_and_incomplete_observation() {
         assert_eq!(
             map_error("AXRole", kAXErrorAPIDisabled).code,
             ErrorCode::PermDenied
@@ -179,15 +191,41 @@ mod tests {
         );
         assert_eq!(
             map_error("AXRole", kAXErrorInvalidUIElement).code,
-            ErrorCode::ElementNotFound
+            ErrorCode::AppUnresponsive
         );
+        let stale = map_error("AXRole", kAXErrorInvalidUIElement);
+        let details = stale.details.unwrap();
+        assert_eq!(details["complete"], false);
+        assert_eq!(details["retryable"], true);
+        assert_eq!(details["ax_error"], kAXErrorInvalidUIElement);
     }
 
     #[test]
-    fn expired_deadline_fails_without_native_reads() {
-        let error = ensure_before_deadline(Instant::now()).expect_err("expired deadline");
-
-        assert_eq!(error.code, ErrorCode::Timeout);
+    fn permission_failure_survives_expiry_but_success_never_does() {
+        let expired = Instant::now();
+        let permission = finish::<()>(Err(kAXErrorAPIDisabled), "AXRole", expired).unwrap_err();
+        assert_eq!(permission.code, ErrorCode::PermDenied);
+        assert_eq!(
+            finish(Ok(Some(())), "AXRole", expired).unwrap_err().code,
+            ErrorCode::Timeout
+        );
+        let permission = elements_with_reader("AXChildren", expired, |_| {
+            let mut read = super::super::query::child_read::ChildRead::empty(false);
+            read.status.api_disabled = true;
+            read
+        })
+        .err()
+        .expect("permission failure must reject the array read");
+        assert_eq!(permission.code, ErrorCode::PermDenied);
+        assert_eq!(
+            elements_with_reader("AXChildren", expired, |_| {
+                super::super::query::child_read::ChildRead::empty(true)
+            })
+            .err()
+            .expect("expired deadline must reject the successful array read")
+            .code,
+            ErrorCode::Timeout
+        );
     }
 
     #[test]
@@ -206,6 +244,44 @@ mod tests {
     #[test]
     fn native_ax_error_is_absent_without_any_native_failure() {
         assert_eq!(native_ax_error(false, false, 0), None);
+    }
+
+    #[test]
+    fn array_retryability_comes_from_native_transience_not_truncation() {
+        for variant in 0..6 {
+            let error = elements_with_reader(
+                "AXChildren",
+                Instant::now() + std::time::Duration::from_secs(1),
+                |_| {
+                    let mut read =
+                        super::super::query::child_read::ChildRead::empty(matches!(variant, 2 | 5));
+                    match variant {
+                        0 => read.status.health.cannot_complete = 1,
+                        1 => read.status.count_changed = true,
+                        2 | 4 | 5 => {
+                            read.total_count = agent_desktop_core::ObservationBudget::default()
+                                .max_children_per_node
+                                + 1;
+                            if variant >= 4 {
+                                read.status.health.cannot_complete = 1;
+                                read.status.count_changed = true;
+                            }
+                        }
+                        _ => read.status.health.native_read_failures = 1,
+                    }
+                    if variant == 5 {
+                        read.complete = false;
+                        read.prefix_certain = false;
+                    }
+                    read
+                },
+            )
+            .err()
+            .expect("incomplete array read must fail");
+            assert_eq!(error.code, ErrorCode::AppUnresponsive);
+            assert_eq!(error.is_transient_incomplete_read(), variant < 2);
+            assert_eq!(error.permits_retry_by_default(), variant < 2);
+        }
     }
 
     #[test]

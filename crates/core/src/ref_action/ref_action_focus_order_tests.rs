@@ -7,8 +7,11 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 struct FocusAdapter {
     focused: AtomicBool,
     dispatched: AtomicUsize,
+    resolved: AtomicUsize,
     persistent_occlusion: bool,
     enabled: bool,
+    application_menu: bool,
+    pointer_menu: Option<AtomicUsize>,
 }
 
 fn bounds() -> crate::Rect {
@@ -22,6 +25,17 @@ fn bounds() -> crate::Rect {
 
 impl FocusAdapter {
     fn live_bounds(&self) -> crate::Rect {
+        if self
+            .pointer_menu
+            .as_ref()
+            .is_some_and(|remaining| remaining.load(Ordering::SeqCst) > 0)
+        {
+            return crate::Rect {
+                width: 0.0,
+                height: 0.0,
+                ..bounds()
+            };
+        }
         crate::Rect {
             x: if self.focused.load(Ordering::SeqCst) {
                 100.0
@@ -39,6 +53,7 @@ impl ObservationOps for FocusAdapter {
         _: &RefEntry,
         _: Deadline,
     ) -> Result<NativeHandle, AdapterError> {
+        self.resolved.fetch_add(1, Ordering::SeqCst);
         Ok(NativeHandle::null())
     }
 
@@ -46,15 +61,28 @@ impl ObservationOps for FocusAdapter {
         Ok(LiveElement {
             identity: crate::adapter::live_identity("Run"),
             state: ElementState {
-                role: "button".into(),
+                role: if self.application_menu {
+                    "menuitem"
+                } else {
+                    "button"
+                }
+                .into(),
                 states: vec![],
                 value: None,
                 enabled: Some(self.enabled),
                 hidden: Some(false),
-                offscreen: Some(false),
+                offscreen: (!self.application_menu).then_some(false),
             },
             states_complete: true,
-            bounds: Some(self.live_bounds()),
+            bounds: Some(if self.application_menu && self.pointer_menu.is_none() {
+                crate::Rect {
+                    width: 0.0,
+                    height: 0.0,
+                    ..bounds()
+                }
+            } else {
+                self.live_bounds()
+            }),
             available_actions: vec![crate::actions::capability::CLICK.into()],
         })
     }
@@ -64,7 +92,13 @@ impl ObservationOps for FocusAdapter {
         _: &NativeHandle,
         _: Deadline,
     ) -> Result<Option<crate::Rect>, AdapterError> {
-        Ok(Some(self.live_bounds()))
+        let bounds = self.live_bounds();
+        if let Some(remaining) = &self.pointer_menu {
+            let _ = remaining.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+                value.checked_sub(1)
+            });
+        }
+        Ok(Some(bounds))
     }
 
     fn hit_test(
@@ -73,6 +107,10 @@ impl ObservationOps for FocusAdapter {
         _: crate::Point,
         _: Deadline,
     ) -> Result<crate::HitTestResult, AdapterError> {
+        assert!(
+            !self.application_menu || self.pointer_menu.is_some(),
+            "semantic menus must not hit-test a pointer"
+        );
         Ok(
             if self.focused.load(Ordering::SeqCst) && !self.persistent_occlusion {
                 crate::HitTestResult::ReachesTarget
@@ -88,6 +126,32 @@ impl ObservationOps for FocusAdapter {
 }
 
 impl ActionOps for FocusAdapter {
+    fn headed_requirement_for_ref(
+        &self,
+        _: &RefEntry,
+        request: &ActionRequest,
+        deadline: Deadline,
+    ) -> Result<crate::HeadedRequirement, AdapterError> {
+        self.headed_requirement(&NativeHandle::null(), request, deadline)
+    }
+
+    fn headed_requirement(
+        &self,
+        _: &NativeHandle,
+        request: &ActionRequest,
+        _: Deadline,
+    ) -> Result<crate::HeadedRequirement, AdapterError> {
+        Ok(if self.application_menu && request.policy.is_headed() {
+            if self.pointer_menu.is_some() {
+                crate::HeadedRequirement::FocusedApplicationAndCursor
+            } else {
+                crate::HeadedRequirement::FocusedApplication
+            }
+        } else {
+            request.headed_requirement()
+        })
+    }
+
     fn execute_action(
         &self,
         _: &NativeHandle,
@@ -97,6 +161,10 @@ impl ActionOps for FocusAdapter {
         if request.policy.is_headed() {
             assert!(self.focused.load(Ordering::SeqCst));
             assert_eq!(request.verified_point().map(|point| point.x), Some(110.0));
+        }
+        if self.application_menu && self.pointer_menu.is_none() {
+            assert_eq!(request.policy, crate::InteractionPolicy::headless());
+            assert!(request.verified_point().is_none());
         }
         self.dispatched.fetch_add(1, Ordering::SeqCst);
         Ok(ActionResult::delivered_unverified("click"))
@@ -113,7 +181,22 @@ impl SystemOps for FocusAdapter {
     ) -> Result<WindowInfo, AdapterError> {
         Ok(window.clone())
     }
+    fn focus_app(
+        &self,
+        process: crate::ProcessIdentity,
+        _: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        assert!(self.application_menu);
+        assert_eq!(process, crate::ProcessIdentity::new(1, "test-instance"));
+        self.focused.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
     fn focus_window(&self, _: &WindowInfo, _: &InteractionLease) -> Result<(), AdapterError> {
+        assert!(
+            !self.application_menu,
+            "application menus have no document window"
+        );
         self.focused.store(true, Ordering::SeqCst);
         Ok(())
     }
@@ -128,16 +211,32 @@ fn execute_within(
     headed: bool,
     timeout_ms: u64,
 ) -> Result<ActionResult, AdapterError> {
+    execute_action_within(adapter, headed, timeout_ms, Action::Click)
+}
+
+fn execute_action_within(
+    adapter: &FocusAdapter,
+    headed: bool,
+    timeout_ms: u64,
+    action: Action,
+) -> Result<ActionResult, AdapterError> {
     let _clock = crate::wait::deadline::VirtualClock::freeze();
-    let entry: RefEntry = serde_json::from_value(serde_json::json!({
+    let mut entry: RefEntry = serde_json::from_value(serde_json::json!({
         "pid": 1, "process_instance": "test-instance", "role": "button", "name": "Run",
         "source_window_id": "w-test", "source_surface": "window", "path": [0],
         "bounds": bounds(), "bounds_hash": bounds().bounds_hash(), "available_actions": ["Click"], "states": []
     })).unwrap();
+    if adapter.application_menu {
+        entry.identity.role = "menuitem".into();
+        entry.source.source_window_id = None;
+        entry.source.source_surface = crate::SnapshotSurface::Menubar;
+        entry.geometry.bounds_hash = None;
+        entry.geometry.bounds = Some(adapter.live_bounds());
+    }
     let request = if headed {
-        ActionRequest::headed(Action::Click)
+        ActionRequest::headed(action)
     } else {
-        ActionRequest::headless(Action::Click)
+        ActionRequest::headless(action)
     };
     crate::ref_action::execute_entry(adapter, &entry, request.with_timeout_ms(Some(timeout_ms)))
 }
@@ -146,8 +245,11 @@ fn adapter(persistent_occlusion: bool, enabled: bool) -> FocusAdapter {
     FocusAdapter {
         focused: AtomicBool::new(false),
         dispatched: AtomicUsize::new(0),
+        resolved: AtomicUsize::new(0),
         persistent_occlusion,
         enabled,
+        application_menu: false,
+        pointer_menu: None,
     }
 }
 
@@ -182,3 +284,83 @@ fn headless_semantic_action_never_raises_the_window() {
     assert!(!adapter.focused.load(Ordering::SeqCst));
     assert_eq!(adapter.dispatched.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn headed_application_menu_uses_semantic_actionability_before_application_focus() {
+    let mut adapter = adapter(true, true);
+    adapter.application_menu = true;
+    execute(&adapter, true).unwrap();
+    assert!(adapter.focused.load(Ordering::SeqCst));
+    assert_eq!(adapter.dispatched.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn headless_application_menu_never_activates_the_application() {
+    let mut adapter = adapter(true, true);
+    adapter.application_menu = true;
+    execute(&adapter, false).unwrap();
+    assert!(!adapter.focused.load(Ordering::SeqCst));
+    assert_eq!(adapter.dispatched.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn headed_click_does_not_resolve_before_window_focus_and_dispatch() {
+    struct DefaultRequirementAdapter(FocusAdapter);
+    impl ActionOps for DefaultRequirementAdapter {}
+    impl InputOps for DefaultRequirementAdapter {}
+    impl ObservationOps for DefaultRequirementAdapter {
+        fn resolve_element_strict(
+            &self,
+            entry: &RefEntry,
+            deadline: Deadline,
+        ) -> Result<NativeHandle, AdapterError> {
+            self.0.resolve_element_strict(entry, deadline)
+        }
+    }
+    impl SystemOps for DefaultRequirementAdapter {
+        fn resolve_window_strict(
+            &self,
+            window: &WindowInfo,
+            deadline: Deadline,
+        ) -> Result<WindowInfo, AdapterError> {
+            self.0.resolve_window_strict(window, deadline)
+        }
+        fn focus_window(
+            &self,
+            window: &WindowInfo,
+            lease: &InteractionLease,
+        ) -> Result<(), AdapterError> {
+            self.0.focus_window(window, lease)
+        }
+    }
+    let adapter = DefaultRequirementAdapter(adapter(false, true));
+    let entry: RefEntry = serde_json::from_value(serde_json::json!({
+        "pid": 1, "process_instance": "test-instance", "role": "button", "name": "Run",
+        "source_window_id": "w-test", "source_surface": "window", "path": [0],
+        "bounds": bounds(), "available_actions": ["Click"], "states": []
+    }))
+    .unwrap();
+    let context = crate::CommandContext::default();
+    let deadline = Deadline::standard().unwrap();
+    let lease = InteractionLease::guarded(deadline, ()).unwrap();
+    crate::ref_action::ref_action_single::execute_single_shot(
+        crate::ref_action::ref_action_wait_context::RefActionWaitContext {
+            adapter: &adapter,
+            entry: &entry,
+            ref_id: "@test:e1",
+            context: &context,
+        },
+        ActionRequest::headed(Action::Click),
+        deadline,
+        &lease,
+        |_, _, _| {
+            assert!(adapter.0.focused.load(Ordering::SeqCst));
+            assert_eq!(adapter.0.resolved.load(Ordering::SeqCst), 0);
+            Ok(ActionResult::delivered_unverified("click"))
+        },
+    )
+    .unwrap();
+}
+
+#[path = "ref_action_menu_pointer_tests.rs"]
+mod menu_pointer_tests;

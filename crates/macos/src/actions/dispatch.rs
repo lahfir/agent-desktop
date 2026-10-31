@@ -31,14 +31,10 @@ mod imp {
         tracing::debug!("action: perform {label}");
         match action {
             Action::Click => {
-                let role = if request.policy.is_headed() {
-                    probe_click_role(el, deadline)?
-                } else {
-                    None
-                };
+                let native_menu = crate::tree::native_menu::is_native_menu(el, deadline)?;
                 steps.extend(run_chain(
                     el,
-                    chain_defs::click_chain(role.as_deref()),
+                    chain_defs::click_chain(native_menu),
                     None,
                     request,
                     deadline,
@@ -219,21 +215,6 @@ mod imp {
             },
             request.policy,
         )
-    }
-
-    fn probe_click_role(
-        element: &AXElement,
-        deadline: Deadline,
-    ) -> Result<Option<String>, AdapterError> {
-        let operation_deadline = crate::tree::locator_deadline::from_operation(deadline)?;
-        match crate::tree::resolve::resolve_ax_read::read_string(
-            element,
-            "AXRole",
-            operation_deadline,
-        ) {
-            Err(error) if error.code == ErrorCode::AppUnresponsive => Ok(None),
-            result => result,
-        }
     }
 }
 

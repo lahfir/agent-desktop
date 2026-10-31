@@ -10,12 +10,12 @@ use agent_desktop_core::commands::snapshot::SnapshotArgs;
 use std::ffi::c_char;
 use std::ptr;
 
-/// Takes a full CLI-format snapshot of the target application window,
+/// Takes a full CLI-format snapshot of the target application surface,
 /// allocates snapshot-qualified refs (`@<snapshot_id>:eN`) for all
 /// interactive elements, persists the refmap to disk, and writes the JSON envelope into `*out`.
 ///
 /// The JSON shape matches `agent-desktop snapshot`:
-/// `{"version":"2.5","ok":true,"command":"snapshot","data":{"app":"...","window":{...},"ref_count":N,"snapshot_id":"...","complete":true,"tree":{...}}}`.
+/// `{"version":"2.6","ok":true,"command":"snapshot","data":{"app":"...","ref_count":N,"snapshot_id":"...","complete":true,"tree":{...}}}`. Window-owned snapshots include `data.window`; application-owned menu and menubar surfaces omit it.
 ///
 /// `data.complete` is always present. A snapshot that exhausts its observation
 /// budget still succeeds with `"complete":false` and the tree it did observe,
@@ -36,18 +36,17 @@ use std::ptr;
 ///   allocation is made. Only the last-error slot is set.
 ///
 /// `app` is tri-state:
-/// - null — snapshot the currently focused window (same as running the command with no `--app`).
-/// - valid UTF-8 string — snapshot the named application's focused window.
+/// - null — use the focused owner selected by `surface`.
+/// - valid UTF-8 string — use the named app's owner selected by `surface`.
 /// - non-null but invalid UTF-8 or exceeding `AD_MAX_STRING_BYTES` — returns `ErrInvalidArgs`.
 ///
-/// `surface` is an `AdSnapshotSurface` discriminant (0 = Window, 1 = Focused, …).
+/// `surface` is an `AdSnapshotSurface` discriminant (0 = Window, 1 = Focused, …). On macOS,
+/// `Menu` and `Menubar` are application-owned surfaces and do not require an open window.
 /// An out-of-range value returns `ErrInvalidArgs`.
 ///
-/// This entrypoint always targets the active focused window of the requested
-/// application; explicit window targeting (`window_id`) is not yet exposed
-/// over the ABI. Progressive traversal (skeleton mode and `--root` drill-down)
-/// is likewise not exposed here. Both are planned fast-follows to this
-/// entrypoint — agents needing them should use the CLI in the meantime.
+/// Window-owned snapshots include `data.window`; application-owned menu and menubar snapshots omit it.
+/// Explicit window targeting (`window_id`), skeleton mode and `--root` drill-down are not exposed
+/// over the ABI. Use the CLI when you need those options.
 ///
 /// **Dispatch-before-serialize ordering**: the snapshot and refmap persistence
 /// occur before the result JSON is serialised. In the near-impossible event

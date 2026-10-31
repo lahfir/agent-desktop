@@ -4,7 +4,7 @@ Every command returns structured JSON:
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "click",
   "data": {
@@ -18,7 +18,7 @@ Errors include machine-readable codes and recovery hints:
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": false,
   "command": "click",
   "error": {
@@ -110,11 +110,45 @@ Each of these commands now returns the adapter's own report inside `data`:
 - The Rust `ActionResult` and `OperationReport` readers reject a payload without an explicit `disposition`; a missing disposition no longer reads back as delivered-unverified.
 - The C ABI is unchanged. Status-only functions such as `ad_close_app` and `ad_drag` still cannot expose the disposition, steps or target of a successful call.
 
+## Version 2.6 migration
+
+Application-owned snapshots omit `data.window`. On macOS, `menu` and `menubar` snapshots are owned by the application, so `data.app` identifies the owner and `data.window` is absent. This also applies to a `--root` drill into a ref from one of these surfaces. Window-owned snapshots keep the existing `data.window` object. When `--window-id` is supplied for an application-owned surface, it selects the owning application; the observed surface remains application-owned.
+
+A complete macOS menu lookup with no surface returns `ELEMENT_NOT_FOUND` with `details.kind: "surface_absent"`, `details.surface: "menu"` or `"menubar"`, and `details.complete: true`. That is completed absence evidence. An absent `menubar` can mean the application exposes no menu bar. A `menu` lookup requires an open menu: snapshot `menubar` when it exists, click its owning item without `--headed`, then snapshot `--surface menu`. Missing `complete`, `complete: false`, a timeout, or an incomplete AX read leaves the result unknown, not absent. If a prior action has `delivery_uncertain` and `retry: unsafe`, inspect the current UI before any action; do not repeat the action.
+
+### Post-action observation
+
+When a ref action returns `delivery_uncertain` with a post-action wait selector, `error.details.post_action_observation` records a read-only observation of the original process. Application-owned refs keep their source surface. Window-owned refs observe their original pinned window, including refs captured from `sheet`, `alert`, `popover`, `focused`, or a window-owned `menu` such as a Linux menu. This lets a closed overlay be observed without treating the parent window as absent. The action is never repeated, and its original error and unsafe retry disposition stay unchanged. Even `expected_state_observed` does not prove that the action caused the state. Observation uses `--wait-timeout` separately from the action timeout.
+
+| Field | Meaning |
+| --- | --- |
+| `kind` | Always `post_action_observation`. |
+| `selector, expected` | Requested selector and `present` or `absent`. |
+| `surface` | The observed scope: the application-owned source surface, or `window` for a window-owned ref. |
+| `process_identity` | Original `pid` and `process_instance`; the instance can be null for `identity_unavailable`. |
+| `elapsed_ms` | Time spent observing after the action returned. |
+| `source_window_id` | Original window ID, when the ref has one. |
+| `selector_matches` | Observed selector result, when available; absence requires a complete read. |
+| `process_state` | Last observed `unresponsive`, `exited`, or `crashed` state. `running` is never emitted. |
+| `last_observation_error` | Last observation error's `code` and `message`, when available. |
+| `outcome` | One of the outcomes below. |
+
+| Outcome | Meaning |
+| --- | --- |
+| `expected_state_observed` | The expected selector state was observed, or the original window or surface was confirmed absent for an absence wait. |
+| `process_exited` | The original process exited; this does not establish the action's effect. |
+| `process_crashed` | The platform reported that the original process crashed. |
+| `owner_unavailable` | The original surface owner remained unavailable without confirmed process exit. |
+| `observation_failed` | A terminal read error stopped observation; inspect `last_observation_error`. |
+| `timed_out` | The wait budget expired without observing the expected state, including when transient read errors persisted through the last poll. `last_observation_error` may hold the last error. |
+| `identity_unavailable` | The ref has no usable process generation, so observation was skipped. |
+
 ## Headed action verification
 
-- Headed ref interactions activate the exact source app/window before final pointer hit testing. Read-only readiness polling must not prevent a background target from reaching that focus phase; final hit testing remains mandatory before delivery.
+- Physical pointer input for a headed ref action normally focuses the exact owning window and verifies the target with a fresh hit test before delivery. A window-backed popup can recover its live owning window through accessibility ownership. Readiness polling can wait on a background target, but it does not replace these checks.
 - Focus and preparatory scrolling can change coordinates. Stability is verified against fresh live observations, not by requiring coordinates to remain equal to the original snapshot.
-- On macOS, post-activation focus confirmation uses fresh system-wide `AXFocusedApplication` and exact-window evidence with process-generation checks. A cached `NSWorkspace` foreground snapshot is not sufficient in a process that just activated another app.
+- On macOS, `click`, `right-click`, `double-click`, and `triple-click` support items in the application's native menu bar hierarchy without a source window. A click works headless; a headed click activates the owning app and calls `AXPress` without moving the cursor. `right-click` can use its headless `AXShowMenu` path when available. Under `--headed`, right-click, double-click, and triple-click focus the app and keep pointer verification. `hover` and `drag` still require the ref's source window and fail with `ACTION_NOT_SUPPORTED` on a windowless native menu item.
+- Post-activation focus confirmation reads `AXFrontmost` from the target app's accessibility object and checks process identity before and after the read.
 - Focusing an inactive text field can change its selection. A pre-focus range cannot establish the expected insertion into a nonempty field; such a result is explicitly unverified rather than falsely contradicted.
 - A settle-loop pacing budget does not replace the caller's deadline for native reads. Tests assert deadline identity rather than arbitrary remaining-time thresholds.
 
@@ -133,7 +167,7 @@ to `role` or `value`.
 |------|---------|
 | `PERM_DENIED` | Accessibility permission not granted |
 | `ELEMENT_NOT_FOUND` | No element matched the ref or query |
-| `APP_NOT_FOUND` | Application not running or no windows; the lookup failed before anything was sent, so the disposition is `not_delivered` |
+| `APP_NOT_FOUND` | No matching application process; the lookup failed before anything was sent, so the disposition is `not_delivered` |
 | `STALE_REF` | Ref could not be re-identified in the live UI |
 | `AMBIGUOUS_TARGET` | Ref recovery matched multiple plausible targets |
 | `SNAPSHOT_NOT_FOUND` | Snapshot ID is missing or expired |

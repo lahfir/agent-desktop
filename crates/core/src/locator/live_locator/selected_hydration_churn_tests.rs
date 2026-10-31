@@ -28,6 +28,7 @@ impl ObservationOps for SingleAnchorAdapter {
         request: &ObservationRequest,
     ) -> Result<ObservedTree, AdapterError> {
         match root {
+            ObservationRoot::Application { .. } => panic!("expected a window or element root"),
             ObservationRoot::Window(_) => {
                 self.window_observations.fetch_add(1, Ordering::SeqCst);
                 let evidence = request.descendant_evidence();

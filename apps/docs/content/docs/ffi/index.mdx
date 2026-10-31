@@ -29,7 +29,7 @@ The library and the CLI run the same core and the same platform adapter; the `ag
 
 ## What the library does not expose
 
-- `ad_snapshot` always reads the focused window of the app you name. It has no window id, skeleton mode, or `--root` drill-down; use the CLI for those.
+- `ad_snapshot` reads the owner selected by `surface`. On macOS, `menu` and `menubar` are application-owned and need no document window; window-owned snapshots include `data.window`. The ABI has no window id, skeleton mode, or `--root` drill-down; use the CLI for those.
 - `ad_wait` does not expose `wait --event` or `--window-id`.
 - The library carries no skills. Read the FFI guide with `agent-desktop skills get ffi` from the CLI.
 

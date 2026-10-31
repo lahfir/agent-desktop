@@ -4,7 +4,7 @@ use serde_json::Value;
 use crate::response::recovery_hint::RecoveryHint;
 use crate::{AppError, DeliverySemantics, ErrorCode, RetryDisposition};
 
-pub const ENVELOPE_VERSION: &str = "2.5";
+pub const ENVELOPE_VERSION: &str = "2.6";
 
 /// Structured output envelope used by the CLI and future programmatic transports.
 #[derive(Debug, Serialize)]

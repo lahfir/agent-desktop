@@ -34,6 +34,9 @@ fn refuse_stopped(
 
 fn root_element(root: &ObservationRoot<'_>) -> Result<AtspiElement, AdapterError> {
     match root {
+        ObservationRoot::Application { .. } => {
+            Err(AdapterError::not_supported("application observation root"))
+        }
         ObservationRoot::Window(window) => {
             refuse_stopped(window, proc_stat::is_stopped)?;
             let (bus, path) = window_id::decode(&window.id)?;

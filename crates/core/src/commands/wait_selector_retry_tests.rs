@@ -227,3 +227,76 @@ fn materialization_miss_retains_its_fresh_snapshot_for_timeout() {
         Some("newest")
     );
 }
+
+struct DisappearingWindowAdapter {
+    inventories: AtomicUsize,
+    unavailable_kind: &'static str,
+    disappears: bool,
+}
+
+impl ObservationOps for DisappearingWindowAdapter {
+    fn list_windows(
+        &self,
+        filter: &WindowFilter,
+        deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
+        if self.inventories.fetch_add(1, Ordering::SeqCst) > 0 && self.disappears {
+            return Ok(Vec::new());
+        }
+        StaticTreeAdapter {
+            tree: window_node(Vec::new()),
+        }
+        .list_windows(filter, deadline)
+    }
+
+    fn observe_tree(
+        &self,
+        _root: crate::ObservationRoot<'_>,
+        _request: &crate::ObservationRequest,
+    ) -> Result<crate::ObservedTree, AdapterError> {
+        Err(AdapterError::new(
+            ErrorCode::ActionNotSupported,
+            "Window has no accessibility element",
+        )
+        .with_details(json!({ "kind": self.unavailable_kind, "window_id": "w-1" })))
+    }
+}
+
+impl ActionOps for DisappearingWindowAdapter {}
+impl InputOps for DisappearingWindowAdapter {}
+impl SystemOps for DisappearingWindowAdapter {}
+
+#[test]
+fn gone_wait_requires_window_absence_after_accessibility_disappears() {
+    let _guard = HomeGuard::new();
+    for (kind, disappears, expected) in [
+        ("window_without_accessibility_element", true, None),
+        (
+            "window_without_accessibility_element",
+            false,
+            Some("TIMEOUT"),
+        ),
+        ("unsupported_surface", true, Some("ACTION_NOT_SUPPORTED")),
+    ] {
+        let adapter = DisappearingWindowAdapter {
+            inventories: AtomicUsize::new(0),
+            unavailable_kind: kind,
+            disappears,
+        };
+        let result = execute(
+            WaitSelectorInput {
+                window_id: Some("w-1".into()),
+                timeout_ms: 250,
+                ..base_input("button:Close", true)
+            },
+            &adapter,
+            &CommandContext::default(),
+        );
+        if let Some(code) = expected {
+            assert_eq!(result.unwrap_err().code(), code);
+        } else {
+            assert_eq!(result.unwrap()["target_absent"], true);
+            assert!(adapter.inventories.load(Ordering::SeqCst) >= 2);
+        }
+    }
+}
