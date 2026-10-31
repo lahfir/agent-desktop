@@ -43,6 +43,22 @@ const space = actionSpace(screen());
 }
 
 {
+  const skeleton = collect({
+    role: "window",
+    name: "Calculator",
+    children: [
+      { role: "group", children: [{ ref_id: `@${S}:e1`, role: "group", children_count: 2 }] },
+      { ref_id: `@${S}:e2`, role: "group", children_count: 1 },
+    ],
+  });
+  assert.deepEqual(offerable(skeleton), [], "a region that advertises nothing is withheld by default");
+  const regions = offerable(skeleton, { drillable: true });
+  assert.deepEqual(regions.map((n) => n.ref_id), [`@${S}:e1`, `@${S}:e2`]);
+  const drill = actionSpace(regions);
+  assert.deepEqual(Object.keys(drill.targets), ["DRILL"], "a GTK skeleton of bare groups can still be drilled into");
+}
+
+{
   assert.equal(criterion({ role: "button", name: "Save" }, "1"), '[1] button "Save"');
   assert.equal(
     criterion({ role: "textfield", value: "Jane", states: ["focused"] }, "2"),
