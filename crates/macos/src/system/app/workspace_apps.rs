@@ -213,12 +213,7 @@ fn apps_inventory_from_json_with(
             .map_err(|error| records::with_skipped(error, &bridged.skipped))?;
         let process_instance = match resolve(app.pid) {
             Ok(Some(instance)) => instance,
-            Ok(None) => {
-                return Err(records::with_skipped(
-                    inventory_error("Selected application exited during inventory"),
-                    &bridged.skipped,
-                ));
-            }
+            Ok(None) => continue,
             Err(error)
                 if skip_cross_uid
                     && crate::system::process::process_apps::is_cross_uid_identity_error(

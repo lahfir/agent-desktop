@@ -217,3 +217,65 @@ fn conflicting_workspace_records_remain_incomplete() {
         assert!(require_complete(&inventory.skipped).is_err(), "{field}");
     }
 }
+
+#[test]
+fn complete_inventory_skips_an_app_whose_process_is_gone() {
+    let bytes = br#"{
+        "applications":[
+            {"name":"Finder","pid":10,"launch_time":100.25,"activation_policy":"regular"},
+            {"name":"Preview","pid":14192,"launch_time":null,"activation_policy":"regular"},
+            {"name":"Safari","pid":12,"launch_time":102.75,"activation_policy":"regular"}
+        ],
+        "frontmost_pid":10,
+        "frontmost_launch_time":100.25
+    }"#;
+    let inventory = apps_inventory_from_json_with(
+        bytes,
+        deadline(),
+        |_| true,
+        true,
+        |pid| Ok((pid != 14192).then(|| format!("instance-{pid}"))),
+    )
+    .unwrap();
+
+    assert_eq!(
+        inventory
+            .apps
+            .iter()
+            .map(|app| u32::from(app.pid))
+            .collect::<Vec<_>>(),
+        [10, 12]
+    );
+    require_complete(&inventory.skipped).unwrap();
+}
+
+#[test]
+fn scoped_lookup_skips_a_gone_duplicate_of_a_live_app() {
+    let bytes = br#"{
+        "applications":[
+            {"name":"Preview","pid":10,"launch_time":100.25,"activation_policy":"regular"},
+            {"name":"Preview","pid":14192,"launch_time":null,"activation_policy":"regular"},
+            {"name":"Other","pid":12,"launch_time":102.75,"activation_policy":"regular"}
+        ],
+        "frontmost_pid":10,
+        "frontmost_launch_time":100.25
+    }"#;
+    let inventory = apps_inventory_from_json_with(
+        bytes,
+        deadline(),
+        |app| app.name == "Preview",
+        false,
+        |pid| Ok((pid != 14192).then(|| format!("instance-{pid}"))),
+    )
+    .unwrap();
+
+    assert_eq!(
+        inventory
+            .apps
+            .iter()
+            .map(|app| u32::from(app.pid))
+            .collect::<Vec<_>>(),
+        [10]
+    );
+    require_complete(&inventory.skipped).unwrap();
+}
