@@ -23,14 +23,30 @@ pub(crate) fn wait_for_minimized(
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
     wait_until(deadline, || {
-        Ok(
-            crate::tree::surface_read::boolean(
-                element,
-                "AXMinimized",
-                deadline_instant(deadline)?,
-            )? == Some(expected),
-        )
+        let read =
+            crate::tree::surface_read::boolean(element, "AXMinimized", deadline_instant(deadline)?);
+        Ok(retry_while_animating(read)? == Some(expected))
     })
+}
+
+/// AppKit answers `kAXErrorCannotComplete` for `AXMinimized` while the minimize or restore
+/// animation runs. That read is retried until the deadline instead of failing a delivered action.
+fn retry_while_animating(
+    read: Result<Option<bool>, AdapterError>,
+) -> Result<Option<bool>, AdapterError> {
+    match read {
+        Err(error) if is_cannot_complete_read(&error) => Ok(None),
+        other => other,
+    }
+}
+
+fn is_cannot_complete_read(error: &AdapterError) -> bool {
+    let Some(details) = error.details.as_ref() else {
+        return false;
+    };
+    details.get("kind").and_then(serde_json::Value::as_str) == Some("surface_read")
+        && details.get("ax_error").and_then(serde_json::Value::as_i64)
+            == Some(i64::from(accessibility_sys::kAXErrorCannotComplete))
 }
 
 fn wait_until(
@@ -103,5 +119,35 @@ mod tests {
         assert!(geometry_matches(rounded, expected, true));
         assert!(geometry_matches(rounded, expected, false));
         assert!(!geometry_matches(wrong, expected, false));
+    }
+
+    fn surface_read_error(ax_error: i32) -> AdapterError {
+        AdapterError::new(
+            agent_desktop_core::ErrorCode::Timeout,
+            "Accessibility surface read failed for AXMinimized",
+        )
+        .with_details(serde_json::json!({
+            "attribute": "AXMinimized",
+            "ax_error": ax_error,
+            "kind": "surface_read",
+        }))
+    }
+
+    #[test]
+    fn minimized_read_retries_cannot_complete_during_animation() {
+        let read = Err(surface_read_error(
+            accessibility_sys::kAXErrorCannotComplete,
+        ));
+        assert_eq!(retry_while_animating(read).unwrap(), None);
+    }
+
+    #[test]
+    fn minimized_read_keeps_other_errors_and_values() {
+        let invalid = Err(surface_read_error(
+            accessibility_sys::kAXErrorInvalidUIElement,
+        ));
+        assert!(retry_while_animating(invalid).is_err());
+        assert!(retry_while_animating(Err(AdapterError::timeout("deadline"))).is_err());
+        assert_eq!(retry_while_animating(Ok(Some(true))).unwrap(), Some(true));
     }
 }
