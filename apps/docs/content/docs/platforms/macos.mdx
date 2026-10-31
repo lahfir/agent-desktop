@@ -35,7 +35,7 @@ The grant belongs to the app that launched agent-desktop, not to the shell. A di
 }
 ```
 
-`automation` stays `unknown` until macOS would need to prompt. `permissions --request` is the only path that prompts, and it covers Automation; `--guide` covers Accessibility and Screen Recording. Under tmux or SSH there is no launching app, so add the terminal app that started tmux by hand.
+`automation` stays `unknown` until macOS would need to prompt. `permissions --request` is the only path that prompts, and it covers Automation; `--guide` covers Accessibility and Screen Recording. The Automation prompt gets at most 5 seconds; if it is still open, `--request` returns `PERM_DENIED` with `details.kind` `automation_permission_pending`. Under tmux or SSH there is no launching app, so add the terminal app that started tmux by hand.
 
 ## What works headless
 
