@@ -2,6 +2,7 @@
 pub(crate) mod fake_sink;
 pub(crate) mod held_journal;
 pub(crate) mod io_cutoff;
+pub(crate) mod key_settle;
 #[cfg(test)]
 pub(crate) mod live_remap_tests;
 #[cfg(test)]

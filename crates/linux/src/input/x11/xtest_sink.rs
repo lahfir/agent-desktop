@@ -9,6 +9,7 @@ use x11rb::protocol::xtest::{self, ConnectionExt as _};
 use x11rb::rust_connection::RustConnection;
 
 use super::io_cutoff::IoCutoff;
+use super::key_settle;
 
 use super::pointer_read::PointerRead;
 
@@ -166,7 +167,9 @@ impl XtestSink {
 
 impl X11Sink for XtestSink {
     fn key(&mut self, code: u8, down: bool) -> Result<(), SinkError> {
-        self.fake(if down { KEY_PRESS } else { KEY_RELEASE }, code, 0, 0)
+        let sent = self.fake(if down { KEY_PRESS } else { KEY_RELEASE }, code, 0, 0);
+        key_settle::mark_key_sent();
+        sent
     }
 
     fn button(&mut self, code: u8, down: bool) -> Result<(), SinkError> {

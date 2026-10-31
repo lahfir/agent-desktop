@@ -59,10 +59,16 @@ carries `renderer: chromium`. Chromium and Electron read thin until they settle:
 pass `--timeout-ms` to `snapshot` rather than concluding the tree is empty. A
 Chromium menu frame is a nameless top-level frame, not a window, so it does not
 count as a window event.
-Electron limit: when the command is the only AT-SPI client, its disconnect can
-crash the Electron accessibility bridge (VS Code exits with SIGSEGV on `press`).
-A GNOME desktop keeps the shell connected, so this does not occur there. Electron native dialogs
-(save prompt, drop confirmation) are not on the AT-SPI tree: `close-app` counts
+
+When the command is the only AT-SPI client, its disconnect makes the
+application's accessibility bridge remove its key listener. If the application
+is still handling a key then, it crashes (VS Code and GTK 3 apps exited with
+SIGSEGV on `press`). On X11 the CLI therefore stays connected until 200 ms after
+the last key it sent, so a command that sent keys exits up to 200 ms after it
+prints its result. A GNOME desktop keeps the shell connected, so the crash does
+not occur there.
+
+Electron limits: Electron native dialogs (save prompt, drop confirmation) are not on the AT-SPI tree: `close-app` counts
 them, but no read command sees them. Tree items that report `expandable` have no
 expand action, and menu items cannot be clicked by ref: use `--headed` pointer
 input on their bounds.
