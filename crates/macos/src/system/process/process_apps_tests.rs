@@ -95,6 +95,34 @@ fn malformed_ps_line_is_not_silently_dropped() {
 }
 
 #[test]
+fn app_bundle_nested_in_xpc_services_is_skipped() {
+    let apps = parse_apps(
+        "42 /Applications/Finder.app/Contents/MacOS/Finder\n43 /Applications/Norton.app/Contents/XPCServices/NortonVPN.app/Contents/MacOS/NortonVPN",
+    )
+    .unwrap();
+
+    assert_eq!(apps.len(), 1);
+    assert_eq!(apps[0].name, "Finder");
+}
+
+#[test]
+fn app_bundle_nested_in_app_extension_is_skipped() {
+    let apps = parse_apps(
+        "43 /Applications/Foo.app/Contents/Extensions/Share.appex/Contents/Helper.app/Contents/MacOS/Helper",
+    )
+    .unwrap();
+
+    assert!(apps.is_empty());
+}
+
+#[test]
+fn app_executable_without_bundle_name_is_not_silently_dropped() {
+    let error = parse_apps("42 /Applications/.app/Contents/MacOS/Foo").unwrap_err();
+
+    assert_eq!(error.code, ErrorCode::AppUnresponsive);
+}
+
+#[test]
 fn valid_non_app_processes_still_produce_successful_empty_inventory() {
     let apps = parse_apps("1 /sbin/launchd\n2 /usr/libexec/logd").unwrap();
 
