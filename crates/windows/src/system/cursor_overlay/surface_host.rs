@@ -88,19 +88,23 @@ impl SurfaceHost {
             }
             CursorOverlayControl::Present { instruction, .. } => match instruction.phase() {
                 CursorPhase::Travel => {
+                    self.caret.hide();
                     self.presentation.depart(instruction.is_pointer());
                     self.travel(
                         instruction.destination().clone(),
                         instruction.target().cloned(),
                     );
                 }
-                CursorPhase::Drag => self.take_drag_origin(
-                    instruction
-                        .drag_from()
-                        .unwrap_or_else(|| instruction.destination())
-                        .clone(),
-                    instruction.target().cloned(),
-                ),
+                CursorPhase::Drag => {
+                    self.caret.hide();
+                    self.take_drag_origin(
+                        instruction
+                            .drag_from()
+                            .unwrap_or_else(|| instruction.destination())
+                            .clone(),
+                        instruction.target().cloned(),
+                    );
+                }
                 CursorPhase::Caret => {
                     if let Some(at) = instruction.target() {
                         let accent = self.presentation.style.accent_rgb();
