@@ -4,6 +4,7 @@ use agent_desktop_core::{
 };
 
 use serde_json::json;
+use std::time::Duration;
 
 use super::backend::{Backend, backend};
 use super::delivery::{Delivery, Gate};
@@ -11,8 +12,23 @@ use super::keyboard::keysym_step::KeysymStep;
 use super::mouse::drag_plan::plan_drag;
 use super::mouse::pointer_report::with_event_count;
 use super::plan::Plan;
+use super::step::Step;
 use super::wayland::keysym_send;
 use super::x11::{mouse_send, session};
+
+/// at-spi2's ATK bridge removes its key listener when its last AT-SPI client
+/// leaves the bus, and the application may be inside that listener's reentrant
+/// main loop. A CLI process that exits right after sending a key can therefore
+/// crash the focused GTK or Chromium app, so stay on the bus until it has
+/// handled the key.
+const KEY_SETTLE: Duration = Duration::from_millis(200);
+
+fn sends_keys(plans: &[Plan]) -> bool {
+    plans
+        .iter()
+        .flat_map(|plan| &plan.steps)
+        .any(|step| matches!(step, Step::Key { .. }))
+}
 
 pub(crate) fn send_plans(
     plans: Vec<Plan>,
@@ -20,7 +36,14 @@ pub(crate) fn send_plans(
     lease: &InteractionLease,
 ) -> Result<Delivery, AdapterError> {
     match backend()? {
-        Backend::X11(display) => session::run(&display, plans, gate, lease),
+        Backend::X11(display) => {
+            let settle = sends_keys(&plans);
+            let delivery = session::run(&display, plans, gate, lease);
+            if settle {
+                std::thread::sleep(KEY_SETTLE);
+            }
+            delivery
+        }
         Backend::Wayland => Err(keysym_send::pointer_refusal("pointer_and_chord_input")),
     }
 }
@@ -110,4 +133,25 @@ pub(crate) fn ensure_headed_click_policy(policy: InteractionPolicy) -> Result<()
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod key_settle_tests {
+    use super::*;
+
+    fn plan(steps: Vec<Step>) -> Plan {
+        Plan {
+            steps,
+            release_origin: None,
+        }
+    }
+
+    #[test]
+    fn only_key_plans_settle() {
+        assert!(sends_keys(&[plan(vec![Step::Key {
+            code: 38,
+            down: true,
+        }])]));
+        assert!(!sends_keys(&[plan(vec![Step::MoveTo { x: 1, y: 1 }])]));
+    }
 }
