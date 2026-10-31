@@ -153,3 +153,40 @@ fn eviction_drops_to_the_low_water_mark_rather_than_the_cap() {
         MAX_SAVED_SNAPSHOTS - PRUNE_LOW_WATER
     );
 }
+
+#[test]
+fn expired_snapshots_are_removed_except_the_latest() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::new().unwrap();
+    let old_id = store.save_new_snapshot(&map_with("Old")).unwrap();
+    let latest_id = store.save_new_snapshot(&map_with("Latest")).unwrap();
+    let retained = vec![
+        (old_id.clone(), store.snapshots_dir().join(&old_id)),
+        (latest_id.clone(), store.snapshots_dir().join(&latest_id)),
+    ];
+
+    let remaining =
+        super::prune::remove_expired_snapshots(retained, &latest_id, std::time::Duration::ZERO);
+
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].0, latest_id);
+    assert!(!store.snapshots_dir().join(&old_id).exists());
+    assert!(store.snapshot_path(&latest_id).is_file());
+}
+
+#[test]
+fn unexpired_snapshots_survive_the_ttl_pass() {
+    let _guard = HomeGuard::new();
+    let store = RefStore::new().unwrap();
+    let id = store.save_new_snapshot(&map_with("Fresh")).unwrap();
+    let retained = vec![(id.clone(), store.snapshots_dir().join(&id))];
+
+    let remaining = super::prune::remove_expired_snapshots(
+        retained,
+        "other",
+        std::time::Duration::from_secs(3600),
+    );
+
+    assert_eq!(remaining.len(), 1);
+    assert!(store.snapshot_path(&id).is_file());
+}

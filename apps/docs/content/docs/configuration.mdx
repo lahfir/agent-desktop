@@ -59,6 +59,7 @@ agent-desktop snapshot --app gnome-calculator -w "button:7"
   </thead>
   <tbody>
     <tr><td><code>AGENT_DESKTOP_HOME</code></td><td>Relocates the <a href="#state-root">state root</a>. Must be an absolute path.</td></tr>
+    <tr><td><code>AGENT_DESKTOP_SNAPSHOT_TTL_SECS</code></td><td>Removes saved snapshots whose directory is at least this many seconds old when the next snapshot is saved. The latest snapshot is kept. Unset keeps the newest 128 per namespace only.</td></tr>
     <tr><td><code>AGENT_DESKTOP_SESSION</code></td><td>Session id used when <code>--session</code> is not passed. <code>session start</code> prints the line that sets it. An empty value is <code>INVALID_ARGS</code>.</td></tr>
     <tr><td><code>AGENT_DESKTOP_AGENT_ID</code></td><td>Subagent id used when <code>--agent-id</code> is not passed.</td></tr>
     <tr><td><code>AGENT_DESKTOP_MACOS_HELPER_PATH</code></td><td>macOS only. Absolute path to the packaged <code>agent-desktop-macos-helper</code>. The npm launcher sets it.</td></tr>
