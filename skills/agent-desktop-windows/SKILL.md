@@ -32,7 +32,7 @@ observation, actions and capture there fail or return nothing.
 | Observation | `snapshot`, `find`, `get`, `is`, `screenshot` | Works. Surfaces are `window`, `focused`, a Chromium modal as `sheet`, and an open application menu as `menu` |
 | Surfaces | `list-surfaces` | Works. Lists `window`, `focused` and `sheet` per process, plus `menu` with `item_count` while a menu is open |
 | Shell surfaces | `open-system-surface` | Works for `start-menu`, `taskbar`, `system-tray`, `system-tray-overflow` and `action-center`, and returns the window `snapshot --surface <kind>` reads. `quick-settings` returns `PLATFORM_NOT_SUPPORTED` naming `action-center` |
-| Ref interaction | `click`, `right-click`, `type`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll`, `scroll-to` | Works, semantic in headless and `--headed` mode. `right-click` and `type` need `--headed` and return `POLICY_DENIED` headless |
+| Ref interaction | `click`, `right-click`, `type`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll`, `scroll-to` | Works, semantic in headless and `--headed` mode. `right-click` needs `--headed` and returns `POLICY_DENIED` headless. `type` needs `--headed` except in a Chromium or Electron window |
 | Multi-click and focus | `double-click`, `triple-click`, `focus` | Works with global `--headed` only |
 | Keyboard and mouse | `press`, `hover`, `drag`, `mouse-click`, `mouse-move`, `mouse-wheel` | Works. Cursor-moving input needs `--headed`. First Contact covers `press --app` |
 | Held input | `key-down`, `key-up`, `mouse-down`, `mouse-up` | Fails closed on every platform with `ACTION_NOT_SUPPORTED`. A headless `mouse-down` or `mouse-up` returns `POLICY_DENIED` first |
@@ -62,9 +62,13 @@ observation, actions and capture there fail or return nothing.
   `win+x`, `win+e`, `ctrl+shift+esc` and their modifier supersets are refused
   without `--force`. In combos, `cmd` and `meta` are the Windows key, so
   `meta+c` is a shell shortcut. Write `ctrl+c` to copy.
-- **`type` needs `--headed`.** It is keystroke synthesis through `SendInput`,
-  so a strict-headless `type` returns `POLICY_DENIED`. Use `set-value`, or pass
-  `--headed`. It ends `delivered_unverified` (`verification_scope:
+- **`type` needs `--headed`, except in Chromium and Electron windows.** With
+  `--headed` it is keystroke synthesis through `SendInput`. A strict-headless
+  `type` into a field of a Chromium or Electron window (Chrome, Edge, VS Code)
+  sends the text as window messages to that window, which can stay behind
+  other windows; the foreground window and the real keyboard are not touched.
+  The window must not be minimized. Elsewhere a strict-headless `type` returns
+  `POLICY_DENIED`: use `set-value`, or pass `--headed`. It ends `delivered_unverified` (`verification_scope:
   "unavailable"`) when the field exposes no readable Text selection, and can
   verify when one is readable: confirm with a fresh `get`.
 - **`press --app` writes to the foreground queue** with no per-process
@@ -90,7 +94,7 @@ observation, actions and capture there fail or return nothing.
 
 ## What differs on Windows
 
-- Ref actions are semantic UI Automation calls in headless and `--headed` mode, except `right-click`, `double-click`, `triple-click`, `type` and `focus`, which are physical or take focus and need `--headed`.
+- Ref actions are semantic UI Automation calls in headless and `--headed` mode, except `right-click`, `double-click`, `triple-click`, `type` and `focus`, which are physical or take focus and need `--headed`. `type` into a Chromium or Electron window also works headless; see `references/chromium-and-electron.md`.
 - The cursor overlay plays its per-action travel only for headless semantic actions. A `--headed` action moves the real cursor instead.
 
 ## References

@@ -67,3 +67,27 @@ coordinate input from a parent's bounds, or a CDP client (`launch --cdp`):
   content shares zero-extent bounds, which cannot be unique);
 - an unnamed element whose geometry matches two or more live candidates, which
   returns `AMBIGUOUS_TARGET` instead of guessing.
+
+## Headless `type` Reaches Background Windows
+
+A strict-headless `type` into a field of a Chromium or Electron window works
+while the window stays behind other windows. agent-desktop sends the window the
+messages Windows sends on activation, then the text as `WM_CHAR` messages, then
+the deactivation messages. The desktop foreground window, the real keyboard and
+the cursor do not change.
+
+```bash
+agent-desktop type @s8f3k2p9:e12 "你好 hello"   # no --headed needed
+```
+
+- The field is focused by a click message at its center. A field that already
+  holds text then gets the caret at its end. A page that other windows cover
+  completely can report focus late; the text then goes in at the click point.
+- The page sees a window `focus` event before the text and a `blur` event after
+  it, and `keydown` reports `key` as `Unidentified` for each character.
+- A minimized window returns `ACTION_FAILED`: Chromium stops exposing and
+  accepting input for it. Restore it first; it can stay behind other windows.
+- A window that does not process the messages returns `APP_UNRESPONSIVE`.
+- Some Electron editors report themselves offscreen while their window is fully
+  covered, and the visibility check then fails with `ACTION_FAILED` before any
+  input. VS Code's editor does this. Leave part of the window uncovered.

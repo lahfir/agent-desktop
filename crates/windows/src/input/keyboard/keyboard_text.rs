@@ -162,7 +162,7 @@ fn planned_chunk_count(text: &str) -> Result<usize, AdapterError> {
 
 /// The characters posted for `text`: every character except the LF of a
 /// CR LF pair.
-fn typed_chars(text: &str) -> impl Iterator<Item = char> + '_ {
+pub(super) fn typed_chars(text: &str) -> impl Iterator<Item = char> + '_ {
     let mut previous = None;
     text.chars().filter(move |&character| {
         let skip = character == '\n' && previous == Some('\r');

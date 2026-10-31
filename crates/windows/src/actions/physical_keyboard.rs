@@ -1,13 +1,15 @@
 //! Physical keyboard legs for `TypeText` and `PressKey`: focus-fallback
 //! policy, keyboard-focus verification, elevation gate, then `SendInput`
 //! synthesis. Null-handle `PressKey` synthesizes globally with no element
-//! gate.
+//! gate. A headless `TypeText` into a Chromium window takes the
+//! window-message leg in `background_keyboard` instead.
 
 use agent_desktop_core::{
     Action, ActionResult, ActionStep, AdapterError, Deadline, InteractionPolicy, KeyCombo,
     StepMechanism,
 };
 
+use crate::actions::background_keyboard::background_type_steps;
 use crate::actions::physical_target::{
     ensure_keyboard_delivery_ready, ensure_keyboard_policy, focus_lost_before_delivery,
 };
@@ -23,6 +25,11 @@ pub(crate) fn type_text_steps(
     policy: InteractionPolicy,
     deadline: Deadline,
 ) -> Result<Vec<ActionStep>, AdapterError> {
+    if !policy.allow_focus_steal
+        && let Some(steps) = background_type_steps(element, text, deadline)?
+    {
+        return Ok(steps);
+    }
     ensure_keyboard_policy(policy)?;
     preflight_text(text, deadline)?;
     let focus_ready = ensure_keyboard_delivery_ready(element, deadline)?;

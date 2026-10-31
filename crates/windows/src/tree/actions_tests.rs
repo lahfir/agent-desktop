@@ -306,3 +306,45 @@ fn a_read_only_range_control_does_not_advertise_set_value() {
 fn a_range_control_whose_read_only_flag_is_unreadable_fails_closed() {
     assert!(!advertises_set_value(None));
 }
+
+fn value_reads(control_type: i32, read_only: bool) -> Vec<(TreeProperty, PropertyOutcome)> {
+    let mut reads = inert_reads();
+    reads.retain(|(property, _)| *property != TreeProperty::ValueAvailable);
+    reads.push((TreeProperty::ValueAvailable, known_flag(true)));
+    reads.push((TreeProperty::ValueIsReadOnly, known_flag(read_only)));
+    reads.push((
+        TreeProperty::ControlType,
+        PropertyOutcome::Known(PropertyValue::Number(control_type)),
+    ));
+    reads
+}
+
+fn advertises_type_text(reads: Vec<(TreeProperty, PropertyOutcome)>) -> bool {
+    known_actions(&resolve_actions(&ElementProperties::from_reads(reads)))
+        .iter()
+        .any(|action| action == capability::TYPE_TEXT)
+}
+
+#[test]
+fn writable_edit_and_document_advertise_type_text() {
+    assert!(advertises_type_text(value_reads(EDIT_CONTROL_TYPE, false)));
+    assert!(advertises_type_text(value_reads(
+        DOCUMENT_CONTROL_TYPE,
+        false
+    )));
+}
+
+#[test]
+fn read_only_edit_does_not_advertise_type_text() {
+    assert!(!advertises_type_text(value_reads(EDIT_CONTROL_TYPE, true)));
+}
+
+#[test]
+fn writable_value_on_a_non_text_control_does_not_advertise_type_text() {
+    const COMBO_BOX_CONTROL_TYPE: i32 = 50003;
+
+    assert!(!advertises_type_text(value_reads(
+        COMBO_BOX_CONTROL_TYPE,
+        false
+    )));
+}
