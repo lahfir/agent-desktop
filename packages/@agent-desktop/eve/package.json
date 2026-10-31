@@ -1,0 +1,72 @@
+{
+  "name": "@agent-desktop/eve",
+  "version": "0.1.0",
+  "description": "eve extension that gives agents desktop computer-use tools backed by agent-desktop",
+  "type": "module",
+  "sideEffects": false,
+  "eve": {
+    "extension": {
+      "source": "./extension",
+      "dist": "./dist/extension"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.mjs"
+    },
+    "./tools": {
+      "types": "./dist/tools/index.d.ts",
+      "default": "./dist/tools/index.mjs"
+    },
+    "./sandbox": {
+      "types": "./dist/sandbox/sandbox.d.ts",
+      "default": "./dist/sandbox/sandbox.js"
+    }
+  },
+  "scripts": {
+    "build": "eve extension build && tsc -p tsconfig.sandbox.json",
+    "prepare": "npm run build",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "typecheck": "tsc"
+  },
+  "keywords": [
+    "agent-desktop",
+    "eve",
+    "eve-extension",
+    "computer-use",
+    "desktop-automation",
+    "sandbox"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vercel-labs/agent-desktop",
+    "directory": "packages/@agent-desktop/eve"
+  },
+  "bugs": {
+    "url": "https://github.com/vercel-labs/agent-desktop/issues"
+  },
+  "homepage": "https://agent-browser.dev/desktop",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "eve": ">=0.84.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.x",
+    "eve": "1.0.0-rc.1",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
