@@ -18,6 +18,34 @@ fn a_non_cli_host_cannot_claim_renderer_startup() {
 }
 
 #[test]
+fn release_and_npm_cli_names_can_start_the_renderer() {
+    for name in [
+        "agent-desktop",
+        "agent-desktop-darwin-arm64",
+        "agent-desktop-darwin-x64",
+    ] {
+        let path = Path::new("/usr/local/bin").join(name);
+        require_cli_executable(&path).expect("the shipped CLI can host its renderer");
+    }
+}
+
+#[test]
+fn helpers_and_lookalike_hosts_cannot_start_the_renderer() {
+    for name in [
+        "ffi-host",
+        "agent_desktop_macos-test",
+        "agent-desktop-macos-helper",
+        "agent-desktop-darwin-arm64-helper",
+        "agent-desktop-darwin-arm64.backup",
+        "agent-desktop-linux-arm64",
+    ] {
+        let error = require_cli_executable(&Path::new("/usr/local/bin").join(name))
+            .expect_err("a foreign process must not be relaunched as the renderer");
+        assert_eq!(error.code, ErrorCode::PlatformNotSupported);
+    }
+}
+
+#[test]
 fn travel_acknowledgement_obeys_remaining_budget() {
     let error = unacknowledged_failure(agent_desktop_core::CursorPhase::Travel);
 

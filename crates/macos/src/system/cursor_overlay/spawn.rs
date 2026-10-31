@@ -97,13 +97,7 @@ fn spawn(
         AdapterError::internal("Could not locate the cursor overlay executable")
             .with_platform_detail(error.to_string())
     })?;
-    if executable.file_stem().and_then(|name| name.to_str()) != Some("agent-desktop") {
-        return Err(
-            AdapterError::not_supported("update_cursor_overlay").with_platform_detail(
-                "The cursor renderer can only start from the agent-desktop CLI",
-            ),
-        );
-    }
+    require_cli_executable(&executable)?;
     let payload = serde_json::to_vec(control).map_err(|error| {
         AdapterError::internal("Could not encode macOS cursor overlay control")
             .with_platform_detail(error.to_string())
@@ -163,6 +157,17 @@ fn spawn(
     Err(AdapterError::internal(
         "macOS cursor overlay did not become ready",
     ))
+}
+
+fn require_cli_executable(executable: &Path) -> Result<(), AdapterError> {
+    if matches!(
+        executable.file_name().and_then(|name| name.to_str()),
+        Some("agent-desktop" | "agent-desktop-darwin-arm64" | "agent-desktop-darwin-x64")
+    ) {
+        return Ok(());
+    }
+    Err(AdapterError::not_supported("update_cursor_overlay")
+        .with_platform_detail("The cursor renderer can only start from the agent-desktop CLI"))
 }
 
 fn terminate_child(child: &mut std::process::Child) -> bool {
