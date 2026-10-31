@@ -259,3 +259,60 @@ fn text_wait_gives_the_rest_of_the_wait_after_an_incomplete_observation() {
     assert!(budgets[0] <= first_budget);
     assert!(budgets[1] > first_budget);
 }
+
+struct SliceExhaustingAdapter {
+    budgets: std::sync::Mutex<Vec<std::time::Duration>>,
+}
+
+impl ObservationOps for SliceExhaustingAdapter {
+    fn observe_tree(
+        &self,
+        root: crate::locator::live_locator::ObservationRoot<'_>,
+        request: &crate::locator::live_locator::ObservationRequest,
+    ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
+        let mut budgets = self.budgets.lock().expect("budget log");
+        budgets.push(request.deadline.remaining());
+        if budgets.len() == 1 {
+            crate::wait::deadline::sleep(request.deadline.remaining());
+            return Err(request.deadline.timeout_error());
+        }
+        crate::adapter::observed_tree(&root, doc_window(vec![ready_button("deep text")]))
+    }
+
+    fn list_windows(
+        &self,
+        _filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
+        test_app_windows()
+    }
+}
+
+impl ActionOps for SliceExhaustingAdapter {}
+
+impl InputOps for SliceExhaustingAdapter {}
+
+impl SystemOps for SliceExhaustingAdapter {}
+
+#[test]
+fn text_wait_gives_the_rest_of_the_wait_after_an_observation_runs_out_of_budget() {
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
+    let _clock = crate::wait::deadline::VirtualClock::freeze();
+    let adapter = SliceExhaustingAdapter {
+        budgets: std::sync::Mutex::new(Vec::new()),
+    };
+
+    let body = execute(
+        text_wait_args("deep text", None, 20_000),
+        &adapter,
+        &CommandContext::default(),
+    )
+    .expect("text found on the second observation");
+
+    assert_eq!(body["found"], true);
+    let budgets = adapter.budgets.lock().expect("budget log");
+    let first_budget =
+        std::time::Duration::from_millis(crate::snapshot::DEFAULT_SNAPSHOT_TIMEOUT_MS);
+    assert!(budgets[0] <= first_budget);
+    assert!(budgets[1] > first_budget);
+}

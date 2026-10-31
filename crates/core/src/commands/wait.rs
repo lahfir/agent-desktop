@@ -197,10 +197,10 @@ struct TextWaitInput {
 
 /// Polls snapshots until the text appears. The first observation gets at most
 /// the default snapshot budget, so text near the top of a large tree is found
-/// without walking all of it. After an observation comes back incomplete and
-/// without a match, each later observation gets the rest of the wait, so text
-/// deep in a slow tree and `--count`, which needs a complete tree, can still
-/// be satisfied.
+/// without walking all of it. After an observation runs out of that budget or
+/// comes back incomplete without a match, each later observation gets the rest
+/// of the wait, so text deep in a slow tree and `--count`, which needs a
+/// complete tree, can still be satisfied.
 fn wait_for_text(
     input: TextWaitInput,
     adapter: &dyn PlatformAdapter,
@@ -279,6 +279,7 @@ fn wait_for_text(
                 return wait_timeout::text(&text, timeout_ms, expected_count, last_error);
             }
             Err(AppError::Adapter(err)) if wait_timeout::is_deadline_expired(&err) => {
+                whole_wait_per_poll = true;
                 last_error = Some(json!({
                     "code": err.code.as_str(),
                     "message": err.message
