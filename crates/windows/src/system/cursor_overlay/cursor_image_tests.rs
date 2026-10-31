@@ -41,3 +41,32 @@ fn compositing_over_a_transparent_surface_copies_the_source() {
     composite(&mut surface, 1, 0, 0x80_40_20_10);
     assert_eq!(surface.pixels, vec![0, 0x80_40_20_10]);
 }
+
+fn write_png(path: &std::path::Path, width: u32) {
+    let file = std::fs::File::create(path).expect("create png");
+    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, 1);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().expect("png header");
+    writer
+        .write_image_data(&vec![255; width as usize * 4])
+        .expect("png data");
+}
+
+#[test]
+fn a_png_replaced_at_the_same_path_is_drawn_from_its_new_contents() {
+    let path = std::env::temp_dir().join(format!("cursor-{}.png", std::process::id()));
+    let image = CursorImage::new(
+        path.to_string_lossy().into_owned(),
+        Point { x: 0.0, y: 0.0 },
+    )
+    .expect("valid image");
+    write_png(&path, 1);
+    let first = decoded(&image).map(|image| image.width);
+
+    write_png(&path, 2);
+    let second = decoded(&image).map(|image| image.width);
+    let _ = std::fs::remove_file(&path);
+
+    assert_eq!((first, second), (Some(1), Some(2)));
+}

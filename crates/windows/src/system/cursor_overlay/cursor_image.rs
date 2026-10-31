@@ -1,13 +1,14 @@
 //! A caller's cursor image, drawn in place of the built-in dart.
 //!
-//! The PNG is decoded once per path and kept premultiplied, in the surface's
-//! own BGRA layout, so a frame only composites it. It is drawn at the style's
-//! size, with its hotspot on the pose point, the way the macOS renderer draws
-//! it.
+//! The PNG is decoded once per version of its file and kept premultiplied, in
+//! the surface's own BGRA layout, so a frame only composites it. It is drawn at
+//! the style's size, with its hotspot on the pose point, the way the macOS
+//! renderer draws it.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::time::SystemTime;
 
 use agent_desktop_core::{CursorImage, Point, Rect};
 
@@ -19,21 +20,34 @@ pub(crate) struct DecodedImage {
     pixels: Vec<u32>,
 }
 
+type FileStamp = Option<(u64, SystemTime)>;
+type CachedImage = (FileStamp, Option<Rc<DecodedImage>>);
+
 thread_local! {
-    static DECODED: RefCell<HashMap<String, Option<Rc<DecodedImage>>>> =
-        RefCell::new(HashMap::new());
+    static DECODED: RefCell<HashMap<String, CachedImage>> = RefCell::new(HashMap::new());
 }
 
 /// The decoded image for `image`, or `None` when its file is not a readable
-/// PNG; the dart is drawn instead.
+/// PNG; the dart is drawn instead. A file whose size or modification time has
+/// changed since it was decoded is decoded again, so a replaced PNG shows.
 pub(crate) fn decoded(image: &CursorImage) -> Option<Rc<DecodedImage>> {
+    let stamp = file_stamp(image.path());
     DECODED.with(|cache| {
-        cache
-            .borrow_mut()
-            .entry(image.path().to_owned())
-            .or_insert_with(|| decode(image.path()).map(Rc::new))
-            .clone()
+        let mut cache = cache.borrow_mut();
+        match cache.get(image.path()) {
+            Some((cached, decoded)) if *cached == stamp => decoded.clone(),
+            _ => {
+                let decoded = decode(image.path()).map(Rc::new);
+                cache.insert(image.path().to_owned(), (stamp, decoded.clone()));
+                decoded
+            }
+        }
     })
+}
+
+fn file_stamp(path: &str) -> FileStamp {
+    let metadata = std::fs::metadata(path).ok()?;
+    Some((metadata.len(), metadata.modified().ok()?))
 }
 
 /// Where the image lands for a pose: its hotspot on the tip, scaled.
