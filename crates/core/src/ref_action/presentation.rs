@@ -38,14 +38,17 @@ pub(super) fn before_dispatch(
 /// lease is taken, from a read-only resolution of the element. Whatever this
 /// observes is re-resolved under the lease before dispatch, so it only decides
 /// where the cursor heads. Headed actions keep their travel under the lease,
-/// because they move the real pointer.
+/// because they move the real pointer, and so does a cursor shared by every
+/// agent in the session, because another agent can move it before the lease.
 pub(super) fn before_lease(
     context: super::ref_action_wait_context::RefActionWaitContext<'_>,
     request: &crate::ActionRequest,
     deadline: crate::Deadline,
 ) {
     TRAVELLED_BEFORE_LEASE.set(None);
-    if request.policy.is_headed() || !context.context.cursor_overlay().is_enabled() {
+    let overlay = context.context.cursor_overlay();
+    let owns_cursor = overlay.is_multi_agent() && context.context.agent_id().is_some();
+    if request.policy.is_headed() || !overlay.is_enabled() || !owns_cursor {
         return;
     }
     let Some(destination) = target_center(context, deadline) else {

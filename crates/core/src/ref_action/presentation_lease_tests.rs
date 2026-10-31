@@ -87,9 +87,19 @@ fn live_bounds() -> Rect {
     }
 }
 
-fn overlay_context() -> CommandContext {
+fn shared_cursor_context() -> CommandContext {
     let config = crate::CursorOverlayConfig::enabled(None, 6).expect("valid config");
     CommandContext::default().with_cursor_overlay_session("test-session", config)
+}
+
+fn overlay_context() -> CommandContext {
+    let config = crate::CursorOverlayConfig::enabled(None, 6)
+        .expect("valid config")
+        .with_multi_agent(true);
+    CommandContext::default()
+        .with_agent_id(Some("agent-a".into()))
+        .expect("valid agent id")
+        .with_cursor_overlay_session("test-session", config)
 }
 
 #[test]
@@ -161,4 +171,28 @@ fn headed_travel_stays_under_the_lease_because_it_moves_the_real_pointer() {
     let events = adapter.events.lock().unwrap();
     assert_eq!(events.first(), Some(&Event::Lease));
     assert!(matches!(events.get(1), Some(Event::Travel(_))));
+}
+
+#[test]
+fn a_cursor_shared_by_every_agent_travels_under_the_lease_so_no_one_moves_it_before_dispatch() {
+    let adapter = LeaseOrderAdapter::default();
+
+    execute_entry_with_context(
+        &adapter,
+        &button_at(live_bounds()),
+        ActionRequest::headless(Action::Click),
+        &shared_cursor_context(),
+    )
+    .expect("click succeeds");
+
+    let center = Point { x: 11.0, y: 11.0 };
+    assert_eq!(
+        *adapter.events.lock().unwrap(),
+        [
+            Event::Lease,
+            Event::Travel(center.clone()),
+            Event::Dispatch,
+            Event::Effect(center),
+        ]
+    );
 }
