@@ -58,6 +58,7 @@ unsafe extern "C" {
     ) -> bool;
     fn agent_desktop_cursor_overlay_idle();
     fn agent_desktop_cursor_overlay_caret(x: f64, y: f64, width: f64, height: f64);
+    fn agent_desktop_cursor_overlay_caret_hide();
     fn agent_desktop_cursor_overlay_hide();
     fn agent_desktop_cursor_overlay_rest();
     fn agent_desktop_cursor_overlay_show();
@@ -121,6 +122,9 @@ pub(super) fn run(
     reduce_motion: bool,
     bubble: &Rect,
 ) -> Result<(), AdapterError> {
+    if matches!(instruction.phase(), CursorPhase::Travel | CursorPhase::Drag) {
+        unsafe { agent_desktop_cursor_overlay_caret_hide() }
+    }
     let frames = poses
         .iter()
         .map(|pose| NativeCursorFrame {

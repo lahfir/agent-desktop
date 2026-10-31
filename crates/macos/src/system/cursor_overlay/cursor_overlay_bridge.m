@@ -205,6 +205,10 @@ void agent_desktop_cursor_overlay_caret(double x, double y, double width, double
     }
 }
 
+void agent_desktop_cursor_overlay_caret_hide(void) {
+    ADCaretStop();
+}
+
 void agent_desktop_cursor_overlay_rest(void) {
     @autoreleasepool {
         NSApplication *app = NSApplication.sharedApplication;
