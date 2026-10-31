@@ -6,7 +6,7 @@ pub(crate) struct CursorOverlayStyleArgs {
     #[arg(
         long,
         conflicts_with = "image",
-        help = "Cursor body colour as a hex value (default #FFFFFF)"
+        help = "Cursor body colour as a hex value (default: the accent colour)"
     )]
     pub fill: Option<String>,
     #[arg(
@@ -17,7 +17,7 @@ pub(crate) struct CursorOverlayStyleArgs {
     pub rim: Option<String>,
     #[arg(
         long,
-        help = "Ripple and element highlight colour as a hex value (default #4299FF)"
+        help = "Cursor, ripple and element highlight colour as a hex value (default #4299FF)"
     )]
     pub accent: Option<String>,
     #[arg(long, help = "Cursor size multiplier from 0.5 to 4.0 (default 1.0)")]

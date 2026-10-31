@@ -2,7 +2,6 @@ use super::{CursorImage, CursorImages};
 use crate::{AdapterError, ErrorCode};
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_FILL: &str = "#FFFFFF";
 const DEFAULT_RIM: &str = "#111318";
 const DEFAULT_ACCENT: &str = "#4299FF";
 const MIN_SIZE: f64 = 0.5;
@@ -11,8 +10,10 @@ const MAX_SIZE: f64 = 4.0;
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CursorOverlayStyle {
-    #[serde(default = "default_fill")]
-    fill: String,
+    /// The cursor body's colour; without one it takes the accent, so a single
+    /// `--accent` colours the whole cursor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    fill: Option<String>,
     #[serde(default = "default_rim")]
     rim: String,
     #[serde(default = "default_accent")]
@@ -33,7 +34,10 @@ impl CursorOverlayStyle {
     }
 
     pub fn validated(mut self) -> Result<Self, AdapterError> {
-        for color in [&self.fill, &self.rim, &self.accent] {
+        for color in [self.fill.as_ref(), Some(&self.rim), Some(&self.accent)]
+            .into_iter()
+            .flatten()
+        {
             rgb(color).ok_or_else(|| {
                 AdapterError::new(
                     ErrorCode::InvalidArgs,
@@ -52,7 +56,7 @@ impl CursorOverlayStyle {
     }
 
     pub fn set_fill(&mut self, fill: String) {
-        self.fill = fill;
+        self.fill = Some(fill);
     }
 
     pub fn set_rim(&mut self, rim: String) {
@@ -93,7 +97,10 @@ impl CursorOverlayStyle {
     }
 
     pub fn fill_rgb(&self) -> [f64; 3] {
-        rgb(&self.fill).unwrap_or([1.0, 1.0, 1.0])
+        self.fill
+            .as_deref()
+            .and_then(rgb)
+            .unwrap_or_else(|| self.accent_rgb())
     }
 
     pub fn rim_rgb(&self) -> [f64; 3] {
@@ -120,7 +127,7 @@ impl CursorOverlayStyle {
 impl Default for CursorOverlayStyle {
     fn default() -> Self {
         Self {
-            fill: default_fill(),
+            fill: None,
             rim: default_rim(),
             accent: default_accent(),
             size: default_size(),
@@ -129,10 +136,6 @@ impl Default for CursorOverlayStyle {
             images: CursorImages::default(),
         }
     }
-}
-
-fn default_fill() -> String {
-    DEFAULT_FILL.into()
 }
 
 fn default_rim() -> String {

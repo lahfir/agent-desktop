@@ -85,17 +85,20 @@ fn live_x11_cursor_adapter_paints_agent_positions_and_retires_resources() {
         .list_displays(Deadline::after(4_000).unwrap())
         .unwrap();
     let pointer = oracle.query_pointer(root).unwrap().reply().unwrap();
+    let mut white = agent_desktop_core::CursorOverlayStyle::default();
+    white.set_fill("#FFFFFF".into());
     update(&CursorOverlayControl::enable(
         "pixel-proof".into(),
-        Default::default(),
+        white.clone(),
     ))
     .expect("enable retained overlay");
     let config = CursorOverlayConfig::enabled(None, 8).expect("enabled config");
     let mut window = None;
     for (x, y) in [(150., 150.), (500., 400.)] {
-        update(&CursorOverlayControl::present(
+        update(&CursorOverlayControl::present_with_style(
             "pixel-proof".into(),
             CursorOverlayInstruction::new(Point { x, y }, &config, false).unwrap(),
+            white.clone(),
         ))
         .expect("paint and acknowledge");
         let windows = owned("pixel-proof");

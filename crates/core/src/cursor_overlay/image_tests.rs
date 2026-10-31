@@ -326,3 +326,15 @@ fn fifo_image_is_rejected_promptly() {
     assert_eq!(error.code, crate::ErrorCode::InvalidArgs);
     assert!(error.message.contains("not a regular file"));
 }
+
+#[test]
+fn the_cursor_body_takes_the_accent_unless_a_fill_is_set() {
+    let mut style = CursorOverlayStyle::default();
+    style.set_accent("#FF8000".into());
+    assert_eq!(style.fill_rgb(), style.accent_rgb());
+    assert!(!serde_json::to_string(&style).unwrap().contains("fill"));
+    style.set_fill("#FFFFFF".into());
+    assert_eq!(style.fill_rgb(), [1.0, 1.0, 1.0]);
+    let parsed: CursorOverlayStyle = serde_json::from_str(r##"{"accent":"#FF8000"}"##).unwrap();
+    assert_eq!(parsed.fill_rgb(), parsed.accent_rgb());
+}

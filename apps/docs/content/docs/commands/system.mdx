@@ -129,7 +129,8 @@ agent-desktop --session "$AGENT_DESKTOP_SESSION" cursor-overlay disable
   <tbody>
     <tr><td><code>--multi-agent</code></td><td>off</td><td>Require an agent id for desktop actions. Rejected together with <code>--agent-id</code>.</td></tr>
     <tr><td><code>--label TEXT</code>, <code>--max-words N</code></td><td>none, <code>6</code></td><td>Intent text beside the cursor, limited to 1 to 12 words, drawn as a black pill sized to the text.</td></tr>
-    <tr><td><code>--fill HEX</code>, <code>--rim HEX</code>, <code>--accent HEX</code></td><td><code>#FFFFFF</code>, <code>#111318</code>, <code>#4299FF</code></td><td>Cursor body, outline, and ripple colors.</td></tr>
+    <tr><td><code>--accent HEX</code></td><td><code>#4299FF</code></td><td>Cursor body, ripple, element outline and caret color.</td></tr>
+    <tr><td><code>--fill HEX</code>, <code>--rim HEX</code></td><td>the accent, <code>#111318</code></td><td>Cursor body and outline colors. <code>--fill</code> sets a body color other than the accent.</td></tr>
     <tr><td><code>--size N</code></td><td><code>1.0</code></td><td>Size multiplier, 0.5 to 4.0.</td></tr>
     <tr><td><code>--no-ripple</code>, <code>--no-highlight</code></td><td>off</td><td>Turn off the click ripple or the element outline.</td></tr>
     <tr><td><code>--image PATH</code>, <code>--hotspot X,Y</code></td><td>built-in arrow</td><td>Draw the cursor from a PNG (at most 2 MiB and 1024 pixels per side) with its click point.</td></tr>
@@ -151,7 +152,7 @@ agent-desktop --session "$AGENT_DESKTOP_SESSION" cursor-overlay disable
     "cursor_overlay": {
       "enabled": true,
       "max_words": 6,
-      "style": { "accent": "#4299FF", "fill": "#FFFFFF", "highlight": true, "rim": "#111318", "ripple": true, "size": 1.0 }
+      "style": { "accent": "#4299FF", "highlight": true, "rim": "#111318", "ripple": true, "size": 1.0 }
     },
     "next": "export AGENT_DESKTOP_SESSION=run-1793353372413-23159-0",
     "rendered": true,
