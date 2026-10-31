@@ -59,17 +59,21 @@ pub(super) fn open_from_clock(deadline: Deadline) -> Result<bool, AdapterError> 
 }
 
 /// Polls for an open Notification Center for at most `window_ms`.
+///
+/// The probes read under the command deadline, not the confirmation slice, so
+/// a slice that runs out between probes ends the poll with `false` and the
+/// caller can still run its fallback.
 #[cfg(target_os = "macos")]
 fn nc_opened_within(window_ms: u64, deadline: Deadline) -> Result<bool, AdapterError> {
     let confirm = deadline.slice(window_ms)?;
     loop {
-        if let Some(pid) = super::nc_session::nc_pid(confirm)?
-            && super::nc_session::is_nc_open(pid, confirm)
-        {
-            return Ok(true);
-        }
         if confirm.is_expired() {
             return Ok(false);
+        }
+        if let Some(pid) = super::nc_session::nc_pid(deadline)?
+            && super::nc_session::is_nc_open(pid, deadline)
+        {
+            return Ok(true);
         }
         std::thread::sleep(
             confirm
