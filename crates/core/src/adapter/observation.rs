@@ -226,6 +226,18 @@ pub trait ObservationOps: Send + Sync {
         Err(AdapterError::not_supported("get_insertion_caret"))
     }
 
+    /// The insertion point of the text element that has keyboard focus, in
+    /// `process` when given and system-wide otherwise, as
+    /// [`get_insertion_caret`](Self::get_insertion_caret) reports it. `None`
+    /// when the focused element is not a text element or has no insertion point.
+    fn get_focused_insertion_caret(
+        &self,
+        _process: Option<crate::ProcessId>,
+        _deadline: Deadline,
+    ) -> Result<Option<Rect>, AdapterError> {
+        Err(AdapterError::not_supported("get_focused_insertion_caret"))
+    }
+
     /// Fresh pointer geometry and visibility from one observation when supported.
     /// The default preserves bounds-first reads and optional state evidence.
     fn observe_pointer(

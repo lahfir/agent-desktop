@@ -91,6 +91,28 @@ pub(crate) fn submit_caret(adapter: &dyn PlatformAdapter, context: &CommandConte
     let _ = send(adapter, context, instruction);
 }
 
+/// Moves a caret the overlay is already showing to `caret`, or hides it when
+/// `caret` is `None`.
+pub(crate) fn submit_caret_follow(
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+    caret: Option<Rect>,
+) {
+    let destination = caret.map_or(Point { x: 0.0, y: 0.0 }, |caret| Point {
+        x: caret.x,
+        y: caret.y + caret.height / 2.0,
+    });
+    let instruction =
+        super::CursorOverlayInstruction::new(destination, context.cursor_overlay(), false).map(
+            |instruction| {
+                instruction
+                    .with_target(caret)
+                    .with_phase(CursorPhase::CaretFollow)
+            },
+        );
+    let _ = send(adapter, context, instruction);
+}
+
 pub(crate) fn input_was_delivered(result: &Result<OperationReport, AdapterError>) -> bool {
     result.as_ref().map_or_else(
         |error| confirms_delivery(error.disposition),

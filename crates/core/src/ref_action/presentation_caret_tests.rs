@@ -15,6 +15,7 @@ const CARET: Rect = Rect {
 
 struct CaretAdapter {
     caret: Option<Rect>,
+    focused: bool,
     value: Mutex<Option<String>>,
     presented: Mutex<Vec<CursorOverlayControl>>,
 }
@@ -23,6 +24,7 @@ impl CaretAdapter {
     fn new(caret: Option<Rect>) -> Self {
         Self {
             caret,
+            focused: false,
             value: Mutex::new(None),
             presented: Mutex::new(Vec::new()),
         }
@@ -52,7 +54,11 @@ impl ObservationOps for CaretAdapter {
         [capability::CLICK, capability::TYPE_TEXT, capability::SET_VALUE],
         adapter => crate::ElementState {
             role: "textfield".into(),
-            states: Vec::new(),
+            states: if adapter.focused {
+                vec![crate::tree::state::FOCUSED.into()]
+            } else {
+                Vec::new()
+            },
             value: adapter.value.lock().unwrap().clone(),
             enabled: Some(true),
             hidden: Some(false),
@@ -165,4 +171,24 @@ fn a_field_without_an_insertion_point_keeps_its_outline_and_draws_no_caret() {
         .expect("an effect instruction");
     assert_eq!(effect.phase(), CursorPhase::Effect);
     assert!(effect.target().is_some());
+}
+
+#[test]
+fn typing_into_a_field_that_already_has_focus_plays_no_click_ripple() {
+    let adapter = CaretAdapter {
+        focused: true,
+        ..CaretAdapter::new(Some(CARET))
+    };
+    type_into(&adapter);
+
+    let presented = adapter.presented.lock().unwrap();
+    let effect = presented
+        .iter()
+        .filter_map(CursorOverlayControl::instruction)
+        .find(|instruction| instruction.phase() == CursorPhase::Effect)
+        .expect("an effect instruction");
+    assert!(
+        !effect.is_click(),
+        "the field is typed into where it is, so nothing clicks into it"
+    );
 }

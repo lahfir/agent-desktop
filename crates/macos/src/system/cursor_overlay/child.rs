@@ -88,10 +88,13 @@ fn run() -> Result<(), AdapterError> {
                     let _ = stream.write_all(&[1]);
                     return Ok(());
                 }
+                if state.resting && control.is_caret_follow() {
+                    let _ = stream.write_all(&[1]);
+                    continue;
+                }
                 quiet_since = std::time::Instant::now();
-                if state.resting {
+                if std::mem::take(&mut state.resting) {
                     bridge::show();
-                    state.resting = false;
                 }
                 let outcome = handle(&control, &mut state);
                 if outcome.is_ok() && control.expects_acknowledgement() {
@@ -127,9 +130,8 @@ fn run() -> Result<(), AdapterError> {
 /// connects, so a control is drawn within the frame it was sent in rather
 /// than after a fixed sleep.
 fn wait_for_connection(listener: &std::os::unix::net::UnixListener, timeout: Duration) {
-    use std::os::fd::AsRawFd;
     let mut ready = libc::pollfd {
-        fd: listener.as_raw_fd(),
+        fd: std::os::fd::AsRawFd::as_raw_fd(listener),
         events: libc::POLLIN,
         revents: 0,
     };
@@ -218,7 +220,7 @@ fn apply_landing_memory(
     let Some(instruction) = instruction else {
         return;
     };
-    if instruction.phase() == CursorPhase::Caret {
+    if bridge::is_caret(instruction) {
         return;
     }
     state.at = Some(if instruction.phase() == CursorPhase::Drag {
@@ -235,11 +237,9 @@ fn render(
     instruction: &CursorOverlayInstruction,
     state: &OverlayState,
 ) -> Result<(), AdapterError> {
-    if instruction.phase() == CursorPhase::Caret {
-        bridge::caret(instruction.target());
+    if bridge::apply_caret(instruction, state.at.as_ref()) {
         return Ok(());
     }
-    bridge::clear_caret_on_departure(instruction, state.at.as_ref());
     if instruction.phase() == CursorPhase::Drag {
         let from = instruction.drag_from().unwrap_or(instruction.destination());
         let (screen, fps, reduce_motion) = bridge::screen_at(from)?;

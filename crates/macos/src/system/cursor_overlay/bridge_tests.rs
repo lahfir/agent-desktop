@@ -52,3 +52,14 @@ fn pointer_flags_do_not_collide_with_render_flags() {
         }
     }
 }
+
+#[test]
+fn both_caret_phases_draw_only_the_caret_and_leave_the_pointer_alone() {
+    for phase in [CursorPhase::Caret, CursorPhase::CaretFollow] {
+        assert!(is_caret(&instruction(phase, true)), "{phase:?}");
+        assert_eq!(pointer_flags(&instruction(phase, true)), 0, "{phase:?}");
+    }
+    for phase in [CursorPhase::Travel, CursorPhase::Drag, CursorPhase::Effect] {
+        assert!(!is_caret(&instruction(phase, false)), "{phase:?}");
+    }
+}

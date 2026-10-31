@@ -26,18 +26,33 @@ mod imp {
 
     pub(crate) struct CaretMark {
         window: OverlayWindow,
+        shown: std::cell::Cell<bool>,
     }
 
     impl CaretMark {
         pub(crate) fn create() -> Result<Self, AdapterError> {
             Ok(Self {
                 window: OverlayWindow::create()?,
+                shown: std::cell::Cell::new(false),
             })
+        }
+
+        /// Draws the caret over `at`. With `follow`, only a caret already
+        /// showing moves, and no `at` hides it.
+        pub(crate) fn place(&self, at: Option<&Rect>, accent: [f64; 3], follow: bool) {
+            if follow && !self.shown.get() {
+                return;
+            }
+            match at {
+                Some(at) => self.show(at, accent),
+                None if follow => self.hide(),
+                None => {}
+            }
         }
 
         /// Draws the caret over `at`. The CLI and the renderer are both
         /// per-monitor DPI aware, so `at` is already in physical pixels.
-        pub(crate) fn show(&self, at: &Rect, accent: [f64; 3]) {
+        fn show(&self, at: &Rect, accent: [f64; 3]) {
             let width = at.width.round().max(1.0) as i32;
             let height = at.height.round().max(1.0) as i32;
             let channel = |value: f64| (value.clamp(0.0, 1.0) * 255.0).round() as u32;
@@ -55,11 +70,13 @@ mod imp {
                 &pixels,
             );
             self.window.pump();
+            self.shown.set(true);
         }
 
         pub(crate) fn hide(&self) {
             let _ = self.window.present(0, 0, 0, 0, &[]);
             self.window.pump();
+            self.shown.set(false);
         }
 
         /// Hides the caret when the cursor sets off from `from` for `to`

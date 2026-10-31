@@ -5,6 +5,7 @@ use crate::cursor_overlay::CursorPhase;
 use crate::{Action, CommandContext, PlatformAdapter};
 
 const SAME_POINT: f64 = 1.5;
+const FOCUS_READ_MS: u64 = 150;
 
 thread_local! {
     static TRAVELLED_BEFORE_LEASE: Cell<Option<(f64, f64)>> = const { Cell::new(None) };
@@ -97,9 +98,30 @@ pub(crate) fn enters_text(action: &Action) -> bool {
     matches!(action, Action::TypeText(_) | Action::SetValue(_))
 }
 
-/// Typing clicks into its field first, so its effect plays the click ripple.
-fn clicks_in_to_type(action: &Action) -> bool {
-    matches!(action, Action::TypeText(_))
+/// Whether the effect after dispatch plays the click ripple. Typing plays it
+/// only when it has to click into its field: a field that already has
+/// keyboard focus is typed into where it is. That costs one live-state read,
+/// made only for typing with the overlay on; an element whose state cannot be
+/// read is treated as unfocused, so typing into it ripples.
+pub(super) fn effect_ripples(target: &ResolvedRefAction<'_>, action: &Action) -> bool {
+    if is_click(action) {
+        return true;
+    }
+    if !matches!(action, Action::TypeText(_)) || !target.context.cursor_overlay().is_enabled() {
+        return false;
+    }
+    let deadline = target
+        .deadline
+        .capped(std::time::Duration::from_millis(FOCUS_READ_MS));
+    let focused = target
+        .adapter
+        .get_live_state(target.handle, deadline)
+        .ok()
+        .flatten()
+        .is_some_and(|state| {
+            crate::tree::state::has_state(&state.states, crate::tree::state::FOCUSED)
+        });
+    !focused
 }
 
 fn center_of(bounds: &crate::Rect) -> Option<crate::Point> {
@@ -121,7 +143,7 @@ pub(super) fn after_dispatch(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
     preflight: &ActionabilityPreflight,
-    action: &Action,
+    ripples: bool,
     result: &Result<crate::ActionResult, crate::AdapterError>,
 ) {
     let disposition = match result {
@@ -143,7 +165,7 @@ pub(super) fn after_dispatch(
         context,
         destination,
         preflight.presentation_bounds,
-        is_click(action) || clicks_in_to_type(action),
+        ripples,
         CursorPhase::Effect,
     );
 }

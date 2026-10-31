@@ -195,6 +195,13 @@ impl CursorOverlayControl {
         })
     }
 
+    /// A caret-follow after a key press. A renderer that has rested has
+    /// already cleared its caret, so it acknowledges this without waking.
+    pub fn is_caret_follow(&self) -> bool {
+        self.instruction()
+            .is_some_and(|instruction| instruction.phase() == CursorPhase::CaretFollow)
+    }
+
     pub fn expects_acknowledgement(&self) -> bool {
         self.is_hide()
             || self.is_show()
@@ -203,7 +210,7 @@ impl CursorOverlayControl {
             || self.instruction().is_some_and(|instruction| {
                 matches!(
                     instruction.phase(),
-                    CursorPhase::Effect | CursorPhase::Caret
+                    CursorPhase::Effect | CursorPhase::Caret | CursorPhase::CaretFollow
                 )
             })
     }

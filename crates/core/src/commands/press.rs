@@ -24,6 +24,7 @@ pub fn execute(
     ensure_combo_allowed(&combo, &args.combo, args.force, adapter)?;
     let deadline = crate::Deadline::standard()?;
 
+    let mut pressed_process = None;
     let result = if let Some((expected, window)) = target_app(&args, adapter, deadline)? {
         let lease = adapter.acquire_interaction_lease(deadline)?;
         let live = crate::commands::helpers::revalidate_app_for_mutation(
@@ -32,6 +33,7 @@ pub fn execute(
             lease.deadline(),
         )?;
         let process = crate::commands::helpers::process_identity(&live)?;
+        pressed_process = Some(process.pid);
         if context.physical_input_policy().is_headed() {
             match &window {
                 Some(window) => crate::actions::headed_focus::focus_exact_window(
@@ -61,6 +63,7 @@ pub fn execute(
             &lease,
         )?
     };
+    crate::cursor_overlay::follow_caret_after_key(adapter, context, pressed_process);
     super::helpers::apply_scoped_post_action_wait(
         serde_json::to_value(result)?,
         args.app,

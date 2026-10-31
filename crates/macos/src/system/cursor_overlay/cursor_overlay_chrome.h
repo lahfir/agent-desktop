@@ -24,6 +24,7 @@ void ADHighlightShow(NSRect frame, double seconds);
 void ADHighlightStop(void);
 void ADCaretShow(NSRect frame);
 void ADCaretStop(void);
+bool ADCaretShowing(void);
 void ADTrailBegin(NSPoint point);
 void ADTrailAppend(NSPoint point);
 void ADTrailFinish(double seconds);

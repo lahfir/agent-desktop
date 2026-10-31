@@ -255,7 +255,7 @@ fn physical_effect_uses_verified_input_point_and_requires_delivery() {
         &adapter,
         &context,
         &preflight,
-        &Action::Click,
+        true,
         &Err(AdapterError::stale_ref("blocked")
             .with_disposition(crate::DeliverySemantics::NotDelivered)),
     );
@@ -264,7 +264,7 @@ fn physical_effect_uses_verified_input_point_and_requires_delivery() {
         &adapter,
         &context,
         &preflight,
-        &Action::Click,
+        true,
         &Ok(ActionResult::delivered_unverified("click")),
     );
     let presented = adapter.presented.lock().unwrap();

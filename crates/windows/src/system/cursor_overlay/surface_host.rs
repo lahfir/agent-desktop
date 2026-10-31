@@ -72,6 +72,9 @@ impl SurfaceHost {
     /// dispatches the moment its acknowledgement arrives, so the cursor
     /// has to already be where the click will land.
     pub(crate) fn apply(&mut self, control: &CursorOverlayControl) {
+        if self.rest.resting && control.is_caret_follow() {
+            return;
+        }
         self.rest.resting = false;
         self.rest.quiet_since = Instant::now();
         if let Some(style) = control.style() {
@@ -101,11 +104,10 @@ impl SurfaceHost {
                         .clone(),
                     instruction.target().cloned(),
                 ),
-                CursorPhase::Caret => {
-                    if let Some(at) = instruction.target() {
-                        let accent = self.presentation.style.accent_rgb();
-                        self.caret.show(at, accent);
-                    }
+                phase @ (CursorPhase::Caret | CursorPhase::CaretFollow) => {
+                    let accent = self.presentation.style.accent_rgb();
+                    let follow = phase == CursorPhase::CaretFollow;
+                    self.caret.place(instruction.target(), accent, follow);
                 }
                 CursorPhase::Effect => {}
             },
@@ -136,7 +138,7 @@ impl SurfaceHost {
                         instruction.is_click(),
                         interrupt,
                     ),
-                    CursorPhase::Caret => {}
+                    CursorPhase::Caret | CursorPhase::CaretFollow => {}
                 }
             }
             CursorOverlayControl::Hide { .. } | CursorOverlayControl::Disable { .. } => {}
