@@ -89,7 +89,7 @@ fn run() -> Result<(), AdapterError> {
                     return Ok(());
                 }
                 quiet_since = std::time::Instant::now();
-                if state.resting {
+                if state.resting && !control.instruction().is_some_and(bridge::is_caret_follow) {
                     bridge::show();
                     state.resting = false;
                 }

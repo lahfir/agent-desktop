@@ -78,6 +78,12 @@ pub(super) fn is_caret(instruction: &CursorOverlayInstruction) -> bool {
     )
 }
 
+/// A caret follow only moves or hides a caret that is already showing, so it
+/// never wakes a rested overlay.
+pub(super) fn is_caret_follow(instruction: &CursorOverlayInstruction) -> bool {
+    instruction.phase() == CursorPhase::CaretFollow
+}
+
 /// Draws the caret at the instruction's target. `CaretFollow` only moves a
 /// caret already showing, and hides it when there is no target.
 pub(super) fn caret(instruction: &CursorOverlayInstruction) {
