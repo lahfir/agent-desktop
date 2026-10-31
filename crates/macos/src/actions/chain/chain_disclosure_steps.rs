@@ -63,7 +63,37 @@ mod imp {
                 }
             }
         }
+        open_combo_box(element, expanded, deadline)
+    }
+
+    fn open_combo_box(
+        element: &AXElement,
+        expanded: bool,
+        deadline: Deadline,
+    ) -> Result<DeliveryOutcome, AdapterError> {
+        let instant = crate::tree::locator_deadline::from_operation(deadline)?;
+        let role = crate::tree::surface_read::string(element, "AXRole", instant)?;
+        let state = disclosed_state(element, deadline)?;
+        if !combo_box_fallback_applies(role.as_deref(), expanded, state) {
+            return Ok(DeliveryOutcome::NotDelivered);
+        }
+        for action in COMBO_BOX_OPEN_ACTIONS {
+            prepare(element, deadline)?;
+            if crate::actions::ax_helpers::try_ax_action_or_err(element, action, deadline)? {
+                let outcome =
+                    verify_disclosure(element, expanded, deadline).map_err(after_delivery)?;
+                if let Some(delivered) = stop_if_delivered(outcome) {
+                    return Ok(delivered);
+                }
+            }
+        }
         Ok(DeliveryOutcome::NotDelivered)
+    }
+
+    const COMBO_BOX_OPEN_ACTIONS: [&str; 2] = ["AXShowMenu", "AXPress"];
+
+    fn combo_box_fallback_applies(role: Option<&str>, expanded: bool, state: Option<bool>) -> bool {
+        expanded && role == Some("AXComboBox") && state != Some(true)
     }
 
     fn stop_if_delivered(outcome: DeliveryOutcome) -> Option<DeliveryOutcome> {
@@ -155,7 +185,36 @@ mod imp {
 
     #[cfg(test)]
     mod tests {
-        use super::{DeliveryOutcome, disclosure_plan, stop_if_delivered, unobserved_delivery};
+        use super::{
+            DeliveryOutcome, combo_box_fallback_applies, disclosure_plan, stop_if_delivered,
+            unobserved_delivery,
+        };
+
+        #[test]
+        fn combo_box_fallback_only_opens_a_closed_or_unknown_combo_box() {
+            assert!(combo_box_fallback_applies(
+                Some("AXComboBox"),
+                true,
+                Some(false)
+            ));
+            assert!(combo_box_fallback_applies(Some("AXComboBox"), true, None));
+            assert!(!combo_box_fallback_applies(
+                Some("AXComboBox"),
+                true,
+                Some(true)
+            ));
+            assert!(!combo_box_fallback_applies(
+                Some("AXComboBox"),
+                false,
+                Some(true)
+            ));
+            assert!(!combo_box_fallback_applies(
+                Some("AXPopUpButton"),
+                true,
+                Some(false)
+            ));
+            assert!(!combo_box_fallback_applies(None, true, None));
+        }
 
         #[test]
         fn disclosure_plan_never_blindly_toggles_unknown_state() {
