@@ -10,9 +10,14 @@ fn only_complete_menu_root_absence_gets_a_typed_surface_error() {
     ] {
         let error = require_root::<u8>(Ok(None), surface, message).unwrap_err();
         assert_eq!(error.code, ErrorCode::ElementNotFound);
+        assert_eq!(error.message, message);
         assert_eq!(
-            error.message,
-            format!("Element {message} could not be resolved")
+            error.suggestion.as_deref(),
+            Some(if surface == SnapshotSurface::Menu {
+                "Open the menu, then take a fresh snapshot with --surface menu"
+            } else {
+                "Ensure the application exposes the menubar surface, then take a fresh snapshot with --surface menubar"
+            })
         );
         assert_eq!(
             error.details.unwrap(),

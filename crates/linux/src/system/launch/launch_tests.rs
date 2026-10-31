@@ -316,8 +316,40 @@ fn the_window_read_after_an_activation_is_the_one_the_launch_chose() {
     let mut chosen = window();
     chosen.id = "w-chosen".to_owned();
     chosen.state.is_focused = true;
-    let reread = same_window(vec![first.clone(), chosen.clone()], "w-chosen").expect("chosen");
+    let reread = same_window(
+        Ok((vec![first.clone(), chosen.clone()], RootRead::Read)),
+        &chosen,
+    )
+    .expect("chosen");
     assert_eq!(reread.id, "w-chosen");
     assert!(reread.state.is_focused);
-    assert!(same_window(vec![first], "w-chosen").is_none());
+    assert!(same_window(Ok((vec![first], RootRead::Read)), &chosen).is_none());
+}
+
+#[test]
+fn successful_focus_keeps_its_window_without_a_failure_note_when_refresh_is_unavailable() {
+    let original = window();
+    let mut reused = original.clone();
+    reused.process_instance = Some("another-generation".to_owned());
+    for observation in [
+        Ok((Vec::new(), RootRead::TimedOut)),
+        Ok((vec![original.clone()], RootRead::TimedOut)),
+        Err(AdapterError::timeout("refresh expired")),
+        Ok((vec![reused], RootRead::Read)),
+    ] {
+        let result = conclude(
+            &owner(),
+            Some(original.clone()),
+            &LaunchOptions {
+                activate: true,
+                ..options()
+            },
+            true,
+            |target| Ok(same_window(observation, target)),
+        );
+        let retained = result.window.unwrap();
+        assert_eq!(retained.id, original.id);
+        assert_eq!(retained.process_instance, original.process_instance);
+        assert!(result.suggestion.is_none());
+    }
 }

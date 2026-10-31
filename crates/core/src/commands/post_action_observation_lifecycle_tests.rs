@@ -243,3 +243,33 @@ fn absent_window_reconciliation_preserves_original_process_exit_and_crash() {
         assert_eq!(adapter.inventory_queries.load(Ordering::SeqCst), 0);
     }
 }
+
+#[test]
+fn incomplete_zero_match_reads_never_prove_presence_or_absence() {
+    let _home = crate::refs::refs_test_support::HomeGuard::new();
+    let mut adapter = ProbeAdapter {
+        windows: vec![window(1, "test-instance")],
+        matching_pid: None,
+        incomplete: true,
+        ..windowless_adapter()
+    };
+    for gone in [false, true] {
+        assert_eq!(
+            delivered_wait(&adapter, &entry(), gone).unwrap_err().code(),
+            "TIMEOUT"
+        );
+        let result = observe(&wait_for_ready(gone), &entry(), &adapter);
+        assert_eq!(result["outcome"], "timed_out");
+        assert!(result.get("selector_matches").is_none());
+    }
+    assert!(!adapter.observed.lock().unwrap().is_empty());
+    adapter.incomplete = false;
+    assert_eq!(
+        delivered_wait(&adapter, &entry(), true).unwrap()["target_absent"],
+        true
+    );
+    assert_eq!(
+        observe(&wait_for_ready(true), &entry(), &adapter)["outcome"],
+        "expected_state_observed"
+    );
+}

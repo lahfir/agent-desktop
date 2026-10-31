@@ -39,12 +39,6 @@ impl SystemOps for WindowIdentityAdapter {
                 format!("Window '{}' identity mismatch", win.id),
             ));
         }
-        if !win.title.is_empty() && live.title != win.title {
-            return Err(AdapterError::new(
-                ErrorCode::WindowNotFound,
-                format!("Window '{}' identity mismatch", win.id),
-            ));
-        }
         Ok(live)
     }
 }
@@ -84,4 +78,21 @@ fn resolve_window_strict_default_is_not_supported() {
         .unwrap_err();
 
     assert_eq!(err.code, ErrorCode::PlatformNotSupported);
+}
+
+#[test]
+fn renamed_window_retains_its_identity() {
+    let mut target = untitled("w-100", 10);
+    target.title = "Unsaved document".into();
+    let mut live = target.clone();
+    live.title = "Saved document".into();
+    let adapter = WindowIdentityAdapter {
+        windows: vec![live.clone()],
+    };
+    let resolved = adapter
+        .resolve_window_strict(&target, Deadline::standard().unwrap())
+        .unwrap();
+    assert_eq!(resolved.title, live.title);
+    assert_eq!(resolved.id, target.id);
+    assert_eq!(resolved.process_instance, target.process_instance);
 }

@@ -12,18 +12,10 @@ pub(crate) fn enrich_with_process_state(
     if !matches!(err.code, ErrorCode::StaleRef | ErrorCode::AppNotFound) {
         return err;
     }
-    let Some(instance) = entry
-        .process
-        .process_instance
-        .as_deref()
-        .filter(|value| !value.is_empty())
-    else {
+    let Some(process) = entry.process.identity() else {
         return err;
     };
-    let Ok(state) = adapter.process_state(
-        crate::ProcessIdentity::new(entry.process.pid, instance),
-        deadline,
-    ) else {
+    let Ok(state) = adapter.process_state(process, deadline) else {
         return err;
     };
     if state == crate::system::process_state::ProcessState::Unresponsive {
@@ -63,24 +55,19 @@ fn process_identity_matches(
     else {
         return false;
     };
-    let Some(expected_instance) = entry
-        .process
-        .process_instance
-        .as_deref()
-        .filter(|instance| !instance.is_empty())
-    else {
+    let Some(process) = entry.process.identity() else {
         return false;
     };
     let Ok(apps) = adapter.list_apps(deadline) else {
         return false;
     };
-    let mut same_pid = apps.iter().filter(|app| app.pid == entry.process.pid);
+    let mut same_pid = apps.iter().filter(|app| app.pid == process.pid);
     let Some(app) = same_pid.next() else {
         return false;
     };
     same_pid.next().is_none()
         && app.name == expected_name
-        && app.process_instance.as_deref() == Some(expected_instance)
+        && app.process_instance.as_deref() == Some(process.instance.as_str())
 }
 
 fn attach_process_state_detail(

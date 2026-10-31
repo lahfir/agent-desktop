@@ -132,6 +132,18 @@ pub(crate) fn windows_of_process(
         pass.windows,
         stopped_target(&registry, select, proc_stat::is_stopped),
     )?;
+    Ok(finish_process_listing(
+        pass,
+        &state,
+        desktops.finish(deadline).flatten().as_ref(),
+    ))
+}
+
+fn finish_process_listing(
+    mut pass: Pass,
+    state: &X11State,
+    desktops: Option<&Desktops>,
+) -> (Vec<WindowInfo>, RootRead) {
     let read = if pass
         .outcomes
         .iter()
@@ -141,15 +153,11 @@ pub(crate) fn windows_of_process(
     } else {
         RootRead::Read
     };
-    finish_listing(
-        &mut pass,
-        &state,
-        desktops.finish(deadline).flatten().as_ref(),
-    );
-    Ok((
+    finish_listing(&mut pass, state, desktops);
+    (
         pass.windows.into_iter().map(|window| window.info).collect(),
         read,
-    ))
+    )
 }
 
 /// The focused window, or none when the available sources do not agree.

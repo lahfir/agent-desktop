@@ -41,10 +41,12 @@ pub(super) fn read_first_nonempty(
     let mut status = ChildReadStatus::default();
     let mut prefix_certain = true;
     let mut any_available = false;
+    let mut total_count = 0;
     for attribute in attributes {
         let mut read = read_attribute(attribute);
         let terminal = read.status.invalid_element || read.status.api_disabled;
         any_available |= read.source_availability == ChildSourceAvailability::Available;
+        total_count = total_count.max(read.total_count);
         status.merge(read.status);
         let source_selected = read.source_availability == ChildSourceAvailability::Available
             && (read.total_count > 0 || *attribute == CANONICAL_CHILDREN);
@@ -61,7 +63,7 @@ pub(super) fn read_first_nonempty(
     }
     ChildRead {
         elements: Vec::new(),
-        total_count: 0,
+        total_count,
         complete: prefix_certain,
         source_availability: if any_available {
             ChildSourceAvailability::Available

@@ -248,21 +248,30 @@ mod tests {
 
     #[test]
     fn array_retryability_comes_from_native_transience_not_truncation() {
-        for variant in 0..4 {
+        for variant in 0..6 {
             let error = elements_with_reader(
                 "AXChildren",
                 Instant::now() + std::time::Duration::from_secs(1),
                 |_| {
-                    let mut read = super::super::query::child_read::ChildRead::empty(variant == 2);
+                    let mut read =
+                        super::super::query::child_read::ChildRead::empty(matches!(variant, 2 | 5));
                     match variant {
                         0 => read.status.health.cannot_complete = 1,
                         1 => read.status.count_changed = true,
-                        2 => {
+                        2 | 4 | 5 => {
                             read.total_count = agent_desktop_core::ObservationBudget::default()
                                 .max_children_per_node
-                                + 1
+                                + 1;
+                            if variant >= 4 {
+                                read.status.health.cannot_complete = 1;
+                                read.status.count_changed = true;
+                            }
                         }
                         _ => read.status.health.native_read_failures = 1,
+                    }
+                    if variant == 5 {
+                        read.complete = false;
+                        read.prefix_certain = false;
                     }
                     read
                 },

@@ -13,10 +13,13 @@ pub(crate) fn focus_entry_window(
 }
 
 pub fn saved_ref_focus_window(entry: &crate::RefEntry) -> Result<WindowInfo, AdapterError> {
-    let process_instance = required_text(
-        entry.process.process_instance.as_deref(),
-        "Headed input requires target process-instance identity",
-    )?;
+    let process = entry.process.identity().ok_or_else(|| {
+        AdapterError::new(
+            ErrorCode::ActionNotSupported,
+            "Headed input requires target process-instance identity",
+        )
+        .with_details(json!({ "physical_delivery_started": false }))
+    })?;
     let window_id = required_text(
         entry.source.source_window_id.as_deref(),
         "Headed input requires an exact source window id",
@@ -25,8 +28,8 @@ pub fn saved_ref_focus_window(entry: &crate::RefEntry) -> Result<WindowInfo, Ada
         id: window_id.to_string(),
         title: entry.source.source_window_title.clone().unwrap_or_default(),
         app: entry.source.source_app.clone().unwrap_or_default(),
-        pid: entry.process.pid,
-        process_instance: Some(process_instance.to_string()),
+        pid: process.pid,
+        process_instance: Some(process.instance),
         bounds: None,
         state: crate::WindowState::default(),
     };

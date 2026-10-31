@@ -15,6 +15,7 @@ struct ProbeAdapter {
     observed: Mutex<Vec<(crate::ProcessId, crate::SnapshotSurface)>>,
     process_state: ProcessState,
     exits_after_observation: bool,
+    incomplete: bool,
     process_checks: AtomicUsize,
     inventory_queries: AtomicUsize,
 }
@@ -95,7 +96,7 @@ impl ObservationOps for ProbeAdapter {
                 identity: Default::default(),
                 presentation: Default::default(),
                 children_count: None,
-                subtree_truncated: false,
+                subtree_truncated: self.incomplete,
                 children,
             },
         )
@@ -184,6 +185,7 @@ fn selector_observation_uses_the_pinned_process_and_post_action_window_scope() {
         observed: Mutex::new(Vec::new()),
         process_state: ProcessState::Running,
         exits_after_observation: false,
+        incomplete: false,
         process_checks: AtomicUsize::new(0),
         inventory_queries: AtomicUsize::new(0),
     };
@@ -228,6 +230,7 @@ fn windowless_adapter() -> ProbeAdapter {
         observed: Mutex::new(Vec::new()),
         process_state: ProcessState::Running,
         exits_after_observation: false,
+        incomplete: false,
         process_checks: AtomicUsize::new(0),
         inventory_queries: AtomicUsize::new(0),
     }

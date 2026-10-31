@@ -68,14 +68,10 @@ pub(crate) fn dispatch_resolved(
     mut request: ActionRequest,
     lease: &crate::InteractionLease,
 ) -> Result<ActionResult, AppError> {
-    let process_instance = target
-        .entry
-        .process
-        .process_instance
-        .as_deref()
-        .filter(|instance| !instance.is_empty())
-        .ok_or_else(|| AdapterError::stale_ref_because("target process instance is unavailable"))?;
-    let expected_process = crate::ProcessIdentity::new(target.entry.process.pid, process_instance);
+    let expected_process =
+        target.entry.process.identity().ok_or_else(|| {
+            AdapterError::stale_ref_because("target process instance is unavailable")
+        })?;
     let mut handle = target
         .adapter
         .resolve_element_strict(target.entry, target.deadline)

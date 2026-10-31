@@ -140,16 +140,12 @@ fn resolve_result_window(
     deadline: crate::Deadline,
 ) -> Result<crate::WindowInfo, AppError> {
     let Some(window_id) = entry.source.source_window_id.as_deref() else {
-        let instance = entry.process.process_instance.as_deref().ok_or_else(|| {
+        let process = entry.process.identity().ok_or_else(|| {
             AppError::Adapter(crate::AdapterError::stale_ref_because(
                 "root ref has no process-instance identity",
             ))
         })?;
-        return crate::system::window_lookup::find_window_for_process(
-            crate::ProcessIdentity::new(entry.process.pid, instance),
-            adapter,
-            deadline,
-        );
+        return crate::system::window_lookup::find_window_for_process(process, adapter, deadline);
     };
     let candidates = adapter
         .list_windows(

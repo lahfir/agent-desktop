@@ -38,7 +38,7 @@ A failed command prints an envelope with `ok: false` and exits `1` (or `2` for a
     <tr><td><code>suggestion</code></td><td>when set</td><td>A hint for a person or an agent. Check any command it names before you run it.</td></tr>
     <tr><td><code>recovery</code></td><td>only when retry is safe</td><td>A declared recovery plan. See <a href="#recovery-strategies">Recovery strategies</a>.</td></tr>
     <tr><td><code>platform_detail</code></td><td>when set</td><td>The native platform's own error text.</td></tr>
-    <tr><td><code>details</code></td><td>when set</td><td>Structured context. <code>details.kind</code> names the cause for many codes, for example <code>actionability_timeout</code>, <code>wait_timeout</code>, <code>session_ended</code>, or <code>post_action_verification</code>.</td></tr>
+    <tr><td><code>details</code></td><td>when set</td><td>Structured context. <code>details.kind</code> names the cause for many codes, for example <code>actionability_timeout</code>, <code>focus_verification</code>, <code>surface_absent</code>, <code>wait_timeout</code>, <code>session_ended</code>, or <code>post_action_verification</code>.</td></tr>
   </tbody>
 </table>
 
@@ -50,7 +50,7 @@ A failed command prints an envelope with `ok: false` and exits `1` (or `2` for a
   </thead>
   <tbody>
     <tr><td><code>PERM_DENIED</code></td><td>A required operating system permission is missing, such as Accessibility or Screen Recording.</td><td>Run <code>agent-desktop permissions</code> and grant it. See the <a href="/desktop/platforms/macos">macOS</a>, <a href="/desktop/platforms/windows">Windows</a>, and <a href="/desktop/platforms/linux">Linux</a> pages.</td></tr>
-    <tr><td><code>ELEMENT_NOT_FOUND</code></td><td>No element matched the ref or query.</td><td>Take a fresh snapshot or run <code>find</code> again, then use the new ref.</td></tr>
+    <tr><td><code>ELEMENT_NOT_FOUND</code></td><td>No element matched the ref or query, or a requested surface is absent.</td><td>Read <code>details.kind</code> and <code>details.surface</code>. For an absent menu, open the menu first; otherwise check the UI before refreshing a ref.</td></tr>
     <tr><td><code>APP_NOT_FOUND</code></td><td>No matching application process exists.</td><td>Check the name with <code>list-apps</code>. Run <code>launch</code> if it is not running.</td></tr>
     <tr><td><code>ACTION_FAILED</code></td><td>The action was rejected or blocked, or its observed result contradicted the request.</td><td>Read <code>details</code> and <code>disposition.retry</code>. It never carries <code>recovery</code>.</td></tr>
     <tr><td><code>ACTION_NOT_SUPPORTED</code></td><td>The target, or this platform for this input, does not expose the requested action.</td><td>Use a different command or element. Repeating it fails the same way.</td></tr>
@@ -67,6 +67,10 @@ A failed command prints an envelope with `ok: false` and exits `1` (or `2` for a
     <tr><td><code>INTERNAL</code></td><td>An unexpected error.</td><td>Read <code>message</code>. Retry once only if <code>disposition.retry</code> is <code>safe</code>.</td></tr>
   </tbody>
 </table>
+
+For <code>ELEMENT_NOT_FOUND</code>, read <code>details.kind</code>, <code>details.surface</code>, and <code>details.complete</code>. A macOS lookup with <code>kind: "surface_absent"</code> and <code>complete: true</code> has confirmed that the requested surface is absent. An absent <code>menubar</code> can mean the app exposes no menu bar. For <code>surface: "menu"</code>, open the application menu first: snapshot <code>menubar</code> when it exists, click its menu-bar item without <code>--headed</code>, then snapshot <code>--surface menu</code>. Missing <code>complete</code>, <code>complete: false</code>, a timeout, or an incomplete read is unknown. If the command followed an action with <code>disposition.retry: unsafe</code>, inspect the current UI before another action; do not repeat the action because the snapshot failed.
+
+A macOS <code>TIMEOUT</code> with <code>details.kind: "focus_verification"</code> means the app never reported <code>AXFrontmost</code>, or the target window never reported <code>AXMain</code>, before the bounded focus readback ended. <code>details.physical_delivery_started: false</code> means target input had not started; it does not mean a prior focus or window-raise request was never dispatched. Read <code>disposition</code>, which can still be <code>delivered_unverified</code>.
 
 ## Disposition
 

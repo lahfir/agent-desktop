@@ -72,11 +72,7 @@ fn root_process(root: ObservationRoot<'_>) -> Result<crate::ProcessIdentity, App
             .process_instance
             .as_deref()
             .map(|instance| crate::ProcessIdentity::new(window.pid, instance)),
-        ObservationRoot::Element { entry, .. } => entry
-            .process
-            .process_instance
-            .as_deref()
-            .map(|instance| crate::ProcessIdentity::new(entry.process.pid, instance)),
+        ObservationRoot::Element { entry, .. } => entry.process.identity(),
     }
     .ok_or_else(|| {
         crate::AdapterError::stale_ref_because("renderer process instance is unavailable").into()

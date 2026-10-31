@@ -47,10 +47,20 @@ fn chromium_renderer(bus: &SharedBus, pid: u32, deadline: Deadline) -> Option<Re
         .then_some(RendererKind::Chromium)
 }
 
-/// The window with `id` among a fresh read of the owner's windows, so a result
-/// keeps the window the launch chose and focused, not the first one listed.
-fn same_window(windows: Vec<WindowInfo>, id: &str) -> Option<WindowInfo> {
-    windows.into_iter().find(|window| window.id == id)
+/// Refreshes the same process-owned window after successful focus when a complete read is available.
+fn same_window(
+    observation: Result<(Vec<WindowInfo>, RootRead), AdapterError>,
+    expected: &WindowInfo,
+) -> Option<WindowInfo> {
+    let (windows, read) = observation.ok()?;
+    if read != RootRead::Read {
+        return None;
+    }
+    windows.into_iter().find(|window| {
+        window.id == expected.id
+            && window.pid == expected.pid
+            && window.process_instance == expected.process_instance
+    })
 }
 
 /// The result for an owner and its window. A window is brought forward once,
@@ -245,14 +255,10 @@ impl Launch<'_> {
             renderer: chromium_renderer(self.bus, owner.pid, self.deadline),
             ..conclude(owner, window, self.options, created, |window| {
                 focus_window(self.bus, window, self.lease)?;
-                let (windows, read) = windows_of_process(self.bus, owner.pid, self.deadline)?;
-                let reread = same_window(windows, &window.id).filter(|current| {
-                    current.pid == window.pid && current.process_instance == window.process_instance
-                });
-                if reread.is_none() {
-                    require_complete_frames(read)?;
-                }
-                Ok(reread)
+                Ok(same_window(
+                    windows_of_process(self.bus, owner.pid, self.deadline),
+                    window,
+                ))
             })
         }
     }
