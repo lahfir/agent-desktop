@@ -166,3 +166,59 @@ fn the_click_chain_verifies_its_press_before_writing_a_selection() {
         ]
     );
 }
+
+#[test]
+fn physical_right_click_is_verified_by_a_menu_it_opened() {
+    use crate::actions::chain::chain_menu_steps::verify_menu_opened_with;
+
+    let outcome =
+        verify_menu_opened_with(Some((|| false, || Ok(true))), || Ok(())).expect("delivered");
+
+    assert_eq!(outcome, DeliveryOutcome::DeliveredVerified);
+    assert!(outcome.terminates_chain());
+}
+
+#[test]
+fn a_menu_open_before_the_right_click_leaves_it_unverified() {
+    use crate::actions::chain::chain_menu_steps::verify_menu_opened_with;
+
+    let outcome = verify_menu_opened_with(
+        Some((
+            || true,
+            || -> Result<bool, agent_desktop_core::AdapterError> {
+                panic!("an earlier menu must not be taken as proof")
+            },
+        )),
+        || Ok(()),
+    )
+    .expect("delivered");
+
+    assert_eq!(outcome, DeliveryOutcome::DeliveredUnverified);
+    let mut steps = Vec::new();
+    let right_click = ChainStep::CGClick {
+        button: MouseButton::Right,
+        count: 1,
+    };
+    assert!(
+        !record_step_outcome(&mut steps, &right_click, outcome, true),
+        "an unverified right click must leave the semantic fallbacks their turn"
+    );
+}
+
+#[test]
+fn right_click_without_a_known_process_stays_unverified_and_keeps_click_errors() {
+    use crate::actions::chain::chain_menu_steps::verify_menu_opened_with;
+    type Probes = (
+        fn() -> bool,
+        fn() -> Result<bool, agent_desktop_core::AdapterError>,
+    );
+
+    let outcome = verify_menu_opened_with(None::<Probes>, || Ok(())).expect("delivered");
+    assert_eq!(outcome, DeliveryOutcome::DeliveredUnverified);
+
+    let error = verify_menu_opened_with(Some((|| false, || Ok(true))), || {
+        Err(agent_desktop_core::AdapterError::timeout("pointer busy"))
+    })
+    .expect_err("a failed click is not a delivery");
+    assert_eq!(error.code, agent_desktop_core::ErrorCode::Timeout);
+}

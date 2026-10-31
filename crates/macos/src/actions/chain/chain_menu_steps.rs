@@ -73,6 +73,50 @@ pub(crate) fn select_then_selected_items_menu(
     show_menu_or_press(&menu_button, deadline)
 }
 
+/// Runs a physical right click and verifies it by the context menu it opens.
+///
+/// An unverified click lets the chain continue, and every `AXShowMenu`
+/// fallback skips when it finds a menu already open, so the click's own menu
+/// would end the chain as exhausted. A menu that was open before the click
+/// proves nothing, so that case stays unverified and the fallbacks keep their
+/// turn.
+pub(crate) fn verify_menu_opened_by(
+    element: &AXElement,
+    deadline: Deadline,
+    click: impl FnOnce() -> Result<(), AdapterError>,
+) -> Result<DeliveryOutcome, AdapterError> {
+    let pid = crate::system::app::app_ops::pid_from_element(element, deadline);
+    verify_menu_opened_with(
+        pid.map(|pid| {
+            (
+                move || menu_probe(pid, deadline),
+                move || wait_for_new_menu(pid, deadline),
+            )
+        }),
+        click,
+    )
+}
+
+/// The decision behind [`verify_menu_opened_by`], with the menu probes passed in.
+/// `probes` is `None` when the element's process is unknown.
+pub(crate) fn verify_menu_opened_with<WasOpen, WaitNew>(
+    probes: Option<(WasOpen, WaitNew)>,
+    click: impl FnOnce() -> Result<(), AdapterError>,
+) -> Result<DeliveryOutcome, AdapterError>
+where
+    WasOpen: FnOnce() -> bool,
+    WaitNew: FnOnce() -> Result<bool, AdapterError>,
+{
+    let Some((was_open, wait_new)) = probes else {
+        click()?;
+        return Ok(DeliveryOutcome::DeliveredUnverified);
+    };
+    let menu_was_open = was_open();
+    click()?;
+    let opened = !menu_was_open && wait_new()?;
+    Ok(DeliveryOutcome::from_delivery(true, opened))
+}
+
 fn show_menu_on_element(
     element: &AXElement,
     deadline: Deadline,
