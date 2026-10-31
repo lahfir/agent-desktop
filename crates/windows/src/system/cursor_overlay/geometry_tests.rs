@@ -1,6 +1,6 @@
 use super::{
-    BUBBLE_CORNER_RADIUS, BUBBLE_HEIGHT, BUBBLE_WIDTH, DART, GLYPH_HEIGHT, GLYPH_WIDTH,
-    RIPPLE_SIZE, bubble_size, follower_rect, glyph_rect, highlight_rect, ripple_rect,
+    DART, GLYPH_HEIGHT, GLYPH_WIDTH, RIPPLE_SIZE, follower_rect, glyph_rect, highlight_rect,
+    label_shadow_rect, ripple_rect,
 };
 use agent_desktop_core::{Point, Rect};
 
@@ -14,8 +14,22 @@ fn tip() -> Point {
 fn the_ported_dimensions_match_the_reference() {
     assert_eq!((GLYPH_WIDTH, GLYPH_HEIGHT), (32.0, 40.0));
     assert_eq!(RIPPLE_SIZE, 108.0);
-    assert_eq!((BUBBLE_WIDTH, BUBBLE_HEIGHT), (232.0, 38.0));
-    assert_eq!(BUBBLE_CORNER_RADIUS, 10.0);
+}
+
+/// The shadow falls below the pill and spreads past it, so a surface sized to
+/// the pill alone would cut it off.
+#[test]
+fn the_label_shadow_extends_below_and_around_the_pill() {
+    let pill = Rect {
+        x: 100.0,
+        y: 100.0,
+        width: 80.0,
+        height: 24.0,
+    };
+    let shadow = label_shadow_rect(&pill, 1.0);
+
+    assert!(shadow.x < pill.x && shadow.x + shadow.width > pill.x + pill.width);
+    assert!(shadow.y + shadow.height > pill.y + pill.height + 2.0);
 }
 
 /// The pose names where the cursor points, not where its box starts, so the
@@ -46,7 +60,6 @@ fn every_dimension_scales_with_the_sessions_style_size() {
 
     assert_eq!((doubled.width, doubled.height), (64.0, 80.0));
     assert_eq!(ripple.width, RIPPLE_SIZE * 2.0);
-    assert_eq!(bubble_size(2.0), (BUBBLE_WIDTH * 2.0, BUBBLE_HEIGHT * 2.0));
     assert_eq!(doubled.x + DART[0].0 * 2.0, tip().x, "the tip stays put");
 }
 
@@ -85,8 +98,8 @@ fn the_follower_surface_contains_the_glyph_the_label_and_the_highlight() {
     let label = Rect {
         x: 900.0,
         y: 700.0,
-        width: BUBBLE_WIDTH,
-        height: BUBBLE_HEIGHT,
+        width: 120.0,
+        height: 24.0,
     };
     let highlight = Rect {
         x: 20.0,

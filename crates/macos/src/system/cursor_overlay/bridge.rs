@@ -1,6 +1,6 @@
 use agent_desktop_core::{
     AdapterError, CURSOR_HIGHLIGHT_HOLD_MS, CursorImage, CursorOverlayInstruction,
-    CursorOverlayStyle, CursorPhase, CursorPose, ErrorCode, Point, Rect,
+    CursorOverlayStyle, CursorPhase, CursorPose, ErrorCode, LabelPill, Point, Rect, place_label,
 };
 use std::ffi::{CString, c_char};
 
@@ -31,8 +31,7 @@ struct NativeCursorFrame {
 struct NativeRenderConfig {
     frame_seconds: f64,
     label: *const c_char,
-    bubble_x: f64,
-    bubble_y: f64,
+    bubble: [f64; 4],
     target: [f64; 4],
     highlight_seconds: f64,
     flags: u8,
@@ -57,6 +56,7 @@ unsafe extern "C" {
         hotspot_y: f64,
     ) -> bool;
     fn agent_desktop_cursor_overlay_idle();
+    fn agent_desktop_cursor_overlay_label_width(label: *const c_char) -> f64;
     fn agent_desktop_cursor_overlay_caret(x: f64, y: f64, width: f64, height: f64);
     fn agent_desktop_cursor_overlay_caret_clear();
     fn agent_desktop_cursor_overlay_caret_follow(
@@ -160,7 +160,7 @@ pub(super) fn run(
     fps: u32,
     instruction: &CursorOverlayInstruction,
     reduce_motion: bool,
-    bubble: &Rect,
+    screen: &Rect,
 ) -> Result<(), AdapterError> {
     let frames = poses
         .iter()
@@ -175,6 +175,20 @@ pub(super) fn run(
         .map(|value| CString::new(value.replace('\0', " ")))
         .transpose()
         .map_err(|_| AdapterError::internal("Cursor overlay label encoding failed"))?;
+    let anchor = poses
+        .last()
+        .map_or(instruction.destination(), |pose| &pose.point);
+    let bubble = label
+        .as_ref()
+        .zip(instruction.label())
+        .and_then(|(encoded, text)| {
+            let width = unsafe { agent_desktop_cursor_overlay_label_width(encoded.as_ptr()) };
+            LabelPill::for_label(text, width, 1.0)
+        })
+        .map_or([0.0; 4], |pill| {
+            let placed = place_label(anchor, pill.size(), screen);
+            [placed.x, placed.y, placed.width, placed.height]
+        });
     let mut flags = 0;
     if reduce_motion {
         flags |= REDUCE_MOTION;
@@ -191,8 +205,7 @@ pub(super) fn run(
         label: label
             .as_ref()
             .map_or(std::ptr::null(), |value| value.as_ptr()),
-        bubble_x: bubble.x,
-        bubble_y: bubble.y,
+        bubble,
         target: target.unwrap_or_default(),
         highlight_seconds: CURSOR_HIGHLIGHT_HOLD_MS as f64 / 1_000.0,
         flags,

@@ -1,5 +1,9 @@
 //! The label's text, and the one place GDI is allowed to draw.
 //!
+//! The text is set in Segoe UI at semibold and measured in that same font,
+//! so the pill core sizes from the measurement fits what is drawn, and is
+//! centred in it across and down.
+//!
 //! GDI writes RGB and leaves the alpha byte at zero, which is why every other
 //! element is composited by hand. Text is the exception because a glyph
 //! rasterizer is not something to hand-roll: it is drawn into a scratch
@@ -13,11 +17,16 @@
 //! against transparency fringes with colour.
 
 #[cfg(target_os = "windows")]
-pub(crate) use imp::draw_label;
+pub(crate) use imp::{draw_label, measure_label};
 
 #[cfg(all(test, target_os = "windows"))]
 #[path = "text_tests.rs"]
 mod tests;
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn measure_label(_label: &str, _points: f64) -> Option<f64> {
+    None
+}
 
 #[cfg(not(target_os = "windows"))]
 pub(crate) fn draw_label(
@@ -35,11 +44,56 @@ mod imp {
     use crate::system::cursor_overlay::raster::Surface;
     use crate::system::cursor_overlay::wide::wide;
     use agent_desktop_core::Rect;
+    use windows_sys::Win32::Foundation::SIZE;
     use windows_sys::Win32::Graphics::Gdi::{
-        ANTIALIASED_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH,
-        DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, FW_NORMAL,
-        GdiFlush, OUT_DEFAULT_PRECIS, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+        ANTIALIASED_QUALITY, CLIP_DEFAULT_PRECIS, CreateCompatibleDC, CreateFontW, DEFAULT_CHARSET,
+        DEFAULT_PITCH, DT_CENTER, DT_END_ELLIPSIS, DT_SINGLELINE, DT_VCENTER, DeleteDC,
+        DeleteObject, DrawTextW, FW_SEMIBOLD, GdiFlush, GetTextExtentPoint32W, HFONT,
+        OUT_DEFAULT_PRECIS, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
     };
+
+    fn label_font(points: f64) -> HFONT {
+        let face = wide("Segoe UI");
+        unsafe {
+            CreateFontW(
+                -(points.round() as i32),
+                0,
+                0,
+                0,
+                FW_SEMIBOLD as i32,
+                0,
+                0,
+                0,
+                DEFAULT_CHARSET as u32,
+                OUT_DEFAULT_PRECIS as u32,
+                CLIP_DEFAULT_PRECIS as u32,
+                ANTIALIASED_QUALITY as u32,
+                DEFAULT_PITCH as u32,
+                face.as_ptr(),
+            )
+        }
+    }
+
+    /// The label's width in pixels when set at `points`, or `None` when it
+    /// cannot be measured; a label that cannot be measured is not drawn.
+    pub(crate) fn measure_label(label: &str, points: f64) -> Option<f64> {
+        let text: Vec<u16> = label.encode_utf16().collect();
+        let length = i32::try_from(text.len()).ok()?;
+        let memory = unsafe { CreateCompatibleDC(std::ptr::null_mut()) };
+        if memory.is_null() {
+            return None;
+        }
+        let font = label_font(points);
+        let previous = unsafe { SelectObject(memory, font) };
+        let mut size = SIZE { cx: 0, cy: 0 };
+        let measured = unsafe { GetTextExtentPoint32W(memory, text.as_ptr(), length, &mut size) };
+        unsafe {
+            SelectObject(memory, previous);
+            DeleteObject(font);
+            DeleteDC(memory);
+        }
+        (measured != 0).then(|| f64::from(size.cx))
+    }
 
     fn colorref(rgb: [f64; 3]) -> u32 {
         let channel = |value: f64| (value.clamp(0.0, 1.0) * 255.0).round() as u32;
@@ -85,25 +139,7 @@ mod imp {
             }
         }
 
-        let face = wide("Segoe UI");
-        let font = unsafe {
-            CreateFontW(
-                -(points.round() as i32),
-                0,
-                0,
-                0,
-                FW_NORMAL as i32,
-                0,
-                0,
-                0,
-                DEFAULT_CHARSET as u32,
-                OUT_DEFAULT_PRECIS as u32,
-                CLIP_DEFAULT_PRECIS as u32,
-                ANTIALIASED_QUALITY as u32,
-                DEFAULT_PITCH as u32,
-                face.as_ptr(),
-            )
-        };
+        let font = label_font(points);
         let previous_font = unsafe { SelectObject(memory, font) };
         unsafe {
             SetBkMode(memory, TRANSPARENT as i32);
@@ -123,7 +159,7 @@ mod imp {
                 text.as_mut_ptr(),
                 -1,
                 &mut bounds,
-                DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS,
+                DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS,
             );
         }
 

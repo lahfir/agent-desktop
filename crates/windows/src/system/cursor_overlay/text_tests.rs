@@ -1,4 +1,4 @@
-use super::draw_label;
+use super::{draw_label, measure_label};
 use crate::system::cursor_overlay::raster::Surface;
 use agent_desktop_core::Rect;
 
@@ -81,5 +81,49 @@ fn the_ink_is_opaque_where_it_landed() {
     assert_eq!(
         transparent, 0,
         "every pixel the label was copied over must stay opaque"
+    );
+}
+
+/// The pill is sized from this measurement, so it has to grow with the text.
+#[test]
+fn a_longer_label_measures_wider() {
+    let short = measure_label("Go", 12.5).expect("a measurable label");
+    let long = measure_label("Opening the menu", 12.5).expect("a measurable label");
+
+    assert!(short > 0.0);
+    assert!(long > short * 3.0, "{long} is not much wider than {short}");
+}
+
+/// The ink is centred in its rectangle across and down, rather than starting
+/// at the left edge.
+#[test]
+fn the_label_is_centred_in_its_rectangle() {
+    let rect = Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 200.0,
+        height: 30.0,
+    };
+    let mut surface = opaque_card(200, 30);
+    draw_label(&mut surface, &rect, "Go", INK, 16.0);
+
+    let inked: Vec<(i32, i32)> = (0..30)
+        .flat_map(|y| (0..200).map(move |x| (x, y)))
+        .filter(|(x, y)| surface.pixel_at(*x, *y).is_some_and(|value| value != BODY))
+        .collect();
+    assert!(!inked.is_empty(), "the label drew no ink");
+    let (left, right) = inked.iter().fold((i32::MAX, i32::MIN), |(l, r), (x, _)| {
+        (l.min(*x), r.max(*x))
+    });
+    let (top, bottom) = inked.iter().fold((i32::MAX, i32::MIN), |(t, b), (_, y)| {
+        (t.min(*y), b.max(*y))
+    });
+    assert!(
+        ((left + right) as f64 / 2.0 - 100.0).abs() <= 2.0,
+        "{left}..{right}"
+    );
+    assert!(
+        ((top + bottom) as f64 / 2.0 - 15.0).abs() <= 3.0,
+        "{top}..{bottom}"
     );
 }

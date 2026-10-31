@@ -1,5 +1,5 @@
 //! The two rounded rectangles the overlay draws: the outline around the
-//! element being acted on, and the body the label's text sits on.
+//! element being acted on, and the pill the label's text sits on.
 //!
 //! They share a shape and a hazard. Both are composited per-pixel for the
 //! reason `raster` exists — GDI leaves the alpha byte at zero and forcing
@@ -83,36 +83,80 @@ fn hollow_interior(outer: &Rect, border: f64, radius: f64) -> Rect {
     }
 }
 
-/// The label bubble's body: an opaque rounded rectangle with a rim, drawn
-/// per-pixel so its corners keep their coverage. GDI writes the text on top.
-pub(crate) fn draw_bubble(surface: &mut Surface, rect: &Rect, fill: [f64; 3], rim: [f64; 3]) {
-    let radius = geometry::BUBBLE_CORNER_RADIUS;
-    let border = geometry::BUBBLE_BORDER_WIDTH;
-    let inner = Rect {
-        x: rect.x + border,
-        y: rect.y + border,
-        width: (rect.width - border * 2.0).max(0.0),
-        height: (rect.height - border * 2.0).max(0.0),
+/// The label pill: a soft shadow, then an opaque black, fully rounded body,
+/// drawn per-pixel so its ends keep their coverage. GDI writes the text on
+/// top, so the body has to be opaque wherever the text can land.
+pub(crate) fn draw_label_pill(surface: &mut Surface, rect: &Rect, scale: f64) {
+    let radius = rect.height / 2.0;
+    let offset = agent_desktop_core::LABEL_SHADOW_OFFSET * scale;
+    let blur = (agent_desktop_core::LABEL_SHADOW_BLUR * scale).max(0.5);
+    let shadow = Rect {
+        y: rect.y + offset,
+        ..*rect
     };
-    let outer = *rect;
+    fill_graded(
+        surface,
+        &geometry::label_shadow_rect(rect, scale),
+        &Paint {
+            rgb: [0.0, 0.0, 0.0],
+            alpha: agent_desktop_core::LABEL_SHADOW_OPACITY,
+        },
+        |x, y| shadow_strength(rounded_rect_distance(&shadow, radius, x, y), blur),
+    );
+    let body = *rect;
     raster::fill_region(
         surface,
-        &outer,
+        &body,
         &Paint {
-            rgb: rim,
+            rgb: [0.0, 0.0, 0.0],
             alpha: 1.0,
         },
-        |x, y| in_rounded_rect(&outer, radius, x, y),
+        |x, y| in_rounded_rect(&body, radius, x, y),
     );
-    raster::fill_region(
-        surface,
-        &inner,
-        &Paint {
-            rgb: fill,
-            alpha: 1.0,
-        },
-        |x, y| in_rounded_rect(&inner, (radius - border).max(0.0), x, y),
-    );
+}
+
+/// Paints `paint` across `bounds` at the opacity `strength` gives each pixel's
+/// centre, for a soft edge such as a shadow, where coverage is a gradient
+/// rather than a shape.
+fn fill_graded(
+    surface: &mut Surface,
+    bounds: &Rect,
+    paint: &Paint,
+    strength: impl Fn(f64, f64) -> f64,
+) {
+    let x0 = bounds.x.floor().max(0.0) as i32;
+    let y0 = bounds.y.floor().max(0.0) as i32;
+    let x1 = (bounds.x + bounds.width)
+        .ceil()
+        .min(f64::from(surface.width)) as i32;
+    let y1 = (bounds.y + bounds.height)
+        .ceil()
+        .min(f64::from(surface.height)) as i32;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let value = strength(f64::from(x) + 0.5, f64::from(y) + 0.5);
+            surface.blend(x, y, paint, value);
+        }
+    }
+}
+
+/// How strongly a shadow covers a point `distance` outside its shape (negative
+/// inside): full well inside, none a blur's width outside, easing between.
+pub(super) fn shadow_strength(distance: f64, blur: f64) -> f64 {
+    let t = ((distance + blur) / (blur * 2.0)).clamp(0.0, 1.0);
+    1.0 - t * t * (3.0 - 2.0 * t)
+}
+
+/// The signed distance from a point to a rounded rectangle's edge: negative
+/// inside, positive outside.
+pub(super) fn rounded_rect_distance(rect: &Rect, radius: f64, x: f64, y: f64) -> f64 {
+    let radius = radius.min(rect.width / 2.0).min(rect.height / 2.0).max(0.0);
+    let half_width = rect.width / 2.0 - radius;
+    let half_height = rect.height / 2.0 - radius;
+    let dx = (x - (rect.x + rect.width / 2.0)).abs() - half_width;
+    let dy = (y - (rect.y + rect.height / 2.0)).abs() - half_height;
+    let outside = dx.max(0.0).hypot(dy.max(0.0));
+    outside + dx.max(dy).min(0.0) - radius
 }
 
 pub(super) fn in_rounded_rect(rect: &Rect, radius: f64, x: f64, y: f64) -> bool {

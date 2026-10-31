@@ -17,13 +17,13 @@
 use super::presentation::{Presentation, RestState};
 #[cfg(target_os = "windows")]
 use crate::system::cursor_overlay::{
-    animation, caret_mark::CaretMark, fade, geometry, label, monitors, render, reveal::Reveal,
-    schedule, session_state, text, topology::DisplayTopology, window::OverlayWindow,
+    animation, caret_mark::CaretMark, fade, label, monitors, render, reveal::Reveal, schedule,
+    session_state, text, topology::DisplayTopology, window::OverlayWindow,
 };
 #[cfg(target_os = "windows")]
 use agent_desktop_core::{
     CURSOR_HIGHLIGHT_HOLD_MS, CURSOR_IDLE_REST_MS, CURSOR_REST_FADE_MS, CursorMotion,
-    CursorOverlayControl, CursorPhase, Point, Rect,
+    CursorOverlayControl, CursorPhase, LABEL_FONT_POINTS, Point, Rect,
 };
 #[cfg(target_os = "windows")]
 use std::time::{Duration, Instant};
@@ -261,7 +261,7 @@ impl SurfaceHost {
             ripple_phase,
             target: target.cloned(),
             highlight_opacity,
-            label: self.presentation.label.as_deref(),
+            label: self.presentation.label_pill(),
             screen,
         };
         let mut composed = render::compose(&frame);
@@ -272,8 +272,8 @@ impl SurfaceHost {
                 &mut composed.surface,
                 &text_rect,
                 label,
-                self.presentation.style.rim_rgb(),
-                geometry::BUBBLE_FONT_POINTS * self.presentation.style.size(),
+                [1.0, 1.0, 1.0],
+                LABEL_FONT_POINTS * self.presentation.style.size(),
             );
         }
         if let Some(card) = composed.card_rect {

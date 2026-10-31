@@ -193,6 +193,7 @@ On macOS:
 
 On macOS and Windows:
 
+- The label is a black pill with white text in the system font (SF Pro on macOS, Segoe UI on Windows), sized to the text and set below and right of the cursor's tip. A label wider than 360 pt is cut with an ellipsis, and an empty label shows no pill.
 - `--image` and `--pointer-image` take a PNG of at most 2 MiB and 1024 pixels per side, drawn at `--size` with the hotspot on the point the cursor targets. Relative paths resolve at `enable`. `--fill` and `--rim` conflict with `--image`. A missing or invalid image falls back to the arrow. With `--image`, `enable` draws no greeting.
 - The pointer image shows on arrival at a pressable control. Text fields keep the arrow.
 

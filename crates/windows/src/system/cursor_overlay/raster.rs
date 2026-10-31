@@ -80,7 +80,7 @@ impl Surface {
     }
 
     /// Composites one sample over what is already there, premultiplied.
-    fn blend(&mut self, x: i32, y: i32, paint: &Paint, coverage: f64) {
+    pub(super) fn blend(&mut self, x: i32, y: i32, paint: &Paint, coverage: f64) {
         if coverage <= 0.0 || x < 0 || y < 0 || x >= self.width || y >= self.height {
             return;
         }

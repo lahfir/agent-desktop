@@ -13,8 +13,7 @@ typedef struct {
 typedef struct {
     double frameSeconds;
     const char *label;
-    double bubbleX;
-    double bubbleY;
+    double bubble[4];
     double target[4];
     double highlightSeconds;
     uint8_t flags;
@@ -31,8 +30,13 @@ static const CGFloat ADBoxWidth = 32.0;
 static const CGFloat ADBoxHeight = 40.0;
 static const CGFloat ADTipX = 88.0;
 static const CGFloat ADTipY = 172.0;
-static const CGFloat ADBubbleWidth = 232.0;
-static const CGFloat ADBubbleHeight = 38.0;
+static const CGFloat ADBubbleMargin = 8.0;
+static const CGFloat ADLabelPadding = 10.0;
+static const CGFloat ADLabelPoints = 12.5;
+static const CGFloat ADTextCellInset = 6.0;
+static const float ADLabelShadowOpacity = 0.31f;
+static const CGFloat ADLabelShadowOffset = 2.0;
+static const CGFloat ADLabelShadowBlur = 2.5;
 static const CGFloat ADHighlightPad = 5.0;
 
 static __strong NSWindow *ADCursorWindow = nil;
@@ -40,6 +44,7 @@ static __strong CALayer *ADPointer = nil;
 static __strong NSWindow *ADRipple = nil;
 static __strong NSWindow *ADBubbleWindow = nil;
 static __strong NSTextField *ADBubbleText = nil;
+static __strong CALayer *ADBubblePill = nil;
 static bool ADDragArmed = false;
 static bool ADDragStarted = false;
 static bool ADDragTrail = false;
@@ -157,19 +162,70 @@ static void ADMoveCursor(const AgentDesktopCursorFrame *frame, double mainHeight
     [ADCursorWindow setFrameOrigin:NSMakePoint(frame->x - ADTipX, mainHeight - frame->y - ADTipY)];
 }
 
+static NSFont *ADLabelFont(void) {
+    static NSFont *font = nil;
+    if (font == nil) {
+        font = [NSFont systemFontOfSize:ADLabelPoints weight:NSFontWeightMedium];
+    }
+    return font;
+}
+
+/// The label pill: a black, fully rounded tag with a soft shadow, in a window
+/// `ADBubbleMargin` larger on every side so the shadow is not clipped. Its
+/// size comes from the label's measured width; see `ADLayoutBubble`.
 static NSWindow *ADBubble(void) {
-    NSWindow *window = ADWindow(NSMakeRect(0.0, 0.0, ADBubbleWidth, ADBubbleHeight));
-    CALayer *surface = window.contentView.layer;
-    surface.backgroundColor = NSColor.whiteColor.CGColor;
-    surface.cornerRadius = 10.0;
-    surface.borderWidth = 1.5;
-    surface.borderColor = [NSColor colorWithSRGBRed:0.08 green:0.08 blue:0.09 alpha:1.0].CGColor;
+    NSWindow *window = ADWindow(NSMakeRect(0.0, 0.0, 1.0, 1.0));
+    ADBubblePill = [CALayer layer];
+    ADBubblePill.backgroundColor = NSColor.blackColor.CGColor;
+    ADBubblePill.shadowColor = NSColor.blackColor.CGColor;
+    ADBubblePill.shadowOpacity = ADLabelShadowOpacity;
+    ADBubblePill.shadowRadius = ADLabelShadowBlur;
+    ADBubblePill.shadowOffset = CGSizeMake(0.0, -ADLabelShadowOffset);
+    ADFreezeLayer(ADBubblePill);
+    [window.contentView.layer addSublayer:ADBubblePill];
     ADBubbleText = [NSTextField labelWithString:@""];
-    ADBubbleText.frame = NSMakeRect(13.0, 7.0, 206.0, 23.0);
-    ADBubbleText.textColor = [NSColor colorWithSRGBRed:0.16 green:0.12 blue:0.06 alpha:1.0];
-    ADBubbleText.font = [NSFont systemFontOfSize:12.5];
+    ADBubbleText.textColor = NSColor.whiteColor;
+    ADBubbleText.font = ADLabelFont();
+    ADBubbleText.alignment = NSTextAlignmentCenter;
+    ADBubbleText.lineBreakMode = NSLineBreakByTruncatingTail;
+    ADBubbleText.maximumNumberOfLines = 1;
     [window.contentView addSubview:ADBubbleText];
     return window;
+}
+
+/// Sizes the pill to `pill` and centres the text in it across and down, the
+/// way `LabelPill::text_frame` places it. The text field spans the padded
+/// interior, widened on each side by more than the cell's own inset so the
+/// measured text is never cut short, and centres its line itself; its height is the font's line, so
+/// the line sits at the pill's vertical middle.
+static void ADLayoutBubble(NSSize pill) {
+    ADBubblePill.frame = CGRectMake(ADBubbleMargin, ADBubbleMargin, pill.width, pill.height);
+    ADBubblePill.cornerRadius = pill.height / 2.0;
+    CGPathRef shadow = CGPathCreateWithRoundedRect(CGRectMake(0.0, 0.0, pill.width, pill.height),
+                                                   pill.height / 2.0, pill.height / 2.0, NULL);
+    ADBubblePill.shadowPath = shadow;
+    CGPathRelease(shadow);
+    CGFloat line = ceil([ADBubbleText.cell cellSizeForBounds:NSMakeRect(0.0, 0.0, CGFLOAT_MAX,
+                                                                         CGFLOAT_MAX)]
+                            .height);
+    ADBubbleText.frame = NSMakeRect(ADBubbleMargin + ADLabelPadding - ADTextCellInset,
+                                    ADBubbleMargin + (pill.height - line) / 2.0,
+                                    MAX(pill.width - ADLabelPadding * 2.0, 0.0) +
+                                        ADTextCellInset * 2.0,
+                                    line);
+}
+
+double agent_desktop_cursor_overlay_label_width(const char *label) {
+    if (label == NULL) {
+        return 0.0;
+    }
+    @autoreleasepool {
+        NSString *text = [NSString stringWithUTF8String:label];
+        if (text == nil) {
+            return 0.0;
+        }
+        return ceil([text sizeWithAttributes:@{NSFontAttributeName : ADLabelFont()}].width);
+    }
 }
 
 void agent_desktop_cursor_overlay_idle(void) {
@@ -192,6 +248,7 @@ void agent_desktop_cursor_overlay_stop(void) {
     ADRipple = nil;
     ADBubbleWindow = nil;
     ADBubbleText = nil;
+    ADBubblePill = nil;
 }
 
 void agent_desktop_cursor_overlay_caret(double x, double y, double width, double height) {
@@ -348,17 +405,21 @@ bool agent_desktop_cursor_overlay_run(const AgentDesktopCursorFrame *frames,
             bool pointsOnArrival = (config->flags & ADPointOnArrival) != 0;
             [ADCursorWindow orderFrontRegardless];
 
-            bool showsBubble = config->label != NULL && config->label[0] != '\0';
+            bool showsBubble =
+                config->label != NULL && config->label[0] != '\0' && config->bubble[2] > 0.0;
             NSString *nextLabel = showsBubble ? @(config->label) : @"";
             bool changedLabel = ![ADBubbleText.stringValue isEqualToString:nextLabel];
             ADBubbleText.stringValue = nextLabel;
-            if (!showsBubble) {
+            if (!showsBubble || changedLabel) {
                 [ADBubbleWindow orderOut:nil];
             }
-            NSRect bubbleFrame = NSMakeRect(config->bubbleX,
-                                            mainHeight - config->bubbleY - ADBubbleHeight,
-                                            ADBubbleWidth,
-                                            ADBubbleHeight);
+            NSRect pillFrame = NSMakeRect(config->bubble[0],
+                                          mainHeight - config->bubble[1] - config->bubble[3],
+                                          config->bubble[2], config->bubble[3]);
+            NSRect bubbleFrame = NSInsetRect(pillFrame, -ADBubbleMargin, -ADBubbleMargin);
+            if (showsBubble) {
+                ADLayoutBubble(pillFrame.size);
+            }
             bool followsBubble = showsBubble && !changedLabel && ADBubbleWindow.isVisible;
             [ADRipple setFrameOrigin:NSMakePoint(last->x - ADRippleSize * 0.5,
                                                  mainHeight - last->y - ADRippleSize * 0.5)];

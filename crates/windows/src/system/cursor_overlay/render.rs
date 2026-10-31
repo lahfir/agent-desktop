@@ -1,10 +1,10 @@
 //! One frame: where the follower surface sits, and what is on it.
 //!
-//! Pure apart from the label's text, which the caller draws afterwards onto
-//! the bubble body this composes. Keeping the composition itself free of
+//! Pure apart from the label's text, which the caller measures beforehand
+//! and draws afterwards onto the pill this composes. Keeping the composition itself free of
 //! Win32 is what lets the whole visual layer be asserted without a desktop.
 
-use agent_desktop_core::{CursorOverlayStyle, Point, Rect, place_label};
+use agent_desktop_core::{CursorOverlayStyle, LabelPill, Point, Rect, place_label};
 
 use super::raster::{self, Surface, SurfaceMapping};
 use super::{cursor_image, geometry, rounded};
@@ -17,7 +17,8 @@ pub(crate) struct Frame<'a> {
     pub(crate) ripple_phase: f64,
     pub(crate) target: Option<Rect>,
     pub(crate) highlight_opacity: f64,
-    pub(crate) label: Option<&'a str>,
+    /// The label's pill, sized to its measured text, when there is a label.
+    pub(crate) label: Option<LabelPill>,
     pub(crate) screen: Rect,
 }
 
@@ -28,12 +29,17 @@ pub(crate) struct Composed {
     /// one. The caller draws into it and then forces it opaque, which is the
     /// only region GDI is allowed to touch.
     pub(crate) text_rect: Option<Rect>,
-    /// The whole card, in surface coordinates, when there is one. The text
-    /// rectangle above is only its inset interior; a caller fading the card
-    /// in has to dim the body and its border with the text, or the card
-    /// arrives already drawn with only its writing catching up.
+    /// The whole card and its shadow, in surface coordinates, when there is
+    /// one. The text rectangle above is only its interior; a caller fading
+    /// the card in has to dim the pill and its shadow with the text, or the
+    /// card arrives already drawn with only its writing catching up.
     pub(crate) card_rect: Option<Rect>,
 }
+
+/// How far the text rectangle stays inside the pill's top and bottom edges.
+/// GDI's text is copied in at full opacity across that whole rectangle, so it
+/// has to lie where the rounded body is already opaque.
+const TEXT_VERTICAL_INSET: f64 = 2.0;
 
 pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
     let scale = frame.style.size();
@@ -44,7 +50,9 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
     });
     let label_rect = frame
         .label
-        .map(|_| place_label(&frame.tip, geometry::bubble_size(scale), &frame.screen));
+        .map(|pill| place_label(&frame.tip, pill.size(), &frame.screen));
+    let card_bounds = label_rect
+        .map(|rect| geometry::union_of(&rect, &geometry::label_shadow_rect(&rect, scale)));
     let highlighted = frame
         .target
         .as_ref()
@@ -54,7 +62,7 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
     let mut bounds = geometry::follower_rect(
         &frame.tip,
         scale,
-        label_rect.as_ref(),
+        card_bounds.as_ref(),
         highlight_rect.as_ref(),
     );
     if let Some((_, rect)) = &image {
@@ -97,22 +105,17 @@ pub(crate) fn compose(frame: &Frame<'_>) -> Composed {
         );
     }
 
-    let mut card_rect = None;
-    let text_rect = label_rect.map(|rect| {
+    let card_rect = card_bounds.map(|card| mapping.to_local(&card));
+    let text_rect = label_rect.zip(frame.label).map(|(rect, pill)| {
         let local = mapping.to_local(&rect);
-        card_rect = Some(local);
-        rounded::draw_bubble(
-            &mut surface,
-            &local,
-            frame.style.fill_rgb(),
-            frame.style.rim_rgb(),
-        );
-        let inset = geometry::BUBBLE_TEXT_INSET * scale;
+        rounded::draw_label_pill(&mut surface, &local, scale);
+        let line = pill
+            .within(local.width)
+            .text_frame(local.height - TEXT_VERTICAL_INSET * 2.0 * scale);
         Rect {
-            x: local.x + inset,
-            y: local.y + inset,
-            width: (local.width - inset * 2.0).max(0.0),
-            height: (local.height - inset * 2.0).max(0.0),
+            x: local.x + line.x,
+            y: local.y + line.y,
+            ..line
         }
     });
 

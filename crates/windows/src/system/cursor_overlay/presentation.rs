@@ -10,7 +10,9 @@ pub(crate) use imp::{Presentation, RestState};
 #[cfg(target_os = "windows")]
 mod imp {
     use crate::system::cursor_overlay::reveal::Reveal;
-    use agent_desktop_core::{CursorOverlayControl, CursorOverlayStyle, Point};
+    use agent_desktop_core::{
+        CursorOverlayControl, CursorOverlayStyle, LABEL_FONT_POINTS, LabelPill, Point,
+    };
     use std::time::Instant;
 
     /// The three things a frame is composed from, plus when the card began
@@ -56,6 +58,18 @@ mod imp {
 
         pub(crate) fn arrive(&mut self) {
             self.pointing = std::mem::take(&mut self.arrives_pointing);
+        }
+
+        /// The label's pill, sized to the text as it is set at this size, or
+        /// nothing when there is no label or it cannot be measured.
+        pub(crate) fn label_pill(&self) -> Option<LabelPill> {
+            let label = self.label.as_deref()?;
+            let scale = self.style.size();
+            let width = crate::system::cursor_overlay::text::measure_label(
+                label,
+                LABEL_FONT_POINTS * scale,
+            )?;
+            LabelPill::for_label(label, width, scale)
         }
 
         /// The style a frame is drawn with: the session's own, with the

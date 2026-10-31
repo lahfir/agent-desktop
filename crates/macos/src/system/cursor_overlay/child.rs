@@ -1,7 +1,7 @@
 use agent_desktop_core::{
     AdapterError, CURSOR_IDLE_REST_MS, CursorMotion, CursorMotionProfile, CursorOverlayConfig,
     CursorOverlayControl, CursorOverlayInstruction, CursorOverlayStyle, CursorPhase, CursorPose,
-    ErrorCode, Point, place_label,
+    ErrorCode, Point,
 };
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -14,7 +14,6 @@ use super::bridge;
 pub(super) const MARKER: &str = "AGENT_DESKTOP_CURSOR_OVERLAY_CHILD";
 pub(super) const SOCKET_ENV: &str = "AGENT_DESKTOP_CURSOR_OVERLAY_SOCKET";
 const MAX_INSTRUCTION_BYTES: u64 = 4 * 1024;
-const BUBBLE_SIZE: (f64, f64) = (232.0, 38.0);
 
 #[derive(Default)]
 struct OverlayState {
@@ -243,13 +242,12 @@ fn render(
     if instruction.phase() == CursorPhase::Drag {
         let from = instruction.drag_from().unwrap_or(instruction.destination());
         let (screen, fps, reduce_motion) = bridge::screen_at(from)?;
-        let bubble = place_label(from, BUBBLE_SIZE, &screen);
         bridge::run(
             &[CursorPose::still(from.clone())],
             fps,
             instruction,
             reduce_motion,
-            &bubble,
+            &screen,
         )?;
         bridge::begin_drag(from, state.style.ripple() && !reduce_motion);
         return Ok(());
@@ -258,14 +256,13 @@ fn render(
         bridge::end_drag(instruction.destination(), instruction.drag_from().is_some());
     }
     let (screen, fps, reduce_motion) = bridge::screen_at(instruction.destination())?;
-    let bubble = place_label(instruction.destination(), BUBBLE_SIZE, &screen);
     let shown = if state.style.highlight() {
         instruction.clone()
     } else {
         instruction.clone().with_target(None)
     };
     let frames = frames_for(state, &shown, &screen, fps, reduce_motion);
-    bridge::run(&frames, fps, &shown, reduce_motion, &bubble)
+    bridge::run(&frames, fps, &shown, reduce_motion, &screen)
 }
 
 fn frames_for(

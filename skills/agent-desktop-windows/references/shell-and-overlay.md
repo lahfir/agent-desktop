@@ -111,12 +111,12 @@ agent-desktop cursor-overlay disable
 - **It ignores the "Show animations in Windows" setting.** Windows reports
   animations off by default on a stock Windows Server host, so the explicit
   `enable` counts as the opt-in. macOS honours Reduce Motion instead.
-- **`--fill` and `--rim` also colour the label card** (its body and its text).
-  A fill that matches the window behind it leaves the card nearly invisible.
-- **The card shows only when there is something to say.** `enable` without
+- **The label is a black pill with white Segoe UI text**, sized to the text.
+  `--fill` and `--rim` colour only the cursor, not the label.
+- **The label shows only when there is something to say.** `enable` without
   `--label` greets once, and with `--image` it does not greet. After that,
-  only an action that carries a description draws the card. Each `enable` and
-  each action replaces the card text.
+  only an action that carries a description draws the label. Each `enable`
+  and each action replaces the label text.
 - **It fades out after 6 s with no instruction** and comes straight back on the
   next command.
 - **The caret comes from the Text pattern.** After text entry, the agent's caret

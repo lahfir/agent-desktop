@@ -28,16 +28,6 @@ pub(crate) const RIPPLE_SIZE: f64 = 108.0;
 pub(crate) const RIPPLE_CORE_RADIUS: f64 = 19.0;
 pub(crate) const RIPPLE_RING_INSET: f64 = 4.0;
 
-/// The label bubble. Its corner radius and border are why the bubble body is
-/// composited per-pixel rather than alpha-forced across its bounding
-/// rectangle: forcing a rectangle would paint opaque square corners.
-pub(crate) const BUBBLE_WIDTH: f64 = 232.0;
-pub(crate) const BUBBLE_HEIGHT: f64 = 38.0;
-pub(crate) const BUBBLE_CORNER_RADIUS: f64 = 10.0;
-pub(crate) const BUBBLE_BORDER_WIDTH: f64 = 1.5;
-pub(crate) const BUBBLE_FONT_POINTS: f64 = 12.5;
-pub(crate) const BUBBLE_TEXT_INSET: f64 = 10.0;
-
 /// The highlight drawn around the element being acted on.
 pub(crate) const HIGHLIGHT_BORDER_WIDTH: f64 = 2.5;
 pub(crate) const HIGHLIGHT_CORNER_RADIUS: f64 = 8.0;
@@ -65,8 +55,17 @@ pub(crate) fn ripple_rect(tip: &Point, scale: f64) -> Rect {
     }
 }
 
-pub(crate) fn bubble_size(scale: f64) -> (f64, f64) {
-    (BUBBLE_WIDTH * scale, BUBBLE_HEIGHT * scale)
+/// The label pill's shadow extent: the pill's rectangle moved down by the
+/// shadow's offset and grown by its blur on every side, so the follower
+/// surface and the card's fade both cover the whole shadow.
+pub(crate) fn label_shadow_rect(pill: &Rect, scale: f64) -> Rect {
+    let blur = agent_desktop_core::LABEL_SHADOW_BLUR * scale * 2.0;
+    Rect {
+        x: pill.x - blur,
+        y: pill.y + agent_desktop_core::LABEL_SHADOW_OFFSET * scale - blur,
+        width: pill.width + blur * 2.0,
+        height: pill.height + blur * 2.0,
+    }
 }
 
 /// The highlight's rectangle: the target's bounds, padded, so the outline

@@ -46,8 +46,10 @@ pub use cursor_overlay::{
     CURSOR_LABEL_REVEAL_MS, CURSOR_MOTION_BUDGET_MS, CURSOR_OVERLAY_GREETING, CURSOR_REST_FADE_MS,
     CURSOR_SAME_POINT, CursorImage, CursorImages, CursorMotion, CursorMotionProfile,
     CursorOverlayConfig, CursorOverlayControl, CursorOverlayInstruction, CursorOverlayStyle,
-    CursorPhase, CursorPose, MAX_CURSOR_IMAGE_BYTES, MAX_CURSOR_IMAGE_PATH_BYTES,
-    MAX_CURSOR_IMAGE_PIXELS, MAX_CURSOR_LABEL_BYTES, MAX_CURSOR_LABEL_WORDS, place_label,
+    CursorPhase, CursorPose, LABEL_FONT_POINTS, LABEL_PILL_HEIGHT, LABEL_PILL_MAX_WIDTH,
+    LABEL_PILL_PADDING, LABEL_SHADOW_BLUR, LABEL_SHADOW_OFFSET, LABEL_SHADOW_OPACITY, LabelPill,
+    MAX_CURSOR_IMAGE_BYTES, MAX_CURSOR_IMAGE_PATH_BYTES, MAX_CURSOR_IMAGE_PIXELS,
+    MAX_CURSOR_LABEL_BYTES, MAX_CURSOR_LABEL_WORDS, place_label,
 };
 pub use input::clipboard_content::ClipboardContent;
 pub use input::clipboard_format::ClipboardFormat;

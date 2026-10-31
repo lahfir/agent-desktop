@@ -6,6 +6,7 @@ mod hand_path;
 mod image;
 mod images;
 mod instruction;
+mod label_pill;
 mod layout;
 mod motion;
 mod motion_profile;
@@ -25,6 +26,10 @@ pub use image::{
 };
 pub use images::CursorImages;
 pub use instruction::CursorOverlayInstruction;
+pub use label_pill::{
+    LABEL_FONT_POINTS, LABEL_PILL_HEIGHT, LABEL_PILL_MAX_WIDTH, LABEL_PILL_PADDING,
+    LABEL_SHADOW_BLUR, LABEL_SHADOW_OFFSET, LABEL_SHADOW_OPACITY, LabelPill,
+};
 pub use layout::{CURSOR_SAME_POINT, place_label};
 pub use motion::CursorMotion;
 pub use motion_profile::CursorMotionProfile;

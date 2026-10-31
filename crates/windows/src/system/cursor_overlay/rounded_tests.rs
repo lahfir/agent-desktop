@@ -1,10 +1,7 @@
-use super::super::geometry;
 use super::super::raster::{Surface, SurfaceMapping};
-use super::{draw_bubble, draw_highlight};
+use super::{draw_highlight, draw_label_pill, rounded_rect_distance, shadow_strength};
 use agent_desktop_core::{Point, Rect};
 
-const FILL: [f64; 3] = [1.0, 1.0, 1.0];
-const RIM: [f64; 3] = [0.07, 0.07, 0.09];
 const ACCENT: [f64; 3] = [0.26, 0.60, 1.0];
 
 fn surface() -> Surface {
@@ -91,34 +88,54 @@ fn a_highlight_at_zero_opacity_paints_nothing() {
     assert!(surface.pixels.iter().all(|pixel| *pixel == 0));
 }
 
-/// The bubble's corners are why its body is composited rather than
-/// alpha-forced across its bounding rectangle: forcing would paint opaque
-/// square corners and the bubble would read unlike the reference.
+/// The pill's ends are why its body is composited rather than alpha-forced
+/// across its bounding rectangle: forcing would paint opaque square corners.
 #[test]
-fn the_bubbles_corners_are_rounded_rather_than_squared_off() {
+fn the_label_pill_is_fully_rounded_black_and_opaque_in_its_body() {
     let mut surface = surface();
     let rect = Rect {
         x: 10.0,
         y: 10.0,
-        width: geometry::BUBBLE_WIDTH.min(180.0),
-        height: geometry::BUBBLE_HEIGHT,
+        width: 120.0,
+        height: 24.0,
     };
 
-    draw_bubble(&mut surface, &rect, FILL, RIM);
+    draw_label_pill(&mut surface, &rect, 1.0);
 
-    assert_eq!(
-        surface.alpha_at(rect.x as i32, rect.y as i32),
-        0,
-        "the very corner of the bounding rectangle is outside a rounded bubble"
+    assert!(
+        surface.alpha_at(rect.x as i32, rect.y as i32) < 128,
+        "the very corner of the bounding rectangle is outside a fully rounded pill"
     );
-    assert_eq!(
-        surface.alpha_at(
+    let centre = surface
+        .pixel_at(
             (rect.x + rect.width / 2.0) as i32,
-            (rect.y + rect.height / 2.0) as i32
-        ),
-        255,
-        "the bubble's body is opaque, which is what lets GDI draw text onto it"
+            (rect.y + rect.height / 2.0) as i32,
+        )
+        .expect("inside the surface");
+    assert_eq!(centre, 0xFF00_0000, "the body is opaque black");
+    let below = surface.alpha_at(
+        (rect.x + rect.width / 2.0) as i32,
+        (rect.y + rect.height + 1.5) as i32,
     );
+    assert!(
+        below > 0 && below < 128,
+        "a soft shadow falls below the pill"
+    );
+}
+
+#[test]
+fn the_shadow_fades_from_full_inside_to_none_a_blur_outside() {
+    let rect = Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 100.0,
+        height: 24.0,
+    };
+    assert!(rounded_rect_distance(&rect, 12.0, 50.0, 12.0) < 0.0);
+    assert_eq!(rounded_rect_distance(&rect, 12.0, 50.0, 30.0), 6.0);
+    assert_eq!(shadow_strength(-5.0, 2.5), 1.0);
+    assert_eq!(shadow_strength(5.0, 2.5), 0.0);
+    assert_eq!(shadow_strength(0.0, 2.5), 0.5);
 }
 
 #[path = "rounded_equivalence_tests.rs"]
