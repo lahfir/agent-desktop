@@ -24,6 +24,7 @@ pub fn execute(
             "mouse-wheel coordinates and line deltas must be finite numbers",
         ));
     }
+    let _cursor = crate::cursor_overlay::hold_cursor(context, crate::Deadline::standard()?);
     let lease = crate::commands::helpers::acquire_interaction_lease(adapter)?;
     let point = Point {
         x: args.x,

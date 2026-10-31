@@ -21,6 +21,7 @@ pub fn execute(
 ) -> Result<Value, AppError> {
     require_cursor_policy(context, "mouse-move")?;
     require_pointer_capability(adapter)?;
+    let _cursor = crate::cursor_overlay::hold_cursor(context, crate::Deadline::standard()?);
     let lease = crate::commands::helpers::acquire_interaction_lease(adapter)?;
     let point = Point {
         x: args.x,

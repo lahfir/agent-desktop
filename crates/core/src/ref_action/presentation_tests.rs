@@ -44,3 +44,9 @@ fn other_elements_show_the_pointer_only_when_clicked() {
         );
     }
 }
+
+#[path = "presentation_lease_tests.rs"]
+mod lease;
+
+#[path = "presentation_shared_cursor_tests.rs"]
+mod shared_cursor;

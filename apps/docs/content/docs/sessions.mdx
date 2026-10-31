@@ -99,7 +99,7 @@ Several agents may share one session id. Each should act on refs from its own sn
 
 `--agent-id <id>` (or `AGENT_DESKTOP_AGENT_ID`) names the harness subagent that is running a command. The flag wins over the variable. An id is 1 to 64 letters, digits, `-` or `_`, and an invalid id fails with `INVALID_ARGS`. It is scoped by session.
 
-The identity matters in one mode: a session started with `session start --cursor --multi-agent`. There, desktop actions such as `click` and `type` require an agent id and fail with `INVALID_ARGS` without one. Observation, clipboard and session commands do not. Each distinct id gets its own cursor, and a reused id reuses its cursor. Snapshots stay shared by session.
+The identity matters in one mode: a session started with `session start --cursor --multi-agent`. There, desktop actions such as `click` and `type` require an agent id and fail with `INVALID_ARGS` without one. Observation, clipboard and session commands do not. Each distinct id gets its own cursor, and a reused id reuses its cursor. A headless action moves its cursor before it takes the interaction lease, so several agents' cursors travel at the same time while their actions take turns. Commands that draw the same cursor take turns from its travel to its click effect, so a shared cursor never clicks while showing another command's target. Snapshots stay shared by session.
 
 ## Sessions, traces, and the cursor overlay
 

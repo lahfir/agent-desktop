@@ -46,6 +46,7 @@ pub fn execute(
         headed_requirement: crate::HeadedRequirement::FocusedWindowAndCursor,
     };
     let auto_wait = args.timeout_ms.is_some_and(|timeout_ms| timeout_ms > 0);
+    let cursor = crate::cursor_overlay::hold_cursor(context, deadline);
     let (resolved, lease) = before_first_event(|| {
         if auto_wait {
             wait_for_point_with_deadline(point_args, deadline, adapter, context)?;
@@ -108,6 +109,7 @@ pub fn execute(
         response["focused"] = json!(true);
     }
     drop(lease);
+    drop(cursor);
     apply_post_action_wait(response, resolved.source_entry.as_ref(), adapter, context)
 }
 

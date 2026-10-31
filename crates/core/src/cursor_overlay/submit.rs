@@ -9,16 +9,33 @@ const DISPATCH_RESERVE_MS: u64 = 100;
 pub(crate) fn travel_scope(
     lease: &crate::InteractionLease,
 ) -> Option<crate::wait::deadline::DeadlineScope> {
-    if lease.deadline().remaining_ms()
+    travel_scope_within(lease.deadline())
+}
+
+fn travel_scope_within(deadline: crate::Deadline) -> Option<crate::wait::deadline::DeadlineScope> {
+    if deadline.remaining_ms()
         <= crate::CURSOR_ARRIVAL_TIMEOUT_MS.saturating_add(DISPATCH_RESERVE_MS)
     {
         return None;
     }
-    Some(crate::wait::deadline::enter_scope(Some(
-        lease.deadline().capped(std::time::Duration::from_millis(
-            crate::CURSOR_ARRIVAL_TIMEOUT_MS,
-        )),
-    )))
+    Some(crate::wait::deadline::enter_scope(Some(deadline.capped(
+        std::time::Duration::from_millis(crate::CURSOR_ARRIVAL_TIMEOUT_MS),
+    ))))
+}
+
+/// Moves the drawn cursor toward an action's target before the interaction
+/// lease is held. Travel is presentation only, so holding the machine-wide
+/// lease across it would serialize every other caller behind an animation;
+/// the travel submitted under the lease then only covers any distance the
+/// live target moved since the snapshot.
+pub(crate) fn submit_travel_before_lease(
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+    destination: Point,
+    deadline: crate::Deadline,
+    pointer: bool,
+) -> bool {
+    travel_within(adapter, context, destination, deadline, pointer)
 }
 
 /// Moves the drawn cursor to `destination` before an action; `pointer` arrives showing the
@@ -32,8 +49,18 @@ pub(crate) fn submit_travel(
     lease: &crate::InteractionLease,
     pointer: bool,
 ) {
-    let Some(_scope) = travel_scope(lease) else {
-        return;
+    travel_within(adapter, context, destination, lease.deadline(), pointer);
+}
+
+fn travel_within(
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+    destination: Point,
+    deadline: crate::Deadline,
+    pointer: bool,
+) -> bool {
+    let Some(_scope) = travel_scope_within(deadline) else {
+        return false;
     };
     let instruction =
         super::CursorOverlayInstruction::new(destination, context.cursor_overlay(), false).map(
@@ -43,7 +70,7 @@ pub(crate) fn submit_travel(
                 )
             },
         );
-    let _ = send(adapter, context, instruction);
+    send(adapter, context, instruction)
 }
 
 pub(crate) fn input_was_delivered(result: &Result<OperationReport, AdapterError>) -> bool {
@@ -153,7 +180,7 @@ fn send(
     update(adapter, &control)
 }
 
-fn agent_route(context: &CommandContext) -> Option<String> {
+pub(super) fn agent_route(context: &CommandContext) -> Option<String> {
     context
         .cursor_overlay()
         .is_multi_agent()

@@ -1,5 +1,6 @@
 mod config;
 mod control;
+mod cursor_hold;
 mod hand_path;
 mod image;
 mod images;
@@ -16,6 +17,7 @@ mod timing;
 
 pub use config::{CursorOverlayConfig, MAX_CURSOR_LABEL_BYTES, MAX_CURSOR_LABEL_WORDS};
 pub use control::{CURSOR_OVERLAY_GREETING, CursorOverlayControl};
+pub(crate) use cursor_hold::hold_cursor;
 pub use image::{
     CursorImage, MAX_CURSOR_IMAGE_BYTES, MAX_CURSOR_IMAGE_PATH_BYTES, MAX_CURSOR_IMAGE_PIXELS,
 };
@@ -29,7 +31,7 @@ pub use pose::CursorPose;
 pub use style::CursorOverlayStyle;
 pub(crate) use submit::{
     cancel_drag, confirms_delivery, dispatch_mouse_event_with_cursor, input_was_delivered, submit,
-    submit_drag, submit_drag_effect, submit_travel,
+    submit_drag, submit_drag_effect, submit_travel, submit_travel_before_lease,
 };
 pub use timing::{
     CURSOR_ARRIVAL_TIMEOUT_MS, CURSOR_HIGHLIGHT_HOLD_MS, CURSOR_IDLE_REST_MS,

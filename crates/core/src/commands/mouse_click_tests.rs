@@ -170,3 +170,6 @@ fn excessive_click_count_fails_before_dispatch() {
     assert_eq!(err.code(), "INVALID_ARGS");
     assert!(adapter.captured.lock().unwrap().is_none());
 }
+
+#[path = "mouse_click_cursor_tests.rs"]
+mod cursor;

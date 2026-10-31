@@ -25,6 +25,7 @@ pub fn execute(
     require_cursor_policy(context, "mouse-click")?;
     require_pointer_capability(adapter)?;
     crate::validate_mouse_click_count(args.count)?;
+    let _cursor = crate::cursor_overlay::hold_cursor(context, crate::Deadline::standard()?);
     let lease = crate::commands::helpers::acquire_interaction_lease(adapter)?;
     let point = Point {
         x: args.x,

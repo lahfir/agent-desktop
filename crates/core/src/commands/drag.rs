@@ -66,6 +66,7 @@ pub fn execute(
         headed_requirement: crate::HeadedRequirement::None,
     };
     let auto_wait = args.timeout_ms.is_some_and(|timeout_ms| timeout_ms > 0);
+    let cursor = crate::cursor_overlay::hold_cursor(context, deadline);
     let (from, to, lease, params) = before_first_event(|| {
         if auto_wait {
             wait_for_point_with_deadline(from_args, deadline, adapter, context)?;
@@ -183,6 +184,7 @@ pub fn execute(
         response["focused"] = json!(true);
     }
     drop(lease);
+    drop(cursor);
     let wait_entry = match args.wait_for_scope {
         WaitForScope::To => to.source_entry.as_ref().or(from.source_entry.as_ref()),
         WaitForScope::From => from.source_entry.as_ref().or(to.source_entry.as_ref()),
