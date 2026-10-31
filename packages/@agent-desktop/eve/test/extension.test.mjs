@@ -93,11 +93,15 @@ test("snapshot maps camelCase input to CLI flags", async () => {
   ]);
 });
 
-test("text with quotes and leading dashes reaches the CLI intact", async () => {
+test("free text goes after -- so leading dashes are not read as flags", async () => {
   resetConfig();
   const sandbox = fakeSandbox();
   await tools.type.execute({ ref: "@s1:e4", text: "it's -5 $HOME" }, ctx(sandbox));
-  assert.deepEqual(lastArgv(sandbox), ["agent-desktop", "type", "@s1:e4", "it's -5 $HOME"]);
+  assert.deepEqual(lastArgv(sandbox), ["agent-desktop", "type", "@s1:e4", "--", "it's -5 $HOME"]);
+  await tools.select.execute({ ref: "@s1:e3", value: "--none--", timeoutMs: 100 }, ctx(sandbox));
+  assert.deepEqual(lastArgv(sandbox), ["agent-desktop", "select", "--timeout-ms=100", "@s1:e3", "--", "--none--"]);
+  await tools.clipboard_set.execute({ text: "-1" }, ctx(sandbox));
+  assert.deepEqual(lastArgv(sandbox), ["agent-desktop", "clipboard-set", "--", "-1"]);
 });
 
 test("negative coordinates use = so clap does not read them as flags", async () => {
@@ -107,11 +111,25 @@ test("negative coordinates use = so clap does not read them as flags", async () 
   assert.deepEqual(lastArgv(sandbox), ["agent-desktop", "move-window", "--app=xterm", "--x=-100", "--y=20"]);
 });
 
-test("headed config adds the global --headed flag", async () => {
+test("wait takes exactly one condition", async () => {
+  resetConfig();
+  const sandbox = fakeSandbox();
+  await tools.wait.execute({ condition: "window", target: "Calculator", app: "gnome-calculator" }, ctx(sandbox));
+  assert.deepEqual(lastArgv(sandbox), ["agent-desktop", "wait", "--window=Calculator", "--app=gnome-calculator"]);
+  await tools.wait.execute({ condition: "time", ms: 300 }, ctx(sandbox));
+  assert.deepEqual(lastArgv(sandbox), ["agent-desktop", "wait", "300"]);
+  await tools.wait.execute({ condition: "menu_closed" }, ctx(sandbox));
+  assert.deepEqual(lastArgv(sandbox), ["agent-desktop", "wait", "--menu-closed"]);
+  await assert.rejects(() => tools.wait.execute({ condition: "text" }, ctx(sandbox)), /needs target/);
+});
+
+test("pointer targets take a ref or x,y", async () => {
   resetConfig({ headed: true });
   const sandbox = fakeSandbox();
-  await tools.double_click.execute({ ref: "@s1:e2" }, ctx(sandbox));
-  assert.deepEqual(lastArgv(sandbox), ["agent-desktop", "--headed", "double-click", "@s1:e2"]);
+  await tools.hover.execute({ target: "@s1:e2" }, ctx(sandbox));
+  assert.deepEqual(lastArgv(sandbox), ["agent-desktop", "--headed", "hover", "@s1:e2"]);
+  await tools.drag.execute({ from: "@s1:e2", to: "-10,40" }, ctx(sandbox));
+  assert.deepEqual(lastArgv(sandbox), ["agent-desktop", "--headed", "drag", "--from=@s1:e2", "--to-xy=-10,40"]);
   resetConfig();
 });
 
@@ -141,6 +159,23 @@ test("an unsafe failure warns against repeating the action", async () => {
   await assert.rejects(() => tools.click.execute({ ref: "@s1:e7" }, ctx(sandbox)), /Do not repeat this action blindly/);
 });
 
+test("aborting the call aborts the running sandbox command", async () => {
+  resetConfig();
+  const controller = new AbortController();
+  let seen;
+  const sandbox = fakeSandbox();
+  const run = sandbox.run;
+  sandbox.run = (options) => {
+    if (!options.command.includes("'click'")) return run(options);
+    seen = options.signal;
+    return new Promise(() => {});
+  };
+  const call = tools.click.execute({ ref: "@s1:e2" }, { getSandbox: async () => sandbox, abortSignal: controller.signal });
+  setTimeout(() => controller.abort(new Error("stopped")), 10);
+  await assert.rejects(call, /stopped/);
+  assert.equal(seen?.aborted, true);
+});
+
 test("starts the desktop when it is not running", async () => {
   resetConfig();
   const sandbox = fakeSandbox({ desktopUp: false });
@@ -148,33 +183,59 @@ test("starts the desktop when it is not running", async () => {
   assert.ok(sandbox.commands.some((command) => command.includes("setsid -f Xvfb ':99' -screen 0 1280x800x24")));
 });
 
-test("manageDesktop false leaves the desktop alone", async () => {
+test("manageDesktop false keeps the image's own session environment", async () => {
   resetConfig({ manageDesktop: false, display: ":0" });
   const sandbox = fakeSandbox({ desktopUp: false });
   await tools.list_apps.execute({}, ctx(sandbox));
   assert.ok(!sandbox.commands.some((command) => command.startsWith("xdpyinfo") || command.includes("Xvfb")));
-  assert.match(sandbox.commands.at(-1), /^export DISPLAY=':0'; /);
+  const command = sandbox.commands.at(-1);
+  assert.match(command, /^export DISPLAY=':0'; /);
+  assert.ok(!command.includes("DBUS_SESSION_BUS_ADDRESS") && !command.includes("XDG_RUNTIME_DIR"), command);
   resetConfig();
 });
 
+/** A sandbox whose version probe answers from `versions` in order (undefined: missing). */
+function versionSandbox(versions, options) {
+  const sandbox = fakeSandbox(options);
+  const run = sandbox.run;
+  sandbox.run = async (opts) => {
+    if (!opts.command.endsWith(" --version 2>/dev/null")) return run(opts);
+    sandbox.commands.push(opts.command);
+    const version = versions.shift();
+    return version === undefined
+      ? { exitCode: 127, stdout: "", stderr: "" }
+      : { exitCode: 0, stdout: `agent-desktop ${version}\n`, stderr: "" };
+  };
+  return sandbox;
+}
+
 test("auto-installs the CLI and desktop packages when the binary is missing", async () => {
   resetConfig({ extraPackages: ["gnome-calculator"] });
-  const versions = [undefined, AGENT_DESKTOP_VERSION];
-  const sandbox = fakeSandbox();
-  const run = sandbox.run;
-  sandbox.run = async (options) => {
-    if (options.command.endsWith(" --version 2>/dev/null")) {
-      sandbox.commands.push(options.command);
-      const version = versions.shift();
-      return version === undefined
-        ? { exitCode: 127, stdout: "", stderr: "" }
-        : { exitCode: 0, stdout: `agent-desktop ${version}\n`, stderr: "" };
-    }
-    return run(options);
-  };
+  const sandbox = versionSandbox([undefined, AGENT_DESKTOP_VERSION]);
   await tools.list_apps.execute({}, ctx(sandbox));
   assert.ok(sandbox.commands.some((command) => command.includes("'xvfb'") && command.includes("'gnome-calculator'")));
   assert.ok(sandbox.commands.some((command) => command.includes(`npm install -g 'agent-desktop@${AGENT_DESKTOP_VERSION}'`)));
+  resetConfig();
+});
+
+test("a failed install is reported again without reinstalling", async () => {
+  resetConfig({ installSpec: "agent-desktop@1.0.99" });
+  const sandbox = versionSandbox([undefined, undefined], {
+    respond: (command) => (command.includes("npm install -g") ? { exitCode: 1, stdout: "", stderr: "E404" } : undefined),
+  });
+  await assert.rejects(() => tools.list_apps.execute({}, ctx(sandbox)), /Installing agent-desktop failed .*E404/);
+  const installs = () => sandbox.commands.filter((command) => command.includes("npm install -g")).length;
+  assert.equal(installs(), 1);
+  await assert.rejects(() => tools.list_apps.execute({}, ctx(sandbox)), /E404/);
+  assert.equal(installs(), 1);
+  resetConfig();
+});
+
+test("never installs over a custom binary", async () => {
+  resetConfig({ binary: "/opt/agent-desktop/bin/agent-desktop" });
+  const sandbox = versionSandbox([undefined]);
+  await assert.rejects(() => tools.list_apps.execute({}, ctx(sandbox)), /was not found in the sandbox/);
+  assert.ok(!sandbox.commands.some((command) => command.includes("npm install -g") || command.includes("apt-get")));
   resetConfig();
 });
 
@@ -186,20 +247,36 @@ test("does not reinstall a custom installSpec on a version mismatch", async () =
   resetConfig();
 });
 
-test("screenshot writes to a private path and hands the model pixels, not the path", async () => {
-  resetConfig();
-  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+function screenshotSandbox() {
   const sandbox = fakeSandbox({
     respond: (command) => {
-      const path = /'(\/tmp\/agent-desktop-eve\/screenshots\/[^']+\.png)'/.exec(command)?.[1];
-      return { stdout: OK({ format: "png", path, width: 370, height: 616 }) };
+      const path = /'(\/tmp\/agent-desktop-eve\/screenshots\/[^']+\.png)'$/.exec(command)?.[1];
+      return path ? { stdout: OK({ format: "png", path, width: 370, height: 616 }) } : undefined;
     },
   });
-  sandbox.readBinaryFile = async () => png;
+  sandbox.readBinaryFile = async () => Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  return sandbox;
+}
+
+test("screenshot hands channels and the model the pixels, then deletes the file", async () => {
+  resetConfig();
+  const sandbox = screenshotSandbox();
   const output = await tools.screenshot.execute({ app: "gnome-calculator" }, ctx(sandbox));
-  assert.match(output.path, /^\/tmp\/agent-desktop-eve\/screenshots\/.+\.png$/);
-  assert.equal(output.imageDataUrl, `data:image/png;base64,${png.toString("base64")}`);
+  assert.equal(output.imageDataUrl, `data:image/png;base64,${Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64")}`);
+  assert.equal(output.path, undefined);
+  assert.match(sandbox.commands.at(-1), /^rm -f '\/tmp\/agent-desktop-eve\/screenshots\/.+\.png'$/);
   const model = await tools.screenshot.toModelOutput(output);
   assert.equal(model.type, "content");
   assert.ok(!JSON.stringify(model).includes("/tmp/agent-desktop-eve"));
+});
+
+test("inlineScreenshots false keeps the file and sends no pixels anywhere", async () => {
+  resetConfig({ inlineScreenshots: false });
+  const sandbox = screenshotSandbox();
+  const output = await tools.screenshot.execute({ app: "gnome-calculator" }, ctx(sandbox));
+  assert.equal(output.imageDataUrl, undefined);
+  assert.match(output.path, /^\/tmp\/agent-desktop-eve\/screenshots\/.+\.png$/);
+  assert.ok(!sandbox.commands.some((command) => command.startsWith("rm -f")));
+  assert.equal((await tools.screenshot.toModelOutput(output)).type, "json");
+  resetConfig();
 });

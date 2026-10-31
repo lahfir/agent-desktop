@@ -20,18 +20,15 @@ export default defineExtension({
     manageDesktop: z.boolean().default(true),
     /** X display agent-desktop and launched apps use. */
     display: z.string().default(":99"),
-    /** Size of the managed virtual screen. */
-    screen: z
-      .object({ width: z.number().int().positive(), height: z.number().int().positive() })
-      .default({ width: 1280, height: 800 }),
     /**
      * Pass agent-desktop's global `--headed` flag, which allows physical pointer and keyboard input and focus changes.
      * Off by default: ref actions then use semantic accessibility calls only, and the pointer tools refuse.
      */
     headed: z.boolean().default(false),
-    /** Embed captured screenshots in the tool output as data URLs so channels/UIs can render them inline. */
+    /**
+     * Embed captured screenshots in the tool output as data URLs, so channels/UIs can render them inline and the
+     * model sees the pixels. When off, the output carries only the sandbox path.
+     */
     inlineScreenshots: z.boolean().default(true),
-    /** Also send screenshots to the model as images, for apps whose accessibility tree is empty. */
-    screenshotsToModel: z.boolean().default(true),
   }),
 });

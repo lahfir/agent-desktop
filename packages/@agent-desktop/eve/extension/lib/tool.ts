@@ -46,6 +46,14 @@ export const ref = z
   .string()
   .describe('Qualified element ref from the latest snapshot or find, like "@s8f3k2p9:e12". Refs expire when the UI changes.');
 
+export const point = z.string().describe('An element ref like "@s8f3k2p9:e12", or screen coordinates as "x,y".');
+
+/** A ref goes to `refFlag` (or stays positional without one); coordinates go to `xyFlag`. */
+export function pointArgs(target: string, refFlag: string | undefined, xyFlag: string): string[] {
+  if (target.startsWith("@")) return refFlag ? [`--${refFlag}=${target}`] : [target];
+  return [`--${xyFlag}=${target}`];
+}
+
 export const timeoutMs = z
   .number()
   .int()

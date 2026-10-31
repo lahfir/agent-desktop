@@ -12,7 +12,7 @@ It is modeled on [`@agent-browser/eve`](https://github.com/vercel-labs/agent-bro
 npm install @agent-desktop/eve
 ```
 
-`eve` is a peer dependency; the extension runs on the eve installed in your app.
+`eve` (1.0.0-rc.1 or later) is a peer dependency; the extension runs on the eve installed in your app.
 
 ## Mount
 
@@ -62,20 +62,18 @@ export default desktop({
   headed: false, // pass --headed: allow physical pointer/keyboard input and focus changes
 
   // Desktop
-  manageDesktop: true, // start Xvfb, a session bus, and openbox when they are not running
+  manageDesktop: true, // start Xvfb, a session bus, and openbox when they are not running; off uses the image's own session
   display: ":99", // X display for agent-desktop and launched apps
-  screen: { width: 1280, height: 800 },
 
   // Output
-  inlineScreenshots: true, // data URL in the tool output for channels/UIs
-  screenshotsToModel: true, // also send the pixels to the model
+  inlineScreenshots: true, // data URL in the tool output for channels/UIs and pixels for the model; off keeps the sandbox path
 
   // Install
   autoInstall: true, // install on first use, or replace a different agent-desktop minor
   installSpec: undefined, // npm spec; must install this package's agent-desktop minor
   installDesktop: true, // apt-install the desktop packages
   extraPackages: [], // extra apt packages, such as the apps to operate
-  binary: "agent-desktop",
+  binary: "agent-desktop", // a custom binary or path is used as is and never auto-installed
 });
 ```
 
@@ -104,7 +102,7 @@ export default defineTool({ ...close_app, approval: always() });
 
 ## How it works
 
-Each tool runs one `agent-desktop <command>` inside the sandbox from `ctx.getSandbox()`, in the managed desktop session (`DISPLAY`, the session bus, and accessibility variables), and returns the `data` of its JSON envelope. An error envelope becomes a tool error that keeps agent-desktop's `code`, `suggestion`, and `disposition.retry`, so the model only retries when the CLI says it is safe. If the sandbox runs a different agent-desktop minor than this package targets, tools reinstall it or fail with an install hint.
+Each tool runs one `agent-desktop <command>` inside the sandbox from `ctx.getSandbox()`, in the managed desktop session (`DISPLAY`, the session bus, and accessibility variables), and returns the `data` of its JSON envelope. An error envelope becomes a tool error that keeps agent-desktop's `code`, `suggestion`, and `disposition.retry`, so the model only retries when the CLI says it is safe. Each call has one five-minute budget that covers install, desktop start, and the command; when it runs out, the running sandbox command is aborted so a late action can't land after the tool failed. If the sandbox runs a different agent-desktop minor than this package targets, tools reinstall it or fail with an install hint. A failed install is reported again for a few minutes instead of rerunning apt and npm on every call.
 
 ## Develop
 

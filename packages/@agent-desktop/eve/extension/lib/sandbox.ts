@@ -21,23 +21,23 @@ export const DEFAULT_DISPLAY = ":99";
  * apt packages for a headless X11 desktop that agent-desktop can read: Xvfb,
  * a D-Bus session, the AT-SPI accessibility bus and GTK bridges, and openbox
  * as the window manager (window control and focus need one; openbox is the
- * X11 window manager agent-desktop's own Linux tests run against). xterm gives
- * the agent at least one accessible app to open.
+ * X11 window manager agent-desktop's own Linux tests run against). Apps the
+ * agent should operate come from `extraPackages`.
  */
 export const DESKTOP_APT_PACKAGES = [
   "at-spi2-core",
   "dbus-x11",
   "libatk-adaptor",
   "libgail-common",
-  "x11-utils",
   "openbox",
+  "x11-utils",
   "x11-xserver-utils",
   "xdotool",
-  "xterm",
   "xvfb",
 ] as const;
 
-const BOOTSTRAP_REVISION = "1";
+const SESSION_BUS_FILE = `${DESKTOP_ROOT}/dbus-session-address`;
+const A11Y_ENV = "export GTK_MODULES=gail:atk-bridge NO_AT_BRIDGE=0 ACCESSIBILITY_ENABLED=1 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1";
 
 export interface SandboxCommandResult {
   readonly exitCode?: number;
@@ -47,11 +47,7 @@ export interface SandboxCommandResult {
 
 /** Structural subset of eve's sandbox session; every `ctx.getSandbox()` result satisfies it. */
 export interface DesktopSandbox {
-  run(options: {
-    readonly command: string;
-    readonly env?: Record<string, string>;
-    readonly signal?: AbortSignal;
-  }): PromiseLike<SandboxCommandResult>;
+  run(options: { readonly command: string; readonly signal?: AbortSignal }): PromiseLike<SandboxCommandResult>;
 }
 
 export interface InstallAgentDesktopOptions {
@@ -71,18 +67,7 @@ export interface StartDesktopOptions {
   readonly height?: number;
 }
 
-/** Include this in the sandbox revalidation key so cached templates rebuild when the install changes. */
-export function agentDesktopRevalidationKey(options: InstallAgentDesktopOptions = {}): string {
-  return [
-    "agent-desktop",
-    `bootstrap-${BOOTSTRAP_REVISION}`,
-    options.installSpec ?? DEFAULT_AGENT_DESKTOP_INSTALL_SPEC,
-    options.installDesktop === false ? "no-desktop" : "desktop",
-    ...(options.extraPackages ?? []),
-  ].join(":");
-}
-
-/** Install the agent-desktop CLI and, by default, the desktop packages. Needs apt and root or passwordless sudo for the desktop. */
+/** Install the agent-desktop CLI and, by default, the desktop packages. The desktop needs apt and root or passwordless sudo. */
 export async function installAgentDesktop(
   sandbox: DesktopSandbox,
   options: InstallAgentDesktopOptions = {},
@@ -106,7 +91,7 @@ export async function installAgentDesktop(
 
 /**
  * Start the virtual display, a D-Bus session and the window manager. Safe to
- * repeat: each piece starts only when it is not already running. A resumed
+ * repeat: each piece starts only when its readiness check fails. A resumed
  * sandbox keeps files but not processes, so call this again (or let the tools
  * do it) after a resume.
  */
@@ -116,65 +101,72 @@ export async function startDesktop(sandbox: DesktopSandbox, options: StartDeskto
 
 /** A command that exits 0 when the display, session bus and window manager are all live. */
 export function desktopReadyCommand(display: string = DEFAULT_DISPLAY): string {
-  const d = quoteShellArg(display);
-  return [
-    `xdpyinfo -display ${d} >/dev/null 2>&1`,
-    `DBUS_SESSION_BUS_ADDRESS="$(cat ${DESKTOP_ROOT}/dbus-session-address 2>/dev/null)" dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply / org.freedesktop.DBus.GetId >/dev/null 2>&1`,
-    `DISPLAY=${d} xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -Eq 'window id # 0x[1-9a-f]'`,
-  ].join(" && ");
+  return [displayReady(display), sessionBusReady(), windowManagerReady(display)].join(" && ");
 }
 
 /**
- * Shell prefix that puts a command inside the managed desktop session. Apps
- * started under it register on the same accessibility bus agent-desktop reads.
+ * Shell prefix that puts a command inside the desktop session. For the
+ * managed desktop it also points at the managed session bus and runtime
+ * directory, so launched apps register on the bus agent-desktop reads.
+ * Otherwise it leaves the inherited session environment alone.
  */
-export function desktopEnvPrefix(display: string = DEFAULT_DISPLAY): string {
+export function desktopEnvPrefix(display: string = DEFAULT_DISPLAY, managed = true): string {
   return [
     `export DISPLAY=${quoteShellArg(display)}`,
-    `export XDG_RUNTIME_DIR=${DESKTOP_ROOT}/runtime`,
-    `export DBUS_SESSION_BUS_ADDRESS="$(cat ${DESKTOP_ROOT}/dbus-session-address 2>/dev/null)"`,
-    "export GTK_MODULES=gail:atk-bridge NO_AT_BRIDGE=0 ACCESSIBILITY_ENABLED=1 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1",
+    ...(managed
+      ? [`export XDG_RUNTIME_DIR=${DESKTOP_ROOT}/runtime`, `export DBUS_SESSION_BUS_ADDRESS="$(cat ${SESSION_BUS_FILE} 2>/dev/null)"`]
+      : []),
+    A11Y_ENV,
   ].join("; ");
 }
 
-export function startDesktopScript(options: StartDesktopOptions = {}): string {
-  const display = quoteShellArg(options.display ?? DEFAULT_DISPLAY);
+function displayReady(display: string): string {
+  return `xdpyinfo -display ${quoteShellArg(display)} >/dev/null 2>&1`;
+}
+
+function sessionBusReady(): string {
+  return `DBUS_SESSION_BUS_ADDRESS="$(cat ${SESSION_BUS_FILE} 2>/dev/null)" dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply / org.freedesktop.DBus.GetId >/dev/null 2>&1`;
+}
+
+function windowManagerReady(display: string): string {
+  return `DISPLAY=${quoteShellArg(display)} xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -Eq 'window id # 0x[1-9a-f]'`;
+}
+
+/** Poll a readiness check for up to `tenths` tenths of a second, then fail with the log. */
+function awaitReady(check: string, tenths: number, log: string, what: string): string[] {
+  return [
+    `for _ in $(seq 1 ${tenths}); do ${check} && break; sleep 0.1; done`,
+    `${check} || { cat ${log} >&2; echo '${what} did not start' >&2; exit 1; }`,
+  ];
+}
+
+function startDesktopScript(options: StartDesktopOptions): string {
+  const display = options.display ?? DEFAULT_DISPLAY;
+  const d = quoteShellArg(display);
   const size = `${options.width ?? 1280}x${options.height ?? 800}x24`;
   const root = DESKTOP_ROOT;
-  const wmReady = `DISPLAY=${display} xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -Eq 'window id # 0x[1-9a-f]'`;
   return [
     "set -eu",
     "for tool in Xvfb xdpyinfo dbus-launch openbox; do",
-    "  command -v \"$tool\" >/dev/null || { echo \"$tool is missing; run installAgentDesktop first\" >&2; exit 1; }",
+    '  command -v "$tool" >/dev/null || { echo "$tool is missing; run installAgentDesktop first" >&2; exit 1; }',
     "done",
     `mkdir -p ${root}/runtime && chmod 700 ${root} ${root}/runtime`,
     `export XDG_RUNTIME_DIR=${root}/runtime`,
-    // 1. The virtual display.
-    `if ! xdpyinfo -display ${display} >/dev/null 2>&1; then`,
-    `  setsid -f Xvfb ${display} -screen 0 ${size} -nolisten tcp +extension RANDR > ${root}/xvfb.log 2>&1`,
-    "  for _ in $(seq 1 50); do",
-    `    xdpyinfo -display ${display} >/dev/null 2>&1 && break`,
-    "    sleep 0.1",
-    "  done",
-    `  xdpyinfo -display ${display} >/dev/null 2>&1 || { cat ${root}/xvfb.log >&2; echo 'Xvfb did not start' >&2; exit 1; }`,
+    `if ! ${displayReady(display)}; then`,
+    `  setsid -f Xvfb ${d} -screen 0 ${size} -nolisten tcp +extension RANDR > ${root}/xvfb.log 2>&1`,
+    ...awaitReady(displayReady(display), 50, `${root}/xvfb.log`, "Xvfb"),
     "fi",
-    // 2. One session bus, reused across commands. AT-SPI's launcher is activated on it on first use.
-    `if DBUS_SESSION_BUS_ADDRESS="$(cat ${root}/dbus-session-address 2>/dev/null)" dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply / org.freedesktop.DBus.GetId >/dev/null 2>&1; then`,
-    `  export DBUS_SESSION_BUS_ADDRESS="$(cat ${root}/dbus-session-address)"`,
-    "else",
-    `  eval "$(DISPLAY=${display} dbus-launch --sh-syntax)"`,
-    `  printf '%s' "$DBUS_SESSION_BUS_ADDRESS" > ${root}/dbus-session-address`,
-    `  chmod 600 ${root}/dbus-session-address`,
+    // One session bus, reused across commands. AT-SPI's launcher is activated on it on first use.
+    `if ! ${sessionBusReady()}; then`,
+    `  eval "$(DISPLAY=${d} dbus-launch --sh-syntax)"`,
+    `  printf '%s' "$DBUS_SESSION_BUS_ADDRESS" > ${SESSION_BUS_FILE}`,
+    `  chmod 600 ${SESSION_BUS_FILE}`,
     "fi",
-    // 3. A window manager, so windows can be focused, moved and listed.
-    `if ! ${wmReady}; then`,
-    `  setsid -f env DISPLAY=${display} DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" openbox > ${root}/openbox.log 2>&1`,
-    "  for _ in $(seq 1 100); do",
-    `    ${wmReady} && break`,
-    "    sleep 0.1",
-    "  done",
-    `  ${wmReady} || { cat ${root}/openbox.log >&2; echo 'openbox did not claim the display' >&2; exit 1; }`,
-    `  DISPLAY=${display} xsetroot -solid '#1f1f1f' 2>/dev/null || true`,
+    `export DBUS_SESSION_BUS_ADDRESS="$(cat ${SESSION_BUS_FILE})"`,
+    `if ! ${windowManagerReady(display)}; then`,
+    `  setsid -f env DISPLAY=${d} openbox > ${root}/openbox.log 2>&1`,
+    ...awaitReady(windowManagerReady(display), 100, `${root}/openbox.log`, "openbox"),
+    `  DISPLAY=${d} xsetroot -solid '#1f1f1f' 2>/dev/null || true`,
     "fi",
   ].join("\n");
 }
@@ -188,12 +180,7 @@ function aptInstallCommand(packages: readonly string[]): string {
   ].join("\n");
 }
 
-async function runOrThrow(
-  sandbox: DesktopSandbox,
-  command: string,
-  label: string,
-  signal?: AbortSignal,
-): Promise<SandboxCommandResult> {
+async function runOrThrow(sandbox: DesktopSandbox, command: string, label: string, signal?: AbortSignal): Promise<void> {
   const result = await sandbox.run({ command, signal });
   if ((result.exitCode ?? 0) !== 0) {
     const detail = [result.stderr, result.stdout]
@@ -203,7 +190,6 @@ async function runOrThrow(
       .slice(-4000);
     throw new Error(`${label} failed (exit ${result.exitCode}): ${detail || "no output"}`);
   }
-  return result;
 }
 
 export function quoteShellArg(value: string): string {

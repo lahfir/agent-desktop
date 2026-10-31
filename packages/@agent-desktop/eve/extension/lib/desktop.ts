@@ -1,5 +1,6 @@
 import {
   AGENT_DESKTOP_VERSION,
+  DEFAULT_AGENT_DESKTOP_INSTALL_SPEC,
   desktopEnvPrefix,
   desktopReadyCommand,
   installAgentDesktop,
@@ -19,23 +20,29 @@ export interface DesktopToolContext {
 /** agent-desktop's JSON envelope: one per command on stdout. */
 interface Envelope {
   readonly ok: boolean;
-  readonly command?: string;
   readonly data?: unknown;
   readonly error?: {
     readonly code: string;
     readonly message: string;
     readonly suggestion?: string;
     readonly disposition?: { readonly delivery?: string; readonly retry?: string };
-    readonly details?: unknown;
   };
 }
 
 /**
- * Upper bound on acquiring the sandbox and on one command. A cold install of
- * the desktop packages can take a while; an unbounded await would leave the
- * turn stuck on a running tool.
+ * Budget for one tool call, covering sandbox acquisition, a cold install,
+ * desktop start and the command itself. Expiry aborts the running sandbox
+ * command, so a timed-out action cannot land after the tool reported failure.
  */
-const SANDBOX_DEADLINE_MS = 300_000;
+const CALL_DEADLINE_MS = 300_000;
+
+/**
+ * Install specs that recently failed in this process. Retrying on every call
+ * would repeat a slow apt and npm run, so a failure is reported again until it
+ * is a few minutes old.
+ */
+const failedInstalls = new Map<string, { readonly error: Error; readonly at: number }>();
+const INSTALL_RETRY_AFTER_MS = 300_000;
 
 /**
  * Run one agent-desktop command in the eve sandbox and return the `data` of
@@ -47,17 +54,22 @@ export async function runAgentDesktop<TData = unknown>(
   ctx: DesktopToolContext,
   args: readonly string[],
 ): Promise<TData> {
-  const sandbox = await requireSandbox(ctx);
-  const signal = ctx.abortSignal;
+  const deadline = AbortSignal.timeout(CALL_DEADLINE_MS);
+  const signal = ctx.abortSignal ? AbortSignal.any([ctx.abortSignal, deadline]) : deadline;
   const config = extension.config;
+
+  const sandbox = await bounded(ctx.getSandbox(), signal);
+  if (sandbox === null || sandbox === undefined) {
+    throw new Error("The desktop tools require an eve sandbox. Configure agent/sandbox.ts in the consuming agent.");
+  }
   if (config.autoInstall) await ensureInstalled(sandbox, signal);
   if (config.manageDesktop) await ensureDesktop(sandbox, signal);
 
   const command = [
-    desktopEnvPrefix(config.display),
+    desktopEnvPrefix(config.display, config.manageDesktop),
     [config.binary, ...(config.headed ? ["--headed"] : []), ...args].map(quoteShellArg).join(" "),
   ].join("; ");
-  const raw = await withDeadline(sandbox.run({ command, signal }), "The desktop command");
+  const raw = await bounded(sandbox.run({ command, signal }), signal);
   return parseEnvelope<TData>(raw.stdout ?? "", raw.stderr ?? "", args[0] ?? "command");
 }
 
@@ -84,60 +96,55 @@ function parseEnvelope<TData>(stdout: string, stderr: string, name: string): TDa
   );
 }
 
-async function requireSandbox(ctx: DesktopToolContext): Promise<DesktopSandbox> {
-  const sandbox = await withDeadline(ctx.getSandbox(), "The sandbox session");
-  if (sandbox === null || sandbox === undefined) {
-    throw new Error("The desktop tools require an eve sandbox. Configure agent/sandbox.ts in the consuming agent.");
-  }
-  return sandbox;
-}
-
-async function ensureInstalled(sandbox: DesktopSandbox, signal?: AbortSignal): Promise<void> {
+async function ensureInstalled(sandbox: DesktopSandbox, signal: AbortSignal): Promise<void> {
   const config = extension.config;
   const installed = await probeVersion(sandbox, signal);
   if (installed !== undefined && matchesPackageMinor(installed)) return;
-  // Reinstalling a custom spec or binary would repeat on every call, so report the mismatch instead.
-  const userOwned = config.installSpec !== undefined || config.binary !== "agent-desktop";
-  if (installed !== undefined && userOwned) throw versionMismatchError(installed);
-  await withDeadline(
-    installAgentDesktop(sandbox, {
+
+  // A custom binary is the app's to install; never replace it with the default package.
+  if (config.binary !== "agent-desktop") {
+    throw installed === undefined
+      ? new Error(`agent-desktop binary ${config.binary} was not found in the sandbox.`)
+      : versionMismatchError(installed);
+  }
+  // Reinstalling a custom spec would install the same mismatched version again.
+  if (installed !== undefined && config.installSpec !== undefined) throw versionMismatchError(installed);
+
+  const spec = config.installSpec ?? DEFAULT_AGENT_DESKTOP_INSTALL_SPEC;
+  const failed = failedInstalls.get(spec);
+  if (failed !== undefined && Date.now() - failed.at < INSTALL_RETRY_AFTER_MS) throw failed.error;
+  try {
+    await bounded(
+      installAgentDesktop(sandbox, {
+        signal,
+        installSpec: config.installSpec,
+        installDesktop: config.installDesktop,
+        extraPackages: config.extraPackages,
+      }),
       signal,
-      installSpec: config.installSpec,
-      installDesktop: config.installDesktop,
-      extraPackages: config.extraPackages,
-    }),
-    "Installing agent-desktop",
-  );
-  const reinstalled = await probeVersion(sandbox, signal);
-  if (reinstalled === undefined || !matchesPackageMinor(reinstalled)) {
-    throw versionMismatchError(reinstalled ?? "missing");
+    );
+    const reinstalled = await probeVersion(sandbox, signal);
+    if (reinstalled === undefined || !matchesPackageMinor(reinstalled)) throw versionMismatchError(reinstalled ?? "missing");
+    failedInstalls.delete(spec);
+  } catch (error) {
+    if (!signal.aborted) failedInstalls.set(spec, { error: error as Error, at: Date.now() });
+    throw error;
   }
 }
 
-async function ensureDesktop(sandbox: DesktopSandbox, signal?: AbortSignal): Promise<void> {
-  const config = extension.config;
+async function ensureDesktop(sandbox: DesktopSandbox, signal: AbortSignal): Promise<void> {
+  const display = extension.config.display;
   // One cheap check when the desktop is live; a resumed sandbox loses its processes and starts them again here.
-  const ready = await withDeadline(
-    sandbox.run({ command: desktopReadyCommand(config.display), signal }),
-    "The desktop readiness check",
-  );
+  const ready = await bounded(sandbox.run({ command: desktopReadyCommand(display), signal }), signal);
   if ((ready.exitCode ?? 0) === 0) return;
-  await withDeadline(
-    startDesktop(sandbox, {
-      signal,
-      display: config.display,
-      width: config.screen.width,
-      height: config.screen.height,
-    }),
-    "Starting the desktop",
-  );
+  await bounded(startDesktop(sandbox, { signal, display }), signal);
 }
 
 /** The installed CLI version, or undefined when the binary is missing. */
-async function probeVersion(sandbox: DesktopSandbox, signal?: AbortSignal): Promise<string | undefined> {
-  const probe = await withDeadline(
+async function probeVersion(sandbox: DesktopSandbox, signal: AbortSignal): Promise<string | undefined> {
+  const probe = await bounded(
     sandbox.run({ command: `${quoteShellArg(extension.config.binary)} --version 2>/dev/null`, signal }),
-    "The agent-desktop install probe",
+    signal,
   );
   if ((probe.exitCode ?? 0) !== 0) return undefined;
   return (probe.stdout ?? "").trim().split(/\s+/).at(-1) ?? "";
@@ -155,19 +162,24 @@ function versionMismatchError(installed: string): Error {
   );
 }
 
-async function withDeadline<T>(work: PromiseLike<T>, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+/** Rejects as soon as the call's signal aborts, even if the work ignores it. */
+async function bounded<T>(work: PromiseLike<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted();
+  let onAbort: (() => void) | undefined;
   try {
     return await Promise.race([
       work,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`${label} did not respond within ${SANDBOX_DEADLINE_MS / 1000}s. Try again shortly.`)),
-          SANDBOX_DEADLINE_MS,
-        );
+        onAbort = () =>
+          reject(
+            signal.reason instanceof DOMException && signal.reason.name === "TimeoutError"
+              ? new Error(`The desktop tool call did not finish within ${CALL_DEADLINE_MS / 1000}s and was stopped.`)
+              : signal.reason,
+          );
+        signal.addEventListener("abort", onAbort, { once: true });
       }),
     ]);
   } finally {
-    clearTimeout(timer);
+    if (onAbort) signal.removeEventListener("abort", onAbort);
   }
 }

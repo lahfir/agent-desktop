@@ -32,7 +32,7 @@ test("drives gnome-calculator through the desktop tools", { skip: !live, timeout
   const press = async (name) => {
     const found = await tools.find.execute({ app: "gnome-calculator", role: "button", name, exact: true, first: true }, ctx);
     await tools.click.execute({ ref: found.match.ref_id }, ctx);
-    await tools.wait.execute({ ms: 300 }, ctx);
+    await tools.wait.execute({ condition: "time", ms: 300 }, ctx);
   };
   for (const key of ["7", "×", "6", "="]) await press(key);
 

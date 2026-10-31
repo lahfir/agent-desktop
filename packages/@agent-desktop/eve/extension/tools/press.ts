@@ -9,5 +9,5 @@ export default desktopTool({
     app,
     windowId,
   }),
-  argv: (input) => ["press", input.combo, ...flag("app", input.app), ...flag("window-id", input.windowId)],
+  argv: (input) => ["press", ...flag("app", input.app), ...flag("window-id", input.windowId), "--", input.combo],
 });
