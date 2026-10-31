@@ -22,7 +22,10 @@ test("drives gnome-calculator through the desktop tools", { skip: !live, timeout
   assert.equal(launched.app, "gnome-calculator");
 
   const press = async (name) => {
-    const found = await tools.find.execute({ app: "gnome-calculator", role: "button", name, exact: true, first: true }, ctx);
+    // Button names differ across gnome-calculator versions ("7" on Ubuntu,
+    // "7 7" elsewhere), so match a name substring instead of an exact one.
+    const found = await tools.find.execute({ app: "gnome-calculator", role: "button", name, first: true }, ctx);
+    assert.ok(found.match, `no button whose name contains "${name}"`);
     await tools.click.execute({ ref: found.match.ref_id }, ctx);
     await tools.wait.execute({ condition: "time", ms: 300 }, ctx);
   };
