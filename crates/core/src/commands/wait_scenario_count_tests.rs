@@ -202,3 +202,60 @@ fn text_wait_with_count_on_complete_observation_times_out_when_count_differs() {
     assert_eq!(details["kind"], "wait_timeout");
     assert_eq!(details["expected_count"], 1);
 }
+
+struct BudgetRecordingAdapter {
+    budgets: std::sync::Mutex<Vec<std::time::Duration>>,
+}
+
+impl ObservationOps for BudgetRecordingAdapter {
+    fn observe_tree(
+        &self,
+        root: crate::locator::live_locator::ObservationRoot<'_>,
+        request: &crate::locator::live_locator::ObservationRequest,
+    ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
+        let mut budgets = self.budgets.lock().expect("budget log");
+        budgets.push(request.deadline.remaining());
+        let tree = if budgets.len() == 1 {
+            doc_window(vec![truncated_container(40)])
+        } else {
+            doc_window(vec![ready_button("deep text")])
+        };
+        crate::adapter::observed_tree(&root, tree)
+    }
+
+    fn list_windows(
+        &self,
+        _filter: &WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<WindowInfo>, AdapterError> {
+        test_app_windows()
+    }
+}
+
+impl ActionOps for BudgetRecordingAdapter {}
+
+impl InputOps for BudgetRecordingAdapter {}
+
+impl SystemOps for BudgetRecordingAdapter {}
+
+#[test]
+fn text_wait_gives_the_rest_of_the_wait_after_an_incomplete_observation() {
+    let _guard = crate::refs::refs_test_support::HomeGuard::new();
+    let adapter = BudgetRecordingAdapter {
+        budgets: std::sync::Mutex::new(Vec::new()),
+    };
+
+    let body = execute(
+        text_wait_args("deep text", None, 20_000),
+        &adapter,
+        &CommandContext::default(),
+    )
+    .expect("text found on the second observation");
+
+    assert_eq!(body["found"], true);
+    let budgets = adapter.budgets.lock().expect("budget log");
+    let first_budget =
+        std::time::Duration::from_millis(crate::snapshot::DEFAULT_SNAPSHOT_TIMEOUT_MS);
+    assert!(budgets[0] <= first_budget);
+    assert!(budgets[1] > first_budget);
+}
