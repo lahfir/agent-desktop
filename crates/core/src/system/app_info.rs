@@ -55,13 +55,19 @@ fn matches_exact_or_with_exe_suffix(actual: &str, expected: &str) -> bool {
     matches_after_filtering(actual, &expected_with_exe)
 }
 
+const SOFT_HYPHEN: char = '\u{00AD}';
+
+fn is_ignored_name_character(character: char) -> bool {
+    character == SOFT_HYPHEN || crate::tree::search_text::is_bidirectional_control(character)
+}
+
 fn matches_after_filtering(actual: &str, expected: &str) -> bool {
     let mut actual_chars = actual
         .chars()
-        .filter(|character| !crate::tree::search_text::is_bidirectional_control(*character));
+        .filter(|character| !is_ignored_name_character(*character));
     let mut expected_chars = expected
         .chars()
-        .filter(|character| !crate::tree::search_text::is_bidirectional_control(*character));
+        .filter(|character| !is_ignored_name_character(*character));
     loop {
         match (actual_chars.next(), expected_chars.next()) {
             (Some(actual_char), Some(expected_char))
@@ -84,6 +90,13 @@ mod tests {
             process_instance: None,
             presentation: None,
         }
+    }
+
+    #[test]
+    fn soft_hyphens_are_ignored_on_both_sides() {
+        assert!(app_name_matches("Micro\u{00AD}soft Word", "Microsoft Word"));
+        assert!(app_name_matches("Microsoft Word", "Micro\u{00AD}soft Word"));
+        assert!(!app_name_matches("Microsoft Word", "Micro-soft Word"));
     }
 
     #[test]
