@@ -169,17 +169,17 @@ agent-desktop type <REF> --stdin [--timeout-ms MS]
   </tbody>
 </table>
 
-Use `--stdin` with `type` or `set-value` to read text from a pipe or file. Replace the example ref with one from your snapshot:
+Use `--stdin` with `type` or `set-value` to read text from a pipe or redirected file. Terminal input is rejected. Replace the example ref with one from your snapshot:
 
 ```bash
 printf '%s' 'hello' | agent-desktop type @s8f3k2p9:e2 --stdin
 ```
 
-The command waits until the input ends before starting its action timeout. It keeps empty input and line breaks unchanged. Input must be valid UTF-8 without NUL bytes (`\0`). The limits are 10,000 bytes for `type` and 128 KiB for `set-value`.
+The action timeout starts after the input ends; it doesn't limit this wait. Empty input and all line breaks are kept, including a final newline. Use `printf '%s'` to avoid adding one. Input must be valid UTF-8 without NUL bytes (`\0`). The limits are 10,000 bytes for `type` and 128 KiB for `set-value`.
 
-Provide either `--stdin` or a command-line value. To enter the text `--stdin`, put it after `--`: `agent-desktop type @s8f3k2p9:e2 -- --stdin`. In batch commands, use the JSON `text` field for `type` or `value` field for `set-value`.
+Provide either `--stdin` or a command-line value. To enter the text `--stdin`, put it after `--`: `agent-desktop type @s8f3k2p9:e2 -- --stdin`. Batch uses the JSON `text` or `value` field, which puts the text in process arguments. Run secret steps as separate `--stdin` commands.
 
-`--stdin` keeps text out of process arguments. The response may still include the field's value in `post_state`.
+`--stdin` keeps text out of process arguments and omits observed `value` fields from JSON results, including `post_state.value`. Other app text and screenshot artifacts aren't redacted.
 
 `type` inserts; it does not replace. After `set-value hello`, `type ' world'` into the same entry produced this, because the insertion point was at the start:
 

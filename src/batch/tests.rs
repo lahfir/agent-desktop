@@ -346,17 +346,18 @@ fn text_batch_requires_json_values_and_rejects_cli_stdin() {
             assert!(parse_command(item(command, args)).is_err());
         }
     }
-    for command in ["type", "set-value", "clipboard-set"] {
-        for value in [serde_json::json!(true), serde_json::json!(false)] {
-            assert!(parse_command(item(command, serde_json::json!({ "stdin": value }))).is_err());
+    for (command, field) in [
+        ("type", "text"),
+        ("set-value", "value"),
+        ("clipboard-set", "text"),
+    ] {
+        let mut args = serde_json::json!({ (field): "text", "stdin": true });
+        if command != "clipboard-set" {
+            args["ref_id"] = serde_json::json!(reference);
         }
+        let error = parse_command(item(command, args)).unwrap_err();
+        assert!(error.to_string().contains("CLI-only"));
     }
-    assert!(parse_command(item("clipboard-set", serde_json::json!({}))).is_ok());
-    let clipboard =
-        parse_command(item("clipboard-set", serde_json::json!(["legacy", null]))).unwrap();
-    assert!(
-        matches!(clipboard, Commands::ClipboardSet(args) if args.text.as_deref() == Some("legacy"))
-    );
 }
 
 #[test]

@@ -192,7 +192,7 @@ pub(crate) struct ClipboardSetArgs {
     #[arg(
         long,
         conflicts_with_all = ["text", "image", "file_url"],
-        help = "Read up to 128 KiB of UTF-8 text from stdin until EOF"
+        help = "Read up to 128 KiB of UTF-8 text from a pipe or file"
     )]
     #[serde(skip)]
     pub stdin: bool,

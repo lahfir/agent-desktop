@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 pub(super) fn forward(
     cli: &crate::Cli,
-    command: &crate::Commands,
+    command: &mut crate::Commands,
 ) -> Result<serde_json::Value, AppError> {
     let args = std::env::args_os()
         .skip(1)
@@ -17,7 +17,8 @@ pub(super) fn forward(
                 .map_err(|_| AppError::invalid_input("Host arguments must be UTF-8"))
         })
         .collect::<Result<_, _>>()?;
-    forward_args(cli, command, args, None, command_stdin_text(command)?)
+    let stdin_text = crate::cli_args::stdin::input(command).and_then(|value| value.clone());
+    forward_args(cli, command, args, None, stdin_text)
 }
 
 pub(super) fn forward_args(
@@ -65,21 +66,6 @@ pub(super) fn forward_args(
             .with_disposition(DeliverySemantics::uncertain())
             .into()
     })
-}
-
-pub(super) fn command_stdin_text(command: &crate::Commands) -> Result<Option<String>, AppError> {
-    let (requested, text) = match command {
-        crate::Commands::Type(args) => (args.stdin, args.text.as_ref()),
-        crate::Commands::SetValue(args) => (args.stdin, args.value.as_ref()),
-        crate::Commands::ClipboardSet(args) => (args.stdin, args.text.as_ref()),
-        _ => (false, None),
-    };
-    if requested {
-        return text.cloned().map(Some).ok_or_else(|| {
-            AppError::invalid_input("stdin text was not resolved by the calling process")
-        });
-    }
-    Ok(None)
 }
 
 fn exchange(

@@ -39,3 +39,27 @@ fn stdin_read_failures_are_generic() {
     assert_eq!(error.code(), "INVALID_ARGS");
     assert!(!error.to_string().contains("private marker"));
 }
+
+#[test]
+fn stdin_flags_conflict_with_other_input_sources() {
+    use clap::Parser;
+    for args in [
+        vec!["ad", "type", "@s8f3k2p9:e1"],
+        vec!["ad", "set-value", "@s8f3k2p9:e1"],
+        vec!["ad", "clipboard-set"],
+    ] {
+        let parse = |extra: &[&str]| crate::Cli::try_parse_from(args.iter().chain(extra).copied());
+        let mut command = parse(&["--stdin"]).unwrap().command.unwrap();
+        assert!(super::input(&mut command).is_some());
+        assert!(parse(&["text", "--stdin"]).is_err());
+        let mut literal = parse(&["--", "--stdin"]).unwrap().command.unwrap();
+        assert!(super::input(&mut literal).is_none());
+        if args[1] == "clipboard-set" {
+            for flag in ["--image", "--file-url"] {
+                assert!(parse(&["--stdin", flag, "file"]).is_err());
+            }
+        } else {
+            assert!(parse(&[]).is_err());
+        }
+    }
+}

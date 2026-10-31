@@ -136,7 +136,7 @@ fn run() -> ExitCode {
     }
     #[cfg(target_os = "macos")]
     if !cmd.needs_caller_process() {
-        return match command_host::forward(&cli, &cmd) {
+        return match command_host::forward(&cli, &mut cmd) {
             Ok(response) => match emit_response(&response) {
                 Err(error) => report_output_failure(error),
                 Ok(()) if response["ok"] == true => ExitCode::SUCCESS,

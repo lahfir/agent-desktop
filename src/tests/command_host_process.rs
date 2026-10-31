@@ -199,9 +199,9 @@ fn cli_forwards_stdin_outside_the_host_arguments() {
     let listener = UnixListener::bind(&socket).unwrap();
     std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600)).unwrap();
 
-    let text = "private\r\n--stdin";
+    let text = "\u{1}".repeat(128 * 1024);
     let mut child = Command::new(env!("CARGO_BIN_EXE_agent-desktop"))
-        .args(["type", "@s8f3k2p9:e1", "--stdin"])
+        .args(["clipboard-set", "--stdin"])
         .env("AGENT_DESKTOP_HOME", &scratch.0)
         .env("TMPDIR", &scratch.0)
         .env_remove("AGENT_DESKTOP_SESSION")
@@ -228,6 +228,7 @@ fn cli_forwards_stdin_outside_the_host_arguments() {
         assert!(Instant::now() < deadline, "stdin client did not connect");
         std::thread::sleep(Duration::from_millis(10));
     };
+    stream.set_nonblocking(false).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(10)))
         .unwrap();
@@ -238,7 +239,7 @@ fn cli_forwards_stdin_outside_the_host_arguments() {
     let request: serde_json::Value = serde_json::from_str(&frame).unwrap();
     writeln!(
         stream,
-        r#"{{"version":"2.5","ok":false,"command":"type","error":{{"code":"STALE_REF","message":"test request rejected"}}}}"#
+        r#"{{"version":"2.5","ok":false,"command":"clipboard-set","error":{{"code":"STALE_REF","message":"test request rejected"}}}}"#
     )
     .unwrap();
     let output = child.wait_with_output().unwrap();
@@ -249,7 +250,7 @@ fn cli_forwards_stdin_outside_the_host_arguments() {
     assert_eq!(request["stdin_text"], text);
     assert_eq!(
         request["args"],
-        serde_json::json!(["type", "@s8f3k2p9:e1", "--stdin"])
+        serde_json::json!(["clipboard-set", "--stdin"])
     );
 }
 

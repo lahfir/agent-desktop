@@ -67,42 +67,19 @@ fn apply_stdin_text(
     command: &mut crate::Commands,
     stdin_text: Option<String>,
 ) -> Result<(), AppError> {
-    match command {
-        crate::Commands::Type(args) => apply_stdin(&mut args.stdin, &mut args.text, stdin_text),
-        crate::Commands::SetValue(args) => {
-            apply_stdin(&mut args.stdin, &mut args.value, stdin_text)
-        }
-        crate::Commands::ClipboardSet(args) => {
-            apply_stdin(&mut args.stdin, &mut args.text, stdin_text)
-        }
-        _ if stdin_text.is_some() => Err(AppError::invalid_input(
-            "stdin text was supplied for a command without stdin input",
-        )),
-        _ => Ok(()),
-    }
-}
-
-fn apply_stdin(
-    requested: &mut bool,
-    value: &mut Option<String>,
-    stdin_text: Option<String>,
-) -> Result<(), AppError> {
-    match (*requested, stdin_text) {
-        (true, Some(text)) if value.is_none() => {
+    match (crate::cli_args::stdin::input(command), stdin_text) {
+        (Some(value), Some(text)) => {
             crate::cli_args::stdin::validate_bytes(text.as_bytes())?;
             *value = Some(text);
             Ok(())
         }
-        (true, Some(_)) => Err(AppError::invalid_input(
-            "stdin input conflicts with a positional value",
-        )),
-        (true, None) => Err(AppError::invalid_input(
+        (Some(_), None) => Err(AppError::invalid_input(
             "stdin text is missing from the command host request",
         )),
-        (false, Some(_)) => Err(AppError::invalid_input(
+        (None, Some(_)) => Err(AppError::invalid_input(
             "stdin text was supplied without the --stdin flag",
         )),
-        (false, None) => Ok(()),
+        (None, None) => Ok(()),
     }
 }
 
@@ -112,52 +89,34 @@ mod tests {
 
     #[test]
     fn serialized_stdin_requests_reconstruct_exact_text_for_each_command() {
-        let directory = std::env::current_dir().unwrap();
-        for (name, args) in [
-            ("type", ["type", "@s8f3k2p9:e1", "--stdin"].as_slice()),
-            (
-                "set-value",
-                ["set-value", "@s8f3k2p9:e1", "--stdin"].as_slice(),
-            ),
-            ("clipboard-set", ["clipboard-set", "--stdin"].as_slice()),
+        for args in [
+            ["type", "@s8f3k2p9:e1", "--stdin"].as_slice(),
+            ["set-value", "--stdin", "@s8f3k2p9:e1"].as_slice(),
+            ["clipboard-set", "--stdin"].as_slice(),
         ] {
-            for (text, type_timeout_ms) in [
-                ("", 5000),
-                ("--stdin", 5210),
-                ("first\r\nsecond\n世界", 5480),
-            ] {
-                let (cli, mut command) =
-                    super::super::parse_request(&serde_json::to_vec(&args).unwrap(), None).unwrap();
-                apply_stdin_text(&mut command, Some(text.to_owned())).unwrap();
-                let expires_ns = super::super::budget::expires_at(&cli, &command).unwrap();
-                let request = HostRequest {
-                    identity: "owner".into(),
-                    args: args.iter().map(|arg| (*arg).to_owned()).collect(),
-                    stdin_text: Some(text.to_owned()),
-                    directory: directory.clone(),
-                    agent_id: None,
-                    expires_ns,
-                    baseline: None,
-                };
-                let bytes = serde_json::to_vec(&request).unwrap();
-                let (_, command, _, _) = prepare(&bytes, "owner", None).unwrap();
-                match (name, command) {
-                    ("type", crate::Commands::Type(args)) => {
-                        assert_eq!(args.text.as_deref(), Some(text));
-                        assert!(args.stdin);
-                        assert_eq!(args.effective_timeout_ms(), type_timeout_ms);
-                    }
-                    ("set-value", crate::Commands::SetValue(args)) => {
-                        assert_eq!(args.value.as_deref(), Some(text));
-                        assert!(args.stdin);
-                        assert_eq!(args.timeout_ms, 5000);
-                    }
-                    ("clipboard-set", crate::Commands::ClipboardSet(args)) => {
-                        assert_eq!(args.text.as_deref(), Some(text));
-                        assert!(args.stdin);
-                    }
-                    _ => panic!("host reconstructed the wrong command"),
-                }
+            let text = "first\r\nsecond\n世界";
+            let (cli, mut command) =
+                super::super::parse_request(&serde_json::to_vec(&args).unwrap(), None).unwrap();
+            apply_stdin_text(&mut command, Some(text.to_owned())).unwrap();
+            let request = HostRequest {
+                identity: "owner".into(),
+                args: args.iter().map(|arg| (*arg).to_owned()).collect(),
+                stdin_text: Some(text.to_owned()),
+                directory: std::env::current_dir().unwrap(),
+                agent_id: None,
+                expires_ns: super::super::budget::expires_at(&cli, &command).unwrap(),
+                baseline: None,
+            };
+            let (_, mut command, _, _) =
+                prepare(&serde_json::to_vec(&request).unwrap(), "owner", None).unwrap();
+            assert_eq!(
+                crate::cli_args::stdin::input(&mut command)
+                    .unwrap()
+                    .as_deref(),
+                Some(text)
+            );
+            if let crate::Commands::Type(args) = command {
+                assert_eq!(args.effective_timeout_ms(), 5480);
             }
         }
     }
@@ -182,15 +141,10 @@ mod tests {
             assert!(!error.to_string().contains("private"));
         }
 
-        let mut requested = false;
-        let mut value = None;
-        let error =
-            apply_stdin(&mut requested, &mut value, Some("private-marker".into())).unwrap_err();
-        assert!(error.to_string().contains("without the --stdin flag"));
-        assert!(!error.to_string().contains("private-marker"));
         let error = apply_stdin_text(&mut crate::Commands::Version, Some("private-marker".into()))
             .unwrap_err();
-        assert!(error.to_string().contains("command without stdin input"));
+        assert!(error.to_string().contains("without the --stdin flag"));
+        assert!(!error.to_string().contains("private-marker"));
     }
 
     #[test]

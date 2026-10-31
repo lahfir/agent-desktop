@@ -29,6 +29,14 @@ impl ObservationOps for FailingAdapter {
 impl ActionOps for FailingAdapter {}
 
 impl InputOps for FailingAdapter {
+    fn set_clipboard_content(
+        &self,
+        _content: &agent_desktop_core::ClipboardContent,
+        _lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        Err(self.0.clone())
+    }
+
     fn clear_clipboard(&self, _lease: &InteractionLease) -> Result<OperationReport, AdapterError> {
         Err(self.0.clone())
     }
@@ -177,4 +185,27 @@ fn batch_entries_settle_their_failures_by_their_own_command() {
         |index: usize| output["results"][index]["error"]["disposition"]["delivery"].clone();
     assert_eq!(delivery(0), "not_delivered");
     assert_eq!(delivery(1), "unknown");
+}
+
+#[test]
+fn stdin_dispatch_omits_values_and_preserves_delivery() {
+    let data = json!({"post_state": {"value": "private", "enabled": true},
+        "after_action": {"steps": [{"label": "SetValue", "value": "private"}]}});
+    let redacted = json!({"post_state": {"enabled": true},
+        "after_action": {"steps": [{"label": "SetValue"}]}});
+    for (argument, expected) in [("--stdin", redacted.clone()), ("private", data.clone())] {
+        let error = failure_of(
+            AdapterError::new(ErrorCode::ActionFailed, "verification failed")
+                .with_details(data.clone())
+                .with_disposition(DeliverySemantics::uncertain()),
+            &["clipboard-set", argument],
+        );
+        assert_eq!(error.code, ErrorCode::ActionFailed);
+        assert_eq!(error.details, Some(expected));
+        assert_eq!(error.disposition, DeliverySemantics::uncertain());
+    }
+    assert_eq!(
+        crate::cli_args::stdin::redact_result(Ok(data), true).unwrap(),
+        redacted
+    );
 }

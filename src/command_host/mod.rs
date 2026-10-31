@@ -41,7 +41,7 @@ mod test_dir;
 
 pub(crate) fn forward(
     cli: &crate::Cli,
-    command: &crate::Commands,
+    command: &mut crate::Commands,
 ) -> Result<serde_json::Value, AppError> {
     client::forward(cli, command)
 }

@@ -45,7 +45,7 @@ pub(crate) struct TypeArgs {
     pub timeout_ms: Option<u64>,
     #[arg(
         long,
-        help = "Read up to 10,000 bytes of UTF-8 text from stdin until EOF"
+        help = "Read up to 10,000 bytes of UTF-8 text from a pipe or file"
     )]
     #[serde(skip)]
     pub stdin: bool,
@@ -84,7 +84,7 @@ pub(crate) struct SetValueArgs {
     )]
     #[serde(default = "default_ref_timeout_ms")]
     pub timeout_ms: u64,
-    #[arg(long, help = "Read up to 128 KiB of UTF-8 text from stdin until EOF")]
+    #[arg(long, help = "Read up to 128 KiB of UTF-8 text from a pipe or file")]
     #[serde(skip)]
     pub stdin: bool,
 }
