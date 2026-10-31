@@ -114,6 +114,7 @@ fn spawn(
         .env(MARKER, super::endpoint::PROTOCOL_VERSION)
         .env(SOCKET_ENV, socket)
         .process_group(0)
+        .current_dir("/")
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

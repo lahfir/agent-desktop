@@ -103,12 +103,11 @@ mod tests {
     #[test]
     fn an_accepted_request_leaves_the_host_outside_the_caller_directory() {
         let _cwd = CurrentDirectoryGuard::new();
-        let caller = super::super::test_dir::TestDir::new();
         let (cli, command) = super::super::parse_request(br#"["version"]"#, None).unwrap();
         let bytes = serde_json::to_vec(&HostRequest {
             identity: "owner".into(),
             args: vec!["version".into()],
-            directory: caller.path().to_path_buf(),
+            directory: std::env::temp_dir(),
             agent_id: None,
             expires_ns: super::super::budget::expires_at(&cli, &command).unwrap(),
             baseline: None,

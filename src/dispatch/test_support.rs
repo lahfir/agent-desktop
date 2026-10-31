@@ -6,6 +6,7 @@ use agent_desktop_core::{ActionOps, AdapterError, ErrorCode, InputOps, Observati
 
 static HOME_LOCK: Mutex<()> = Mutex::new(());
 static HOME_ID: AtomicU64 = AtomicU64::new(1);
+#[cfg(unix)]
 static CURRENT_DIRECTORY_LOCK: Mutex<()> = Mutex::new(());
 
 /// Takes the lock back from a poisoned mutex rather than panicking on it.
@@ -60,11 +61,13 @@ impl Drop for HomeGuard {
 
 /// Serializes tests that read or change the process working directory, which
 /// every test thread shares, and restores it on drop.
+#[cfg(unix)]
 pub(crate) struct CurrentDirectoryGuard {
     previous: PathBuf,
     _lock: std::sync::MutexGuard<'static, ()>,
 }
 
+#[cfg(unix)]
 impl CurrentDirectoryGuard {
     pub(crate) fn new() -> Self {
         let lock = CURRENT_DIRECTORY_LOCK
@@ -77,6 +80,7 @@ impl CurrentDirectoryGuard {
     }
 }
 
+#[cfg(unix)]
 impl Drop for CurrentDirectoryGuard {
     fn drop(&mut self) {
         let _ = std::env::set_current_dir(&self.previous);
