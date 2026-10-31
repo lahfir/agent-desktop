@@ -115,6 +115,18 @@ pub(super) fn build_report(
     hit_test: Option<(&NativeHandle, &dyn PlatformAdapter)>,
     deadline: crate::Deadline,
 ) -> Result<ActionabilityReport, AdapterError> {
+    let mut semantic_request;
+    let request = if request.policy.is_headed()
+        && let Some((handle, adapter)) = hit_test
+        && adapter.headed_requirement(handle, request, deadline)?
+            == crate::HeadedRequirement::FocusedApplication
+    {
+        semantic_request = request.clone();
+        semantic_request.policy = crate::InteractionPolicy::headless();
+        &semantic_request
+    } else {
+        request
+    };
     let requirements = ActionabilityRequirements::for_action(&request.action);
     let pointer_delivery =
         requirements.pointer_delivery(&request.action, &evidence.available_actions, request.policy);

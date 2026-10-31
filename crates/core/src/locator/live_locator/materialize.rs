@@ -122,6 +122,12 @@ pub(crate) fn ref_entry(
 
 fn apply_source(entry: &mut RefEntry, source: &ObservationSource, node_path: &RefPath) {
     match source {
+        ObservationSource::Application { app, surface } => {
+            entry.process.pid = app.pid;
+            entry.process.process_instance = app.process_instance.clone();
+            entry.source.source_app = Some(app.name.clone());
+            entry.source.source_surface = *surface;
+        }
         ObservationSource::Window { window, surface } => {
             entry.process.pid = window.pid;
             entry.source.source_app = Some(window.app.clone());

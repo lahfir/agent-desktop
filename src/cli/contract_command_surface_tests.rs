@@ -17,6 +17,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "operation_response",
     "point_resolve",
     "pointer_action",
+    "post_action_observation",
     "query",
     "find_live_test_support",
     "surface_scope",

@@ -123,7 +123,7 @@ static NSString *agent_desktop_application_name(NSRunningApplication *app) {
     return name;
 }
 
-AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(void) {
+AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(uint8_t frontmostOnly) {
     AgentDesktopBytesResult result = {
         .status = 5, .failureField = NULL, .failureIndex = -1,
         .failurePID = 0, .bytes = NULL, .length = 0
@@ -131,8 +131,13 @@ AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(void) {
     @try {
         @autoreleasepool {
             NSWorkspace *workspace = [NSWorkspace sharedWorkspace];
-            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.001, false);
-            NSArray<NSRunningApplication *> *running = workspace.runningApplications;
+            if ([NSThread isMainThread]) {
+                CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.001, false);
+            }
+            NSRunningApplication *observedFrontmost = workspace.frontmostApplication;
+            NSArray<NSRunningApplication *> *running = frontmostOnly == 0
+                ? workspace.runningApplications
+                : (observedFrontmost == nil ? @[] : @[observedFrontmost]);
             if (running == nil || running.count > 8192) {
                 result.status = 1;
                 return result;
@@ -140,7 +145,7 @@ AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(void) {
             NSMutableArray<NSDictionary *> *skipped = [NSMutableArray array];
             int32_t frontmostPID = 0;
             id frontmostLaunchTime = [NSNull null];
-            NSRunningApplication *frontmost = workspace.frontmostApplication;
+            NSRunningApplication *frontmost = observedFrontmost;
             if (frontmost != nil) {
                 if (![frontmost isKindOfClass:[NSRunningApplication class]]) {
                     [skipped addObject:@{@"pid": @0, @"field": @"frontmost_class"}];
@@ -267,4 +272,34 @@ AgentDesktopBytesResult agent_desktop_copy_workspace_snapshot_json(void) {
 
 void agent_desktop_free_bridge_bytes(uint8_t *bytes) {
     free(bytes);
+}
+
+AgentDesktopTerminateResult agent_desktop_activate_application(
+    int32_t pid,
+    bool (*verifyIdentity)(void *),
+    void *context
+) {
+    AgentDesktopTerminateResult result = { .status = 4, .deliveryStarted = 0 };
+    @try {
+        @autoreleasepool {
+            NSRunningApplication *app =
+                [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+            if (app == nil || app.isTerminated) {
+                result.status = 1;
+                return result;
+            }
+            if (verifyIdentity == NULL || !verifyIdentity(context)) {
+                result.status = 5;
+                return result;
+            }
+            result.deliveryStarted = 1;
+            BOOL accepted = [app activateWithOptions:0];
+            result.status = accepted ? 0 : 2;
+            return result;
+        }
+    } @catch (NSException *exception) {
+        (void)exception;
+        result.status = 3;
+        return result;
+    }
 }

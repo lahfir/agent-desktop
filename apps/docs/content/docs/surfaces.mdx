@@ -1,10 +1,10 @@
 ---
 title: Surfaces
 navTitle: Surfaces
-description: Observe menus, sheets, alerts, popovers, and OS shell areas separately from the window with --surface, list-surfaces, and open-system-surface.
+description: Observe menus, sheets, alerts, popovers, and OS shell areas separately from a window or application with --surface, list-surfaces, and open-system-surface.
 ---
 
-A surface is a UI layer that you observe separately from the whole window: an open menu, a sheet, a popover, an alert, or an OS shell area such as the taskbar. While an overlay is open, the refs from the window behind it are the wrong target, so read the overlay itself.
+A surface is a UI layer that you observe separately from a window or application's full accessibility tree: an open menu, a sheet, a popover, an alert, or an OS shell area such as the taskbar. While an overlay is open, the refs from the window behind it are the wrong target, so read the overlay itself.
 
 ```bash
 agent-desktop snapshot --app gtk3-widget-factory --surface menu -i --compact
@@ -20,7 +20,7 @@ agent-desktop find --app gtk3-widget-factory --surface menu --name "Dark Theme" 
     <tr><th>Group</th><th>Kinds</th></tr>
   </thead>
   <tbody>
-    <tr><td>The window and its layers</td><td><code>window</code>, <code>focused</code>, <code>menu</code>, <code>menubar</code>, <code>sheet</code>, <code>popover</code>, <code>alert</code></td></tr>
+    <tr><td>The app or window and its layers</td><td><code>window</code>, <code>focused</code>, <code>menu</code>, <code>menubar</code>, <code>sheet</code>, <code>popover</code>, <code>alert</code></td></tr>
     <tr><td>OS shell</td><td><code>desktop</code>, <code>taskbar</code>, <code>system-tray</code>, <code>system-tray-overflow</code>, <code>quick-settings</code>, <code>notification-center</code>, <code>toolbar</code>, <code>dock</code>, <code>spotlight</code>, <code>menu-bar-extras</code>, <code>start-menu</code>, <code>action-center</code></td></tr>
   </tbody>
 </table>
@@ -88,7 +88,7 @@ To reach one item, `find --surface` is cheaper than a dump:
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "find",
   "data": {
@@ -106,12 +106,13 @@ To reach one item, `find --surface` is cheaper than a dump:
 }
 ```
 
-Which window agent-desktop reads depends on the kind:
+How agent-desktop selects an owner depends on the kind and platform:
 
 - `sheet`, `popover`, and `alert`: the app's accessible windows in order, focused first and then visible, and the first that presents one wins. With no `--app`, the frontmost process.
-- `menu`, `menubar`, and `focused`: any window of the app identifies the process, so several open windows are never ambiguous.
+- On macOS, `menu` and `menubar` belong to the application and do not require an open window. If you pass `--window-id`, agent-desktop resolves that exact window to its app, then observes the app-owned surface. Snapshot data includes `app` and omits `window`.
+- On window-owned implementations, `menu`, `menubar`, and `focused` use any window of the app to identify the process, so several open windows are not ambiguous.
 - A shell kind needs no `--app`, because no application owns it.
-- `--window-id` pins the read to one window.
+- For window-owned surfaces, `--window-id` pins the read to that window.
 
 A surface that is not open returns an error. On Linux, a closed menu returns `ELEMENT_NOT_FOUND`:
 
@@ -133,7 +134,7 @@ agent-desktop list-surfaces --app gtk3-widget-factory
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "list-surfaces",
   "data": {

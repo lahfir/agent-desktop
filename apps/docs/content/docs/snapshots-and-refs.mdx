@@ -4,7 +4,7 @@ navTitle: Snapshots and refs
 description: What a snapshot contains, how refs are allocated and stored, and how a ref resolves back to a live element or goes stale.
 ---
 
-A snapshot is one observation of an application window's accessibility tree. agent-desktop saves it with a ref map and gives every actionable element a ref that you pass to later commands.
+A snapshot is one observation of an application's accessibility tree. Window-owned surfaces read a window; macOS `menu` and `menubar` surfaces belong to the application and need no document window. agent-desktop saves the observation with a ref map and gives every actionable element a ref that you pass to later commands.
 
 ```bash
 agent-desktop snapshot --app gnome-calculator -i --compact
@@ -12,7 +12,7 @@ agent-desktop snapshot --app gnome-calculator -i --compact
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "snapshot",
   "data": {
@@ -52,7 +52,7 @@ The tree above is trimmed to one button. The real tree nests it under several un
     <tr><th>Field</th><th>Meaning</th></tr>
   </thead>
   <tbody>
-    <tr><td><code>data.app</code>, <code>data.window</code></td><td>The application and the window that was read (<code>id</code>, <code>title</code>).</td></tr>
+    <tr><td><code>data.app</code>, <code>data.window</code></td><td>The app that owns the observation. <code>data.window</code> is included for window-owned surfaces and omitted for macOS application-owned menu surfaces.</td></tr>
     <tr><td><code>data.snapshot_id</code></td><td>The id of the saved snapshot. It is part of every ref.</td></tr>
     <tr><td><code>data.ref_count</code></td><td>The number of refs the snapshot holds. After a <code>--root</code> drill it counts the whole snapshot, not only the drilled region.</td></tr>
     <tr><td><code>data.complete</code></td><td>Present on every snapshot. <code>false</code> means the observation ran out of budget. See <a href="/desktop/skeleton-and-drill-down#partial-observations">Partial observations</a>.</td></tr>
@@ -82,7 +82,7 @@ A node always carries `role` and, when they exist, `ref_id`, `name`, `value`, `d
 
 ## Choose the window
 
-`snapshot` and `find` read one window. Without `--app` they read the focused window, and `WINDOW_NOT_FOUND` means there is none. With `--app` and no `--window-id`, agent-desktop narrows the app's windows in this order and stops at the first step that leaves exactly one:
+For window-owned surfaces, `snapshot` and `find` read one window. Without `--app` they use the focused window, and `WINDOW_NOT_FOUND` means there is none. With `--app` and no `--window-id`, agent-desktop narrows the app's windows in this order and stops at the first step that leaves exactly one:
 
 1. If the app has only one window, use it.
 2. Keep only visible windows.
@@ -90,6 +90,8 @@ A node always carries `role` and, when they exist, `ref_id`, `name`, `value`, `d
 4. Keep only accessible windows.
 
 If several windows are still left, the command fails with `AMBIGUOUS_TARGET`, and `details.candidates` lists up to 10 of them. Run `list-windows --app <name>` and pass `--window-id`.
+
+On macOS, `menu` and `menubar` surfaces are application-owned. They can be observed without a document window. If you pass `--window-id`, it selects the app that owns the surface; the returned snapshot remains application-owned and omits `data.window`.
 
 ## Refs
 
@@ -103,7 +105,7 @@ Every command accepts only this qualified form. A bare `@e6` fails with `INVALID
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": false,
   "command": "click",
   "error": {

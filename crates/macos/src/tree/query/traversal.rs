@@ -120,7 +120,7 @@ impl LocatorTraversal {
                     "Live locator root is no longer a valid accessibility element",
                 )
                 .with_suggestion("Refresh the source snapshot and retry the locator")
-                .with_details(json!({ "kind": "locator_root_invalid" })));
+                .with_details(json!({ "kind": "locator_root_invalid", "ax_error": accessibility_sys::kAXErrorInvalidUIElement, "complete": false })));
             }
             self.arena.mark_incomplete();
             return Ok(None);

@@ -25,13 +25,13 @@ agent-desktop clipboard-get [--format text|auto|image|file-urls] [--out PATH]
 </table>
 
 ```json
-{ "version": "2.5", "ok": true, "command": "clipboard-get", "data": { "text": "hello from agent-desktop", "type": "text" } }
+{ "version": "2.6", "ok": true, "command": "clipboard-get", "data": { "text": "hello from agent-desktop", "type": "text" } }
 ```
 
 An image result is `{ "type": "image", "path", "width", "height" }`, and a file list is `{ "type": "file_urls", "file_urls": [...] }`. Image bytes are never inlined. When the clipboard holds nothing in the requested form, the command still succeeds:
 
 ```json
-{ "version": "2.5", "ok": true, "command": "clipboard-get", "data": { "found": false, "type": "text" } }
+{ "version": "2.6", "ok": true, "command": "clipboard-get", "data": { "found": false, "type": "text" } }
 ```
 
 Check `found` before you read `text`. Errors: `INVALID_ARGS` for an unknown format or an unwritable `--out`, and `PLATFORM_NOT_SUPPORTED` when a platform helper is missing.
@@ -61,7 +61,7 @@ One call writes one representation: `--file-url` wins over `--image`, which wins
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "clipboard-set",
   "data": {
@@ -86,7 +86,7 @@ agent-desktop clipboard-clear
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "clipboard-clear",
   "data": {

@@ -1,12 +1,11 @@
 use crate::{
-    AppError,
+    AppError, SnapshotOwner,
     adapter::{PlatformAdapter, TreeOptions, WindowFilter},
     context::CommandContext,
     locator::live_locator::{ObservationRequest, ObservationRoot},
     refs::ref_alloc::{self, RefAllocConfig},
     refs::ref_alloc_options::RefAllocOptions,
     refs::ref_alloc_scope::RefAllocScope,
-    refs::ref_alloc_source::RefAllocSource,
     refs::refs_store::RefStore,
     snapshot::SnapshotResult,
 };
@@ -53,10 +52,13 @@ pub fn run_from_ref_with_context(
         .clone();
 
     let deadline = crate::Deadline::after(timeout_ms)?;
-    let window = resolve_result_window(&entry, adapter, deadline)?;
+    let owner = resolve_result_owner(&entry, adapter, deadline)?;
     let handle = adapter.resolve_element_strict(&entry, deadline)?;
 
-    let observation_options = opts.with_ref_identity_bounds();
+    let observation_options = TreeOptions {
+        surface: entry.source.source_surface,
+        ..opts.with_ref_identity_bounds()
+    };
     let raw_tree = crate::tree::renderer_accessibility::observe_tree(
         adapter,
         ObservationRoot::Element {
@@ -69,9 +71,6 @@ pub fn run_from_ref_with_context(
     .into_accessibility_tree()?;
     let nodes_observed = count_nodes(&raw_tree);
 
-    let source_app = entry.source.source_app.as_deref();
-    let source_window_id = entry.source.source_window_id.as_deref();
-    let source_window_title = entry.source.source_window_title.as_deref();
     let path_prefix = entry.scope.path.clone();
     let config = RefAllocConfig {
         options: RefAllocOptions {
@@ -79,15 +78,7 @@ pub fn run_from_ref_with_context(
             interactive_only: opts.interactive_only,
             compact: opts.compact,
         },
-        source: RefAllocSource {
-            pid: entry.process.pid,
-            app: source_app,
-            window_id: source_window_id,
-            window_title: source_window_title,
-            window_bounds_hash: entry.source.source_window_bounds_hash,
-            process_instance: entry.process.process_instance.as_deref(),
-            surface: entry.source.source_surface,
-        },
+        source: owner.ref_source(entry.source.source_surface),
         scope: RefAllocScope {
             root_ref_id: Some(&local_root_ref),
             path_prefix: path_prefix.as_slice(),
@@ -123,16 +114,34 @@ pub fn run_from_ref_with_context(
     Ok(SnapshotResult {
         tree,
         refmap,
-        window,
+        owner,
         snapshot_id: Some(active_snapshot_id),
         complete: true,
         nodes_observed,
     })
 }
 
-/// The drill result reports the window the ref was captured from, so it must
-/// resolve that exact window — not any window of the process. Resolving before
-/// observation keeps a failed drill from persisting refs it never returns.
+fn resolve_result_owner(
+    entry: &crate::refs::RefEntry,
+    adapter: &dyn PlatformAdapter,
+    deadline: crate::Deadline,
+) -> Result<SnapshotOwner, AppError> {
+    if adapter.is_application_surface(entry.source.source_surface) {
+        let app = crate::AppInfo {
+            name: entry.source.source_app.clone().ok_or_else(|| {
+                crate::AdapterError::stale_ref_because("root ref has no application identity")
+            })?,
+            pid: entry.process.pid,
+            process_instance: entry.process.process_instance.clone(),
+            bundle_id: None,
+            presentation: None,
+        };
+        crate::system::app_lookup::process_identity(&app)?;
+        return Ok(SnapshotOwner::Application(app));
+    }
+    resolve_result_window(entry, adapter, deadline).map(SnapshotOwner::Window)
+}
+
 fn resolve_result_window(
     entry: &crate::refs::RefEntry,
     adapter: &dyn PlatformAdapter,

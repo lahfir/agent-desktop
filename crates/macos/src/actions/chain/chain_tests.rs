@@ -84,6 +84,10 @@ fn headed_menubar_click_uses_only_semantic_press_and_keeps_other_clicks_physical
     let menu = crate::actions::chain::chain_defs::click_chain(Some("AXMenuBarItem"));
     assert!(matches!(menu.steps, [ChainStep::Action("AXPress")]));
     assert!(!menu.continue_after_unverified_delivery);
+    assert!(std::ptr::eq(
+        menu,
+        crate::actions::chain::chain_defs::click_chain(Some("AXMenuItem"))
+    ));
     let mut steps = Vec::new();
     assert!(record_step_outcome(
         &mut steps,
@@ -104,12 +108,7 @@ fn headed_menubar_click_uses_only_semantic_press_and_keeps_other_clicks_physical
         exhaustion_disposition(&unsupported),
         agent_desktop_core::DeliverySemantics::not_delivered()
     );
-    for role in [
-        None,
-        Some("AXButton"),
-        Some("AXMenuItem"),
-        Some("AXMenuBar"),
-    ] {
+    for role in [None, Some("AXButton"), Some("AXMenuBar")] {
         assert!(matches!(
             crate::actions::chain::chain_defs::click_chain(role)
                 .steps
@@ -120,7 +119,7 @@ fn headed_menubar_click_uses_only_semantic_press_and_keeps_other_clicks_physical
 }
 
 #[test]
-fn click_role_probe_failure_falls_back_to_default_chain() {
+fn non_menu_native_roles_use_the_default_chain() {
     let fallback = crate::actions::chain::chain_defs::click_chain(None);
     assert!(matches!(
         fallback.steps.first(),

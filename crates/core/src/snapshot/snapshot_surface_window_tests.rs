@@ -1,4 +1,5 @@
 use super::*;
+use crate::ObservationRoot;
 use crate::adapter::{ActionOps, InputOps, ObservationOps, SystemOps};
 
 struct SurfaceAdapter {
@@ -108,7 +109,7 @@ fn an_unpinned_alert_is_found_on_whichever_window_holds_it() {
     )
     .unwrap();
 
-    assert_eq!(result.window.id, "w-2");
+    assert_eq!(result.owner.window().unwrap().id, "w-2");
 }
 
 #[test]
@@ -153,7 +154,7 @@ fn an_alert_without_app_is_found_on_another_window_of_the_frontmost_app() {
     )
     .unwrap();
 
-    assert_eq!(result.window.id, "w-2");
+    assert_eq!(result.owner.window().unwrap().id, "w-2");
 }
 
 #[test]
@@ -177,7 +178,7 @@ fn find_and_snapshot_reach_the_same_sheet_and_respect_an_explicit_window() {
             crate::Deadline::standard().unwrap(),
         )
         .expect("snapshot reaches the sheet window");
-        assert_eq!(snapshot.window.id, "w-sheet");
+        assert_eq!(snapshot.owner.window().unwrap().id, "w-sheet");
         for window in [None, Some("w-main")] {
             let result = crate::commands::find::execute(
                 FindArgs {

@@ -10,7 +10,7 @@ Concepts behind the flags are explained in [Skeleton and drill-down](/desktop/sk
 
 ## snapshot
 
-Captures an app window's accessibility tree as JSON. Interactive elements get qualified refs that later commands accept.
+Captures an application's accessibility tree as JSON. Window-owned surfaces are read from a window; on macOS, `menu` and `menubar` are application-owned and need no document window. Interactive elements get qualified refs that later commands accept.
 
 ```bash
 agent-desktop snapshot [--app NAME] [--window-id ID] [-i] [--compact] [--skeleton] \
@@ -23,8 +23,8 @@ agent-desktop snapshot [--app NAME] [--window-id ID] [-i] [--compact] [--skeleto
     <tr><th>Flag</th><th>Default</th><th>Meaning</th></tr>
   </thead>
   <tbody>
-    <tr><td><code>--app NAME</code></td><td>focused window</td><td>Application to read. See <a href="/desktop/snapshots-and-refs#choose-the-window">Choose the window</a>.</td></tr>
-    <tr><td><code>--window-id ID</code></td><td>none</td><td>Read one window by id from <code>list-windows</code>.</td></tr>
+    <tr><td><code>--app NAME</code></td><td>focused app or window</td><td>Application to read. The selected surface determines whether a window is required. See <a href="/desktop/snapshots-and-refs#choose-the-window">Choose the window</a>.</td></tr>
+    <tr><td><code>--window-id ID</code></td><td>none</td><td>Read one window by id from <code>list-windows</code>. For macOS <code>menu</code> and <code>menubar</code>, it selects the owning app.</td></tr>
     <tr><td><code>-i</code>, <code>--interactive-only</code></td><td>off</td><td>Drop leaves without a ref. See <a href="/desktop/snapshots-and-refs#what-a-snapshot-contains">What a snapshot contains</a>.</td></tr>
     <tr><td><code>--compact</code></td><td>off</td><td>Collapse single-child unnamed wrappers.</td></tr>
     <tr><td><code>--include-bounds</code></td><td>off</td><td>Add <code>bounds</code> to each node.</td></tr>
@@ -32,14 +32,14 @@ agent-desktop snapshot [--app NAME] [--window-id ID] [-i] [--compact] [--skeleto
     <tr><td><code>--root REF</code></td><td>none</td><td>Drill into one ref's subtree and replace that region's refs. Cannot combine with <code>--surface</code> or <code>--wait-for</code>. See <a href="/desktop/skeleton-and-drill-down#drill-into-a-region">Drill into a region</a>.</td></tr>
     <tr><td><code>--max-depth N</code></td><td><code>10</code></td><td>Maximum depth, up to 50. See <a href="/desktop/skeleton-and-drill-down#depth-with-max-depth">Depth with max-depth</a>.</td></tr>
     <tr><td><code>--timeout-ms MS</code></td><td><code>3000</code></td><td>Observation deadline. A full snapshot that runs out succeeds with <code>complete: false</code>. See <a href="/desktop/skeleton-and-drill-down#partial-observations">Partial observations</a>.</td></tr>
-    <tr><td><code>--surface KIND</code></td><td><code>window</code></td><td>Read an overlay instead of the window. See <a href="/desktop/surfaces#surface-kinds">Surface kinds</a>.</td></tr>
+    <tr><td><code>--surface KIND</code></td><td><code>window</code></td><td>Read the selected UI surface. On macOS, <code>menu</code> and <code>menubar</code> are application-owned. See <a href="/desktop/surfaces#surface-kinds">Surface kinds</a>.</td></tr>
     <tr><td><code>--force-electron-a11y</code></td><td>off</td><td>Assume Chromium renderer accessibility is already forced, which skips the activation guidance.</td></tr>
   </tbody>
 </table>
 
-`data` carries `app`, `window`, `snapshot_id`, `ref_count`, `complete`, and `tree`; [Snapshots and refs](/desktop/snapshots-and-refs) shows a full example. With a post-action `--wait-for` ([Configuration](/desktop/configuration#post-action-wait-flags)), the result adds `elapsed_ms` and `matched_selector`.
+`data` carries `app`, `snapshot_id`, `ref_count`, `complete`, and `tree`. Window-owned snapshots also carry `window`; macOS application-owned menu snapshots omit it. [Snapshots and refs](/desktop/snapshots-and-refs) shows the window-owned shape. With a post-action `--wait-for` ([Configuration](/desktop/configuration#post-action-wait-flags)), a successful snapshot adds `elapsed_ms` and `matched_selector`.
 
-Errors specific to `snapshot`: `INVALID_ARGS` for `--root` with `--surface` or `--wait-for`, a bare ref, or `--max-depth` above 50; `WINDOW_NOT_FOUND` when there is no window to read; `AMBIGUOUS_TARGET` when the app has several candidate windows; `PLATFORM_NOT_SUPPORTED` for an unsupported `--surface`; `STALE_REF`, `SNAPSHOT_NOT_FOUND`, or `TIMEOUT` for a `--root` drill. See [What a drill refuses](/desktop/skeleton-and-drill-down#what-a-drill-refuses).
+Errors specific to `snapshot`: `INVALID_ARGS` for `--root` with `--surface` or `--wait-for`, a bare ref, or `--max-depth` above 50; `WINDOW_NOT_FOUND` when a window-owned surface has no window; `APP_NOT_FOUND` when an application-owned surface has no matching app; `AMBIGUOUS_TARGET` when the app has several candidate windows; `PLATFORM_NOT_SUPPORTED` for an unsupported `--surface`; `STALE_REF`, `SNAPSHOT_NOT_FOUND`, or `TIMEOUT` for a `--root` drill. See [What a drill refuses](/desktop/skeleton-and-drill-down#what-a-drill-refuses).
 
 Platform limits: supported surfaces and Chromium settle time differ by OS. See [macOS](/desktop/platforms/macos), [Windows](/desktop/platforms/windows), and [Linux](/desktop/platforms/linux).
 
@@ -59,7 +59,7 @@ agent-desktop find [--app NAME] [--window-id ID] [--role ROLE] [--name TEXT] [--
     <tr><th>Flag</th><th>Default</th><th>Meaning</th></tr>
   </thead>
   <tbody>
-    <tr><td><code>--app NAME</code>, <code>--window-id ID</code></td><td>focused window</td><td>Which window to search, with the same rules as <code>snapshot</code>.</td></tr>
+    <tr><td><code>--app NAME</code>, <code>--window-id ID</code></td><td>focused app or window</td><td>Which owner to search, with the same rules as <code>snapshot</code>.</td></tr>
     <tr><td><code>--role ROLE</code></td><td>none</td><td>Accessibility role, case-insensitive. <code>textarea</code>, <code>textbox</code>, and <code>searchfield</code> fold to <code>textfield</code>.</td></tr>
     <tr><td><code>--name TEXT</code></td><td>none</td><td>Accessible name. Fuzzy unless <code>--exact</code>.</td></tr>
     <tr><td><code>--value TEXT</code></td><td>none</td><td>Current value. Unnamed elements carry their content here.</td></tr>
@@ -85,7 +85,7 @@ agent-desktop find --app gnome-calculator --role button --name 7 --exact --first
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "find",
   "data": {
@@ -125,7 +125,7 @@ agent-desktop get <REF> [--property text|value|title|bounds|role|states]
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "get",
   "data": { "property": "value", "ref": "@s30sxlstqzdq8x:e19", "value": "entry" }
@@ -160,7 +160,7 @@ agent-desktop is @s30sxlstqzdq8x:e45 --property enabled
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "is",
   "data": { "applicable": true, "property": "enabled", "ref": "@s30sxlstqzdq8x:e45", "result": false }
@@ -195,7 +195,7 @@ agent-desktop screenshot --screen 0 screen.png
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "screenshot",
   "data": { "format": "png", "height": 900, "path": "/tmp/screen.png", "scale_factor": 1.0, "width": 1440 }
@@ -216,7 +216,7 @@ agent-desktop list-displays
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "list-displays",
   "data": [
@@ -267,7 +267,7 @@ agent-desktop --headed open-system-surface --surface KIND
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "open-system-surface",
   "data": {

@@ -27,7 +27,7 @@ fn test_run_from_ref_resolves_source_window_among_same_process_windows() {
 
     let result = run_from_ref(&adapter, &drill_opts(), "@e1", Some(&snapshot_id))
         .expect("drill must resolve its own source window, not the process");
-    assert_eq!(result.window.id, "w-467");
+    assert_eq!(result.owner.window().unwrap().id, "w-467");
 }
 
 #[test]

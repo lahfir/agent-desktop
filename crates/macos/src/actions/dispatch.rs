@@ -31,14 +31,10 @@ mod imp {
         tracing::debug!("action: perform {label}");
         match action {
             Action::Click => {
-                let role = if request.policy.is_headed() {
-                    probe_click_role(el, deadline)?
-                } else {
-                    None
-                };
+                let role = probe_click_role(el, deadline)?;
                 steps.extend(run_chain(
                     el,
-                    chain_defs::click_chain(role.as_deref()),
+                    chain_defs::click_chain(Some(&role)),
                     None,
                     request,
                     deadline,
@@ -221,19 +217,13 @@ mod imp {
         )
     }
 
-    fn probe_click_role(
-        element: &AXElement,
-        deadline: Deadline,
-    ) -> Result<Option<String>, AdapterError> {
+    fn probe_click_role(element: &AXElement, deadline: Deadline) -> Result<String, AdapterError> {
         let operation_deadline = crate::tree::locator_deadline::from_operation(deadline)?;
-        match crate::tree::resolve::resolve_ax_read::read_string(
-            element,
-            "AXRole",
-            operation_deadline,
-        ) {
-            Err(error) if error.code == ErrorCode::AppUnresponsive => Ok(None),
-            result => result,
-        }
+        crate::tree::resolve::resolve_ax_read::read_string(element, "AXRole", operation_deadline)?
+            .filter(|role| !role.is_empty())
+            .ok_or_else(|| {
+                AdapterError::stale_ref_because("Click target has no native accessibility role")
+            })
     }
 }
 

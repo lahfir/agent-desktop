@@ -4,8 +4,7 @@ use crate::{
     commands::{query, snapshot as snapshot_cmd, wait_timeout},
     context::CommandContext,
     locator::live_locator::{
-        LocatorMaterialization, LocatorResolveRequest, LocatorSelection, ObservationRoot,
-        resolve_query,
+        LocatorMaterialization, LocatorResolveRequest, LocatorSelection, resolve_query,
     },
     refs::refs_store::RefStore,
     snapshot::{self, emit_snapshot_saved},
@@ -34,100 +33,126 @@ pub fn execute(
 
     let start = Instant::now();
     let deadline = crate::Deadline::at(start, input.timeout_ms)?;
-    let mut scheduler = super::wait_scheduler::WaitScheduler::new(
+    let mut last_error = None;
+    let mut last_built = None;
+    let result = poll_selector(
         adapter,
-        &crate::SignalFilter {
+        crate::SignalFilter {
             app: input.app.clone(),
             process: None,
         },
         deadline,
-    );
-    let mut last_error = None;
-    let mut last_built = None;
-
-    loop {
-        match observe_selector(adapter, &input, &query, deadline) {
-            Ok(Some(true)) if input.gone => {}
-            Ok(Some(true)) => match build_materialization(adapter, &input, &query, deadline) {
-                Ok((true, result)) => {
-                    return materialized_response(
-                        result,
-                        context,
-                        &input,
-                        start.elapsed().as_millis(),
-                    );
+        |poll_deadline| {
+            let completion = match observe_selector(adapter, &input, &query, poll_deadline) {
+                Ok(Some(true)) if input.gone => None,
+                Ok(Some(true)) => {
+                    match build_materialization(adapter, &input, &query, poll_deadline) {
+                        Ok((true, result)) => {
+                            Some(Ok(SelectorCompletion::Matched(Box::new(result))))
+                        }
+                        Ok((false, result)) => {
+                            last_built = Some(result);
+                            None
+                        }
+                        Err(err)
+                            if err.code() == ErrorCode::Timeout.as_str()
+                                || is_transient_poll_error(&err, input.window_id.as_deref())
+                                || is_target_gone_error(&err) =>
+                        {
+                            last_error = Some(poll_error_json(&err));
+                            None
+                        }
+                        Err(err) => Some(Err(err)),
+                    }
                 }
-                Ok((false, result)) => last_built = Some(result),
-                Err(err) if err.code() == ErrorCode::Timeout.as_str() && deadline.is_expired() => {
-                    return timeout_response(
-                        adapter,
-                        &input,
-                        context,
-                        last_built,
-                        Some(poll_error_json(&err)),
-                    );
+                Ok(Some(false)) if input.gone => Some(Ok(SelectorCompletion::Absent)),
+                Ok(Some(false)) => None,
+                Ok(None) => {
+                    last_error = Some(json!({ "kind": "locator_incomplete" }));
+                    None
+                }
+                Err(err) if is_target_gone_error(&err) && input.gone => {
+                    Some(Ok(SelectorCompletion::Absent))
+                }
+                Err(err)
+                    if err.code() == ErrorCode::Timeout.as_str() && poll_deadline.is_expired() =>
+                {
+                    return Ok(None);
                 }
                 Err(err)
                     if err.code() == ErrorCode::Timeout.as_str()
-                        || is_transient_poll_error(&err)
+                        || is_transient_poll_error(&err, input.window_id.as_deref())
                         || is_target_gone_error(&err) =>
                 {
                     last_error = Some(poll_error_json(&err));
+                    None
                 }
-                Err(err) => return Err(err),
-            },
-            Ok(Some(false)) if input.gone => {
-                return Ok(target_absent_response(
-                    &input.query_raw,
-                    start.elapsed().as_millis(),
-                ));
+                Err(err) => Some(Err(err)),
+            };
+            if let Some(completion) = completion {
+                return completion.map(Some);
             }
-            Ok(Some(false)) => {}
-            Ok(None) => {
-                last_error = Some(json!({ "kind": "locator_incomplete" }));
-            }
-            Err(err) if is_target_gone_error(&err) => {
-                if input.gone {
-                    return Ok(target_absent_response(
-                        &input.query_raw,
-                        start.elapsed().as_millis(),
-                    ));
-                }
-                last_error = Some(poll_error_json(&err));
-            }
-            Err(err) if err.code() == ErrorCode::Timeout.as_str() && deadline.is_expired() => {
-                return timeout_response(adapter, &input, context, last_built, last_error);
-            }
-            Err(err) if err.code() == ErrorCode::Timeout.as_str() => {
-                last_error = Some(poll_error_json(&err));
-            }
-            Err(err) if is_transient_poll_error(&err) => {
-                last_error = Some(poll_error_json(&err));
-            }
-            Err(err) => return Err(err),
-        }
 
-        let mut remaining = deadline.remaining();
-        if !remaining.is_zero()
-            && remaining <= super::wait_scheduler::POLL_INTERVAL
-            && last_built.is_none()
-        {
-            match snapshot::build(
+            let remaining = deadline.remaining();
+            if !remaining.is_zero()
+                && remaining <= super::wait_scheduler::POLL_INTERVAL
+                && last_built.is_none()
+            {
+                match snapshot::build(
+                    adapter,
+                    &input.opts,
+                    input.app.as_deref(),
+                    input.window_id.as_deref(),
+                    poll_deadline,
+                ) {
+                    Ok(result) => last_built = Some(result),
+                    Err(error) => last_error = Some(poll_error_json(&error)),
+                }
+            }
+            Ok(None)
+        },
+    );
+    match result {
+        Ok(Some(SelectorCompletion::Matched(result))) => {
+            materialized_response(*result, context, &input, start.elapsed().as_millis())
+        }
+        Ok(Some(SelectorCompletion::Absent)) => Ok(target_absent_response(
+            &input.query_raw,
+            start.elapsed().as_millis(),
+        )),
+        Ok(None) => timeout_response(adapter, &input, context, last_built, last_error),
+        Err(err) if err.code() == ErrorCode::Timeout.as_str() && deadline.is_expired() => {
+            timeout_response(
                 adapter,
-                &input.opts,
-                input.app.as_deref(),
-                input.window_id.as_deref(),
-                deadline,
-            ) {
-                Ok(result) => last_built = Some(result),
-                Err(error) => last_error = Some(poll_error_json(&error)),
-            }
-            remaining = deadline.remaining();
+                &input,
+                context,
+                last_built,
+                Some(poll_error_json(&err)),
+            )
         }
-        if remaining.is_zero() {
-            return timeout_response(adapter, &input, context, last_built, last_error);
-        }
+        Err(err) => Err(err),
+    }
+}
 
+enum SelectorCompletion {
+    Matched(Box<snapshot::SnapshotResult>),
+    Absent,
+}
+
+pub(crate) fn poll_selector<T>(
+    adapter: &dyn PlatformAdapter,
+    filter: crate::SignalFilter,
+    deadline: crate::Deadline,
+    mut observe: impl FnMut(crate::Deadline) -> Result<Option<T>, AppError>,
+) -> Result<Option<T>, AppError> {
+    let mut scheduler = super::wait_scheduler::WaitScheduler::new(adapter, &filter, deadline);
+    loop {
+        if let Some(result) = observe(deadline)? {
+            return Ok(Some(result));
+        }
+        if deadline.is_expired() {
+            return Ok(None);
+        }
         scheduler.wait(deadline);
     }
 }
@@ -183,26 +208,29 @@ fn observe_selector(
     query: &crate::LocatorQuery,
     deadline: crate::Deadline,
 ) -> Result<Option<bool>, AppError> {
-    let window = snapshot::resolve_window_for_surface(
+    let owners = snapshot::surface_target::resolve_owners(
         adapter,
         input.app.as_deref(),
         input.window_id.as_deref(),
         input.opts.surface,
         deadline,
     )?;
-    let resolution = resolve_query(
-        adapter,
-        query,
-        ObservationRoot::Window(&window),
-        &LocatorResolveRequest {
-            selection: LocatorSelection::First,
-            deadline,
-            max_raw_depth: 50,
-            surface: (input.opts.surface != crate::SnapshotSurface::Window)
-                .then_some(input.opts.surface),
-            materialization: LocatorMaterialization::None,
-        },
-    )?;
+    let request = LocatorResolveRequest {
+        selection: LocatorSelection::First,
+        deadline,
+        max_raw_depth: 50,
+        surface: (input.opts.surface != crate::SnapshotSurface::Window)
+            .then_some(input.opts.surface),
+        materialization: LocatorMaterialization::None,
+    };
+    let (_, resolution) = snapshot::first_surface_owner(owners, |owner| {
+        resolve_query(
+            adapter,
+            query,
+            owner.observation_root(input.opts.surface),
+            &request,
+        )
+    })?;
     if !resolution.meta.selection_complete {
         return Ok(None);
     }
@@ -261,8 +289,16 @@ fn is_target_gone_error(err: &AppError) -> bool {
     )
 }
 
-fn is_transient_poll_error(err: &AppError) -> bool {
-    matches!(err, AppError::Adapter(error) if error.is_explicitly_retryable())
+pub(crate) fn is_transient_poll_error(err: &AppError, window_id: Option<&str>) -> bool {
+    let AppError::Adapter(error) = err else {
+        return false;
+    };
+    error.is_explicitly_retryable()
+        || (error.code == ErrorCode::ActionNotSupported
+            && error.details.as_ref().is_some_and(|details| {
+                details["kind"] == "window_without_accessibility_element"
+                    && window_id.is_none_or(|id| details["window_id"].as_str() == Some(id))
+            }))
 }
 
 #[cfg(test)]

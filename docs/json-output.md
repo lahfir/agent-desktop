@@ -4,7 +4,7 @@ Every command returns structured JSON:
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "click",
   "data": {
@@ -18,7 +18,7 @@ Errors include machine-readable codes and recovery hints:
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": false,
   "command": "click",
   "error": {
@@ -110,11 +110,18 @@ Each of these commands now returns the adapter's own report inside `data`:
 - The Rust `ActionResult` and `OperationReport` readers reject a payload without an explicit `disposition`; a missing disposition no longer reads back as delivered-unverified.
 - The C ABI is unchanged. Status-only functions such as `ad_close_app` and `ad_drag` still cannot expose the disposition, steps or target of a successful call.
 
+## Version 2.6 migration
+
+Application-owned snapshots omit `data.window`. On macOS, `menu` and `menubar` snapshots are owned by the application, so `data.app` identifies the owner and `data.window` is absent. This also applies to a `--root` drill into a ref from one of these surfaces. Window-owned snapshots keep the existing `data.window` object. When `--window-id` is supplied for an application-owned surface, it selects the owning application; the observed surface remains application-owned.
+
+When a ref action returns `delivery_uncertain` and a post-action wait selector was requested, agent-desktop may attach a bounded, read-only observation of the original process. The original error and disposition remain unchanged. The observation does not establish that the action caused the state change.
+
 ## Headed action verification
 
-- Headed ref interactions activate the exact source app/window before final pointer hit testing. Read-only readiness polling must not prevent a background target from reaching that focus phase; final hit testing remains mandatory before delivery.
+- Physical pointer input for a headed ref action focuses the exact source window and verifies the target with a fresh hit test before delivery. Readiness polling can wait on a background target, but it does not replace these checks.
 - Focus and preparatory scrolling can change coordinates. Stability is verified against fresh live observations, not by requiring coordinates to remain equal to the original snapshot.
-- On macOS, post-activation focus confirmation uses fresh system-wide `AXFocusedApplication` and exact-window evidence with process-generation checks. A cached `NSWorkspace` foreground snapshot is not sufficient in a process that just activated another app.
+- On macOS, a headed click on an `AXMenuBarItem` or `AXMenuItem` activates the owning app, then calls `AXPress` without moving the cursor. A headless click calls `AXPress` without agent-desktop activating the app.
+- Post-activation focus confirmation reads `AXFrontmost` from the target app's accessibility object and checks process identity before and after the read.
 - Focusing an inactive text field can change its selection. A pre-focus range cannot establish the expected insertion into a nonempty field; such a result is explicitly unverified rather than falsely contradicted.
 - A settle-loop pacing budget does not replace the caller's deadline for native reads. Tests assert deadline identity rather than arbitrary remaining-time thresholds.
 
@@ -133,7 +140,7 @@ to `role` or `value`.
 |------|---------|
 | `PERM_DENIED` | Accessibility permission not granted |
 | `ELEMENT_NOT_FOUND` | No element matched the ref or query |
-| `APP_NOT_FOUND` | Application not running or no windows; the lookup failed before anything was sent, so the disposition is `not_delivered` |
+| `APP_NOT_FOUND` | No matching application process; the lookup failed before anything was sent, so the disposition is `not_delivered` |
 | `STALE_REF` | Ref could not be re-identified in the live UI |
 | `AMBIGUOUS_TARGET` | Ref recovery matched multiple plausible targets |
 | `SNAPSHOT_NOT_FOUND` | Snapshot ID is missing or expired |

@@ -35,11 +35,11 @@ Read the core skill first (`agent-desktop skills get desktop`) for the observe, 
 
 ## What differs on macOS
 
-**Headed is physical first** for `click`, `right-click`, `type`, `clear` and `scroll`. Core focuses the exact window of the ref. The adapter then sends a real click, key or wheel event to the verified point. `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus` and `scroll-to` stay semantic under `--headed`. Double-click, triple-click, `hover` and `drag` need `--headed`. Raw `--xy` input never changes focus.
+**Headed actions.** `click`, `right-click`, `type`, `clear` and `scroll` use physical paths first, except a click on a native `AXMenuBarItem` or `AXMenuItem`. That headed click activates the owning app and calls `AXPress` without moving the cursor. A headless click on these menu items calls `AXPress` without activating the app. For ref targets, physical pointer actions focus the exact source window and verify the hit target before delivery. `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus` and `scroll-to` stay semantic under `--headed`. Double-click, triple-click, `hover` and `drag` need `--headed`. Raw `--xy` input never changes focus.
 
 **Judge delivery by observation.** AX return codes do not prove an effect. Finder returns success from an `AXConfirm` that does nothing. Snapshot again or use `get` and `is` to check the result.
 
-**Surfaces.** Use `--surface menubar` for File, Edit and View menus and for menu bar apps (status items). While a menu, sheet, alert or popover is open, refs from the window tree behind it are the wrong target.
+**Surfaces.** Use `--surface menubar` for File, Edit and View menus and for menu bar apps (status items). macOS `menu` and `menubar` surfaces belong to the application, so they can be observed without a document window and their snapshots omit `data.window`. If you pass `--window-id`, it selects the app that owns the surface. While a menu, sheet, alert or popover is open, refs from the window tree behind it are the wrong target.
 
 **Menus.** `right-click` headless uses `AXShowMenu`. If the menu opened but the app returned `APP_UNRESPONSIVE` with `retry: unsafe`, do not retry. Inspect the menu with `--surface menu`. For combo boxes and menu buttons, use `select @ref "Option"`. `select` needs a closed-to-open menu transition, so dismiss any open menu first.
 

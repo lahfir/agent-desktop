@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum HeadedRequirement {
     None,
+    FocusedApplication,
     FocusedWindow,
     FocusedWindowAndCursor,
 }

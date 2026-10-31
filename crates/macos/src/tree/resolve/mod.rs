@@ -19,9 +19,8 @@ pub(crate) fn resolve_element_with_deadline(
     entry: &RefEntry,
     operation_deadline: agent_desktop_core::Deadline,
 ) -> Result<NativeHandle, AdapterError> {
-    verify_process_instance(entry)?;
     let deadline = crate::tree::locator_deadline::from_operation(operation_deadline)?;
-    let result = retry_incomplete_until(deadline, || resolve_once(entry, deadline));
+    let result = resolve_with_recovery(entry, deadline, || resolve_once(entry, deadline));
     match result {
         Err(error) if error.code == ErrorCode::ElementNotFound => {
             Err(stale_ref_error(entry, &error))
@@ -35,9 +34,10 @@ pub(crate) fn resolve_locator_anchor_with_deadline(
     entry: &RefEntry,
     operation_deadline: agent_desktop_core::Deadline,
 ) -> Result<NativeHandle, AdapterError> {
-    verify_process_instance(entry)?;
     let deadline = crate::tree::locator_deadline::from_operation(operation_deadline)?;
-    let result = retry_incomplete_until(deadline, || resolve_locator_anchor_once(entry, deadline));
+    let result = resolve_with_recovery(entry, deadline, || {
+        resolve_locator_anchor_once(entry, deadline)
+    });
     match result {
         Err(error) if error.code == ErrorCode::ElementNotFound => {
             Err(stale_ref_error(entry, &error))
@@ -47,24 +47,54 @@ pub(crate) fn resolve_locator_anchor_with_deadline(
 }
 
 #[cfg(target_os = "macos")]
-fn verify_process_instance(entry: &RefEntry) -> Result<(), AdapterError> {
+fn resolve_with_recovery<T>(
+    entry: &RefEntry,
+    deadline: Instant,
+    mut operation: impl FnMut() -> Result<T, AdapterError>,
+) -> Result<T, AdapterError> {
+    let identity = verify_process_instance(entry)?;
+    if matches!(
+        entry.source.source_surface,
+        SnapshotSurface::Menu | SnapshotSurface::Menubar
+    ) {
+        crate::tree::app_menu::observe(identity, deadline, operation)
+    } else {
+        retry_incomplete_until(deadline, || {
+            if !identity.still_matches()? {
+                return Err(AdapterError::stale_ref_because(
+                    "Saved target process instance changed during resolution",
+                ));
+            }
+            let result = operation();
+            if !identity.still_matches()? {
+                return Err(AdapterError::stale_ref_because(
+                    "Saved target process instance changed during resolution",
+                ));
+            }
+            result
+        })
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn verify_process_instance(
+    entry: &RefEntry,
+) -> Result<crate::system::process::process_identity::ProcessIdentity, AdapterError> {
     super::resolve::retained::validate(entry.identity.retained_object.as_deref())?;
     let Some(instance) = entry.process.process_instance.as_deref() else {
         return Err(AdapterError::stale_ref_because(
             "Saved target has no process instance identity",
         ));
     };
-    let pid = crate::system::process::process_identity::to_pid_t(entry.process.pid)?;
-    match crate::system::process::process_identity::matches_instance(pid, instance) {
-        Ok(true) => Ok(()),
-        Ok(false) => Err(AdapterError::stale_ref_because(
-            "Saved target belongs to a process instance that is no longer running",
-        )),
-        Err(error) if error.code == ErrorCode::InvalidArgs => Err(AdapterError::stale_ref_because(
-            "Saved target carries a malformed process instance identity",
-        )),
-        Err(error) => Err(error),
-    }
+    crate::system::process::process_identity::require_core(
+        &agent_desktop_core::ProcessIdentity::new(entry.process.pid, instance),
+    )
+    .map_err(|error| match error.code {
+        ErrorCode::InvalidArgs | ErrorCode::AppUnresponsive => AdapterError::stale_ref_because(
+            "Saved target process instance is invalid or no longer running",
+        ),
+        _ => error,
+    })
 }
 
 #[cfg(target_os = "macos")]

@@ -34,15 +34,15 @@ mod imp {
         continue_after_unverified_delivery: false,
     };
 
-    static MENUBAR_CLICK_CHAIN: ChainDef = ChainDef {
+    static MENU_CLICK_CHAIN: ChainDef = ChainDef {
         steps: &[ChainStep::Action("AXPress")],
-        suggestion: "Refresh the menu-bar snapshot and target an item that supports AXPress.",
+        suggestion: "Refresh the menu snapshot and target an item that supports AXPress.",
         continue_after_unverified_delivery: false,
     };
 
     pub(crate) fn click_chain(native_role: Option<&str>) -> &'static ChainDef {
-        if native_role == Some("AXMenuBarItem") {
-            &MENUBAR_CLICK_CHAIN
+        if matches!(native_role, Some("AXMenuBarItem" | "AXMenuItem")) {
+            &MENU_CLICK_CHAIN
         } else {
             &CLICK_CHAIN
         }

@@ -52,7 +52,7 @@ agent-desktop snapshot --app Finder -i      # observe again to verify
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "snapshot",
   "data": {

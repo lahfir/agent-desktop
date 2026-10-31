@@ -31,6 +31,9 @@ impl ObservationOps for FixtureAdapter<'_> {
         request: &ObservationRequest,
     ) -> Result<ObservedTree, AdapterError> {
         match &root {
+            ObservationRoot::Application { .. } => {
+                Err(AdapterError::not_supported("application observation root"))
+            }
             ObservationRoot::Window(_) => {
                 live_tree(self.fixture, request.evidence_for_raw_depth(0))
             }

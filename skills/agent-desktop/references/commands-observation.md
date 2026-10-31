@@ -24,6 +24,8 @@ Output shape:
       { "ref_id": "@s8f3k2p9:e1", "role": "button", "name": "About", "states": ["focused"] } ] } } }
 ```
 
+On macOS, `menu` and `menubar` snapshots are application-owned. They need no document window, include `data.app`, and omit `data.window`. If you pass `--window-id`, it selects the app that owns the menu surface.
+
 Each ref names the snapshot that owns it, so a ref keeps resolving against its own snapshot when you interleave several apps or windows.
 
 Choose the scope:
@@ -34,6 +36,7 @@ Choose the scope:
 - `--max-depth` (default 10) limits depth. Reach deeper subtrees with `--root`.
 - Use `--include-bounds` only when you need coordinates.
 - With `--app` and no `--window-id`, `snapshot` and `find` take the app's only visible window, else its only focused window, and answer `AMBIGUOUS_TARGET` with the candidates when neither settles it. Pass `--window-id` when an app has several windows.
+- On macOS, `menu` and `menubar` are application-owned and skip window selection. If you pass `--window-id`, it selects the owning app for that surface.
 
 ### Partial trees
 
@@ -47,7 +50,7 @@ An element gets a ref when its role is interactive or it advertises a primary ac
 
 ### Surfaces
 
-Surfaces are overlays: `menu`, `menubar`, `sheet`, `popover`, `alert`, `focused`, plus OS shell kinds on some platforms. Read `supported_surfaces` from `status` before you ask for one. An unsupported kind returns `PLATFORM_NOT_SUPPORTED` with the supported list in `details`. A shell surface needs no `--app`. When it is closed you get `WINDOW_NOT_FOUND`; raise it with `open-system-surface`.
+Surfaces are overlays: `menu`, `menubar`, `sheet`, `popover`, `alert`, `focused`, plus OS shell kinds on some platforms. On macOS, `menu` and `menubar` belong to the application. Read `supported_surfaces` from `status` before you ask for one. An unsupported kind returns `PLATFORM_NOT_SUPPORTED` with the supported list in `details`. A shell surface needs no `--app`. When it is closed you get `WINDOW_NOT_FOUND`; raise it with `open-system-surface`.
 
 Use a surface snapshot for dialogs and menus, not a window snapshot. To reach one item inside an overlay, use `find --surface` instead of a full dump.
 

@@ -8,7 +8,7 @@ A failed command prints an envelope with `ok: false` and exits `1` (or `2` for a
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": false,
   "command": "click",
   "error": {
@@ -51,7 +51,7 @@ A failed command prints an envelope with `ok: false` and exits `1` (or `2` for a
   <tbody>
     <tr><td><code>PERM_DENIED</code></td><td>A required operating system permission is missing, such as Accessibility or Screen Recording.</td><td>Run <code>agent-desktop permissions</code> and grant it. See the <a href="/desktop/platforms/macos">macOS</a>, <a href="/desktop/platforms/windows">Windows</a>, and <a href="/desktop/platforms/linux">Linux</a> pages.</td></tr>
     <tr><td><code>ELEMENT_NOT_FOUND</code></td><td>No element matched the ref or query.</td><td>Take a fresh snapshot or run <code>find</code> again, then use the new ref.</td></tr>
-    <tr><td><code>APP_NOT_FOUND</code></td><td>The application is not running, or it has no windows.</td><td>Check the name with <code>list-apps</code>. Run <code>launch</code> if it is not running.</td></tr>
+    <tr><td><code>APP_NOT_FOUND</code></td><td>No matching application process exists.</td><td>Check the name with <code>list-apps</code>. Run <code>launch</code> if it is not running.</td></tr>
     <tr><td><code>ACTION_FAILED</code></td><td>The action was rejected or blocked, or its observed result contradicted the request.</td><td>Read <code>details</code> and <code>disposition.retry</code>. It never carries <code>recovery</code>.</td></tr>
     <tr><td><code>ACTION_NOT_SUPPORTED</code></td><td>The target, or this platform for this input, does not expose the requested action.</td><td>Use a different command or element. Repeating it fails the same way.</td></tr>
     <tr><td><code>STALE_REF</code></td><td>The ref no longer matches a live element.</td><td>Take a fresh snapshot and use the new ref. See <a href="/desktop/snapshots-and-refs">Snapshots and refs</a>.</td></tr>

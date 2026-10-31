@@ -1,4 +1,5 @@
 mod adapter;
+pub(crate) mod app_menu;
 pub(crate) mod ax_element;
 pub(crate) mod build_context;
 pub(crate) mod child_labels;

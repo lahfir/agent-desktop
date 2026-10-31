@@ -1,9 +1,13 @@
-use crate::{WindowInfo, refs::RefEntry};
+use crate::{AppInfo, WindowInfo, refs::RefEntry};
 
 use super::ObservationRoot;
 
 #[derive(Debug, Clone)]
 pub enum ObservationSource {
+    Application {
+        app: AppInfo,
+        surface: crate::SnapshotSurface,
+    },
     Window {
         window: WindowInfo,
         /// The surface actually walked. A ref that was found on the menu bar
@@ -20,6 +24,10 @@ pub enum ObservationSource {
 impl ObservationSource {
     pub fn from_root(root: &ObservationRoot<'_>, surface: crate::SnapshotSurface) -> Self {
         match root {
+            ObservationRoot::Application { app, .. } => Self::Application {
+                app: (*app).clone(),
+                surface,
+            },
             ObservationRoot::Window(window) => Self::Window {
                 window: (*window).clone(),
                 surface,

@@ -190,12 +190,12 @@ remain the transitive check.
 Every command prints one envelope. `docs/json-output.md` holds the full contract.
 
 ```json
-{ "version": "2.5", "ok": true, "command": "snapshot",
+{ "version": "2.6", "ok": true, "command": "snapshot",
   "data": { "app": "Finder", "snapshot_id": "s8f3k2p9", "ref_count": 14, "complete": true, "tree": { } } }
 ```
 
 ```json
-{ "version": "2.5", "ok": false, "command": "click",
+{ "version": "2.6", "ok": false, "command": "click",
   "error": { "code": "STALE_REF", "message": "...", "suggestion": "...",
              "recovery": { "strategy": "refresh_snapshot_then_retry_original", "retryable": true,
                            "requires_fresh_snapshot": true },
@@ -203,6 +203,7 @@ Every command prints one envelope. `docs/json-output.md` holds the full contract
 ```
 
 - Omit `None` fields and empty arrays. Compact mode omits bounds. `ref_count` and `tree` live inside `data`.
+- Snapshot `data.window` is present for window-owned surfaces. macOS `menu` and `menubar` snapshots are application-owned and omit it.
 - Every snapshot carries `data.complete`. A snapshot that runs out of observation budget succeeds with
   `"complete": false`, `"truncated": true`, `"nodes_observed"` and the tree it saw; each cut node carries
   `"subtree_truncated": true`. A `--root` drill-down returns `TIMEOUT` instead of a partial tree.

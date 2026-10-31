@@ -123,24 +123,19 @@ fn surfaces_for_apps(
     let mut surfaces = Vec::new();
     for app in apps {
         ensure_before_deadline(deadline)?;
-        let pid = crate::system::process::process_identity::to_pid_t(app.pid)?;
-        for info in crate::tree::surface_inventory::list_surfaces_for_pid(pid, deadline)? {
+        let instance = app.process_instance.as_deref().ok_or_else(|| {
+            AdapterError::stale_ref_because("Surface owner lacks a process instance")
+        })?;
+        let identity = crate::system::process::process_identity::require_core(
+            &agent_desktop_core::ProcessIdentity::new(app.pid, instance),
+        )?;
+        for info in crate::tree::surface_inventory::list_surfaces_for_process(identity, deadline)? {
             if let Some(kind) = map_surface_kind(&info.kind) {
-                let process_instance = app.process_instance.clone().ok_or_else(|| {
-                    AdapterError::new(
-                        agent_desktop_core::ErrorCode::AppUnresponsive,
-                        "Surface owner lacks a verified process instance",
-                    )
-                    .with_details(serde_json::json!({
-                        "pid": app.pid,
-                        "complete": false,
-                    }))
-                })?;
                 surfaces.push(SurfaceSignal {
                     kind,
                     app: app.name.clone(),
                     pid: app.pid,
-                    process_instance,
+                    process_instance: instance.to_owned(),
                     id: info.id,
                     title: info.title,
                 });

@@ -16,7 +16,8 @@ A result shows which mechanism ran: in `data.steps`, `semantic_api` is an access
 
 `--headed` authorizes the focus and cursor side effects an action declares:
 
-- For a ref, core focuses the exact source window first, and pointer actions need a verified target point.
+- For ref targets, physical pointer actions focus the exact source window and require a verified target point before delivery.
+- On macOS, a headed click on a native `AXMenuBarItem` or `AXMenuItem` activates the owning app, then calls `AXPress` without moving the cursor. A headless click calls `AXPress` without agent-desktop activating the app.
 - Raw coordinates (`--xy`) carry no window identity, so they never focus anything.
 - It applies to every entry of a [batch](/desktop/guides/batch).
 - It permits physical input; it does not force it. Each platform decides per action whether to use a physical or a semantic path, and `check`, `set-value`, and `expand` stay semantic under `--headed` everywhere.
@@ -57,7 +58,7 @@ Depending on the OS:
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": false,
   "command": "hover",
   "error": {

@@ -6,6 +6,18 @@ use agent_desktop_core::{
 };
 
 impl ObservationOps for MacOSAdapter {
+    fn is_application_surface(&self, surface: agent_desktop_core::SnapshotSurface) -> bool {
+        matches!(
+            surface,
+            agent_desktop_core::SnapshotSurface::Menu
+                | agent_desktop_core::SnapshotSurface::Menubar
+        )
+    }
+
+    fn focused_app(&self, deadline: Deadline) -> Result<Option<AppInfo>, AdapterError> {
+        crate::system::focus::focused_app(deadline)
+    }
+
     fn observe_tree(
         &self,
         root: ObservationRoot<'_>,
@@ -88,12 +100,10 @@ impl ObservationOps for MacOSAdapter {
         deadline: Deadline,
     ) -> Result<Vec<SurfaceInfo>, AdapterError> {
         let identity = crate::system::process::process_identity::require_core(&process)?;
-        let surfaces = crate::tree::surface_inventory::list_surfaces_for_pid(
-            identity.pid(),
+        crate::tree::surface_inventory::list_surfaces_for_process(
+            identity,
             crate::tree::locator_deadline::from_operation(deadline)?,
-        )?;
-        crate::system::process::process_identity::require_core(&process)?;
-        Ok(surfaces)
+        )
     }
 
     fn hit_test(

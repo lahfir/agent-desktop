@@ -24,7 +24,7 @@ The grant belongs to the app that launched agent-desktop, not to the shell. A di
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "permissions",
   "data": {
@@ -39,7 +39,7 @@ The grant belongs to the app that launched agent-desktop, not to the shell. A di
 
 ## What works headless
 
-Ref actions are headless by default. Under `--headed`, `click`, `right-click`, `type`, `clear`, and `scroll` become physical first: core focuses the exact window, then a real click, key, or wheel event goes to the verified point. `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus`, and `scroll-to` stay semantic. See [Headed mode](/desktop/guides/headed-mode).
+Ref actions are headless by default. Under `--headed`, `click`, `right-click`, `type`, `clear`, and `scroll` use physical paths first, except a click on a native `AXMenuBarItem` or `AXMenuItem`: agent-desktop activates the owning app and calls `AXPress` without moving the cursor. A headless click on these menu items calls `AXPress` without activating the app. When a ref-target pointer action uses physical input, core focuses the exact source window and verifies the hit target before delivery. `expand`, `collapse`, `set-value`, `select`, `toggle`, `check`, `uncheck`, `focus`, and `scroll-to` stay semantic. See [Headed mode](/desktop/guides/headed-mode).
 
 <table>
   <thead>
@@ -69,7 +69,7 @@ Judge delivery by observation. AX return codes do not prove an effect: an app ca
 
 ## Surfaces
 
-`supported_surfaces` lists `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, and `alert`. Use `--surface menubar` for the File, Edit, and View menus and for menu bar status items. macOS has no shell surfaces; Notification Center is reached through the notification commands. See [Surfaces](/desktop/surfaces).
+`supported_surfaces` lists `window`, `focused`, `menu`, `menubar`, `sheet`, `popover`, and `alert`. Use `--surface menubar` for the File, Edit, and View menus and for menu bar status items. `menu` and `menubar` are application-owned, so snapshots need no document window and omit `data.window`. macOS has no shell surfaces; Notification Center is reached through the notification commands. See [Surfaces](/desktop/surfaces).
 
 ## Keys and notifications
 
@@ -94,7 +94,7 @@ agent-desktop turns on web accessibility in a Chromium renderer when it needs it
     <tr><td><code>complete: false</code> or a slow snapshot</td><td>A deep tree ran out of budget</td><td>Use <code>find</code>, or a skeleton and <code>--root</code>. See <a href="/desktop/skeleton-and-drill-down">Skeleton and drill-down</a></td></tr>
     <tr><td><code>APP_UNRESPONSIVE</code> after <code>right-click</code> with <code>retry: unsafe</code></td><td><code>AXShowMenu</code> entered modal menu tracking after the menu opened</td><td>Do not retry. Run <code>snapshot --surface menu</code>; for a combo box or menu button, use <code>select</code></td></tr>
     <tr><td><code>select</code> cannot confirm the choice</td><td>It needs a closed-to-open menu change, and a menu was already open</td><td>Dismiss the open menu, then run <code>select</code> again</td></tr>
-    <tr><td><code>WINDOW_NOT_FOUND</code></td><td>The app has no open window</td><td><code>launch "App"</code> with <code>--activate</code>, then <code>list-windows --app "App"</code></td></tr>
+    <tr><td><code>WINDOW_NOT_FOUND</code></td><td>A window-owned surface has no open window</td><td><code>launch "App"</code> with <code>--activate</code>, then <code>list-windows --app "App"</code></td></tr>
     <tr><td>A shortcut does nothing</td><td><code>ctrl</code> used where macOS uses <code>cmd</code>, or the keys went to another app</td><td>Use <code>cmd+...</code>, or scope with <code>--app</code></td></tr>
   </tbody>
 </table>

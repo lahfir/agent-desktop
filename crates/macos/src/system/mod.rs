@@ -6,6 +6,7 @@ pub(crate) mod cursor_overlay;
 pub(crate) mod display;
 pub(crate) mod display_work_area;
 pub(crate) mod focus;
+pub(crate) mod focus_bridge;
 pub(crate) mod key_dispatch;
 pub(crate) mod launch;
 pub(crate) mod launch_callback_result;

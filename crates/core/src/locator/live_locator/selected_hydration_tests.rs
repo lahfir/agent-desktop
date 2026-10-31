@@ -31,6 +31,7 @@ impl ObservationOps for RoleOnlyHydrationAdapter {
         request: &ObservationRequest,
     ) -> Result<ObservedTree, AdapterError> {
         match root {
+            ObservationRoot::Application { .. } => panic!("expected a window or element root"),
             ObservationRoot::Window(_) => {
                 self.window_observations.fetch_add(1, Ordering::SeqCst);
                 crate::wait::deadline::sleep(Duration::from_millis(10));

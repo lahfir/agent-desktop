@@ -25,6 +25,8 @@ struct ScopedWaitAdapter {
     polled_app: Mutex<Option<String>>,
     lease_held: Arc<AtomicBool>,
     lease_free_polls: AtomicU32,
+    dispatches: AtomicU32,
+    uncertain: bool,
 }
 
 impl ScopedWaitAdapter {
@@ -34,6 +36,8 @@ impl ScopedWaitAdapter {
             polled_app: Mutex::new(None),
             lease_held: Arc::new(AtomicBool::new(false)),
             lease_free_polls: AtomicU32::new(0),
+            dispatches: AtomicU32::new(0),
+            uncertain: false,
         }
     }
 }
@@ -129,6 +133,12 @@ impl ActionOps for ScopedWaitAdapter {
     ) -> Result<ActionResult, AdapterError> {
         assert!(self.lease_held.load(Ordering::SeqCst));
         *self.request.lock().unwrap() = Some(request);
+        self.dispatches.fetch_add(1, Ordering::SeqCst);
+        if self.uncertain {
+            return Err(AdapterError::app_unresponsive("TargetApp")
+                .with_details(json!({ "ax_error": -25204 }))
+                .with_disposition(crate::DeliverySemantics::uncertain()));
+        }
         Ok(ActionResult::delivered_unverified("ok"))
     }
 }
@@ -148,40 +158,55 @@ impl SystemOps for ScopedWaitAdapter {
 }
 
 #[test]
-fn post_action_wait_scopes_to_source_app_and_merges_action_result() {
+fn post_action_wait_scopes_and_reconciles_without_redispatch_or_held_lease() {
     let _guard = HomeGuard::new();
-    let mut refmap = RefMap::new();
-    let mut entry = entry();
-    entry.source.source_app = Some("TargetApp".into());
-    refmap.allocate(entry);
-    let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
-    let adapter = ScopedWaitAdapter::new();
-    let context = CommandContext::default().with_wait_selector(Some(WaitSelector {
-        query_raw: ":saved!".into(),
-        gone: false,
-        timeout_ms: 5_000,
-    }));
-    let args = RefArgs {
-        ref_id: format!("@{}:e1", snapshot_id),
-        timeout_ms: None,
-    };
-
-    let value = execute_ref_action_with_context(
-        args,
-        &adapter,
-        ActionRequest::headless(Action::Click),
-        &context,
-    )
-    .unwrap();
-
-    assert_eq!(
-        adapter.polled_app.lock().unwrap().as_deref(),
-        Some("TargetApp")
-    );
-    assert!(!adapter.lease_held.load(Ordering::SeqCst));
-    assert!(adapter.lease_free_polls.load(Ordering::SeqCst) >= 1);
-    assert_eq!(value["after_action"]["action"], "ok");
-    assert_eq!(value["matched_selector"], ":saved!");
+    for uncertain in [false, true] {
+        let mut refmap = RefMap::new();
+        let mut entry = entry();
+        entry.source.source_app = Some("TargetApp".into());
+        refmap.allocate(entry);
+        let snapshot_id = RefStore::new().unwrap().save_new_snapshot(&refmap).unwrap();
+        let mut adapter = ScopedWaitAdapter::new();
+        adapter.uncertain = uncertain;
+        let context = CommandContext::default().with_wait_selector(Some(WaitSelector {
+            query_raw: ":saved!".into(),
+            gone: false,
+            timeout_ms: 500,
+        }));
+        let result = execute_ref_action_with_context(
+            RefArgs {
+                ref_id: format!("@{snapshot_id}:e1"),
+                timeout_ms: None,
+            },
+            &adapter,
+            ActionRequest::headless(Action::Click),
+            &context,
+        );
+        assert_eq!(adapter.dispatches.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            adapter.polled_app.lock().unwrap().as_deref(),
+            Some("TargetApp")
+        );
+        assert!(!adapter.lease_held.load(Ordering::SeqCst));
+        assert!(adapter.lease_free_polls.load(Ordering::SeqCst) >= 1);
+        if uncertain {
+            let AppError::Adapter(error) = result.unwrap_err() else {
+                panic!("expected adapter error")
+            };
+            assert_eq!(error.code, crate::ErrorCode::AppUnresponsive);
+            assert_eq!(error.disposition, crate::DeliverySemantics::uncertain());
+            let details = error.details.unwrap();
+            assert_eq!(details["ax_error"], -25204);
+            assert_eq!(
+                details["post_action_observation"]["outcome"],
+                "expected_state_observed"
+            );
+        } else {
+            let value = result.unwrap();
+            assert_eq!(value["after_action"]["action"], "ok");
+            assert_eq!(value["matched_selector"], ":saved!");
+        }
+    }
 }
 
 struct MultiWindowAdapter;

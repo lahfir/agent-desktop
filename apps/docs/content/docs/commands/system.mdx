@@ -51,7 +51,7 @@ agent-desktop permissions [--request] [--guide]
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "permissions",
   "data": {
@@ -69,7 +69,7 @@ Each state is `granted`, `denied` (with a `suggestion`), `not_required`, or `unk
 Prints the version, CPU architecture, and OS. It takes no flags.
 
 ```json
-{ "version": "2.5", "ok": true, "command": "version", "data": { "os": "linux", "target": "x86_64", "version": "1.0.1" } }
+{ "version": "2.6", "ok": true, "command": "version", "data": { "os": "linux", "target": "x86_64", "version": "1.0.1" } }
 ```
 
 The envelope's `version` is the JSON contract version; `data.version` is the release.
@@ -143,7 +143,7 @@ agent-desktop --session "$AGENT_DESKTOP_SESSION" cursor-overlay disable
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "cursor-overlay",
   "data": {
@@ -187,7 +187,7 @@ agent-desktop --session "$AGENT_DESKTOP_SESSION" trace export [--out PATH] [--li
 
 ```json
 {
-  "version": "2.5",
+  "version": "2.6",
   "ok": true,
   "command": "trace",
   "data": {

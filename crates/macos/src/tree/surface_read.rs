@@ -140,10 +140,11 @@ fn map_error(attribute: &str, error: i32) -> AdapterError {
     } else if error == kAXErrorCannotComplete {
         ErrorCode::Timeout
     } else if error == kAXErrorInvalidUIElement {
-        ErrorCode::ElementNotFound
+        ErrorCode::AppUnresponsive
     } else {
         ErrorCode::ActionFailed
     };
+    let retryable = matches!(code, ErrorCode::Timeout | ErrorCode::AppUnresponsive);
     AdapterError::new(
         code,
         format!("Accessibility surface read failed for {attribute}"),
@@ -152,6 +153,8 @@ fn map_error(attribute: &str, error: i32) -> AdapterError {
         "attribute": attribute,
         "ax_error": error,
         "kind": "surface_read",
+        "complete": false,
+        "retryable": retryable,
     }))
     .with_suggestion("Retry after the application finishes updating its accessibility surfaces")
 }
@@ -168,7 +171,7 @@ mod tests {
     };
 
     #[test]
-    fn classifier_preserves_permission_timeout_and_stale_states() {
+    fn classifier_preserves_permission_timeout_and_incomplete_observation() {
         assert_eq!(
             map_error("AXRole", kAXErrorAPIDisabled).code,
             ErrorCode::PermDenied
@@ -179,8 +182,13 @@ mod tests {
         );
         assert_eq!(
             map_error("AXRole", kAXErrorInvalidUIElement).code,
-            ErrorCode::ElementNotFound
+            ErrorCode::AppUnresponsive
         );
+        let stale = map_error("AXRole", kAXErrorInvalidUIElement);
+        let details = stale.details.unwrap();
+        assert_eq!(details["complete"], false);
+        assert_eq!(details["retryable"], true);
+        assert_eq!(details["ax_error"], kAXErrorInvalidUIElement);
     }
 
     #[test]

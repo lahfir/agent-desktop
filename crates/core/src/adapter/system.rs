@@ -76,6 +76,14 @@ pub trait SystemOps: Send + Sync {
         Err(AdapterError::not_supported("focus_window"))
     }
 
+    fn focus_app(
+        &self,
+        _process: ProcessIdentity,
+        _lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("focus_app"))
+    }
+
     fn launch_app(
         &self,
         _id: &str,

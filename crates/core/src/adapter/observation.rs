@@ -28,6 +28,14 @@ fn is_live_read_unsupported(err: &AdapterError) -> bool {
 }
 
 pub trait ObservationOps: Send + Sync {
+    fn is_application_surface(&self, _surface: SnapshotSurface) -> bool {
+        false
+    }
+
+    fn focused_app(&self, _deadline: Deadline) -> Result<Option<AppInfo>, AdapterError> {
+        Err(AdapterError::not_supported("focused_app"))
+    }
+
     /// Whether this resolved handle denotes a protocol object with no screen
     /// position, rather than a native control whose geometry is unreadable.
     /// Only headless semantic delivery can use this fact; fresh identity,

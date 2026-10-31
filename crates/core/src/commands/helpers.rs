@@ -11,6 +11,9 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+#[path = "post_action_observation.rs"]
+mod post_action_observation;
+
 pub(crate) use crate::system::app_lookup::{
     process_identity, resolve_app, revalidate_app_for_mutation,
 };
@@ -90,18 +93,28 @@ pub(crate) fn execute_ref_action_with_context(
         super::point_resolve::require_pointer_capability(adapter)?;
     }
     let entry = load_ref_entry(&args.ref_id, context)?;
-    let (result, lease, pre, deadline, lease_started) =
-        crate::ref_action::ref_action_wait::execute_with_auto_wait_and_lease(
-            RefActionWaitContext {
-                adapter,
-                entry: &entry,
-                ref_id: &args.ref_id,
-                context,
-            },
-            request,
-            crate::ref_action::dispatch_resolved,
-        )
-        .map_err(AppError::Adapter)?;
+    let action_result = crate::ref_action::ref_action_wait::execute_with_auto_wait_and_lease(
+        RefActionWaitContext {
+            adapter,
+            entry: &entry,
+            ref_id: &args.ref_id,
+            context,
+        },
+        request,
+        crate::ref_action::dispatch_resolved,
+    );
+    let (result, lease, pre, deadline, lease_started) = match action_result {
+        Ok(result) => result,
+        Err(mut error) => {
+            if error.disposition.delivery() == crate::DeliveryDisposition::DeliveryUncertain
+                && let Some(wait) = context.wait_selector()
+            {
+                let observation = post_action_observation::observe(wait, &entry, adapter);
+                error = post_action_observation::attach(error, observation);
+            }
+            return Err(AppError::Adapter(error));
+        }
+    };
     let value = serde_json::to_value(result).map_err(|error| {
         post_delivery_error(AppError::Json(error), json!({ "action": "delivered" }))
     })?;

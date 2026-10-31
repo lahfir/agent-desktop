@@ -64,6 +64,10 @@ fn switch_on(adapter: &dyn PlatformAdapter, root: ObservationRoot<'_>) -> Result
 
 fn root_process(root: ObservationRoot<'_>) -> Result<crate::ProcessIdentity, AppError> {
     match root {
+        ObservationRoot::Application { app, .. } => app
+            .process_instance
+            .as_deref()
+            .map(|instance| crate::ProcessIdentity::new(app.pid, instance)),
         ObservationRoot::Window(window) => window
             .process_instance
             .as_deref()

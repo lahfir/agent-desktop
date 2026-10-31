@@ -83,10 +83,10 @@ cc -std=c11 -I crates/ffi/include main.c \
 ./snapshot_demo gnome-calculator
 ```
 
-On Linux against GNOME Calculator it printed this envelope, shown here with `tree` elided:
+On Linux against GNOME Calculator it printed this envelope, shown here with the window metadata and `tree` elided:
 
 ```json
-{"version":"2.5","ok":true,"command":"snapshot","data":{"app":"gnome-calculator","complete":true,"ref_count":2,"snapshot_id":"s18ekeexjf5trb","tree":{"...":"..."}}}
+{"version":"2.6","ok":true,"command":"snapshot","data":{"app":"gnome-calculator","complete":true,"ref_count":2,"snapshot_id":"s18ekeexjf5trb","window":{"id":"...","title":"..."},"tree":{"...":"..."}}}
 ```
 
 The macOS install name is `@rpath/libagent_desktop_ffi.dylib`, so a program that links the library needs an rpath to its directory; `dlopen` and `ctypes` callers load by path and need nothing. On Windows, an MSVC program links `agent_desktop_ffi.dll.lib` and loads the DLL at run time. On Linux the program must run inside the user's graphical session to see apps; see [Linux](/desktop/platforms/linux).
