@@ -36,6 +36,7 @@ impl Drop for TempDir {
 #[cfg(unix)]
 #[test]
 fn image_and_motion_flags_are_validated_and_stored_together() {
+    let _cwd = crate::dispatch::test_support::CurrentDirectoryGuard::new();
     let dir = TempDir::new();
     let file = dir.0.join("cursor.png");
     std::fs::write(
