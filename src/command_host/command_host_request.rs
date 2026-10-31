@@ -2,6 +2,10 @@ use agent_desktop_core::{AppError, response::output::Response};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Where the command host waits between requests. The host outlives its
+/// callers, so staying in a caller's directory would keep that directory busy.
+pub(super) const IDLE_DIRECTORY: &str = "/";
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct HostRequest {
@@ -16,10 +20,14 @@ pub(super) struct HostRequest {
 
 pub(super) fn execute(bytes: &[u8], identity: &str, session: Option<&str>) -> Response {
     match prepare(bytes, identity, session) {
-        Ok((cli, command, deadline, baseline)) => crate::response(
-            command.name(),
-            crate::execute_with_deadline(cli, command, Some(deadline), baseline),
-        ),
+        Ok((cli, command, deadline, baseline)) => {
+            let response = crate::response(
+                command.name(),
+                crate::execute_with_deadline(cli, command, Some(deadline), baseline),
+            );
+            let _ = std::env::set_current_dir(IDLE_DIRECTORY);
+            response
+        }
         Err(error) => crate::response("unknown", Err(crate::pre_dispatch_error(error))),
     }
 }
@@ -62,9 +70,11 @@ fn prepare(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dispatch::test_support::CurrentDirectoryGuard;
 
     #[test]
     fn wrong_identity_or_namespace_never_changes_the_working_directory() {
+        let _cwd = CurrentDirectoryGuard::new();
         let before = std::env::current_dir().unwrap();
         for (identity, args) in [
             ("another executable", vec!["version"]),
@@ -88,5 +98,26 @@ mod tests {
             );
             assert_eq!(std::env::current_dir().unwrap(), before);
         }
+    }
+
+    #[test]
+    fn an_accepted_request_leaves_the_host_outside_the_caller_directory() {
+        let _cwd = CurrentDirectoryGuard::new();
+        let (cli, command) = super::super::parse_request(br#"["version"]"#, None).unwrap();
+        let bytes = serde_json::to_vec(&HostRequest {
+            identity: "owner".into(),
+            args: vec!["version".into()],
+            directory: std::env::temp_dir(),
+            agent_id: None,
+            expires_ns: super::super::budget::expires_at(&cli, &command).unwrap(),
+            baseline: None,
+        })
+        .unwrap();
+        let response = serde_json::to_value(execute(&bytes, "owner", None)).unwrap();
+        assert_eq!(response["ok"], true, "{response}");
+        assert_eq!(
+            std::env::current_dir().unwrap(),
+            PathBuf::from(IDLE_DIRECTORY)
+        );
     }
 }
