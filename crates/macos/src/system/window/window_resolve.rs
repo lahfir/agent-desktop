@@ -148,25 +148,21 @@ pub(crate) fn parse_window_number(id: &str) -> Option<i64> {
 
 fn verify_window_record(win: &WindowInfo, record: &WindowRecord) -> Result<(), AdapterError> {
     let pid = crate::system::process::process_identity::to_pid_t(win.pid)?;
-    if record.pid != pid {
+    let evidence = WindowIdentityEvidence {
+        pid,
+        app: Some(&win.app),
+        process_instance: win.process_instance.as_deref(),
+        title: Some(&win.title),
+        bounds_hash: None,
+    };
+    if !window_record_matches_source(record, &evidence) {
         return Err(window_identity_mismatch(&win.id));
     }
-    let Some(instance) = win.process_instance.as_deref() else {
+    let Some(instance) = evidence.process_instance else {
         return Err(window_identity_mismatch(&win.id));
     };
-    if record.process_instance.as_deref() != Some(instance)
-        || !crate::system::process::process_identity::matches_instance(pid, instance)?
-    {
+    if !crate::system::process::process_identity::matches_instance(pid, instance)? {
         return Err(window_identity_mismatch(&win.id));
-    }
-    if !win.app.is_empty() && record.app_name != win.app {
-        return Err(window_identity_mismatch(&win.id));
-    }
-    if !win.title.is_empty() {
-        let record_title = record.title.as_deref().unwrap_or(record.app_name.as_str());
-        if record_title != win.title {
-            return Err(window_identity_mismatch(&win.id));
-        }
     }
     Ok(())
 }

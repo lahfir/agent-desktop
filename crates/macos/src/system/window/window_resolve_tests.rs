@@ -69,11 +69,15 @@ fn verify_rejects_recycled_pid_with_wrong_application_identity() {
 }
 
 #[test]
-fn verify_rejects_title_mismatch_when_title_provided() {
+fn verify_accepts_changed_title_but_rejects_replaced_process_generation() {
     let pid = current_pid();
     let requested = win("w-100", pid, "Doc A");
-    let live = record("TextEdit", pid, "Doc B", 100);
-    assert!(verify_window_record(&requested, &live).is_err());
+    let mut live = record("TextEdit", pid, "Doc B", 100);
+    assert!(verify_window_record(&requested, &live).is_ok());
+    for generation in [None, Some("replacement-generation".into())] {
+        live.process_instance = generation;
+        assert!(verify_window_record(&requested, &live).is_err());
+    }
 }
 
 #[test]

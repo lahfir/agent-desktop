@@ -327,9 +327,8 @@ pub trait SystemOps: Send + Sync {
         Err(AdapterError::not_supported("window_op"))
     }
 
-    /// Resolves a live window by `WindowInfo.id`, corroborating the match against
-    /// `pid` and, when present, `title`. Opaque ids must not be parsed as numeric
-    /// outside the adapter; macOS uses `w-<kCGWindowNumber>`.
+    /// Resolves the exact window id against its stored pid and process instance.
+    /// Titles and bounds may change; opaque ids are interpreted only by the adapter.
     fn resolve_window_strict(
         &self,
         _win: &WindowInfo,
