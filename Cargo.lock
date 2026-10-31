@@ -76,6 +76,7 @@ dependencies = [
  "futures-util",
  "libc",
  "png",
+ "reis",
  "rustix",
  "serde_json",
  "thiserror",
@@ -971,6 +972,17 @@ name = "regex-syntax"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a96887878f22d7bad8a3b6dc5b7440e0ada9a245242924394987b21cf2210a4c"
+
+[[package]]
+name = "reis"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b967ec6489a42067a20724f11987bb96178ea796873cbe1afd25fb93ee6f85f"
+dependencies = [
+ "enumflags2",
+ "log",
+ "rustix",
+]
 
 [[package]]
 name = "rustc-hash"

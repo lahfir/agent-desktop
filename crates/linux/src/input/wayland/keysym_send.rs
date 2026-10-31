@@ -6,6 +6,8 @@ use serde_json::json;
 
 use super::kept_session;
 use super::key_session::KeySession;
+use super::kwin;
+use super::kwin::kwin_keyboard::KwinKeyboard;
 use super::layout::refuse_unreachable;
 use super::remote_desktop::{RemoteDesktop, semantic_action_refusal};
 use crate::input::delivery::{Delivery, Gate};
@@ -177,9 +179,6 @@ pub(crate) fn send_chunks(
     gate: Gate<'_>,
     deadline: Deadline,
 ) -> Result<Delivery, AdapterError> {
-    for chunk in chunks {
-        refuse_unreachable(chunk)?;
-    }
     let chunks: Vec<&[KeysymStep]> = chunks
         .iter()
         .map(Vec::as_slice)
@@ -189,6 +188,17 @@ pub(crate) fn send_chunks(
         return Ok(Delivery {
             delivered_events: 0,
         });
+    }
+    if kwin::serves(deadline).map_err(|error| with_progress(error, 0))? {
+        let wanted = chunks
+            .iter()
+            .flat_map(|chunk| chunk.iter().map(|key| key.keysym));
+        let mut keyboard = KwinKeyboard::open(wanted.collect(), deadline)
+            .map_err(|error| with_progress(error, 0))?;
+        return run_chunks(&mut keyboard, &chunks, gate, deadline);
+    }
+    for chunk in &chunks {
+        refuse_unreachable(chunk)?;
     }
     let kept = kept_session::take();
     let reused = kept.is_some();

@@ -40,7 +40,7 @@ Observation and semantic actions need no helper tool.
 | Wheel scrolling | `scroll`, `mouse-wheel` | Physical wheel input; X11 and `--headed` only |
 | Pointer gestures | `double-click`, `triple-click`, `hover`, `drag` | `--headed`, X11 only. On Wayland the pointer cannot be aimed and these refuse with `ACTION_NOT_SUPPORTED` |
 | Focus | `focus` | Needs `--headed` for the focus permission. Calls AT-SPI `Component.GrabFocus` on a focusable node that is not yet `focused`, not the pointer, and verifies the state; a GTK4 app rejects the call, so `focus` ends `ACTION_FAILED` `grab_focus_rejected` there and `focus-window` is the way to focus its window |
-| Keyboard and mouse | `press`, `mouse-click`, `mouse-move`, `mouse-wheel` | `press` and text keys work on X11 and capability-detected Mutter Wayland sessions; pointer commands are X11 and `--headed`. See `references/display-servers-and-input.md` |
+| Keyboard and mouse | `press`, `mouse-click`, `mouse-move`, `mouse-wheel` | `press` and text keys work on X11 and on Wayland sessions with Mutter RemoteDesktop or KWin EIS; pointer commands are X11 and `--headed`. See `references/display-servers-and-input.md` |
 | Held input | `key-down`, `key-up`, `mouse-down`, `mouse-up` | Fail closed on every platform: on Linux, `key-down` and `key-up` with `ACTION_NOT_SUPPORTED`; `mouse-down` and `mouse-up` with `POLICY_DENIED` headless and `ACTION_NOT_SUPPORTED` with `--headed` |
 | App and window | `launch`, `close-app`, `list-windows`, `list-apps`, `focus-window`, `move-window`, `resize-window`, `minimize`, `maximize`, `restore` | Launch and listing work on X11 and Wayland; `focus-window` requires X11. Other window control and graceful close need an X11 client. See `references/windows-and-lifecycle.md` |
 | Displays | `list-displays` | Works |
@@ -170,7 +170,7 @@ cursor; on Wayland none is drawn.
   `not_delivered` refusal (Windows works the other way round). On Wayland, headed
   pointer commands and a headed `select` refuse at once with
   `ACTION_NOT_SUPPORTED`, cause `wayland_session`; a headed `type` needs the
-  Mutter RemoteDesktop capability. `references/display-servers-and-input.md`
+  Mutter RemoteDesktop or KWin EIS keyboard. `references/display-servers-and-input.md`
   has the full rules.
 - `select` tries the semantic route first and the pointer second; the pointer
   route needs an explicit `--headed` request on X11. A Qt combo's semantic
