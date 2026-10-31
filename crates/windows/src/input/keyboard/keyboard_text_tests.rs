@@ -112,6 +112,40 @@ fn a_payload_spanning_multiple_chunks_delivers_every_unit_in_order() {
 }
 
 #[test]
+fn crlf_posts_one_line_break() {
+    sink::reset();
+
+    synthesize_text("a\r\nb", ample_deadline(), |_| Ok(())).expect("ample deadline succeeds");
+
+    let downs: Vec<u16> = sink::recorded()
+        .iter()
+        .filter(|event| event.flags == KEYEVENTF_UNICODE)
+        .map(|event| event.scan)
+        .collect();
+    assert_eq!(downs, "a\rb".encode_utf16().collect::<Vec<_>>());
+}
+
+#[test]
+fn lone_lf_and_lone_cr_are_posted_unchanged() {
+    let chunks = text_chunks("a\nb\rc\n\rd", None).unwrap();
+
+    assert_eq!(
+        String::from_utf16(&chunks.concat()).unwrap(),
+        "a\nb\rc\n\rd"
+    );
+}
+
+#[test]
+fn crlf_across_a_chunk_boundary_still_posts_one_line_break() {
+    let text = format!("{}\r\ntail", "a".repeat(TEXT_CHUNK_UTF16 - 1));
+    let chunks = text_chunks(&text, None).unwrap();
+
+    let expected = format!("{}\rtail", "a".repeat(TEXT_CHUNK_UTF16 - 1));
+    assert_eq!(String::from_utf16(&chunks.concat()).unwrap(), expected);
+    assert_eq!(planned_chunk_count(&text).unwrap(), chunks.len());
+}
+
+#[test]
 fn verify_failure_after_partial_delivery_enriches_chunk_counts() {
     sink::reset();
     let text = "a".repeat(TEXT_CHUNK_UTF16 * 2 + 3);

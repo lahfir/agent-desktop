@@ -6,8 +6,10 @@
 //! deadline and gives per-chunk delivery accounting. Each chunk becomes one
 //! `SendInput` batch of `KEYEVENTF_UNICODE` down/up pairs, one pair per code
 //! unit (a surrogate pair is two pairs) - the A4-1 measured per-event
-//! contract. No arm of this module ever places the typed text itself into an
-//! error: only chunk counts survive into `details`.
+//! contract. A CR LF pair is posted as its CR alone: each Unicode CR or LF
+//! is a line break on its own, so posting both would type two. No arm of
+//! this module ever places the typed text itself into an error: only chunk
+//! counts survive into `details`.
 
 use std::time::Duration;
 
@@ -125,7 +127,7 @@ fn text_chunks(
     };
     let mut chunks = Vec::new();
     let mut current = Vec::with_capacity(TEXT_CHUNK_UTF16);
-    for character in text.chars() {
+    for character in typed_chars(text) {
         let mut encoded = [0_u16; 2];
         let encoded = character.encode_utf16(&mut encoded);
         if !current.is_empty() && current.len() + encoded.len() > TEXT_CHUNK_UTF16 {
@@ -143,7 +145,7 @@ fn planned_chunk_count(text: &str) -> Result<usize, AdapterError> {
     let mut units = 0_usize;
     let mut chunks = 0_usize;
     let mut current = 0_usize;
-    for character in text.chars() {
+    for character in typed_chars(text) {
         let encoded = character.len_utf16();
         units = units.checked_add(encoded).ok_or_else(text_too_large)?;
         if units > MAX_TEXT_UTF16 {
@@ -156,6 +158,17 @@ fn planned_chunk_count(text: &str) -> Result<usize, AdapterError> {
         current += encoded;
     }
     Ok(chunks + usize::from(current > 0))
+}
+
+/// The characters posted for `text`: every character except the LF of a
+/// CR LF pair.
+fn typed_chars(text: &str) -> impl Iterator<Item = char> + '_ {
+    let mut previous = None;
+    text.chars().filter(move |&character| {
+        let skip = character == '\n' && previous == Some('\r');
+        previous = Some(character);
+        !skip
+    })
 }
 
 fn text_too_large() -> AdapterError {
