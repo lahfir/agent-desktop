@@ -189,6 +189,13 @@ pub(crate) struct ClipboardSetArgs {
     )]
     #[serde(default)]
     pub file_url: Vec<String>,
+    #[arg(
+        long,
+        conflicts_with_all = ["text", "image", "file_url"],
+        help = "Read up to 128 KiB of UTF-8 text from a pipe or file"
+    )]
+    #[serde(skip)]
+    pub stdin: bool,
 }
 
 /// `event`/`window_id` flatten in as a sibling of `mode`/`predicate` here

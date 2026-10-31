@@ -49,6 +49,10 @@ name = "cli_process"
 path = "tests/cli_process.rs"
 
 [[test]]
+name = "cli_stdin"
+path = "tests/cli_stdin.rs"
+
+[[test]]
 name = "windows_private_file_install"
 path = "tests/windows_private_file_install.rs"
 

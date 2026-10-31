@@ -101,6 +101,7 @@ Commands: `list-notifications`, `dismiss-notification`, `dismiss-all-notificatio
 agent-desktop clipboard-get --format auto
 agent-desktop clipboard-get --format image --out /tmp/clip.png
 agent-desktop clipboard-set "Hello"
+printf '%s' 'Hello' | agent-desktop clipboard-set --stdin
 agent-desktop clipboard-set --image /tmp/a.png
 agent-desktop clipboard-set --file-url /tmp/a.txt --file-url /tmp/b.txt
 agent-desktop clipboard-clear
@@ -109,6 +110,9 @@ agent-desktop clipboard-clear
 - Formats: `text` (default), `auto` (file references, then image, then text), `image`, `file-urls`. Output is `{ "type": "text", "text": ... }`, `{ "type": "file_urls", ... }`, or `{ "type": "image", "path", "width", "height" }`. When the clipboard has nothing in that form: `{ "type": "<format>", "found": false }`.
 - Image bytes go to `--out`, or to a private file under the active session directory (or `~/.agent-desktop/tmp`).
 - `clipboard-set` writes one representation per call. `--file-url` and `--image` win over the positional text. Every `--file-url` path must exist, or `INVALID_ARGS`.
+- Use `clipboard-set --stdin` to read up to 128 KiB from a pipe or redirected file without putting it in process arguments. Terminal input is rejected. It cannot be combined with a command-line value, `--image`, or `--file-url`.
+- The command waits until the input ends. Empty input and all line breaks are kept, including a final newline. Use `printf '%s'` to avoid adding one. Input must be valid UTF-8 without NUL bytes (`\0`).
+- Batch uses the JSON `text` field, which puts the text in process arguments. Run secret steps as separate `--stdin` commands. To copy the text `--stdin`, use `agent-desktop clipboard-set -- --stdin`.
 - A write that loses clipboard ownership mid-way reports `delivered_unverified`, not a false success.
 
 ## wait

@@ -42,6 +42,7 @@ Writes text, a PNG image, or a list of file paths.
 
 ```bash
 agent-desktop clipboard-set TEXT
+printf '%s' 'Hello' | agent-desktop clipboard-set --stdin
 agent-desktop clipboard-set --image /tmp/a.png
 agent-desktop clipboard-set --file-url /tmp/a.txt --file-url /tmp/b.txt
 ```
@@ -52,12 +53,17 @@ agent-desktop clipboard-set --file-url /tmp/a.txt --file-url /tmp/b.txt
   </thead>
   <tbody>
     <tr><td><code>TEXT</code></td><td>empty text</td><td>Text to write.</td></tr>
+    <tr><td><code>--stdin</code></td><td>none</td><td>Read up to 128 KiB from a pipe or redirected file. Terminal input is rejected. Cannot be combined with <code>TEXT</code>, <code>--image</code>, or <code>--file-url</code>.</td></tr>
     <tr><td><code>--image PATH</code></td><td>none</td><td>A regular PNG file of at most 64 MiB.</td></tr>
     <tr><td><code>--file-url PATH</code></td><td>none</td><td>A file path to write as a file reference. Repeatable. Every path must exist.</td></tr>
   </tbody>
 </table>
 
-One call writes one representation: `--file-url` wins over `--image`, which wins over `TEXT`. The result is an [OperationReport](/desktop/json-output#operationreport) plus the written `type`:
+With `--stdin`, the command waits until the input ends. Empty input and all line breaks are kept, including a final newline. Use `printf '%s'` to avoid adding one. Input must be valid UTF-8 without NUL bytes (`\0`).
+
+`--stdin` keeps text out of process arguments. Batch uses the JSON `text` field, which puts the text in process arguments. Run secret steps as separate `--stdin` commands. To copy the text `--stdin`, use `agent-desktop clipboard-set -- --stdin`.
+
+Without `--stdin`, one call writes one representation: `--file-url` wins over `--image`, which wins over `TEXT`. The result is an [OperationReport](/desktop/json-output#operationreport) plus the written `type`:
 
 ```json
 {

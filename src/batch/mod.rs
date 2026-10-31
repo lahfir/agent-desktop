@@ -50,8 +50,8 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "double-click" => decode(command, item.args).map(Commands::DoubleClick),
         "triple-click" => decode(command, item.args).map(Commands::TripleClick),
         "right-click" => decode(command, item.args).map(Commands::RightClick),
-        "type" => decode(command, item.args).map(Commands::Type),
-        "set-value" => decode(command, item.args).map(Commands::SetValue),
+        "type" => decode_batch_args(command, item.args, Some("text")).map(Commands::Type),
+        "set-value" => decode_batch_args(command, item.args, Some("value")).map(Commands::SetValue),
         "clear" => decode(command, item.args).map(Commands::Clear),
         "focus" => decode(command, item.args).map(Commands::Focus),
         "select" => decode(command, item.args).map(Commands::Select),
@@ -92,7 +92,7 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         }
         "notification-action" => decode(command, item.args).map(Commands::NotificationAction),
         "clipboard-get" => decode(command, item.args).map(Commands::ClipboardGet),
-        "clipboard-set" => decode(command, item.args).map(Commands::ClipboardSet),
+        "clipboard-set" => decode_batch_args(command, item.args, None).map(Commands::ClipboardSet),
         "clipboard-clear" => no_args(command, item.args).map(|()| Commands::ClipboardClear),
         "wait" => decode(command, item.args).map(Commands::Wait),
         "status" => no_args(command, item.args).map(|()| Commands::Status),
@@ -127,6 +127,32 @@ where
             "Use the same argument names and value types as the matching CLI command",
         )
     })
+}
+
+fn decode_batch_args<T>(
+    command: &str,
+    args: Value,
+    required_text: Option<&str>,
+) -> Result<T, AppError>
+where
+    T: DeserializeOwned,
+{
+    if args.get("stdin").is_some() {
+        return Err(AppError::invalid_input(
+            "Batch text must be provided in JSON; --stdin is CLI-only",
+        ));
+    }
+    if let Some(field) = required_text
+        && !matches!(
+            args.get(field).or_else(|| args.get(1)),
+            Some(Value::String(_))
+        )
+    {
+        return Err(AppError::invalid_input(format!(
+            "Batch command '{command}' requires a string field '{field}'"
+        )));
+    }
+    decode(command, args)
 }
 
 fn no_args(command: &str, args: Value) -> Result<(), AppError> {

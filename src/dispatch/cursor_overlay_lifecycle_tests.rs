@@ -186,6 +186,7 @@ fn mutating_keyboard_and_clipboard_commands_re_show_cursor_overlay() {
     dispatch(
         Commands::ClipboardSet(ClipboardSetArgs {
             text: Some("agent".into()),
+            stdin: false,
             image: None,
             file_url: vec![],
         }),

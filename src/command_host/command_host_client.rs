@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 pub(super) fn forward(
     cli: &crate::Cli,
-    command: &crate::Commands,
+    command: &mut crate::Commands,
 ) -> Result<serde_json::Value, AppError> {
     let args = std::env::args_os()
         .skip(1)
@@ -17,7 +17,8 @@ pub(super) fn forward(
                 .map_err(|_| AppError::invalid_input("Host arguments must be UTF-8"))
         })
         .collect::<Result<_, _>>()?;
-    forward_args(cli, command, args, None)
+    let stdin_text = crate::cli_args::stdin::input(command).and_then(|value| value.clone());
+    forward_args(cli, command, args, None, stdin_text)
 }
 
 pub(super) fn forward_args(
@@ -25,6 +26,7 @@ pub(super) fn forward_args(
     command: &crate::Commands,
     args: Vec<String>,
     baseline: Option<agent_desktop_core::SignalBaseline>,
+    stdin_text: Option<String>,
 ) -> Result<serde_json::Value, AppError> {
     let expires_ns = super::budget::expires_at(cli, command).map_err(crate::pre_dispatch_error)?;
     agent_desktop_core::validate_state_root_env()?;
@@ -38,6 +40,7 @@ pub(super) fn forward_args(
         expires_ns,
         identity,
         args,
+        stdin_text,
         baseline,
         directory: std::env::current_dir()?,
         agent_id: cli

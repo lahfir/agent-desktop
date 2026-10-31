@@ -57,10 +57,13 @@ pub(super) fn type_text(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     let timeout_ms = helpers::normalize_action_timeout_ms(args.effective_timeout_ms());
+    let text = args
+        .text
+        .ok_or_else(|| AppError::invalid_input("type text is missing"))?;
     type_text_command::execute(
         type_text_command::TypeArgs {
             ref_id: args.ref_id,
-            text: args.text,
+            text,
             timeout_ms,
         },
         adapter,
@@ -73,10 +76,13 @@ pub(super) fn set_value(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    let value = args
+        .value
+        .ok_or_else(|| AppError::invalid_input("set-value input is missing"))?;
     set_value_command::execute(
         set_value_command::SetValueArgs {
             ref_id: args.ref_id,
-            value: args.value,
+            value,
             timeout_ms: helpers::normalize_action_timeout_ms(args.timeout_ms),
         },
         adapter,
