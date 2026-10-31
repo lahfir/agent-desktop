@@ -228,9 +228,9 @@ fn ambiguous_title_without_window_number_degrades_to_unconfirmed_focus() {
 
 #[test]
 fn owner_snapshot_or_process_generation_churn_is_retryable() {
-    let before = owners(&[(10, 100.0)], Some(10));
-    let after = owners(&[(10, 106.0)], Some(10));
-    let records = vec![record(10, 1, "Front")];
+    let before = owners(&[(999_999, 200.0)], Some(999_999));
+    let after = owners(&[(999_999, 206.0)], Some(999_999));
+    let records = vec![record(999_999, 1, "Front")];
 
     let snapshot_error = validate_snapshot_pair(&before, &after, &records).unwrap_err();
     let generation_error = assemble_global_windows(records, &after, false, |_| {
