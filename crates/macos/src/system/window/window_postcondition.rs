@@ -38,13 +38,16 @@ fn wait_until(
     mut complete: impl FnMut() -> Result<bool, AdapterError>,
 ) -> Result<(), AdapterError> {
     loop {
-        if complete().map_err(after_delivery)? {
-            return Ok(());
-        }
+        let transient = match complete() {
+            Ok(true) => return Ok(()),
+            Ok(false) => None,
+            Err(error) if is_transient_read(&error) => Some(error),
+            Err(error) => return Err(after_delivery(error)),
+        };
         if deadline.is_expired() {
-            return Err(after_delivery(AdapterError::timeout(
-                "Window operation did not reach its requested postcondition",
-            )));
+            return Err(after_delivery(transient.unwrap_or_else(|| {
+                AdapterError::timeout("Window operation did not reach its requested postcondition")
+            })));
         }
         let pause = deadline
             .remaining_slice(std::time::Duration::from_millis(10))
@@ -52,6 +55,23 @@ fn wait_until(
         std::thread::sleep(pause.min(std::time::Duration::from_millis(10)));
     }
 }
+
+/// A window animating into or out of the Dock answers `AXMinimized` reads with
+/// `kAXErrorCannotComplete` until the animation ends, so the postcondition
+/// treats that read as unsettled and keeps polling until its deadline.
+fn is_transient_read(error: &AdapterError) -> bool {
+    error.details.as_ref().is_some_and(|details| {
+        details.get("kind").and_then(|kind| kind.as_str()) == Some("surface_read")
+            && details.get("ax_error").and_then(|code| code.as_i64())
+                == Some(i64::from(CANNOT_COMPLETE))
+    })
+}
+
+#[cfg(target_os = "macos")]
+const CANNOT_COMPLETE: i32 = accessibility_sys::kAXErrorCannotComplete;
+
+#[cfg(not(target_os = "macos"))]
+const CANNOT_COMPLETE: i32 = -25204;
 
 fn geometry_matches(actual: Rect, expected: Rect, position: bool) -> bool {
     let values = if position {
@@ -78,30 +98,5 @@ fn after_delivery(error: AdapterError) -> AdapterError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn geometry_verification_tolerates_ax_rounding_only() {
-        let expected = Rect {
-            x: 10.0,
-            y: 20.0,
-            width: 100.0,
-            height: 80.0,
-        };
-        let rounded = Rect {
-            x: 11.0,
-            y: 19.0,
-            width: 99.0,
-            height: 81.0,
-        };
-        let wrong = Rect {
-            width: 90.0,
-            ..rounded
-        };
-
-        assert!(geometry_matches(rounded, expected, true));
-        assert!(geometry_matches(rounded, expected, false));
-        assert!(!geometry_matches(wrong, expected, false));
-    }
-}
+#[path = "window_postcondition_tests.rs"]
+mod tests;
