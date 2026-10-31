@@ -6,6 +6,9 @@ use rustc_hash::FxHashMap;
 #[path = "window_inventory_global_focus_tests.rs"]
 mod focus;
 
+#[path = "window_inventory_global_generation_tests.rs"]
+mod generation;
+
 #[derive(Clone)]
 struct Owners {
     launches: FxHashMap<i32, Option<f64>>,
