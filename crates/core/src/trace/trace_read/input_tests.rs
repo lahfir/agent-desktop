@@ -102,9 +102,12 @@ fn session_writer_preserves_readability_at_aggregate_byte_limit() {
     file.write_all(&vec![b'\n'; target - written]).unwrap();
     drop(file);
     let writer = crate::trace::TraceConfig::build(None, Some(dir.clone()), true).unwrap();
-    let error = writer
-        .emit("last", None, serde_json::json!({}))
-        .unwrap_err();
+    let error = {
+        let _clock = crate::wait::deadline::VirtualClock::freeze();
+        writer
+            .emit("last", None, serde_json::json!({}))
+            .unwrap_err()
+    };
     assert!(error.to_string().contains("recording limit"), "{error}");
     let trace = read_merged(
         &dir,
@@ -126,9 +129,12 @@ fn session_writer_preserves_readability_at_aggregate_event_limit() {
     }
     drop(file);
     let writer = crate::trace::TraceConfig::build(None, Some(dir.clone()), true).unwrap();
-    let error = writer
-        .emit("last", None, serde_json::json!({}))
-        .unwrap_err();
+    let error = {
+        let _clock = crate::wait::deadline::VirtualClock::freeze();
+        writer
+            .emit("last", None, serde_json::json!({}))
+            .unwrap_err()
+    };
     assert!(error.to_string().contains("recording limit"), "{error}");
     let trace = read_merged(
         &dir,
