@@ -17,7 +17,7 @@ A stale `WAYLAND_DISPLAY` from another session falls through to a working
 | Capability | X11 | Wayland (GNOME) |
 |------------|-----|-----------------|
 | Observation, semantic ref actions | AT-SPI, no tool | AT-SPI, no tool |
-| Keys, `press`, text keys | XTEST in process, live keymap | Mutter RemoteDesktop, keysyms |
+| Keys, `press`, text keys | XTEST in process, live keymap | Mutter RemoteDesktop keysyms, or KWin EIS keys from its keymap |
 | App pointer: `hover`, `drag`, `mouse-*`, physical click, wheel | XTEST, `--headed` | None: `ACTION_NOT_SUPPORTED` with `physical_delivery_started: false` |
 | Window ops | EWMH on the X11 display | Xwayland clients only; native windows and un-minimize refused |
 | `focus-window`, headed scoped `press` | EWMH activation, then keys for `press` | Refused with `ACTION_NOT_SUPPORTED`, cause `wayland_session`, Xwayland clients included |
@@ -51,7 +51,7 @@ synthetic pointer path moves the user's real cursor.
   `wayland_session` and `physical_delivery_started: false` (`click`, `hover`,
   `double-click`, `mouse-wheel`, `mouse-down` and `select` included). A
   headed `type` sends keys through `RemoteDesktop.type_text` once the Mutter
-  capability probe succeeds.
+  capability probe succeeds or KWin hands out its EIS keyboard.
 - Windows works the other way round (semantic first); do not carry that
   assumption across platforms.
 
@@ -179,9 +179,11 @@ empty insertion is dispatched.
 
 ## Wayland keys
 
-Wayland keys use one detected backend, `org.gnome.Mutter.RemoteDesktop` on the
-session bus. Before creating a session or emitting an event, the adapter probes
-the interface's typed `Version` property. A missing service or capability is
+Wayland keys use one detected backend. A session bus that has
+`org.gnome.Mutter.RemoteDesktop` uses Mutter; one that has `org.kde.KWin` and no
+Mutter uses KWin's EIS input service (see KWin below). On Mutter, before
+creating a session or emitting an event, the adapter probes the interface's
+typed `Version` property. A missing service or capability is
 `PLATFORM_NOT_SUPPORTED`, `not_delivered`, `physical_delivery_started: false`;
 another compositor never falls back to X11. A probe timeout is `TIMEOUT`. Calls
 send keysyms and wait 150 ms for the compositor to drain them. A long-lived host
@@ -192,11 +194,23 @@ its own. Ending a session releases its held keys.
   the real keys so the compositor can attach its keyboard. It inserts no text,
   but a handler that watches bare Shift can observe it. Reusing a still-live
   session skips the lead tap.
-- **Characters.** Only printable ASCII, function, modifier and vendor keysyms;
-  anything else is `ACTION_NOT_SUPPORTED`, cause `character_outside_layout`.
+- **Characters.** On Mutter, only printable ASCII, function, modifier and
+  vendor keysyms; anything else is `ACTION_NOT_SUPPORTED`, cause `character_outside_layout`.
   Set the value directly with `set-value` instead. On a non-US layout, a
   character your keymap holds can still be refused. A refusal is safe: nothing
   was sent.
+- **KWin.** Each delivery asks `org.kde.KWin.EIS.RemoteDesktop` for a libei
+  socket, binds its virtual keyboard and closes it afterwards; no session is
+  retained. Keysyms become evdev keys through the XKB keymap KWin sends, for
+  the layout KWin reports active, read with `libxkbcommon.so.0` at run time;
+  without that library the delivery is `PLATFORM_NOT_SUPPORTED`,
+  `not_delivered`. Text on a non-Latin layout types its own characters. A
+  keysym on the Shift level gets its own Shift press unless Shift is already
+  held. Under a held Control, Alt or Super a key may come from another layout,
+  so `ctrl+a` works while a Russian layout is active. Any other keysym the
+  active layout holds only on another level (AltGr) or not at all is
+  `ACTION_NOT_SUPPORTED`, cause `character_outside_layout`, before any key is
+  sent. Each key waits for KWin to confirm it read the event.
 - **App pointer.** AT-SPI gives no global window origin on Wayland, so ordinary
   app pointer commands cannot be aimed (see Headed and headless above). GNOME
   Shell ref clicks and popup openers refuse too; see

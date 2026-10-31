@@ -74,7 +74,7 @@ not trigger SmartScreen.
 aborts on `Action.GetActions`. Run inside the user's graphical session with `at-spi2-core` installed. A TTY or SSH
 shell without that session's bus, display and runtime environment cannot see its apps. `agent-desktop status`
 activates and checks the accessibility bus. X11 keys need XTEST,
-Wayland keys need GNOME Mutter RemoteDesktop, and the Wayland clipboard needs `wl-clipboard`. The Linux skill covers
+Wayland keys need GNOME Mutter RemoteDesktop or, on KDE Plasma, KWin's EIS input service and `libxkbcommon`, and the Wayland clipboard needs `wl-clipboard`. The Linux skill covers
 the rest: `agent-desktop skills get linux`.
 
 ## Platform notes

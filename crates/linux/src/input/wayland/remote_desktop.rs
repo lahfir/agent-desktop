@@ -10,7 +10,7 @@ use super::key_session::KeySession;
 use crate::system::bus::session_bus::{SessionBus, is_transport_failure};
 use crate::system::{NAME_HAS_NO_OWNER, SERVICE_UNKNOWN, within};
 
-const SERVICE: &str = "org.gnome.Mutter.RemoteDesktop";
+pub(crate) const SERVICE: &str = "org.gnome.Mutter.RemoteDesktop";
 const PATH: &str = "/org/gnome/Mutter/RemoteDesktop";
 const SESSION_INTERFACE: &str = "org.gnome.Mutter.RemoteDesktop.Session";
 const SCREEN_CAST: &str = "org.gnome.Mutter.ScreenCast";

@@ -269,7 +269,7 @@ The User Interface Privilege Isolation boundary where observation reads cross to
 Detection is a token-integrity comparison via `GetTokenInformation(TokenIntegrityLevel)`, never the `SendInput` return value, because the API reports success in both blocked and unblocked arms (A9-3). A target strictly higher than the caller maps to `PERM_DENIED`. Detection is proven locally (A20-1); the cross-boundary input effect was measured live on a split-integrity rig (A24-16), where Medium-to-High `set-value` and `type` fail closed. A19-4 and A20-2 record the earlier hosts where elevation manufacture was unavailable and the effect could not be measured.
 
 ### Physical Synthesis
-The low-level OS input primitive behind headed commands: `SendInput` on Windows, `CGEvent` on macOS, XTest on X11 and the Mutter RemoteDesktop session on Wayland.
+The low-level OS input primitive behind headed commands: `SendInput` on Windows, `CGEvent` on macOS, XTest on X11, and on Wayland the Mutter RemoteDesktop session or KWin's EIS input service.
 
 Delivery is best-effort and judged by independent re-read where available; interrupted sequences end in a known safe state via a release guard. Held edges (`key-down`/`key-up`, `mouse-down`/`mouse-up`) reject until a daemon owns the hold lifetime. Standalone `key_event` rejects honestly on every platform.
 
