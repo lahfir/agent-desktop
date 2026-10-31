@@ -235,7 +235,7 @@ fn validate_record_generations<S: OwnerSnapshotView>(
                     pid,
                     instance,
                     launch_time,
-                )?
+                )? || crate::system::process::process_identity::matches_instance(pid, instance)?
             }
             OwnerGeneration::LiveProcess => {
                 crate::system::process::process_identity::matches_instance(pid, instance)?
