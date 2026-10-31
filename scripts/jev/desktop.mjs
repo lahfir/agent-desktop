@@ -74,7 +74,7 @@ export const observe = (app, root, windowId = null) => {
     }
     if (scoped.ok) snap = scoped;
   }
-  const nodes = offerable(collect(snap.data.tree));
+  const nodes = offerable(collect(snap.data.tree), { drillable: !root });
   return {
     nodes,
     screen: { app, window: snap.data.window?.title ?? null, window_id: snap.data.window?.id ?? windowId,

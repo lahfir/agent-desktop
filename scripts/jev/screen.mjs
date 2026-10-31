@@ -46,12 +46,17 @@ export const overlayRole = (tree) => {
  * row around it, and both carry the same name, so the inert cell wins the
  * choice about half the time and every such win ends in POLICY_DENIED. Nothing
  * is lost by withholding it: the row beside it is the element that acts.
+ *
+ * With `drillable`, a region cut off by a shallow read stays even when it
+ * advertises nothing. GTK publishes no action on a plain group, so a skeleton
+ * read of a window can hold nothing but such regions, and dropping them leaves
+ * nothing to DRILL into.
  */
-export const offerable = (refs) =>
+export const offerable = (refs, { drillable = false } = {}) =>
   refs.filter((n) => {
     const s = n.states ?? [];
     if (s.includes("disabled") || s.includes("hidden")) return false;
-    if (!n.available_actions?.length) return false;
+    if (!n.available_actions?.length && !(drillable && n.children_count)) return false;
     return !(n.role === "cell" && n.parentRole === "treeitem");
   });
 

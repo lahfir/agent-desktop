@@ -49,7 +49,10 @@ target can never be incompatible with the verb that acts on it.
 **Looking is an operation.** A window is read with `--skeleton` first, so a dense
 document costs the same first look as a small panel. A region that was cut off
 reports how much it holds, and `DRILL` pins it as the root for later turns.
-`WIDEN` gives the whole window back.
+`WIDEN` gives the whole window back. Such a region is offered for `DRILL` even
+when it advertises no action, as a plain GTK group does on Linux. `DRILL` is not
+held to the confidence bar for acting: it changes nothing on screen, and `WIDEN`
+undoes a wrong pick at the cost of one turn.
 
 **`CHECK` and `UNCHECK` instead of a toggle.** Both are idempotent: a box already
 in the wanted state stays there.

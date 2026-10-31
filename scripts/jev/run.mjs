@@ -138,14 +138,15 @@ export const run = async function* (
         );
         node = space.targets[state.operation][head.choice];
         confidence = head.confidence;
+        const looking = state.operation === "DRILL";
         let destructive = null;
-        if (needsRiskCheck(confidence, { confirmDestructive })) {
+        if (!looking && needsRiskCheck(confidence, { confirmDestructive })) {
           const rated = await rateRisk(goal, screen, state.operation, node, values);
           state.calls += 1;
           const answer = rated.answers?.destructive?.noul;
           destructive = typeof answer === "number" ? answer : 1;
         }
-        const settled = route({
+        const settled = looking ? { decision: "act" } : route({
           target: head.choice,
           targetConfidence: confidence,
           present: null,

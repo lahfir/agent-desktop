@@ -46,6 +46,7 @@ else if (command === 'snapshot') {
       {ref_id:'@s1:e2',role:'textfield',name:'試験欄',value:process.env.JEV_ACT_TEST?'PRIVATE-ACT-SCREEN-VALUE-4583':mode==='sequence'?written:'',available_actions:['SetValue']},
       ...sheet
     ]}}};
+  if (mode === 'skeleton' && !rooted) result.data.tree = {role:'window',children:[{ref_id:'@s1:e9',role:'group',children_count:3}]};
 }
 if (command === 'click' && mode === 'click_error') result=error('ACTION_FAILED');
 if (command === 'set-value') result= mode==='unsafe_type'
@@ -83,14 +84,14 @@ globalThis.fetch=async (_url,options)=>{
   if (['destructive','risk_safe'].includes(mode)) {
     appendFileSync(process.env.JEV_TEST_LOG,JSON.stringify({command:'goal',args:[body.state.goal]})+'\\n');
   }
-  const operation=['destructive','risk_safe'].includes(mode)?(calls===1?'CLICK':'DONE'):mode==='direct_type'?(calls===1?'TYPE_TEXT':'DONE'):mode==='sequence'?({1:'TYPE_TEXT',2:'CLICK',3:'TYPE_TEXT',4:'CLICK'}[calls]??'DONE'):mode==='wait'?(calls<=3?'WAIT':'DONE'):mode==='closed_top'?'WAIT':(mode==='done'||mode.startsWith('surface')||mode.endsWith('_other'))?'DONE':
+  const operation=mode==='skeleton'?({1:'DRILL',2:'CLICK'}[calls]??'DONE'):['destructive','risk_safe'].includes(mode)?(calls===1?'CLICK':'DONE'):mode==='direct_type'?(calls===1?'TYPE_TEXT':'DONE'):mode==='sequence'?({1:'TYPE_TEXT',2:'CLICK',3:'TYPE_TEXT',4:'CLICK'}[calls]??'DONE'):mode==='wait'?(calls<=3?'WAIT':'DONE'):mode==='closed_top'?'WAIT':(mode==='done'||mode.startsWith('surface')||mode.endsWith('_other'))?'DONE':
     mode==='blocked'?'BLOCKED':mode==='click_error'||mode==='window_closed'?'CLICK':(mode==='paste_correct'||mode==='paste_late')&&calls>1?'DONE':'TYPE_TEXT';
   if (mode==='sequence') appendFileSync(process.env.JEV_TEST_LOG,JSON.stringify({command:'request',body})+'\\n');
   const answers={};
   for (const [id,question] of Object.entries(body.questions)) {
     const ids=Object.keys(question.criteria);
     const selected=id==='operation'?operation:ids[0];
-    answers[id]={choice:selected,confidence:1,probabilities:Object.fromEntries(ids.map(x=>[x,Number(x===selected)]))};
+    answers[id]={choice:selected,confidence:mode==='skeleton'&&id==='drill_target'?0.6:1,probabilities:Object.fromEntries(ids.map(x=>[x,Number(x===selected)]))};
   }
   return {ok:true,status:200,json:async()=>({answers})};
 };
@@ -178,6 +179,14 @@ try {
   assert.equal(waited.status, 0);
   assert.equal(waited.stop.stop, "done");
   assert.equal(waited.events.filter(event => event.turn).length, 3);
+
+  const drilled = run("skeleton");
+  assert.equal(drilled.status, 0, "a skeleton of bare regions is drilled into, not reported as empty");
+  assert.equal(drilled.stop.stop, "done");
+  assert.deepEqual(drilled.events.filter(event => event.turn).map(event => event.turn.operation), ["DRILL", "CLICK"]);
+  assert.equal(drilled.events[0].turn.confidence, 0.6, "looking is not held to the bar for acting");
+  assert.ok(drilled.commands.some(c => c.command === "snapshot" && c.args.includes("--root") && c.args.includes("@s1:e9")));
+  assert.equal(drilled.commands.filter(c => c.command === "click").length, 1);
 
   const failed = run("click_error");
   assert.equal(failed.status, 1);
