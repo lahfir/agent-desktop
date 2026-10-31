@@ -19,13 +19,10 @@ pub(crate) fn execute_single_shot(
         && !context.adapter.keyboard_needs_window_activation();
     if request.headed_requirement().requires_focus() && !keyboard_is_aimed_at_the_element {
         let requirement = if matches!(request.action, crate::Action::Click) {
-            let handle = context
-                .adapter
-                .resolve_element_strict(context.entry, deadline)
-                .map_err(crate::ref_action::mark_pre_dispatch_resolution_failure)?;
             context
                 .adapter
-                .headed_requirement(&handle, &request, deadline)?
+                .headed_requirement_for_ref(context.entry, &request, deadline)
+                .map_err(crate::ref_action::mark_pre_dispatch_resolution_failure)?
         } else {
             request.headed_requirement()
         };

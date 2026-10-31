@@ -51,7 +51,7 @@ static InventoryTestApplication *application(NSString *name, NSString *executabl
 }
 
 static NSDictionary *snapshot(void) {
-    AgentDesktopBytesResult result = agent_desktop_copy_workspace_snapshot_json();
+    AgentDesktopBytesResult result = agent_desktop_copy_workspace_snapshot_json(0);
     require(result.status == 0, "snapshot status");
     NSData *data = [NSData dataWithBytes:result.bytes length:result.length];
     agent_desktop_free_bridge_bytes(result.bytes);
@@ -128,7 +128,7 @@ int main(void) {
         require([frontmostSnapshot[@"skipped"][0][@"field"] isEqualToString:@"frontmost_launch_time"], "frontmost skip field");
         testFrontmost = nil;
         testApplications = nil;
-        AgentDesktopBytesResult missing = agent_desktop_copy_workspace_snapshot_json();
+        AgentDesktopBytesResult missing = agent_desktop_copy_workspace_snapshot_json(0);
         require(missing.status == 1, "missing snapshot remains failure");
         require(missing.bytes == NULL, "missing snapshot has no bytes");
         puts("AppKit inventory name regression tests passed");

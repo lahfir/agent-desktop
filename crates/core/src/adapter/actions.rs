@@ -4,6 +4,15 @@ use crate::{
 };
 
 pub trait ActionOps: Send + Sync {
+    fn headed_requirement_for_ref(
+        &self,
+        _entry: &crate::RefEntry,
+        request: &ActionRequest,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::HeadedRequirement, AdapterError> {
+        Ok(request.headed_requirement())
+    }
+
     fn headed_requirement(
         &self,
         _handle: &NativeHandle,

@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 struct FocusAdapter {
     focused: AtomicBool,
     dispatched: AtomicUsize,
+    resolved: AtomicUsize,
     persistent_occlusion: bool,
     enabled: bool,
     application_menu: bool,
@@ -40,6 +41,7 @@ impl ObservationOps for FocusAdapter {
         _: &RefEntry,
         _: Deadline,
     ) -> Result<NativeHandle, AdapterError> {
+        self.resolved.fetch_add(1, Ordering::SeqCst);
         Ok(NativeHandle::null())
     }
 
@@ -106,6 +108,15 @@ impl ObservationOps for FocusAdapter {
 }
 
 impl ActionOps for FocusAdapter {
+    fn headed_requirement_for_ref(
+        &self,
+        _: &RefEntry,
+        request: &ActionRequest,
+        deadline: Deadline,
+    ) -> Result<crate::HeadedRequirement, AdapterError> {
+        self.headed_requirement(&NativeHandle::null(), request, deadline)
+    }
+
     fn headed_requirement(
         &self,
         _: &NativeHandle,
@@ -202,6 +213,7 @@ fn adapter(persistent_occlusion: bool, enabled: bool) -> FocusAdapter {
     FocusAdapter {
         focused: AtomicBool::new(false),
         dispatched: AtomicUsize::new(0),
+        resolved: AtomicUsize::new(0),
         persistent_occlusion,
         enabled,
         application_menu: false,
@@ -256,4 +268,63 @@ fn headless_application_menu_never_activates_the_application() {
     execute(&adapter, false).unwrap();
     assert!(!adapter.focused.load(Ordering::SeqCst));
     assert_eq!(adapter.dispatched.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn headed_click_does_not_resolve_before_window_focus_and_dispatch() {
+    struct DefaultRequirementAdapter(FocusAdapter);
+    impl ActionOps for DefaultRequirementAdapter {}
+    impl InputOps for DefaultRequirementAdapter {}
+    impl ObservationOps for DefaultRequirementAdapter {
+        fn resolve_element_strict(
+            &self,
+            entry: &RefEntry,
+            deadline: Deadline,
+        ) -> Result<NativeHandle, AdapterError> {
+            self.0.resolve_element_strict(entry, deadline)
+        }
+    }
+    impl SystemOps for DefaultRequirementAdapter {
+        fn resolve_window_strict(
+            &self,
+            window: &WindowInfo,
+            deadline: Deadline,
+        ) -> Result<WindowInfo, AdapterError> {
+            self.0.resolve_window_strict(window, deadline)
+        }
+        fn focus_window(
+            &self,
+            window: &WindowInfo,
+            lease: &InteractionLease,
+        ) -> Result<(), AdapterError> {
+            self.0.focus_window(window, lease)
+        }
+    }
+    let adapter = DefaultRequirementAdapter(adapter(false, true));
+    let entry: RefEntry = serde_json::from_value(serde_json::json!({
+        "pid": 1, "process_instance": "test-instance", "role": "button", "name": "Run",
+        "source_window_id": "w-test", "source_surface": "window", "path": [0],
+        "bounds": bounds(), "available_actions": ["Click"], "states": []
+    }))
+    .unwrap();
+    let context = crate::CommandContext::default();
+    let deadline = Deadline::standard().unwrap();
+    let lease = InteractionLease::guarded(deadline, ()).unwrap();
+    crate::ref_action::ref_action_single::execute_single_shot(
+        crate::ref_action::ref_action_wait_context::RefActionWaitContext {
+            adapter: &adapter,
+            entry: &entry,
+            ref_id: "@test:e1",
+            context: &context,
+        },
+        ActionRequest::headed(Action::Click),
+        deadline,
+        &lease,
+        |_, _, _| {
+            assert!(adapter.0.focused.load(Ordering::SeqCst));
+            assert_eq!(adapter.0.resolved.load(Ordering::SeqCst), 0);
+            Ok(ActionResult::delivered_unverified("click"))
+        },
+    )
+    .unwrap();
 }
