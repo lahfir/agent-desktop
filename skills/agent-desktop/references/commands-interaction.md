@@ -95,6 +95,7 @@ agent-desktop right-click @s8f3k2p9:e5
 
 ```bash
 agent-desktop type @s8f3k2p9:e2 "hello@example.com"
+agent-desktop type @s8f3k2p9:e2 "hello world" --interval-ms 60
 agent-desktop set-value @s8f3k2p9:e2 "new value"
 agent-desktop clear @s8f3k2p9:e2
 agent-desktop focus @s8f3k2p9:e2
@@ -102,6 +103,7 @@ agent-desktop focus @s8f3k2p9:e2
 
 - `type` inserts text and checks the result when value and selection are readable. A readable mismatch returns `ACTION_FAILED`, and an unreadable result succeeds as `delivered_unverified`. Text sent as keystrokes reaches the field through the app's event queue, so the check re-reads the field while it changes, inside the `--timeout-ms` budget. If it settles on other text, or never settles, the result is `delivered_unverified` with `verification_reason: postcondition_mismatch`. Headed typing that focuses an inactive field can change the selection, and the result then stays unverified. Read the field with `get` before you write again.
 - The default `--timeout-ms` of `type` is 5000 plus 30 ms per character of the text. An explicit `--timeout-ms` wins.
+- `type --interval-ms N` (1 to 2000) types one keystroke every N ms inside one command; `--timeout-ms` then applies to each keystroke, and `0` makes each keystroke try once. A keystroke keeps combining marks, emoji sequences and CR LF together. The first keystroke is a full ref action (headed, it also focuses the window), and the rest go to the same element, taking the interaction lease one keystroke at a time. A headed keystroke is posted only while the target's process and focused element are unchanged; if focus moves, the burst stops with an error. The result adds `keystrokes` and `interval_ms`, and `post_state` is the field after the last keystroke. It stays `delivered_verified` only when that read shows the whole text; otherwise it is `delivered_unverified` with `verification_reason` `postcondition_mismatch`, `insufficient_evidence` (typed part way through the field) or `final_read_failed` (no `post_state`). `--wait-for` waits once, after the last keystroke. A failure part way through adds `details.typed_keystrokes` and `details.keystrokes` and is `delivered_unverified`: read the field before you type again.
 - `set-value` writes the value directly through the semantic value path. It is faster than `type`, but it may not fire every UI callback. Use it for text fields, text areas and sliders.
 - A cell that exposes no value write is not directly editable. Activate it, take a fresh snapshot, and target the editor that appears. Some apps expose no editor and accept only keyboard input.
 - `clear` empties the element. `focus` sets keyboard focus without clicking.

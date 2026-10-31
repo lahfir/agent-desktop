@@ -37,10 +37,24 @@ pub(crate) struct TypeArgs {
     )]
     #[serde(default)]
     pub timeout_ms: Option<u64>,
+    #[arg(
+        long = "interval-ms",
+        value_parser = clap::value_parser!(u64).range(1..=2000),
+        help = "Type one keystroke every N ms (1-2000) instead of inserting TEXT at once; --timeout-ms then applies to each keystroke, and 0 makes each keystroke try once"
+    )]
+    #[serde(default)]
+    pub interval_ms: Option<u64>,
 }
 
 impl TypeArgs {
     pub(crate) fn effective_timeout_ms(&self) -> u64 {
+        if let Some(interval_ms) = self.interval_ms {
+            return agent_desktop_core::commands::type_text::interval_budget_ms(
+                &self.text,
+                interval_ms,
+                self.timeout_ms,
+            );
+        }
         self.timeout_ms.unwrap_or_else(|| {
             agent_desktop_core::commands::type_text::default_timeout_ms(&self.text)
         })

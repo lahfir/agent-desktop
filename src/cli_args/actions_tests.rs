@@ -156,3 +156,35 @@ fn mouse_point_args_batch_json_without_modifiers_key_still_deserializes() {
         serde_json::from_value(serde_json::json!({ "xy": "10,20" })).unwrap();
     assert!(args.modifiers.is_empty());
 }
+
+#[test]
+fn type_args_with_an_interval_budget_the_spread_plus_each_keystroke() {
+    let paced = TypeArgs::try_parse_from(["type", "@e1", "abc", "--interval-ms", "100"]).unwrap();
+    assert_eq!(paced.effective_timeout_ms(), 300 + 5_090);
+
+    let explicit = TypeArgs::try_parse_from([
+        "type",
+        "@e1",
+        "abc",
+        "--interval-ms",
+        "100",
+        "--timeout-ms",
+        "500",
+    ])
+    .unwrap();
+    assert_eq!(explicit.effective_timeout_ms(), 300 + 3 * 500);
+
+    let untimed = TypeArgs::try_parse_from([
+        "type",
+        "@e1",
+        "abc",
+        "--interval-ms",
+        "100",
+        "--timeout-ms",
+        "0",
+    ])
+    .unwrap();
+    assert_eq!(untimed.effective_timeout_ms(), 300 + 5_090);
+
+    assert!(TypeArgs::try_parse_from(["type", "@e1", "abc", "--interval-ms", "0"]).is_err());
+}

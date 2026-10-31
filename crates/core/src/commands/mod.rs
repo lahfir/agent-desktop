@@ -70,6 +70,8 @@ pub mod toggle;
 pub mod trace;
 pub mod triple_click;
 pub mod type_text;
+mod type_text_interval;
+mod type_text_interval_verify;
 pub mod uncheck;
 pub mod version;
 pub mod wait;
