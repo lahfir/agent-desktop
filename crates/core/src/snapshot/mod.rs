@@ -24,6 +24,14 @@ pub struct SnapshotResult {
 }
 
 impl SnapshotResult {
+    pub(crate) fn save_refmap(&self, store: &RefStore) -> Result<String, AppError> {
+        if self.complete {
+            store.save_new_snapshot(&self.refmap)
+        } else {
+            store.save_new_snapshot_detached(&self.refmap)
+        }
+    }
+
     pub(crate) fn bind_snapshot_id(&mut self, snapshot_id: String) {
         crate::refs::ref_token::qualify_tree_refs(&mut self.tree, &snapshot_id);
         self.snapshot_id = Some(snapshot_id);
@@ -314,7 +322,7 @@ pub fn run_with_context(
         crate::Deadline::after(timeout_ms)?,
     )?;
     let store = RefStore::for_session(context.session_id())?;
-    let snapshot_id = store.save_new_snapshot(&result.refmap)?;
+    let snapshot_id = result.save_refmap(&store)?;
     trace_artifacts::copy_refmap_if_full(context, &store, &snapshot_id, &result.refmap)?;
     result.bind_snapshot_id(snapshot_id);
     emit_snapshot_saved(context, &result)?;
@@ -343,6 +351,10 @@ pub mod snapshot_surface;
 #[cfg(test)]
 #[path = "snapshot_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "snapshot_deadline_tests.rs"]
+mod deadline_tests;
 
 #[cfg(test)]
 #[path = "snapshot_window_tests.rs"]

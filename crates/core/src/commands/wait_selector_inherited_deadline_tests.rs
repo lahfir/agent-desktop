@@ -85,3 +85,36 @@ fn expired_inherited_deadline_without_a_snapshot_still_emits_wait_timeout() {
     );
     assert_eq!(details["last_error"]["code"], "APP_NOT_FOUND");
 }
+
+#[test]
+fn matched_partial_snapshot_is_persisted_after_the_inherited_deadline() {
+    let _guard = HomeGuard::new();
+    let clock = crate::wait::deadline::VirtualClock::freeze();
+    let inherited = crate::Deadline::detached_after(30).unwrap();
+    let deadline_scope = crate::wait::deadline::enter_scope(Some(inherited));
+    let mut tree = window_node(vec![button_node("saved")]);
+    tree.subtree_truncated = true;
+    let input = base_input("button:saved", false);
+    let result = snapshot::build(
+        &StaticTreeAdapter { tree },
+        &input.opts,
+        input.app.as_deref(),
+        None,
+        inherited,
+    )
+    .unwrap();
+    assert!(!result.complete);
+    clock.advance(std::time::Duration::from_millis(31));
+
+    let value = materialized_response(result, &CommandContext::default(), &input, 31)
+        .expect("a matched partial snapshot must survive the expired inherited deadline");
+    assert_eq!(value["matched_selector"], "button:saved");
+    assert_eq!(value["complete"], false);
+    let snapshot_id = value["snapshot_id"].as_str().unwrap();
+    drop(deadline_scope);
+    let refmap = RefStore::new().unwrap().load(Some(snapshot_id)).unwrap();
+    assert_eq!(
+        refmap.get("@e1").unwrap().identity.name.as_deref(),
+        Some("saved")
+    );
+}

@@ -230,7 +230,7 @@ fn wait_for_text(
                 };
                 if matched {
                     let store = RefStore::for_session(context.session_id())?;
-                    let snapshot_id = store.save_new_snapshot(&result.refmap)?;
+                    let snapshot_id = result.save_refmap(&store)?;
                     trace_artifacts::copy_refmap_if_full(
                         context,
                         &store,
