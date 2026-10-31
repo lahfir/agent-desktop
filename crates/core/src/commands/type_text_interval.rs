@@ -7,6 +7,8 @@
 //! resolution cannot make the rhythm uneven. Each unit still goes through the
 //! adapter's own delivery checks, which for physical keystrokes confirm that the
 //! target's process and focused element are unchanged before a key is posted.
+//! Only the first unit is read back, so a burst of more than one unit reports
+//! its delivery as unverified, and `--wait-for` runs once after the last unit.
 
 use std::time::{Duration, Instant};
 
@@ -16,7 +18,10 @@ use crate::{
     AdapterError, AppError, DeliverySemantics,
     actions::action::Action,
     adapter::PlatformAdapter,
-    commands::helpers::{RefArgs, execute_ref_action_with_context},
+    commands::helpers::{
+        RefArgs, apply_post_action_wait, execute_ref_action_with_context, load_ref_entry,
+        validate_post_action_wait,
+    },
     commands::type_text::{TypeArgs, default_timeout_ms},
     context::CommandContext,
 };
@@ -27,7 +32,9 @@ pub(crate) fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    validate_post_action_wait(context)?;
     let units = keystroke_units(&args.text);
+    let first_context = context.clone().with_wait_selector(None);
     let mut clock = Clock {
         started: Instant::now(),
         interval: Duration::from_millis(interval_ms),
@@ -53,7 +60,7 @@ pub(crate) fn execute(
                 },
                 adapter,
                 request,
-                context,
+                &first_context,
             )
             .map(|value| last = value),
         };
@@ -67,8 +74,33 @@ pub(crate) fn execute(
     }
     if let Some(burst) = &burst {
         report_final_state(&mut last, adapter, &burst.handle, budget(&args.text));
+        last = without_verified_delivery(last);
     }
-    Ok(with_keystrokes(last, units.len(), interval_ms))
+    let value = with_keystrokes(last, units.len(), interval_ms);
+    let entry = load_ref_entry(&args.ref_id, context).ok();
+    apply_post_action_wait(value, entry.as_ref(), adapter, context)
+}
+
+/// The first keystroke's read-back says nothing about the keystrokes after
+/// it, so a burst never reports the whole text as verified.
+fn without_verified_delivery(mut value: Value) -> Value {
+    let verified = serde_json::to_value(DeliverySemantics::delivered_verified()).ok();
+    let unverified = serde_json::to_value(DeliverySemantics::delivered_unverified()).ok();
+    let Some(object) = value.as_object_mut() else {
+        return value;
+    };
+    if verified.is_none() || object.get("disposition") != verified.as_ref() {
+        return value;
+    }
+    if let Some(unverified) = unverified {
+        object.insert("disposition".into(), unverified);
+    }
+    let details = object.entry("details").or_insert_with(|| json!({}));
+    if let Some(details) = details.as_object_mut() {
+        details.insert("verification_scope".into(), "unavailable".into());
+        details.insert("verification_reason".into(), "insufficient_evidence".into());
+    }
+    value
 }
 
 /// The first keystroke's result carries the field as it was after that

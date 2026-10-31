@@ -24,9 +24,61 @@ impl StaleThenOkAdapter {
             expected_processes: Mutex::new(Vec::new()),
         }
     }
+
+    fn field_window(&self) -> crate::AccessibilityNode {
+        crate::AccessibilityNode {
+            ref_id: None,
+            role: "window".into(),
+            identity: crate::NodeIdentity {
+                retained_object: None,
+                name: Some(self.value.lock().unwrap().clone()),
+                ..Default::default()
+            },
+            presentation: Default::default(),
+            children_count: None,
+            subtree_truncated: false,
+            children: vec![],
+        }
+    }
 }
 
 impl ObservationOps for StaleThenOkAdapter {
+    fn observe_tree(
+        &self,
+        root: crate::locator::live_locator::ObservationRoot<'_>,
+        _request: &crate::locator::live_locator::ObservationRequest,
+    ) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
+        crate::adapter::observed_tree(&root, self.field_window())
+    }
+
+    fn list_windows(
+        &self,
+        filter: &crate::adapter::WindowFilter,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<crate::WindowInfo>, AdapterError> {
+        Ok(vec![crate::WindowInfo {
+            id: "w-42".into(),
+            title: "Fixture".into(),
+            app: filter.app.clone().unwrap_or_else(|| "Fixture".into()),
+            pid: crate::ProcessId::new(1),
+            process_instance: Some("test-instance".into()),
+            bounds: None,
+            state: crate::WindowState {
+                is_focused: true,
+                ..Default::default()
+            },
+        }])
+    }
+
+    fn get_tree(
+        &self,
+        _win: &crate::WindowInfo,
+        _opts: &crate::adapter::TreeOptions,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::AccessibilityNode, AdapterError> {
+        Ok(self.field_window())
+    }
+
     fn resolve_element_strict(
         &self,
         _entry: &RefEntry,
@@ -273,4 +325,27 @@ fn a_zero_timeout_with_an_interval_tries_each_keystroke_once_instead_of_failing(
 
     assert_eq!(*adapter.value.lock().unwrap(), "abc");
     assert_eq!(value["keystrokes"], 3);
+}
+
+#[test]
+fn a_paced_burst_waits_for_its_selector_after_the_last_keystroke_and_is_not_reported_verified() {
+    let _guard = HomeGuard::new();
+    let adapter = StaleThenOkAdapter::new(0);
+    let context =
+        CommandContext::default().with_wait_selector(Some(crate::context::WaitSelector {
+            query_raw: ":abcd".into(),
+            gone: false,
+            timeout_ms: 1_000,
+        }));
+
+    let value = type_paced(&adapter, "abcd", &context);
+
+    let action = &value["after_action"];
+    assert_eq!(action["keystrokes"], 4);
+    assert_eq!(action["post_state"]["value"], "abcd");
+    assert_eq!(action["disposition"]["delivery"], "delivered_unverified");
+    assert_eq!(
+        action["details"]["verification_reason"],
+        "insufficient_evidence"
+    );
 }
