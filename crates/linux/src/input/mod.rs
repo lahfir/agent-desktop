@@ -8,6 +8,7 @@ pub(crate) mod keyboard;
 pub(crate) mod mouse;
 pub(crate) mod physical;
 pub(crate) mod plan;
+pub(crate) mod process_end;
 pub(crate) mod release_guard;
 pub(crate) mod release_state;
 pub(crate) mod standalone;
