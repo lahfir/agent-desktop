@@ -15,6 +15,7 @@ const LATEST_SNAPSHOT_FILE: &str = "latest_snapshot_id";
 /// save, which otherwise paid it on every snapshot once the cap was reached.
 const MAX_SAVED_SNAPSHOTS: usize = 128;
 pub(crate) const PRUNE_LOW_WATER: usize = 96;
+pub(crate) const SNAPSHOT_TTL_ENV: &str = "AGENT_DESKTOP_SNAPSHOT_TTL_SECS";
 pub(crate) const STALE_TMP_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(60);
 
 #[derive(Debug, Clone)]

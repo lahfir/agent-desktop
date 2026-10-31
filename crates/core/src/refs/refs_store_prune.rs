@@ -1,4 +1,4 @@
-use super::{MAX_SAVED_SNAPSHOTS, PRUNE_LOW_WATER, RefStore, STALE_TMP_MAX_AGE};
+use super::{MAX_SAVED_SNAPSHOTS, PRUNE_LOW_WATER, RefStore, SNAPSHOT_TTL_ENV, STALE_TMP_MAX_AGE};
 use crate::AppError;
 use crate::refs::validate_snapshot_id;
 
@@ -89,6 +89,9 @@ impl RefStore {
             }
             retained.push((id, entry.path()));
         }
+        if let Some(ttl) = snapshot_ttl_from_env() {
+            retained = remove_expired_snapshots(retained, latest_id, ttl);
+        }
         if retained.len() <= MAX_SAVED_SNAPSHOTS {
             return Ok(());
         }
@@ -118,6 +121,37 @@ impl RefStore {
         }
         Ok(())
     }
+}
+
+/// Reads `AGENT_DESKTOP_SNAPSHOT_TTL_SECS`. Unset, empty or unparsable values
+/// keep count-based retention only.
+pub(crate) fn snapshot_ttl_from_env() -> Option<std::time::Duration> {
+    std::env::var(SNAPSHOT_TTL_ENV)
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(std::time::Duration::from_secs)
+}
+
+/// Removes snapshot directories whose mtime is at least `ttl` old, except the
+/// latest one, and returns the directories that remain.
+pub(crate) fn remove_expired_snapshots(
+    retained: Vec<(String, std::path::PathBuf)>,
+    latest_id: &str,
+    ttl: std::time::Duration,
+) -> Vec<(String, std::path::PathBuf)> {
+    retained
+        .into_iter()
+        .filter(|(id, path)| {
+            let expired = id != latest_id
+                && path
+                    .metadata()
+                    .and_then(|metadata| metadata.modified())
+                    .ok()
+                    .and_then(|modified| modified.elapsed().ok())
+                    .is_some_and(|age| age >= ttl);
+            !(expired && std::fs::remove_dir_all(path).is_ok())
+        })
+        .collect()
 }
 
 pub(crate) fn is_orphaned_tmp_file(path: &std::path::Path) -> bool {

@@ -281,6 +281,20 @@ fn stale_tmp_files_are_swept_and_fresh_ones_kept() {
     assert!(base_tmp.exists());
 }
 
+#[cfg(unix)]
+#[test]
+fn snapshot_directories_are_0700_and_refmaps_are_0600() {
+    use std::os::unix::fs::PermissionsExt;
+    let _guard = HomeGuard::new();
+    let store = RefStore::new().unwrap();
+    let id = store.save_new_snapshot(&map_with("Private")).unwrap();
+    let mode = |path: &std::path::Path| path.metadata().unwrap().permissions().mode() & 0o777;
+
+    assert_eq!(mode(&store.snapshots_dir()), 0o700);
+    assert_eq!(mode(&store.snapshots_dir().join(&id)), 0o700);
+    assert_eq!(mode(&store.snapshot_path(&id)), 0o600);
+}
+
 #[path = "refs_store_pruning_tests.rs"]
 mod pruning_tests;
 
